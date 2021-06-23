@@ -547,50 +547,67 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(span opentracing.Span, w
 func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 	start := time.Now()
 	var loopDebugStr string
+	parent := opentracing.SpanFromContext(pdc.ctx)
+	span := opentracing.StartSpan("launchInitialWorkers", opentracing.FollowsFrom(parent.Context()))
+	defer span.Finish()
 	for {
-		// Get the list of unresolved workers. This will also grab an update, so
-		// any workers that have resolved recently will be reflected in the
-		// newly returned set of values.
-		unresolvedWorkers, updateChan := pdc.unresolvedWorkers()
-
-		// Create a list of usable workers, sorted by the amount of time they
-		// are expected to take to return.
-		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers)
-
-		// Create an initial worker set
-		span := opentracing.SpanFromContext(pdc.ctx)
-		finalWorkers, err := pdc.createInitialWorkerSet(span, workerHeap)
-		if err != nil {
-			return errors.AddContext(err, "unable to build initial set of workers")
-		}
-
-		// If the function returned an actual set of workers, we are good to
-		// launch.
-		if finalWorkers != nil {
-			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-				span.LogKV("launchInitialWorkersLoopInfo", loopDebugStr)
+		cont, err := func() (bool, error) {
+			var loopSpan opentracing.Span
+			if span != nil {
+				loopSpan = opentracing.StartSpan("for", opentracing.FollowsFrom(span.Context()))
+				defer loopSpan.Finish()
 			}
-			for i, fw := range finalWorkers {
-				if fw == nil {
-					continue
+
+			// Get the list of unresolved workers. This will also grab an update, so
+			// any workers that have resolved recently will be reflected in the
+			// newly returned set of values.
+			unresolvedWorkers, updateChan := pdc.unresolvedWorkers()
+
+			// Create a list of usable workers, sorted by the amount of time they
+			// are expected to take to return.
+			workerHeap := pdc.initialWorkerHeap(unresolvedWorkers)
+
+			// Create an initial worker set
+			finalWorkers, err := pdc.createInitialWorkerSet(loopSpan, workerHeap)
+			if err != nil {
+				return false, errors.AddContext(err, "unable to build initial set of workers")
+			}
+
+			// If the function returned an actual set of workers, we are good to
+			// launch.
+			if finalWorkers != nil {
+				if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+					span.LogKV("launchInitialWorkersLoopInfo", loopDebugStr)
 				}
-				pdc.launchWorker(fw.worker, uint64(i), false)
+				for i, fw := range finalWorkers {
+					if fw == nil {
+						continue
+					}
+					pdc.launchWorker(fw.worker, uint64(i), false)
+				}
+				return false, nil
 			}
-			return nil
-		}
 
-		select {
-		case worker := <-updateChan:
-			loopDebugStr += fmt.Sprintf("%v | worker %v updated\n", time.Since(start), worker)
-		case <-time.After(maxWaitUnresolvedWorkerUpdate):
-			// We want to limit the amount of time spent waiting for unresolved
-			// workers to become resolved. This is because we assign a penalty
-			// to unresolved workers, and on every iteration this penalty might
-			// have caused an already resolved worker to be favoured over the
-			// unresolved worker in the set.
-			loopDebugStr += fmt.Sprintf("%v | worker max wait triggered\n", time.Since(start))
-		case <-pdc.ctx.Done():
-			return errors.New("timed out while trying to build initial set of workers")
+			select {
+			case worker := <-updateChan:
+				loopDebugStr += fmt.Sprintf("%v | worker %v updated\n", time.Since(start), worker)
+			case <-time.After(maxWaitUnresolvedWorkerUpdate):
+				// We want to limit the amount of time spent waiting for unresolved
+				// workers to become resolved. This is because we assign a penalty
+				// to unresolved workers, and on every iteration this penalty might
+				// have caused an already resolved worker to be favoured over the
+				// unresolved worker in the set.
+				loopDebugStr += fmt.Sprintf("%v | worker max wait triggered\n", time.Since(start))
+			case <-pdc.ctx.Done():
+				return false, errors.New("timed out while trying to build initial set of workers")
+			}
+			return true, nil
+		}()
+		if err != nil {
+			return err
+		}
+		if !cont {
+			return nil
 		}
 	}
 }
