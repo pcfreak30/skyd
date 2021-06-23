@@ -564,11 +564,13 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 			// Get the list of unresolved workers. This will also grab an update, so
 			// any workers that have resolved recently will be reflected in the
 			// newly returned set of values.
+			tmp := opentracing.StartSpan("unresolvedWorkers", opentracing.FollowsFrom(loopSpan.Context()))
 			unresolvedWorkers, updateChan := pdc.unresolvedWorkers()
+			tmp.Finish()
 
 			// Create a list of usable workers, sorted by the amount of time they
 			// are expected to take to return.
-			tmp := opentracing.StartSpan("initialWorkerHeap", opentracing.FollowsFrom(loopSpan.Context()))
+			tmp = opentracing.StartSpan("initialWorkerHeap", opentracing.FollowsFrom(loopSpan.Context()))
 			workerHeap := pdc.initialWorkerHeap(unresolvedWorkers)
 			tmp.Finish()
 
