@@ -7,6 +7,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/siamux/mux"
@@ -46,7 +47,10 @@ type programResponse struct {
 }
 
 // managedExecuteProgram performs the ExecuteProgramRPC on the host
-func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, category spendingCategory, cost types.Currency) (responses []programResponse, limit mux.BandwidthLimit, err error) {
+func (w *worker) managedExecuteProgram(parent opentracing.Span, p modules.Program, data []byte, fcid types.FileContractID, category spendingCategory, cost types.Currency) (responses []programResponse, limit mux.BandwidthLimit, err error) {
+	if parent == nil {
+		parent = opentracing.NoopTracer{}.StartSpan("noop")
+	}
 	// Defer a function that schedules a price table update in case we received
 	// an error that indicates the host deems our price table invalid.
 	defer func() {
@@ -57,14 +61,20 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 
 	// track the withdrawal
 	var refund types.Currency
+	span := opentracing.StartSpan("managedTrackWithdrawal", opentracing.FollowsFrom(parent.Context()))
 	w.staticAccount.managedTrackWithdrawal(cost)
+	span.Finish()
 	defer func() {
 		withdrawn := cost.Sub(refund)
+		span = opentracing.StartSpan("managedCommitWithdrawal", opentracing.FollowsFrom(parent.Context()))
 		w.staticAccount.managedCommitWithdrawal(category, withdrawn, refund, err == nil)
+		span.Finish()
 	}()
 
 	// create a new stream
+	span = opentracing.StartSpan("staticNewStream", opentracing.FollowsFrom(parent.Context()))
 	stream, err := w.staticNewStream()
+	span.Finish()
 	if err != nil {
 		err = errors.AddContext(err, "Unable to create a new stream")
 		return
@@ -119,10 +129,15 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}
 
 	// write contents of the buffer to the stream
+	span = opentracing.StartSpan("writeBuffer", opentracing.FollowsFrom(parent.Context()))
 	_, err = stream.Write(buffer.Bytes())
+	span.Finish()
 	if err != nil {
 		return
 	}
+
+	span = opentracing.StartSpan("readResponse", opentracing.FollowsFrom(parent.Context()))
+	defer span.Finish()
 
 	// read the cancellation token.
 	var ct modules.MDMCancellationToken

@@ -298,7 +298,7 @@ func (j *jobHasSectorBatch) managedHasSector() (results [][]bool, err error) {
 	// Execute the program and parse the responses.
 	hasSectors := make([]bool, 0, len(program))
 	var responses []programResponse
-	responses, _, err = w.managedExecuteProgram(program, programData, types.FileContractID{}, categoryDownload, cost)
+	responses, _, err = w.managedExecuteProgram(nil, program, programData, types.FileContractID{}, categoryDownload, cost)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to execute program for has sector job")
 	}

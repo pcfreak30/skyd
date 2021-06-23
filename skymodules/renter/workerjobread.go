@@ -212,7 +212,7 @@ func (j *jobRead) managedRead(parent opentracing.Span, w *worker, program module
 		defer span.Finish()
 	}
 	// execute it
-	responses, _, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, j.staticJobReadMetadata().staticSpendingCategory, cost)
+	responses, _, err := w.managedExecuteProgram(nil, program, programData, w.staticCache().staticContractID, j.staticJobReadMetadata().staticSpendingCategory, cost)
 	if err != nil {
 		return []programResponse{}, err
 	}

@@ -116,7 +116,7 @@ func TestHasSectorJobExpectedBandwidth(t *testing.T) {
 		}
 
 		// execute the program
-		_, limit, err := w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost)
+		_, limit, err := w.managedExecuteProgram(nil, p, data, types.FileContractID{}, categoryDownload, cost)
 		if err != nil {
 			t.Fatal(err)
 		}
