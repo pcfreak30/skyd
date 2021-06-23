@@ -207,12 +207,13 @@ func (j *jobRead) callExpectedBandwidth() (ul, dl uint64) {
 // managedRead returns the sector data for the given read program and the merkle
 // proof.
 func (j *jobRead) managedRead(parent opentracing.Span, w *worker, program modules.Program, programData []byte, cost types.Currency) ([]programResponse, error) {
+	var span opentracing.Span
 	if parent != nil {
-		span := opentracing.StartSpan("managedRead", opentracing.ChildOf(parent.Context()))
+		span = opentracing.StartSpan("managedRead", opentracing.ChildOf(parent.Context()))
 		defer span.Finish()
 	}
 	// execute it
-	responses, _, err := w.managedExecuteProgram(nil, program, programData, w.staticCache().staticContractID, j.staticJobReadMetadata().staticSpendingCategory, cost)
+	responses, _, err := w.managedExecuteProgram(span, program, programData, w.staticCache().staticContractID, j.staticJobReadMetadata().staticSpendingCategory, cost)
 	if err != nil {
 		return []programResponse{}, err
 	}
