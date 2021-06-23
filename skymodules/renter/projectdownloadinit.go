@@ -181,7 +181,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		// to resolve.
 		resolveTime := uw.staticExpectedResolvedTime
 		if resolveTime.Before(time.Now()) {
-			resolveTime = time.Now().Add(50 * time.Since(resolveTime))
+			resolveTime = time.Now().Add(2 * time.Since(resolveTime))
 		}
 
 		// Add the unresolved worker penalty. This penalty increases every
@@ -548,12 +548,11 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 		// newly returned set of values.
 		unresolvedWorkers, updateChan := pdc.unresolvedWorkers()
 
-		numAvailWorkers := pdc.resolvedAvailWorkers()
-
 		// Create a list of usable workers, sorted by the amount of time they
 		// are expected to take to return.
-		unresolvedWorkersPenalty := time.Since(start) * time.Duration(numAvailWorkers)
-		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers, unresolvedWorkersPenalty)
+		// numAvailWorkers := pdc.resolvedAvailWorkers()
+		// unresolvedWorkersPenalty := time.Since(start) * time.Duration(numAvailWorkers)
+		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers, time.Duration(0))
 
 		// Create an initial worker set
 		finalWorkers, err := pdc.createInitialWorkerSet(workerHeap)
