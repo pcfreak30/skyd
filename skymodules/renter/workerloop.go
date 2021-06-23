@@ -335,12 +335,10 @@ func (w *worker) threadedWorkLoop() {
 	}
 
 	// The worker will continuously perform jobs in a loop.
-	span := opentracing.StartSpan("threadedWorkLoop")
-	span.SetTag("worker", w.staticHostPubKey.String())
-	defer span.Finish()
 	for {
 		cont := func() bool {
-			loopSpan := opentracing.StartSpan("loop", opentracing.ChildOf(span.Context()))
+			loopSpan := opentracing.StartSpan("workerloop")
+			loopSpan.SetTag("worker", w.staticHostPubKey.String())
 			defer loopSpan.Finish()
 			// There are certain conditions under which the worker should either
 			// block or exit. This function will block until those conditions are
