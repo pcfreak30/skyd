@@ -142,7 +142,11 @@ func (j *jobRead) callDiscard(err error) {
 // managedFinishExecute will execute code that is shared by multiple read jobs
 // after execution. It updates the performance metrics, records whether the
 // execution was successful and returns the response.
-func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTime time.Duration) {
+func (j *jobRead) managedFinishExecute(parent opentracing.Span, readData []byte, readErr error, readJobTime time.Duration) {
+	if parent != nil {
+		span := opentracing.StartSpan("managedFinishExecute", opentracing.ChildOf(parent.Context()))
+		defer span.Finish()
+	}
 	// Log result and finish
 	if j.staticSpan != nil {
 		j.staticSpan.LogKV(
@@ -202,7 +206,11 @@ func (j *jobRead) callExpectedBandwidth() (ul, dl uint64) {
 
 // managedRead returns the sector data for the given read program and the merkle
 // proof.
-func (j *jobRead) managedRead(w *worker, program modules.Program, programData []byte, cost types.Currency) ([]programResponse, error) {
+func (j *jobRead) managedRead(parent opentracing.Span, w *worker, program modules.Program, programData []byte, cost types.Currency) ([]programResponse, error) {
+	if parent != nil {
+		span := opentracing.StartSpan("managedRead", opentracing.ChildOf(parent.Context()))
+		defer span.Finish()
+	}
 	// execute it
 	responses, _, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, j.staticJobReadMetadata().staticSpendingCategory, cost)
 	if err != nil {

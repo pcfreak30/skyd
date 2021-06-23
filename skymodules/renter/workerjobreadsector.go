@@ -23,23 +23,29 @@ type (
 
 // callExecute executes the jobReadSector.
 func (j *jobReadSector) callExecute() {
+	var span opentracing.Span
 	if j.staticSpan != nil {
 		// Capture callExecute in new span.
-		span := opentracing.StartSpan("callExecute", opentracing.ChildOf(j.staticSpan.Context()))
+		span = opentracing.StartSpan("callExecute", opentracing.ChildOf(j.staticSpan.Context()))
 		defer span.Finish()
 	}
 
 	// Track how long the job takes.
 	start := time.Now()
-	data, err := j.managedReadSector()
+	data, err := j.managedReadSector(span)
 	jobTime := time.Since(start)
 
 	// Finish the execution.
-	j.jobRead.managedFinishExecute(data, err, jobTime)
+	j.jobRead.managedFinishExecute(span, data, err, jobTime)
 }
 
 // managedReadSector returns the sector data for given root.
-func (j *jobReadSector) managedReadSector() ([]byte, error) {
+func (j *jobReadSector) managedReadSector(parent opentracing.Span) ([]byte, error) {
+	var span opentracing.Span
+	if parent != nil {
+		span = opentracing.StartSpan("managedReadSector", opentracing.ChildOf(parent.Context()))
+		defer span.Finish()
+	}
 	// create the program
 	w := j.staticQueue.staticWorker()
 	pt := w.staticPriceTable().staticPriceTable
@@ -53,7 +59,7 @@ func (j *jobReadSector) managedReadSector() ([]byte, error) {
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
-	responses, err := j.jobRead.managedRead(w, program, programData, cost)
+	responses, err := j.jobRead.managedRead(span, w, program, programData, cost)
 	if err != nil {
 		return nil, errors.AddContext(err, "jobReadSector: failed to execute managedRead")
 	}

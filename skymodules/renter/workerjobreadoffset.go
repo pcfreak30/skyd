@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/crypto"
@@ -20,17 +21,29 @@ type (
 
 // callExecute executes the jobReadOffset.
 func (j *jobReadOffset) callExecute() {
+	var span opentracing.Span
+	if j.staticSpan != nil {
+		// Capture callExecute in new span.
+		span = opentracing.StartSpan("callExecute", opentracing.ChildOf(j.staticSpan.Context()))
+		defer span.Finish()
+	}
+
 	// Track how long the job takes.
 	start := time.Now()
-	data, err := j.managedReadOffset()
+	data, err := j.managedReadOffset(span)
 	jobTime := time.Since(start)
 
 	// Finish the execution.
-	j.jobRead.managedFinishExecute(data, err, jobTime)
+	j.jobRead.managedFinishExecute(span, data, err, jobTime)
 }
 
 // managedReadOffset returns the sector data for given root.
-func (j *jobReadOffset) managedReadOffset() ([]byte, error) {
+func (j *jobReadOffset) managedReadOffset(parent opentracing.Span) ([]byte, error) {
+	var span opentracing.Span
+	if parent != nil {
+		span = opentracing.StartSpan("managedReadSector", opentracing.ChildOf(parent.Context()))
+		defer span.Finish()
+	}
 	// create the program
 	w := j.staticQueue.staticWorker()
 	bh := w.staticCache().staticBlockHeight
@@ -47,7 +60,7 @@ func (j *jobReadOffset) managedReadOffset() ([]byte, error) {
 	cost = cost.Add(bandwidthCost)
 
 	// Read responses.
-	responses, err := j.jobRead.managedRead(w, program, programData, cost)
+	responses, err := j.jobRead.managedRead(span, w, program, programData, cost)
 	if err != nil {
 		return nil, errors.AddContext(err, "jobReadOffset: failed to execute managedRead")
 	}
