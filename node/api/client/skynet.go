@@ -892,6 +892,7 @@ func (c *Client) RegistryReadWithTimeout(spk types.SiaPublicKey, dataKey crypto.
 	if err != nil {
 		return modules.SignedRegistryValue{}, errors.AddContext(err, "failed to decode signature")
 	}
+
 	// Decode signature.
 	var sig crypto.Signature
 	sigBytes, err := hex.DecodeString(rhg.Signature)
@@ -902,7 +903,14 @@ func (c *Client) RegistryReadWithTimeout(spk types.SiaPublicKey, dataKey crypto.
 		return modules.SignedRegistryValue{}, fmt.Errorf("unexpected signature length %v != %v", len(sigBytes), len(sig))
 	}
 	copy(sig[:], sigBytes)
-	return modules.NewSignedRegistryValue(dataKey, data, rhg.Revision, sig, modules.RegistryTypeWithoutPubkey), nil
+
+	// Verify pubkey.
+	if !rhg.PublicKey.Equals(spk) {
+		return modules.SignedRegistryValue{}, fmt.Errorf("unexpected pubkey %v != %v", rhg.PublicKey, spk)
+	}
+
+	srv := modules.NewSignedRegistryValue(dataKey, data, rhg.Revision, sig, rhg.Type)
+	return srv, srv.Verify(spk.ToPublicKey())
 }
 
 // RegistryUpdate queries the /skynet/registry [POST] endpoint.

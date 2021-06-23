@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,8 +12,11 @@ import (
 	"testing"
 
 	"github.com/julienschmidt/httprouter"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -23,11 +27,12 @@ import (
 type testHTTPWriter struct {
 	statusCode int
 	write      []byte
+	header     http.Header
 }
 
 // Header implements http.ResponseWriter.
 func (tw *testHTTPWriter) Header() http.Header {
-	return http.Header{}
+	return tw.header
 }
 
 // Write implements http.ResponseWriter.
@@ -41,9 +46,16 @@ func (tw *testHTTPWriter) WriteHeader(statusCode int) {
 	tw.statusCode = statusCode
 }
 
+// newTestHTTPWriter creates a new testHTTPWriter.
+func newTestHTTPWriter() *testHTTPWriter {
+	return &testHTTPWriter{
+		header: make(http.Header),
+	}
+}
+
 // TestHandleSkynetError is a unit test for handleSkynetError.
 func TestHandleSkynetError(t *testing.T) {
-	tw := &testHTTPWriter{}
+	tw := newTestHTTPWriter()
 
 	tests := []struct {
 		err        error
@@ -504,5 +516,53 @@ func testParseUploadRequestParameters(t *testing.T) {
 	_, _, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
 	if err == nil {
 		t.Fatal("Unexpected")
+	}
+}
+
+// TestAttachRegistryEntryProof is a unit test for attachRegistryEntryProof.
+func TestAttachRegistryEntryProof(t *testing.T) {
+	var h1 crypto.Hash
+	fastrand.Read(h1[:])
+	var h2 crypto.Hash
+	fastrand.Read(h2[:])
+	entries := []skymodules.RegistryEntry{
+		{
+			SignedRegistryValue: modules.NewSignedRegistryValue(h1, fastrand.Bytes(10), fastrand.Uint64n(100), crypto.Signature{}, modules.RegistryTypeWithoutPubkey),
+		},
+		{
+			SignedRegistryValue: modules.NewSignedRegistryValue(h2, fastrand.Bytes(10), fastrand.Uint64n(100), crypto.Signature{}, modules.RegistryTypeWithoutPubkey),
+		},
+	}
+
+	// Create the proof manually.
+	proofChain := make([]RegistryHandlerGET, 0, len(entries))
+	for _, srv := range entries {
+		proofChain = append(proofChain, RegistryHandlerGET{
+			Data:      hex.EncodeToString(srv.Data),
+			DataKey:   srv.Tweak,
+			Revision:  srv.Revision,
+			PublicKey: srv.PubKey,
+			Signature: hex.EncodeToString(srv.Signature[:]),
+			Type:      srv.Type,
+		})
+	}
+	expectedProof, err := json.Marshal(proofChain)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Attach the proof
+	w := newTestHTTPWriter()
+	header := w.Header()
+	attachRegistryEntryProof(w, entries)
+
+	// Get the attached proof.
+	proof := header.Get("Proof")
+
+	// Should match the expected proof.
+	if proof != string(expectedProof) {
+		t.Log(proof)
+		t.Log(string(expectedProof))
+		t.Fatal("proof doesn't match expectation")
 	}
 }
