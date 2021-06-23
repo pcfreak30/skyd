@@ -119,7 +119,7 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 
 	// create the initial worker heap and validate the order in which the
 	// unresolved workers were added
-	wh := pdc.initialWorkerHeap(unresolvedWorkers, 0)
+	wh := pdc.initialWorkerHeap(unresolvedWorkers)
 	first := heap.Pop(&wh).(*pdcInitialWorker)
 	if first.worker.staticHostPubKeyStr != worker2.staticHostPubKeyStr {
 		t.Fatal("unexpected")
@@ -136,7 +136,7 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 	// put worker 2 on maintenance cooldown, very it's not part of the initial
 	// worker heap and worker 3 took its place
 	worker2.staticMaintenanceState.cooldownUntil = time.Now().Add(time.Minute)
-	wh = pdc.initialWorkerHeap(unresolvedWorkers, 0)
+	wh = pdc.initialWorkerHeap(unresolvedWorkers)
 	first = heap.Pop(&wh).(*pdcInitialWorker)
 	if first.worker.staticHostPubKeyStr != worker3.staticHostPubKeyStr {
 		t.Fatal("unexpected")
@@ -145,7 +145,7 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 	// make the read estimates for worker 3 return 0, verify it's not part of
 	// initial worker heap and worker 1 took its place
 	worker3.staticJobReadQueue.weightedJobTime64k = 0
-	wh = pdc.initialWorkerHeap(unresolvedWorkers, 0)
+	wh = pdc.initialWorkerHeap(unresolvedWorkers)
 	first = heap.Pop(&wh).(*pdcInitialWorker)
 	if first.worker.staticHostPubKeyStr != worker1.staticHostPubKeyStr {
 		t.Fatal("unexpected")
@@ -157,7 +157,7 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 	// worker is late resolving - 800ms late means 1600ms penalty, add the
 	// original 200ms to get 1800ms total.
 	unresolvedWorkers[0].staticExpectedResolvedTime = time.Now().Add(-800 * time.Millisecond)
-	wh = pdc.initialWorkerHeap(unresolvedWorkers, 0)
+	wh = pdc.initialWorkerHeap(unresolvedWorkers)
 	first = heap.Pop(&wh).(*pdcInitialWorker)
 	completeTimeInS := math.Round(time.Until(first.completeTime).Seconds())
 	if completeTimeInS != 2 {
@@ -166,17 +166,17 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 
 	// pass in an unresolved worker penalty, this should be reflected in the
 	// complete time
-	wh = pdc.initialWorkerHeap(unresolvedWorkers, time.Second)
-	first = heap.Pop(&wh).(*pdcInitialWorker)
-	completeTimeInS = math.Round(time.Until(first.completeTime).Seconds())
-	if completeTimeInS != 3 {
-		t.Fatal("unexpected", completeTimeInS, time.Until(first.completeTime))
-	}
+	// wh = pdc.initialWorkerHeap(unresolvedWorkers, time.Second)
+	// first = heap.Pop(&wh).(*pdcInitialWorker)
+	// completeTimeInS = math.Round(time.Until(first.completeTime).Seconds())
+	// if completeTimeInS != 3 {
+	// 	t.Fatal("unexpected", completeTimeInS, time.Until(first.completeTime))
+	// }
 
 	// manually manipulate the cooldown for worker 1's jobreadqueue, this should
 	// skip the worker
 	worker1.staticJobReadQueue.cooldownUntil = time.Now().Add(time.Second)
-	wh = pdc.initialWorkerHeap(unresolvedWorkers, 0)
+	wh = pdc.initialWorkerHeap(unresolvedWorkers)
 	if wh.Len() != 0 {
 		t.Fatal("unexpected", wh.Len())
 	}
