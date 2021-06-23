@@ -196,6 +196,12 @@ func (j jobHasSectorBatch) callExecute() {
 	availables, err := j.managedHasSector()
 	jobTime := time.Since(start)
 
+	// Add a span for each job.
+	for _, job := range j.staticJobs {
+		span := opentracing.StartSpan("callExecute", opentracing.ChildOf(job.staticSpan.Context()))
+		defer span.Finish()
+	}
+
 	for i := range j.staticJobs {
 		hsj := j.staticJobs[i]
 		// Handle its span
