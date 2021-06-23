@@ -4,6 +4,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -334,60 +335,70 @@ func (w *worker) threadedWorkLoop() {
 	}
 
 	// The worker will continuously perform jobs in a loop.
+	span := opentracing.StartSpan("threadedWorkLoop")
+	span.SetTag("worker", w.staticHostPubKey.String())
+	defer span.Finish()
 	for {
-		// There are certain conditions under which the worker should either
-		// block or exit. This function will block until those conditions are
-		// met, returning 'true' when the worker can proceed and 'false' if the
-		// worker should exit.
-		if !w.managedBlockUntilReady() {
-			return
-		}
+		cont := func() bool {
+			loopSpan := opentracing.StartSpan("loop", opentracing.ChildOf(span.Context()))
+			defer loopSpan.Finish()
+			// There are certain conditions under which the worker should either
+			// block or exit. This function will block until those conditions are
+			// met, returning 'true' when the worker can proceed and 'false' if the
+			// worker should exit.
+			if !w.managedBlockUntilReady() {
+				return false
+			}
 
-		// Try and fix a revision number mismatch if the flag is set. This will
-		// be the case if other processes errored out with an error indicating a
-		// mismatch.
-		if w.staticSuspectRevisionMismatch() {
-			w.externTryFixRevisionMismatch()
-		}
+			// Try and fix a revision number mismatch if the flag is set. This will
+			// be the case if other processes errored out with an error indicating a
+			// mismatch.
+			if w.staticSuspectRevisionMismatch() {
+				w.externTryFixRevisionMismatch()
+			}
 
-		// Update the worker cache object, note that we do this after trying to
-		// sync the revision as that might influence the contract, which is used
-		// to build the cache object.
-		w.staticTryUpdateCache()
+			// Update the worker cache object, note that we do this after trying to
+			// sync the revision as that might influence the contract, which is used
+			// to build the cache object.
+			w.staticTryUpdateCache()
 
-		// If the worker needs to sync the account balance, perform a sync
-		// operation. This should be attempted before launching any jobs.
-		if w.managedNeedsToSyncAccountBalanceToHost() {
-			w.externSyncAccountBalanceToHost()
-		}
+			// If the worker needs to sync the account balance, perform a sync
+			// operation. This should be attempted before launching any jobs.
+			if w.managedNeedsToSyncAccountBalanceToHost() {
+				w.externSyncAccountBalanceToHost()
+			}
 
-		// Attempt to launch a serial job. If there is already a job running,
-		// this will no-op. If no job is running, a goroutine will be spun up
-		// to run a job, this call is non-blocking.
-		w.externTryLaunchSerialJob()
+			// Attempt to launch a serial job. If there is already a job running,
+			// this will no-op. If no job is running, a goroutine will be spun up
+			// to run a job, this call is non-blocking.
+			w.externTryLaunchSerialJob()
 
-		// Attempt to launch an async job. If the async job launches
-		// successfully, skip the blocking phase and attempt to launch another
-		// async job.
-		//
-		// The worker will only allow a handful of async jobs to be running at
-		// once, to protect the total usage of the network connection. The
-		// worker wants to avoid a situation where 1,000 jobs each requiring a
-		// large amount of bandwidth are all running simultaneously. If the
-		// jobs are tiny in terms of resource footprints, the worker will allow
-		// more of them to be running at once.
-		if w.externTryLaunchAsyncJob() {
-			continue
-		}
+			// Attempt to launch an async job. If the async job launches
+			// successfully, skip the blocking phase and attempt to launch another
+			// async job.
+			//
+			// The worker will only allow a handful of async jobs to be running at
+			// once, to protect the total usage of the network connection. The
+			// worker wants to avoid a situation where 1,000 jobs each requiring a
+			// large amount of bandwidth are all running simultaneously. If the
+			// jobs are tiny in terms of resource footprints, the worker will allow
+			// more of them to be running at once.
+			if w.externTryLaunchAsyncJob() {
+				return true
+			}
 
-		// Block until:
-		//    + New work has been submitted
-		//    + The worker is killed
-		//    + The renter is stopped
-		select {
-		case <-w.wakeChan:
-			continue
-		case <-w.staticTG.StopChan():
+			// Block until:
+			//    + New work has been submitted
+			//    + The worker is killed
+			//    + The renter is stopped
+			select {
+			case <-w.wakeChan:
+				return true
+			case <-w.staticTG.StopChan():
+				return false
+			}
+		}()
+		if !cont {
 			return
 		}
 	}
