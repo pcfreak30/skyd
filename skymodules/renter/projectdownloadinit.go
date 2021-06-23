@@ -291,10 +291,16 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 // set. If workers are going a lot time and remaining unresolved, a penalty is
 // applied which will eventually break those workers and revert to preferring
 // the already resolved workers.
-func (pdc *projectDownloadChunk) createInitialWorkerSet(span opentracing.Span, workerHeap pdcWorkerHeap) ([]*pdcInitialWorker, error) {
+func (pdc *projectDownloadChunk) createInitialWorkerSet(parent opentracing.Span, workerHeap pdcWorkerHeap) ([]*pdcInitialWorker, error) {
 	// Convenience variable.
 	ec := pdc.workerSet.staticErasureCoder
 	gs := types.NewCurrency(new(big.Int).Exp(big.NewInt(10), big.NewInt(33), nil)) // 1GS
+
+	var span opentracing.Span
+	if parent != nil {
+		span = opentracing.StartSpan("createInitialWorkerSet", opentracing.ChildOf(parent.Context()))
+		defer span.Finish()
+	}
 
 	// Keep track of the current best set, and the amount of time it will take
 	// the best set to return. And keep track of the current working set, and
@@ -565,7 +571,9 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 
 			// Create a list of usable workers, sorted by the amount of time they
 			// are expected to take to return.
+			tmp := opentracing.StartSpan("initialWorkerHeap", opentracing.FollowsFrom(loopSpan.Context()))
 			workerHeap := pdc.initialWorkerHeap(unresolvedWorkers)
+			tmp.Finish()
 
 			// Create an initial worker set
 			finalWorkers, err := pdc.createInitialWorkerSet(loopSpan, workerHeap)
@@ -579,6 +587,8 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 				if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
 					span.LogKV("launchInitialWorkersLoopInfo", loopDebugStr)
 				}
+				tmp := opentracing.StartSpan("launchWorkers", opentracing.FollowsFrom(loopSpan.Context()))
+				defer tmp.Finish()
 				for i, fw := range finalWorkers {
 					if fw == nil {
 						continue
