@@ -1266,7 +1266,28 @@ func (r *Renter) ResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (s
 
 // managedTryResolveSkylinkV2 resolves a V2 skylink to a V1 skylink. If the
 // skylink is not a V2 skylink, the input link is returned.
-func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (skylink skymodules.Skylink, _ *skymodules.RegistryEntry, err error) {
+func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (skymodules.Skylink, *skymodules.RegistryEntry, error) {
+	// Try and resolve the skylink
+	skylink, srv, err := r.managedTryResolveSkylinkV2WithoutBlocklistCheck(ctx, sl)
+	if err != nil {
+		return skymodules.Skylink{}, nil, err
+	}
+
+	// Check if link is blocked
+	if r.staticSkynetBlocklist.IsBlocked(skylink) {
+		return skymodules.Skylink{}, nil, ErrSkylinkBlocked
+	}
+	return skylink, srv, nil
+}
+
+// managedTryResolveSkylinkV2WithoutBlocklistCheck resolves a V2 skylink to a V1
+// skylink without checking if it is blocked. If the skylink is not a V2
+// skylink, the input link is returned.
+//
+// NOTE: This method should only be used by the blocklist code as a way to
+// remove a V2 link from the blocklist. All other cases should use
+// managedTryResolveSkylinkV2
+func (r *Renter) managedTryResolveSkylinkV2WithoutBlocklistCheck(ctx context.Context, sl skymodules.Skylink) (skylink skymodules.Skylink, _ *skymodules.RegistryEntry, err error) {
 	// If the Skylink is a V1 Skylink, just return the skylink
 	if sl.IsSkylinkV1() {
 		return sl, nil, nil
@@ -1304,10 +1325,6 @@ func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, sl skymodules.S
 	// the API to return a 404.
 	if skylink == (skymodules.Skylink{}) {
 		return skymodules.Skylink{}, nil, ErrRootNotFound
-	}
-	// Check if link is blocked
-	if r.staticSkynetBlocklist.IsBlocked(skylink) {
-		return skymodules.Skylink{}, nil, ErrSkylinkBlocked
 	}
 	return skylink, &srv, nil
 }

@@ -8,6 +8,7 @@ import (
 
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/persist"
@@ -91,12 +92,11 @@ func (sb *SkynetBlocklist) Close() error {
 
 // IsBlocked indicates if a skylink is currently blocked
 func (sb *SkynetBlocklist) IsBlocked(skylink skymodules.Skylink) bool {
-	var hash crypto.Hash
-	if skylink.IsSkylinkV1() {
-		hash = crypto.HashObject(skylink.MerkleRoot())
-	} else if skylink.IsSkylinkV2() {
-		hash = crypto.HashObject(skylink.RegistryEntryID())
+	if !skylink.IsSkylinkV1() {
+		build.Critical("IsBlocked requires V1 skylink")
+		return false
 	}
+	hash := crypto.HashObject(skylink.MerkleRoot())
 	return sb.IsHashBlocked(hash)
 }
 

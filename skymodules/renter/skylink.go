@@ -107,13 +107,13 @@ func (r *Renter) BlocklistHash(ctx context.Context, sl skymodules.Skylink) (cryp
 	// means for V2 skylinks we need to resolve it first.
 	switch {
 	case sl.IsSkylinkV1():
-		return crypto.Hash(sl.MerkleRoot()), nil
+		return crypto.HashObject(sl.MerkleRoot()), nil
 	case sl.IsSkylinkV2():
-		slv1, _, err := r.ResolveSkylinkV2(ctx, sl)
+		slv1, _, err := r.managedTryResolveSkylinkV2WithoutBlocklistCheck(ctx, sl)
 		if err != nil {
 			return crypto.Hash{}, errors.AddContext(err, "unable to resolve V2 skylink")
 		}
-		return crypto.Hash(slv1.MerkleRoot()), nil
+		return crypto.HashObject(slv1.MerkleRoot()), nil
 	default:
 		build.Critical(ErrInvalidSkylinkVersion)
 	}
