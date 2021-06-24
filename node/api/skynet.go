@@ -592,6 +592,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 
 	// Fetch the skyfile's metadata and a streamer to download the file
+	resolvedPath := path
 	streamer, srvs, err := api.renter.DownloadSkylink(skylink, timeout, pricePerMS)
 	if err != nil {
 		handleSkynetError(w, "failed to fetch skylink", err)
@@ -680,6 +681,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s), please specify a format", defaultPath)}, http.StatusBadRequest)
 			return
 		}
+		resolvedPath = defaultPath
 		metaForPath, isFile, offset, size := metadata.ForPath(defaultPath)
 		if len(metaForPath.Subfiles) == 0 {
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v", path)}, http.StatusNotFound)
@@ -746,7 +748,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// skylink that got resolved to a v1 skylink. We don't want to build the
 	// ETag on the V2 skylink as that is constant, even though the data might
 	// change.
-	eTag := buildETag(streamer.Skylink(), req.Method, path, format)
+	eTag := buildETag(streamer.Skylink(), req.Method, resolvedPath, format)
 	w.Header().Set("ETag", fmt.Sprintf("\"%v\"", eTag))
 
 	// Set the Layout
