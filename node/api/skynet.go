@@ -682,8 +682,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			return
 		}
 		resolvedPath = defaultPath
-		metaForPath, isFile, offset, size := metadata.ForPath(defaultPath)
-		if len(metaForPath.Subfiles) == 0 {
+		metadataForPath, isFile, offset, size := metadata.ForPath(defaultPath)
+		if len(metadataForPath.Subfiles) == 0 {
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v", path)}, http.StatusNotFound)
 			return
 		}
@@ -696,8 +696,10 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
 			return
 		}
+
+		metadata = metadataForPath
 		isSubfile = isFile
-		responseContentType = metaForPath.ContentType()
+		responseContentType = metadataForPath.ContentType()
 		fmt.Println("overwriting CT", responseContentType)
 	}
 
