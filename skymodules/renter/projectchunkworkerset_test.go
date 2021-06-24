@@ -506,7 +506,7 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 	w.initJobHasSectorQueue()
 
 	// give it a name and set an initial estimate on the HS queue
-	w.staticJobHasSectorQueue.weightedJobTime = float64(123 * time.Second)
+	w.staticJobHasSectorQueue.callUpdateJobTimeMetrics(123 * time.Second)
 	w.staticHostPubKeyStr = "myworker"
 
 	// ensure PT is valid
@@ -527,7 +527,8 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 	}
 
 	// launch the worker
-	w.staticJobHasSectorQueue.weightedJobTime = float64(pcwsHasSectorTimeout)
+	w.staticJobHasSectorQueue.staticDT = skymodules.NewDistributionTrackerStandard()
+	w.staticJobHasSectorQueue.callUpdateJobTimeMetrics(pcwsHasSectorTimeout)
 	responseChan = make(chan *jobHasSectorResponse, 0)
 	err = pcws.managedLaunchWorker(w, responseChan, ws)
 	if err != nil {
