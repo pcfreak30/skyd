@@ -642,6 +642,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 	var isSubfile bool
 	responseContentType := metadata.ContentType()
+	fmt.Println("setting CT", responseContentType)
 
 	// Serve the contents of the file at the default path if one is set. Note
 	// that we return the metadata for the entire Skylink when we serve the
@@ -691,6 +692,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 		isSubfile = isFile
 		responseContentType = metaForPath.ContentType()
+		fmt.Println("overwriting CT", responseContentType)
 	}
 
 	// Serve the contents of the skyfile at path if one is set
@@ -796,6 +798,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// were to set the header to an empty string, it would prevent the http
 	// library from sniffing the file's content type.
 	if responseContentType != "" {
+		fmt.Println("setting CT", responseContentType)
 		w.Header().Set("Content-Type", responseContentType)
 	}
 
