@@ -374,7 +374,7 @@ func (jq *jobHasSectorQueue) callUpdateJobTimeMetrics(jobTime time.Duration) {
 // take, given the current conditions of the queue.
 func (jq *jobHasSectorQueue) expectedJobTime() time.Duration {
 	percentiles := jq.staticDT.Percentiles()
-	return percentiles[0][2]
+	return percentiles[0][1]
 }
 
 // initJobHasSectorQueue will init the queue for the has sector jobs.
