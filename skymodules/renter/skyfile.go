@@ -1267,8 +1267,13 @@ func (r *Renter) ResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (s
 // managedTryResolveSkylinkV2 resolves a V2 skylink to a V1 skylink. If the
 // skylink is not a V2 skylink, the input link is returned.
 func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (skylink skymodules.Skylink, _ *skymodules.RegistryEntry, err error) {
-	if sl.Version() != 2 {
+	// If the Skylink is a V1 Skylink, just return the skylink
+	if sl.IsSkylinkV1() {
 		return sl, nil, nil
+	}
+	// Future proof check that the Skylink is a V2 Skylink
+	if !sl.IsSkylinkV2() {
+		return skymodules.Skylink{}, nil, ErrInvalidSkylinkVersion
 	}
 
 	// Create a child span to capture the resolve for v2 skylinks.
