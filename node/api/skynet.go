@@ -643,6 +643,9 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	var isSubfile bool
 	responseContentType := metadata.ContentType()
 	fmt.Println("setting CT", responseContentType)
+	fmt.Println("path", path)
+	fmt.Println("defaultpath", defaultPath)
+	fmt.Println("format", format)
 
 	// Serve the contents of the file at the default path if one is set. Note
 	// that we return the metadata for the entire Skylink when we serve the
@@ -662,6 +665,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		// properly work with relative paths. We also don't need to redirect if
 		// this is a HEAD request or if it's a download as attachment.
 		if isSkapp && !attachment && req.Method == http.MethodGet && !strings.HasSuffix(skylinkStringNoQuery, "/") {
+			fmt.Println("redirecting...")
 			location := skylinkStringNoQuery + "/"
 			if req.URL.RawQuery != "" {
 				location += "?" + req.URL.RawQuery
