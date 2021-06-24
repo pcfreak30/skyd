@@ -722,6 +722,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 		metadata = metadataForPath
 		isSubfile = file
+		responseContentType = metadataForPath.ContentType()
 	}
 
 	// If we are serving more than one file, and the format is not
