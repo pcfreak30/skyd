@@ -7,6 +7,7 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -18,7 +19,7 @@ const (
 	// jobHasSectorPerformanceDecay defines how much the average performance is
 	// decayed each time a new datapoint is added. The jobs use an exponential
 	// weighted average.
-	jobHasSectorPerformanceDecay = 0.9
+	// jobHasSectorPerformanceDecay = 0.9
 
 	// hasSectorBatchSize is the number of has sector jobs batched together upon
 	// calling callNext.
@@ -56,7 +57,7 @@ type (
 	jobHasSectorQueue struct {
 		// These variables contain an exponential weighted average of the
 		// worker's recent performance for jobHasSectorQueue.
-		weightedJobTime float64
+		staticDT *skymodules.DistributionTracker
 
 		*jobGenericQueue
 	}
@@ -344,13 +345,14 @@ func (jq *jobHasSectorQueue) callExpectedJobTime() time.Duration {
 func (jq *jobHasSectorQueue) callUpdateJobTimeMetrics(jobTime time.Duration) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
-	jq.weightedJobTime = expMovingAvgHotStart(jq.weightedJobTime, float64(jobTime), jobHasSectorPerformanceDecay)
+	jq.staticDT.AddDataPoint(jobTime)
 }
 
 // expectedJobTime will return the amount of time that a job is expected to
 // take, given the current conditions of the queue.
 func (jq *jobHasSectorQueue) expectedJobTime() time.Duration {
-	return time.Duration(jq.weightedJobTime)
+	percentiles := jq.staticDT.Percentiles()
+	return percentiles[0][2]
 }
 
 // initJobHasSectorQueue will init the queue for the has sector jobs.
@@ -362,6 +364,7 @@ func (w *worker) initJobHasSectorQueue() {
 	}
 
 	w.staticJobHasSectorQueue = &jobHasSectorQueue{
+		staticDT:        skymodules.NewDistributionTrackerStandard(),
 		jobGenericQueue: newJobGenericQueue(w),
 	}
 }
