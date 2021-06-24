@@ -312,49 +312,15 @@ func (api *API) skynetBlocklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 	}
 
 	// Convert to Skylinks or Hash
-	addHashes := make([]crypto.Hash, len(params.Add))
-	for i, addStr := range params.Add {
-		var hash crypto.Hash
-		// Convert Hash
-		if params.IsHash {
-			err := hash.LoadString(addStr)
-			if err != nil {
-				WriteError(w, Error{fmt.Sprintf("error parsing hash: %v", err)}, http.StatusBadRequest)
-				return
-			}
-		} else {
-			// Convert Skylink
-			var skylink skymodules.Skylink
-			err := skylink.LoadString(addStr)
-			if err != nil {
-				WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
-				return
-			}
-			hash = crypto.HashObject(skylink.MerkleRoot())
-		}
-		addHashes[i] = hash
+	addHashes, err := parseBlocklistHashes(params.Add, params.IsHash)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("error parsing blocklist additions: %v", err)}, http.StatusBadRequest)
+		return
 	}
-	removeHashes := make([]crypto.Hash, len(params.Remove))
-	for i, removeStr := range params.Remove {
-		var hash crypto.Hash
-		// Convert Hash
-		if params.IsHash {
-			err := hash.LoadString(removeStr)
-			if err != nil {
-				WriteError(w, Error{fmt.Sprintf("error parsing hash: %v", err)}, http.StatusBadRequest)
-				return
-			}
-		} else {
-			// Convert Skylink
-			var skylink skymodules.Skylink
-			err := skylink.LoadString(removeStr)
-			if err != nil {
-				WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
-				return
-			}
-			hash = crypto.HashObject(skylink.MerkleRoot())
-		}
-		removeHashes[i] = hash
+	removeHashes, err := parseBlocklistHashes(params.Remove, params.IsHash)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("error parsing blocklist removals: %v", err)}, http.StatusBadRequest)
+		return
 	}
 
 	// Update the Skynet Blocklist

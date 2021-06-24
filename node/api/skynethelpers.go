@@ -177,6 +177,32 @@ func isMultipartRequest(mediaType string) bool {
 	return strings.HasPrefix(mediaType, "multipart/form-data")
 }
 
+// parseBlocklistHashes parses the input parameter string slice and returns the
+// appropriate hash to be added to the blocklist.
+func parseBlocklistHashes(paramStrs []string, isHash bool) ([]crypto.Hash, error) {
+	hashes := make([]crypto.Hash, len(paramStrs))
+	for i, paramStr := range paramStrs {
+		var hash crypto.Hash
+		// Convert Hash
+		if isHash {
+			err := hash.LoadString(paramStr)
+			if err != nil {
+				return nil, errors.AddContext(err, "error parsing hash")
+			}
+		} else {
+			// Convert Skylink
+			var skylink skymodules.Skylink
+			err := skylink.LoadString(paramStr)
+			if err != nil {
+				return nil, errors.AddContext(err, "error parsing skylink")
+			}
+			hash = crypto.HashObject(skylink.MerkleRoot())
+		}
+		hashes[i] = hash
+	}
+	return hashes, nil
+}
+
 // parseSkylinkURL splits a raw skylink URL into its components - a skylink, a
 // string representation of the skylink with the query parameters stripped, and
 // a path. The input skylink URL should not have been URL-decoded. The path is
