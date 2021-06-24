@@ -3,6 +3,7 @@ package api
 import (
 	"archive/tar"
 	"archive/zip"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -160,26 +161,9 @@ func (rw *monetizedWriter) Write(b []byte) (int, error) {
 	return n, nil
 }
 
-// buildETag is a helper function that returns an ETag.
-func buildETag(skylink skymodules.Skylink, method, path string, format skymodules.SkyfileFormat) string {
-	return crypto.HashAll(
-		skylink.String(),
-		method,
-		path,
-		string(format),
-		"1", // random variable to cache bust all existing ETags (SkylinkV2 fix)
-	).String()
-}
-
-// isMultipartRequest is a helper method that checks if the given media type
-// matches that of a multipart form.
-func isMultipartRequest(mediaType string) bool {
-	return strings.HasPrefix(mediaType, "multipart/form-data")
-}
-
 // parseBlocklistHashes parses the input parameter string slice and returns the
 // appropriate hash to be added to the blocklist.
-func parseBlocklistHashes(paramStrs []string, isHash bool) ([]crypto.Hash, error) {
+func (api *API) parseBlocklistHashes(ctx context.Context, paramStrs []string, isHash bool) ([]crypto.Hash, error) {
 	hashes := make([]crypto.Hash, len(paramStrs))
 	for i, paramStr := range paramStrs {
 		var hash crypto.Hash
@@ -196,11 +180,31 @@ func parseBlocklistHashes(paramStrs []string, isHash bool) ([]crypto.Hash, error
 			if err != nil {
 				return nil, errors.AddContext(err, "error parsing skylink")
 			}
-			hash = crypto.HashObject(skylink.MerkleRoot())
+			hash, err = api.renter.BlocklistHash(ctx, skylink)
+			if err != nil {
+				return nil, errors.AddContext(err, "error generating skylink blocklist hash")
+			}
 		}
 		hashes[i] = hash
 	}
 	return hashes, nil
+}
+
+// buildETag is a helper function that returns an ETag.
+func buildETag(skylink skymodules.Skylink, method, path string, format skymodules.SkyfileFormat) string {
+	return crypto.HashAll(
+		skylink.String(),
+		method,
+		path,
+		string(format),
+		"1", // random variable to cache bust all existing ETags (SkylinkV2 fix)
+	).String()
+}
+
+// isMultipartRequest is a helper method that checks if the given media type
+// matches that of a multipart form.
+func isMultipartRequest(mediaType string) bool {
+	return strings.HasPrefix(mediaType, "multipart/form-data")
 }
 
 // parseSkylinkURL splits a raw skylink URL into its components - a skylink, a

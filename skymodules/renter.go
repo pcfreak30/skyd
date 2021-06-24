@@ -1389,6 +1389,9 @@ type Renter interface {
 	// Blocklist returns the merkleroots that are blocked
 	Blocklist() ([]crypto.Hash, error)
 
+	// BlocklistHash returns the hash to be used in the blocklist
+	BlocklistHash(ctx context.Context, sl Skylink) (crypto.Hash, error)
+
 	// PinSkylink re-uploads the data stored at the file under that skylink with
 	// the given parameters. Alongside the parameters we can pass a timeout and
 	// a price per millisecond. The timeout ensures fetching the base sector

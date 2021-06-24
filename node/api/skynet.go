@@ -311,13 +311,33 @@ func (api *API) skynetBlocklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 		return
 	}
 
+	// Parse the timeout.
+	timeout := renter.MaxRegistryReadTimeout
+	timeoutStr := req.FormValue("timeout")
+	if timeoutStr != "" {
+		timeoutInt, err := strconv.Atoi(timeoutStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		timeout = time.Duration(timeoutInt) * time.Second
+		if timeout > renter.MaxRegistryReadTimeout || timeout == 0 {
+			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %ds", renter.MaxRegistryReadTimeout)}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Generate context
+	ctx, cancel := context.WithTimeout(req.Context(), timeout)
+	defer cancel()
+
 	// Convert to Skylinks or Hash
-	addHashes, err := parseBlocklistHashes(params.Add, params.IsHash)
+	addHashes, err := api.parseBlocklistHashes(ctx, params.Add, params.IsHash)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("error parsing blocklist additions: %v", err)}, http.StatusBadRequest)
 		return
 	}
-	removeHashes, err := parseBlocklistHashes(params.Remove, params.IsHash)
+	removeHashes, err := api.parseBlocklistHashes(ctx, params.Remove, params.IsHash)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("error parsing blocklist removals: %v", err)}, http.StatusBadRequest)
 		return

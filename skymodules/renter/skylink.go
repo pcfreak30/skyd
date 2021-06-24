@@ -1,12 +1,15 @@
 package renter
 
 import (
+	"context"
 	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
+	"go.sia.tech/siad/crypto"
 )
 
 // skylinkManager manages skylink requests
@@ -87,6 +90,34 @@ func (sm *skylinkManager) managedAddUnpinRequest(skylink skymodules.Skylink) {
 	// Add the unpin request and set the time in the future by twice the target
 	// health check interval.
 	sm.unpinRequests[skylinkStr] = time.Now().Add(TargetHealthCheckFrequency * 2)
+}
+
+// BlocklistHash returns the hash to be used in the blocklist
+//
+// TODO: Test. Generate a V1 skylink and the a V2 skylink from the V1 skylink.
+// Calling this function on them should result in the same hash.
+func (r *Renter) BlocklistHash(ctx context.Context, sl skymodules.Skylink) (crypto.Hash, error) {
+	err := r.tg.Add()
+	if err != nil {
+		return crypto.Hash{}, err
+	}
+	defer r.tg.Done()
+
+	// We want to return the hash of the merkleroot of the V1 skylink. This
+	// means for V2 skylinks we need to resolve it first.
+	switch {
+	case sl.IsSkylinkV1():
+		return crypto.Hash(sl.MerkleRoot()), nil
+	case sl.IsSkylinkV2():
+		slv1, _, err := r.ResolveSkylinkV2(ctx, sl)
+		if err != nil {
+			return crypto.Hash{}, errors.AddContext(err, "unable to resolve V2 skylink")
+		}
+		return crypto.Hash(slv1.MerkleRoot()), nil
+	default:
+		build.Critical(ErrInvalidSkylinkVersion)
+	}
+	return crypto.Hash{}, ErrInvalidSkylinkVersion
 }
 
 // UnpinSkylink unpins a skylink from the renter by removing the underlying
