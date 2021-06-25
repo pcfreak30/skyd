@@ -80,7 +80,8 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 		}
 		w.staticSetPriceTable(pt)
 		w.initJobReadQueue()
-		w.staticJobReadQueue.weightedJobTime64k = float64(expectedJobTime)
+		w.staticJobReadQueue.staticDT64k = skymodules.NewDistributionTrackerStandard()
+		w.staticJobReadQueue.staticDT64k.AddDataPoint(expectedJobTime)
 		return w
 	}
 
@@ -144,7 +145,7 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 
 	// make the read estimates for worker 3 return 0, verify it's not part of
 	// initial worker heap and worker 1 took its place
-	worker3.staticJobReadQueue.weightedJobTime64k = 0
+	worker3.staticJobReadQueue.staticDT64k = skymodules.NewDistributionTrackerStandard()
 	wh = pdc.initialWorkerHeap(unresolvedWorkers)
 	first = heap.Pop(&wh).(*pdcInitialWorker)
 	if first.worker.staticHostPubKeyStr != worker1.staticHostPubKeyStr {

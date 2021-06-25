@@ -47,7 +47,7 @@ type (
 
 		// expectedCompleteTime indicates the time when the download is expected
 		// to complete. This is used to determine whether or not a download is late.
-		expectedCompleteTime time.Time
+		expectedCompleteTime ResolveTime
 
 		worker *worker
 	}
@@ -132,11 +132,7 @@ type (
 
 		// staticExpectedCompleteTime is an estimate of when we expect the
 		// worker to have completed the download.
-		staticExpectedCompleteTime time.Time
-
-		// staticExpectedDuration is the estimated amount of time for this
-		// worker to complete the download.
-		staticExpectedDuration time.Duration
+		staticExpectedCompleteTime ResolveTime
 
 		// staticLaunchTime is the time at which the worker was launched
 		staticLaunchTime time.Time
@@ -172,7 +168,8 @@ type (
 func (lwi *launchedWorkerInfo) String() string {
 	pdcId := hex.EncodeToString(lwi.staticPDC.uid[:])
 	hostKey := lwi.staticWorker.staticHostPubKey.ShortString()
-	estimate := lwi.staticExpectedDuration.Milliseconds()
+	completeTime := lwi.staticExpectedCompleteTime.Time()
+	estimate := lwi.staticLaunchTime.Sub(completeTime).Milliseconds()
 
 	var wDescr string
 	if lwi.staticIsOverdriveWorker {
@@ -419,7 +416,7 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 // A time is returned which indicates the expected return time of the worker's
 // download. A bool is returned which indicates whether or not the launch was
 // successful.
-func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOverdrive bool) (time.Time, bool) {
+func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOverdrive bool) (ResolveTime, bool) {
 	// Sanity check that the pieceOffset and pieceLength are segment aligned.
 	if pdc.pieceOffset%crypto.SegmentSize != 0 ||
 		pdc.pieceLength%crypto.SegmentSize != 0 {
@@ -459,7 +456,6 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 
 			staticLaunchTime:           time.Now(),
 			staticExpectedCompleteTime: expectedCompleteTime,
-			staticExpectedDuration:     time.Until(expectedCompleteTime),
 
 			staticPDC:    pdc,
 			staticWorker: w,

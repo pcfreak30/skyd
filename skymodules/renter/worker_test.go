@@ -253,7 +253,7 @@ func TestJobQueueInitialEstimate(t *testing.T) {
 	if w.staticJobHasSectorQueue.callExpectedJobTime().Max() == 0 {
 		t.Fatal("unexpected")
 	}
-	if w.staticJobReadQueue.callExpectedJobTime(fastrand.Uint64n(1<<24)) == 0 {
+	if w.staticJobReadQueue.callExpectedJobTime(fastrand.Uint64n(1<<24)).Max() == 0 {
 		t.Fatal("unexpected")
 	}
 }

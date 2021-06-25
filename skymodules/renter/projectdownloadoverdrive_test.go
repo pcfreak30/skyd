@@ -94,7 +94,7 @@ func TestProjectDownloadChunk_adjustedReadDuration(t *testing.T) {
 	jrq := worker.staticJobReadQueue
 
 	// fetch the expected job time for a 64kb download job, verify it's not 0
-	jobTime := jrq.callExpectedJobTime(1 << 16)
+	jobTime := jrq.callExpectedJobTime(1 << 16).Min()
 	if jobTime == time.Duration(0) {
 		t.Fatal("unexpected")
 	}
@@ -105,7 +105,7 @@ func TestProjectDownloadChunk_adjustedReadDuration(t *testing.T) {
 	pdc.pricePerMS = types.SiacoinPrecision
 
 	// verify the duration is not adjusted, due to the very high pricePerMS
-	duration := pdc.adjustedReadDuration(worker)
+	duration := pdc.adjustedReadDuration(worker, jobTime)
 	if duration != jobTime {
 		t.Fatal("unexpected", duration, jobTime)
 	}
@@ -113,7 +113,7 @@ func TestProjectDownloadChunk_adjustedReadDuration(t *testing.T) {
 	// set the pricePerMS to a sane value, that is lower than the job cost,
 	// expected the duration to be adjusted
 	pdc.pricePerMS = types.SiacoinPrecision.MulFloat(1e-12)
-	duration = pdc.adjustedReadDuration(worker)
+	duration = pdc.adjustedReadDuration(worker, jobTime)
 	if duration <= jobTime {
 		t.Fatal("unexpected", duration, jobTime)
 	}
@@ -121,7 +121,7 @@ func TestProjectDownloadChunk_adjustedReadDuration(t *testing.T) {
 	// put the read queue on a cooldown, verify it is reflected in the duration
 	jrq.cooldownUntil = time.Now().Add(time.Minute)
 	prevDur := duration
-	duration = pdc.adjustedReadDuration(worker)
+	duration = pdc.adjustedReadDuration(worker, jobTime)
 	if duration <= prevDur {
 		t.Fatal("unexpected", duration, prevDur)
 	}
@@ -309,11 +309,11 @@ func TestProjectDownloadChunk_overdriveStatus(t *testing.T) {
 	pdc.workerSet = pcws
 	pdc.availablePieces = [][]*pieceDownload{
 		{
-			{expectedCompleteTime: now.Add(-1 * time.Minute)},
-			{expectedCompleteTime: now.Add(-3 * time.Minute)},
+			{expectedCompleteTime: newTestResolveTime(now.Add(-1*time.Minute), 0)},
+			{expectedCompleteTime: newTestResolveTime(now.Add(-3*time.Minute), 0)},
 		},
 		{
-			{expectedCompleteTime: now.Add(-2 * time.Minute)},
+			{expectedCompleteTime: newTestResolveTime(now.Add(-2*time.Minute), 0)},
 		},
 	}
 
@@ -341,7 +341,7 @@ func TestProjectDownloadChunk_overdriveStatus(t *testing.T) {
 	// add a piecedownload that returns somewhere in the future
 	pdc.availablePieces[1] = append(pdc.availablePieces[1], &pieceDownload{
 		launched:             true,
-		expectedCompleteTime: now.Add(time.Minute),
+		expectedCompleteTime: newTestResolveTime(now, time.Minute),
 	})
 	toLaunch, returnTime = pdc.overdriveStatus()
 	if toLaunch != 0 {

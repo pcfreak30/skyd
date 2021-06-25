@@ -41,6 +41,21 @@ func (jt JobTime) ResolveTime(start time.Time) ResolveTime {
 	}
 }
 
+// ReadTime creates a new ReadTime given an existing ResolveTime and JobTime.
+// The ResolveTime belongs to an unresolved job and the JobTime is the duration
+// of the job that depends on it.
+func (rt ResolveTime) ReadTime(jt JobTime) ReadTime {
+	return ReadTime{
+		rt:    rt,
+		times: jt,
+	}
+}
+
+// Min returns the smallest duration within the JobTime.
+func (jt JobTime) Min() time.Duration {
+	return jt[0]
+}
+
 // Max returns the largest duration within the JobTime.
 func (jt JobTime) Max() time.Duration {
 	return jt[len(jt)-1]
@@ -53,14 +68,54 @@ type ResolveTime struct {
 	times JobTime
 }
 
-// AddToJobTime adds some duration to the underlying job time.
-func (rt *ResolveTime) AddToJobTime(d time.Duration) ResolveTime {
+// ReadTime is the time of a read job that depends on another job resolving
+// before it can be launched.
+type ReadTime struct {
+	rt    ResolveTime
+	times JobTime
+}
+
+// Duration returns the estimated duration of the read job. The larger the delay
+// on the underlying unresolved job, the longer the duration of the read job.
+func (rt ReadTime) Duration() time.Duration {
+	_, i := rt.rt.time()
+	return rt.times[i]
+}
+
+// Add adds another adds a resolve time to the curren time. The length of the
+// durations must match.
+func (rt ResolveTime) Add(jt JobTime) ResolveTime {
+	if len(rt.times) != len(jt) {
+		build.Critical("lengths of times don't match")
+		return rt
+	}
 	rtNew := ResolveTime{
 		times: append(JobTime{}, rt.times...),
 		start: rt.start,
 	}
-	for i := range rtNew.times {
-		rtNew.times[i] += d
+	// TODO: this shouldn't just add like that. Instead it should use the
+	// values from rt to determine what index to use and then add the values
+	// from rt2.
+	for i, t := range jt {
+		rtNew.times[i] += t
+	}
+	return rtNew
+}
+
+// AddToJobTime adds some duration to the job time.
+func (jt JobTime) AddToJobTime(d time.Duration) JobTime {
+	jtNew := make(JobTime, len(jt))
+	for i := range jtNew {
+		jtNew[i] = jt[i] + d
+	}
+	return jtNew
+}
+
+// AddToJobTime adds some duration to the underlying job time.
+func (rt *ResolveTime) AddToJobTime(d time.Duration) ResolveTime {
+	rtNew := ResolveTime{
+		times: rt.times.AddToJobTime(d),
+		start: rt.start,
 	}
 	return rtNew
 }
@@ -70,17 +125,26 @@ func (rt *ResolveTime) AddToJobTime(d time.Duration) ResolveTime {
 // the lowest one that's still in the future. If no such time is found, the
 // largest duration is chosen.
 func (rt ResolveTime) Time() time.Time {
+	t, _ := rt.time()
+	return t
+}
+
+// time returns the time we expect the task to resolve. It returns the closest
+// expected time by going through the list of potential durations and choosing
+// the lowest one that's still in the future. If no such time is found, the
+// largest duration is chosen.
+func (rt ResolveTime) time() (time.Time, int) {
 	if len(rt.times) == 0 {
 		build.Critical("empty resolve time")
-		return time.Time{}
+		return time.Time{}, 0
 	}
 	passedTime := time.Since(rt.start)
-	for _, d := range rt.times {
+	for i, d := range rt.times {
 		if passedTime < d {
-			return rt.start.Add(d)
+			return rt.start.Add(d), i
 		}
 	}
-	return rt.start.Add(rt.times.Max())
+	return rt.start.Add(rt.times.Max()), len(rt.times) - 1
 }
 
 // errEstimateAboveMax is returned if a HasSector job wasn't added due to the
@@ -401,10 +465,12 @@ func (jq *jobHasSectorQueue) callUpdateJobTimeMetrics(jobTime time.Duration) {
 	jq.staticDT.AddDataPoint(jobTime)
 }
 
+var jobTimePercentiles = []float64{.99, .999}
+
 // expectedJobTime will return the amount of time that a job is expected to
 // take, given the current conditions of the queue.
 func (jq *jobHasSectorQueue) expectedJobTime() JobTime {
-	return jq.staticDT.PercentilesCustom([]float64{.99, .999})[0]
+	return jq.staticDT.PercentilesCustom(jobTimePercentiles)[0]
 }
 
 // initJobHasSectorQueue will init the queue for the has sector jobs.

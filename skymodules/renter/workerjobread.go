@@ -5,22 +5,12 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 
 	"gitlab.com/NebulousLabs/errors"
-)
-
-const (
-	// jobReadPerformanceDecay defines how much decay gets applied to the
-	// historic performance of jobRead each time new data comes back.
-	// Setting a low value makes the performance more volatile. If the worker
-	// tends to have inconsistent performance, having the decay be a low value
-	// (0.9 or lower) will be highly detrimental. A higher decay means that the
-	// predictor tends to be more accurate over time, but is less responsive to
-	// things like network load.
-	jobReadPerformanceDecay = 0.9
 )
 
 type (
@@ -44,9 +34,9 @@ type (
 		// These float64s are converted time.Duration values. They are float64
 		// to get better precision on the exponential decay which gets applied
 		// with each new data point.
-		weightedJobTime64k float64
-		weightedJobTime1m  float64
-		weightedJobTime4m  float64
+		staticDT64k *skymodules.DistributionTracker
+		staticDT1m  *skymodules.DistributionTracker
+		staticDT4m  *skymodules.DistributionTracker
 
 		*jobGenericQueue
 	}
@@ -216,15 +206,15 @@ func (j *jobRead) managedRead(w *worker, program modules.Program, programData []
 
 // callAddWithEstimate will add a job to the job read queue while providing an
 // estimate for when the job is expected to return.
-func (jq *jobReadQueue) callAddWithEstimate(j *jobReadSector) (time.Time, bool) {
+func (jq *jobReadQueue) callAddWithEstimate(j *jobReadSector) (ResolveTime, bool) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 
 	estimate := jq.expectedJobTime(j.staticLength)
 	if !jq.add(j) {
-		return time.Time{}, false
+		return ResolveTime{}, false
 	}
-	return time.Now().Add(estimate), true
+	return estimate.ResolveTime(time.Now()), true
 }
 
 // callExpectedJobTime will return the recent performance of the worker
@@ -237,7 +227,7 @@ func (jq *jobReadQueue) callAddWithEstimate(j *jobReadSector) (time.Time, bool) 
 // three categories.
 //
 // TODO: Make this smarter.
-func (jq *jobReadQueue) callExpectedJobTime(length uint64) time.Duration {
+func (jq *jobReadQueue) callExpectedJobTime(length uint64) JobTime {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	return jq.expectedJobTime(length)
@@ -245,13 +235,13 @@ func (jq *jobReadQueue) callExpectedJobTime(length uint64) time.Duration {
 
 // expectedJobTime returns the expected job time, based on recent performance,
 // for the given read length.
-func (jq *jobReadQueue) expectedJobTime(length uint64) time.Duration {
+func (jq *jobReadQueue) expectedJobTime(length uint64) JobTime {
 	if length <= 1<<16 {
-		return time.Duration(jq.weightedJobTime64k)
+		return jq.staticDT64k.PercentilesCustom(jobTimePercentiles)[0]
 	} else if length <= 1<<20 {
-		return time.Duration(jq.weightedJobTime1m)
+		return jq.staticDT1m.PercentilesCustom(jobTimePercentiles)[0]
 	} else {
-		return time.Duration(jq.weightedJobTime4m)
+		return jq.staticDT4m.PercentilesCustom(jobTimePercentiles)[0]
 	}
 }
 
@@ -284,11 +274,11 @@ func (jq *jobReadQueue) callUpdateJobTimeMetrics(length uint64, jobTime time.Dur
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	if length <= 1<<16 {
-		jq.weightedJobTime64k = expMovingAvgHotStart(jq.weightedJobTime64k, float64(jobTime), jobReadPerformanceDecay)
+		jq.staticDT64k.AddDataPoint(jobTime)
 	} else if length <= 1<<20 {
-		jq.weightedJobTime1m = expMovingAvgHotStart(jq.weightedJobTime1m, float64(jobTime), jobReadPerformanceDecay)
+		jq.staticDT1m.AddDataPoint(jobTime)
 	} else {
-		jq.weightedJobTime4m = expMovingAvgHotStart(jq.weightedJobTime4m, float64(jobTime), jobReadPerformanceDecay)
+		jq.staticDT4m.AddDataPoint(jobTime)
 	}
 }
 
@@ -300,6 +290,9 @@ func (w *worker) initJobReadQueue() {
 		w.staticRenter.staticLog.Critical("incorret call on initJobReadQueue")
 	}
 	w.staticJobReadQueue = &jobReadQueue{
+		staticDT64k:     skymodules.NewDistributionTrackerStandard(),
+		staticDT1m:      skymodules.NewDistributionTrackerStandard(),
+		staticDT4m:      skymodules.NewDistributionTrackerStandard(),
 		jobGenericQueue: newJobGenericQueue(w),
 	}
 }

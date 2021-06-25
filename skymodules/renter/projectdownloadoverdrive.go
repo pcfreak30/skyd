@@ -44,19 +44,13 @@ const (
 // adjustedReadDuration returns the amount of time that a worker is expected to
 // take to return, taking into account the penalties for the price of the
 // download and a potential cooldown on the read queue.
-func (pdc *projectDownloadChunk) adjustedReadDuration(w *worker) time.Duration {
+func (pdc *projectDownloadChunk) adjustedReadDuration(w *worker, jobTime time.Duration) time.Duration {
 	jrq := w.staticJobReadQueue
-
-	// Fetch the expected job time.
-	jobTime := jrq.callExpectedJobTime(pdc.pieceLength)
-	if jobTime < 0 {
-		jobTime = 0
-	}
 
 	// If the queue is on cooldown, add the remaining cooldown period.
 	if jrq.callOnCooldown() {
 		jrq.mu.Lock()
-		jobTime = jobTime + time.Until(jrq.cooldownUntil)
+		jobTime = jobTime + (time.Until(jrq.cooldownUntil))
 		jrq.mu.Unlock()
 	}
 
@@ -99,7 +93,8 @@ func (pdc *projectDownloadChunk) bestOverdriveUnresolvedWorker(puws []*pcwsUnres
 		// available. Note that no price penalty is attached to the HasSector
 		// call, because that call is being made regardless of the cost.
 		uwLate := false
-		hasSectorTime := time.Until(uw.staticExpectedResolvedTime.Time())
+		expectedResolveTime := uw.staticExpectedResolvedTime.Time()
+		hasSectorTime := time.Until(expectedResolveTime)
 		if hasSectorTime < 0 {
 			hasSectorTime = 0
 			uwLate = true
@@ -111,7 +106,9 @@ func (pdc *projectDownloadChunk) bestOverdriveUnresolvedWorker(puws []*pcwsUnres
 
 		// Figure out how much time is expected until the worker completes the
 		// download job.
-		readTime := pdc.adjustedReadDuration(uw.staticWorker)
+		jrq := uw.staticWorker.staticJobReadQueue
+		jobTime := uw.staticExpectedResolvedTime.ReadTime(jrq.callExpectedJobTime(pdc.pieceLength)).Duration()
+		readTime := pdc.adjustedReadDuration(uw.staticWorker, jobTime)
 
 		// Ensure we don't overflow
 		var adjustedTotalDuration time.Duration
@@ -188,7 +185,8 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-c
 			}
 
 			// Determine if this worker is better than any existing worker.
-			workerAdjustedDuration := pdc.adjustedReadDuration(pieceDownload.worker)
+			jobTime := pieceDownload.worker.staticJobReadQueue.callExpectedJobTime(pdc.pieceLength)
+			workerAdjustedDuration := pdc.adjustedReadDuration(pieceDownload.worker, jobTime.Min())
 			if workerAdjustedDuration < bawAdjustedDuration {
 				bawAdjustedDuration = workerAdjustedDuration
 				bawPieceIndex = i
@@ -225,14 +223,14 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-c
 // returned which indicates an update to the worker state, and a time.After()
 // will be returned which indicates when the worker flips over to being late and
 // therefore another worker should be selected.
-func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-chan struct{}, <-chan time.Time) {
+func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, ResolveTime, <-chan struct{}, <-chan time.Time) {
 	// Loop until either a launch succeeds or until the best worker is not
 	// found.
 	retry := 0
 	for {
 		worker, pieceIndex, wakeChan, workerLateChan := pdc.findBestOverdriveWorker()
 		if worker == nil {
-			return false, time.Time{}, wakeChan, workerLateChan
+			return false, ResolveTime{}, wakeChan, workerLateChan
 		}
 
 		// If there was a worker found, launch the worker.
@@ -243,7 +241,7 @@ func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-
 			// with jobs in case the queue is on a cooldown.
 			select {
 			case <-pdc.workerSet.staticRenter.tg.StopChan():
-				return false, time.Time{}, wakeChan, workerLateChan
+				return false, ResolveTime{}, wakeChan, workerLateChan
 			case <-time.After(expBackoffDelayMS(retry)):
 				retry++
 				continue
@@ -270,8 +268,9 @@ func (pdc *projectDownloadChunk) overdriveStatus() (int, time.Time) {
 				continue // skip
 			}
 			launchedWithoutFail = true
-			if !pieceDownload.completed && pieceDownload.expectedCompleteTime.After(latestReturn) {
-				latestReturn = pieceDownload.expectedCompleteTime
+			expectedCompleteTime := pieceDownload.expectedCompleteTime.Time()
+			if !pieceDownload.completed && expectedCompleteTime.After(latestReturn) {
+				latestReturn = expectedCompleteTime
 			}
 		}
 		if launchedWithoutFail {
@@ -327,8 +326,9 @@ func (pdc *projectDownloadChunk) tryOverdrive(neededOverdriveWorkers int, latest
 
 		// Worker launched successfully, update the latestReturnTime to account
 		// for the new worker.
-		if expectedReturnTime.After(latestReturn) {
-			latestReturn = expectedReturnTime
+		ert := expectedReturnTime.Time()
+		if ert.After(latestReturn) {
+			latestReturn = ert
 		}
 	}
 

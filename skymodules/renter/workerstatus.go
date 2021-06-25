@@ -120,8 +120,9 @@ func (w *worker) callReadJobStatus() skymodules.WorkerReadJobsStatus {
 	}
 
 	avgJobTimeInMs := func(l uint64) uint64 {
-		if d := jrq.callExpectedJobTime(l); d > 0 {
-			return uint64(d.Milliseconds())
+		// TODO: Same here. This was the EMA and is now Max.
+		if d := jrq.callExpectedJobTime(l); d.Max() > 0 {
+			return uint64(d.Max().Milliseconds())
 		}
 		return 0
 	}

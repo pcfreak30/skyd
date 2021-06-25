@@ -181,20 +181,18 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		// that there is some unusual circumstance preventing the worker from
 		// being on time and that it may be another while before the worker
 		// resolves; favor some other worker instead.
-		resolveTime := uw.staticExpectedResolvedTime.Time()
+		dynamicResolveTime := uw.staticExpectedResolvedTime
+		resolveTime := dynamicResolveTime.Time()
 		if resolveTime.Before(time.Now()) {
-			resolveTime = time.Now().Add(2 * time.Since(resolveTime))
+			resolveTime = time.Now().Add(time.Since(resolveTime))
 		}
 
 		// Determine the expected readDuration and cost for this worker. Add the
 		// readDuration to the hasSectorTime to get the full complete time for
 		// the download.
 		cost := jrq.callExpectedJobCost(pdc.pieceLength)
-		readDuration := jrq.callExpectedJobTime(pdc.pieceLength)
-		if readDuration == 0 {
-			continue
-		}
-		completeTime := resolveTime.Add(readDuration)
+		readTime := dynamicResolveTime.ReadTime(jrq.callExpectedJobTime(pdc.pieceLength))
+		completeTime := resolveTime.Add(readTime.Duration())
 
 		// Create the pieces for the unresolved worker. Because the unresolved
 		// worker could be potentially used to fetch any piece (we won't know
@@ -209,7 +207,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		heap.Push(&workerHeap, &pdcInitialWorker{
 			completeTime: completeTime,
 			cost:         cost,
-			readDuration: readDuration,
+			readDuration: readTime.Duration(),
 
 			pieces:     pieces,
 			unresolved: true,
@@ -251,10 +249,9 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 				cost := jrq.callExpectedJobCost(pdc.pieceLength)
 				readDuration := jrq.callExpectedJobTime(pdc.pieceLength)
 				resolvedWorkersMap[w.staticHostPubKeyStr] = &pdcInitialWorker{
-					// TODO: change this
-					completeTime: time.Now().Add(readDuration),
+					completeTime: time.Now().Add(readDuration.Min()),
 					cost:         cost,
-					readDuration: readDuration,
+					readDuration: readDuration.Min(),
 
 					pieces:     []uint64{uint64(i)},
 					unresolved: false,
