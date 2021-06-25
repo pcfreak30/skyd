@@ -175,6 +175,12 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(ctx context.Context, fil
 	}
 	startChunkIndex := uint64(offset) / fileNode.ChunkSize()
 
+	// If Peek is false to start then we are dealing with a zero byte file
+	// and should just return as there is nothing to upload to the network.
+	if !reader.Peek() {
+		return 0, nil
+	}
+
 	// Build a map of host public keys.
 	pks := make(map[string]types.SiaPublicKey)
 	for _, pk := range fileNode.HostPublicKeys() {

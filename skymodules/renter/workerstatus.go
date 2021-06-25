@@ -126,8 +126,9 @@ func (w *worker) callReadJobStatus() skymodules.WorkerReadJobsStatus {
 		return 0
 	}
 	avgJobTimeInMs := func(l uint64) uint64 {
-		if d := jrq.callExpectedJobTime(l); d > 0 {
-			return uint64(d.Milliseconds())
+		// TODO: Same here. This was the EMA and is now Max.
+		if d := jrq.callExpectedJobTime(l); d.Max() > 0 {
+			return uint64(d.Max().Milliseconds())
 		}
 		return 0
 	}
@@ -170,7 +171,9 @@ func (w *worker) callHasSectorJobStatus() skymodules.WorkerHasSectorJobsStatus {
 		recentErrStr = status.recentErr.Error()
 	}
 
-	avgJobTimeInMs := uint64(hsq.callExpectedJobTime().Milliseconds())
+	// TODO: what should we return here now that it's no longer the EMA?
+	// Is the max fine? That's the p999.
+	avgJobTimeInMs := uint64(hsq.callExpectedJobTime().Max().Milliseconds())
 
 	return skymodules.WorkerHasSectorJobsStatus{
 		AvgJobTime:          avgJobTimeInMs,

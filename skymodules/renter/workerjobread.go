@@ -6,6 +6,7 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -51,9 +52,9 @@ type (
 		// These float64s are converted time.Duration values. They are float64
 		// to get better precision on the exponential decay which gets applied
 		// with each new data point.
-		weightedJobTime64k float64
-		weightedJobTime1m  float64
-		weightedJobTime4m  float64
+		staticDT64k *skymodules.DistributionTracker
+		staticDT1m  *skymodules.DistributionTracker
+		staticDT4m  *skymodules.DistributionTracker
 
 		nLateJobs64k uint64
 		nLateJobs1m  uint64
@@ -248,7 +249,7 @@ func (j *jobRead) managedRead(parent opentracing.Span, w *worker, program module
 
 // callAddWithEstimate will add a job to the job read queue while providing an
 // estimate for when the job is expected to return.
-func (jq *jobReadQueue) callAddWithEstimate(j *jobReadSector) (time.Time, bool) {
+func (jq *jobReadQueue) callAddWithEstimate(j *jobReadSector) (ResolveTime, bool) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 
@@ -259,9 +260,9 @@ func (jq *jobReadQueue) callAddWithEstimate(j *jobReadSector) (time.Time, bool) 
 
 	estimate := jq.expectedJobTime(j.staticLength)
 	if !jq.add(j) {
-		return time.Time{}, false
+		return ResolveTime{}, false
 	}
-	return time.Now().Add(estimate), true
+	return estimate.ResolveTime(time.Now()), true
 }
 
 // callExpectedJobTime will return the recent performance of the worker
@@ -274,7 +275,7 @@ func (jq *jobReadQueue) callAddWithEstimate(j *jobReadSector) (time.Time, bool) 
 // three categories.
 //
 // TODO: Make this smarter.
-func (jq *jobReadQueue) callExpectedJobTime(length uint64) time.Duration {
+func (jq *jobReadQueue) callExpectedJobTime(length uint64) JobTime {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	return jq.expectedJobTime(length)
@@ -282,13 +283,13 @@ func (jq *jobReadQueue) callExpectedJobTime(length uint64) time.Duration {
 
 // expectedJobTime returns the expected job time, based on recent performance,
 // for the given read length.
-func (jq *jobReadQueue) expectedJobTime(length uint64) time.Duration {
-	if length <= size64K {
-		return time.Duration(jq.weightedJobTime64k)
-	} else if length <= size1M {
-		return time.Duration(jq.weightedJobTime1m)
+func (jq *jobReadQueue) expectedJobTime(length uint64) JobTime {
+	if length <= 1<<16 {
+		return jq.staticDT64k.PercentilesCustom(jobTimePercentiles)[0]
+	} else if length <= 1<<20 {
+		return jq.staticDT1m.PercentilesCustom(jobTimePercentiles)[0]
 	} else {
-		return time.Duration(jq.weightedJobTime4m)
+		return jq.staticDT4m.PercentilesCustom(jobTimePercentiles)[0]
 	}
 }
 
@@ -324,30 +325,31 @@ func (jq *jobReadQueue) callUpdateJobTimeMetrics(length uint64, jobTime time.Dur
 	// Choose the right fields to work with depending on the length.
 	var nLateJobs, nEarlyJobs *uint64
 	var weightedLateJobsDelta, weightedEarlyJobsDelta *float64
-	var weightedJobTime *float64
+	var dt *skymodules.DistributionTracker
 	if length <= size64K {
 		nLateJobs = &jq.nLateJobs64k
 		nEarlyJobs = &jq.nEarlyJobs64k
 		weightedLateJobsDelta = &jq.weightedLateJobs64kDelta
 		weightedEarlyJobsDelta = &jq.weightedEarlyJobs64kDelta
-		weightedJobTime = &jq.weightedJobTime64k
+		dt = jq.staticDT64k
 	} else if length <= size1M {
 		nLateJobs = &jq.nLateJobs1m
 		nEarlyJobs = &jq.nEarlyJobs1m
 		weightedLateJobsDelta = &jq.weightedLateJobs1mDelta
 		weightedEarlyJobsDelta = &jq.weightedEarlyJobs1mDelta
-		weightedJobTime = &jq.weightedJobTime1m
+		dt = jq.staticDT1m
 	} else {
 		nLateJobs = &jq.nLateJobs4m
 		nEarlyJobs = &jq.nEarlyJobs4m
 		weightedLateJobsDelta = &jq.weightedLateJobs4mDelta
 		weightedEarlyJobsDelta = &jq.weightedEarlyJobs4mDelta
-		weightedJobTime = &jq.weightedJobTime4m
+		dt = jq.staticDT4m
 	}
 
 	// Adjust the fields.
 	var delta time.Duration
-	expectedJobTime := jq.expectedJobTime(length)
+	launchTime := time.Now().Add(-jobTime)
+	expectedJobTime := jq.expectedJobTime(length).ResolveTime(launchTime).Time().Sub(launchTime)
 	if jobTime > expectedJobTime {
 		*nLateJobs++
 		delta = jobTime - expectedJobTime
@@ -357,7 +359,7 @@ func (jq *jobReadQueue) callUpdateJobTimeMetrics(length uint64, jobTime time.Dur
 		delta = expectedJobTime - jobTime
 		*weightedEarlyJobsDelta = expMovingAvgHotStart(*weightedEarlyJobsDelta, float64(delta), jobReadPerformanceDecay)
 	}
-	*weightedJobTime = expMovingAvgHotStart(*weightedJobTime, float64(jobTime), jobReadPerformanceDecay)
+	dt.AddDataPoint(jobTime)
 }
 
 // initJobReadQueue will initialize a queue for downloading sectors by
@@ -368,6 +370,9 @@ func (w *worker) initJobReadQueue() {
 		w.staticRenter.staticLog.Critical("incorret call on initJobReadQueue")
 	}
 	w.staticJobReadQueue = &jobReadQueue{
+		staticDT64k:     skymodules.NewDistributionTrackerStandard(),
+		staticDT1m:      skymodules.NewDistributionTrackerStandard(),
+		staticDT4m:      skymodules.NewDistributionTrackerStandard(),
 		jobGenericQueue: newJobGenericQueue(w),
 	}
 }

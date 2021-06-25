@@ -70,6 +70,13 @@ func TestProjectDownloadChunkMaxWaitLateWorkers(t *testing.T) {
 	}
 }
 
+func newTestResolveTime(start time.Time, d time.Duration) ResolveTime {
+	return ResolveTime{
+		times: JobTime{d},
+		start: start,
+	}
+}
+
 // TestProjectDownloadChunk_finalize is a unit test for the 'finalize' function
 // on the pdc. It verifies whether the returned data is properly offset to
 // include only the pieces requested by the user.
@@ -136,8 +143,7 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 
 	pdc.launchedWorkers = append(pdc.launchedWorkers, &launchedWorkerInfo{
 		staticLaunchTime:           time.Now(),
-		staticExpectedCompleteTime: time.Now().Add(time.Minute),
-		staticExpectedDuration:     time.Minute,
+		staticExpectedCompleteTime: newTestResolveTime(time.Now(), time.Minute),
 
 		staticPDC:    pdc,
 		staticWorker: new(worker),
@@ -160,7 +166,7 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 		t.Log("expected:\n", originalData[offset:offset+length])
 		t.Fatal("unexpected data")
 	}
-	if downloadResponse.launchedWorkers == nil || len(downloadResponse.launchedWorkers) != 1 || downloadResponse.launchedWorkers[0].staticExpectedDuration != time.Minute {
+	if downloadResponse.launchedWorkers == nil || len(downloadResponse.launchedWorkers) != 1 {
 		t.Fatal("unexpected")
 	}
 
@@ -447,7 +453,7 @@ func TestProjectDownloadChunk_launchWorker(t *testing.T) {
 	if !added {
 		t.Fatal("unexpected")
 	}
-	if expectedCompleteTime.Before(time.Now()) {
+	if expectedCompleteTime.Time().Before(time.Now()) {
 		t.Fatal("unexpected")
 	}
 
@@ -462,10 +468,9 @@ func TestProjectDownloadChunk_launchWorker(t *testing.T) {
 	// assert the launched worker info contains what we expect it to contain
 	if lw.staticLaunchTime == (time.Time{}) ||
 		lw.completeTime != (time.Time{}) ||
-		lw.staticExpectedCompleteTime == (time.Time{}) ||
+		lw.staticExpectedCompleteTime.Time() == (time.Time{}) ||
 		lw.jobDuration != 0 ||
 		lw.totalDuration != 0 ||
-		lw.staticExpectedDuration == 0 ||
 		!bytes.Equal(lw.staticPDC.uid[:], pdc.uid[:]) ||
 		lw.staticWorker.staticHostPubKeyStr != spk.String() {
 		t.Fatal("unexpected")
@@ -649,8 +654,7 @@ func TestLaunchedWorkerInfo_String(t *testing.T) {
 		staticIsOverdriveWorker: false,
 
 		staticLaunchTime:           time.Now().Add(-5 * time.Second),
-		staticExpectedCompleteTime: time.Now().Add(10 * time.Second),
-		staticExpectedDuration:     10 * time.Second,
+		staticExpectedCompleteTime: newTestResolveTime(time.Now(), 10*time.Second),
 
 		staticPDC:    pdc,
 		staticWorker: w,
@@ -659,7 +663,7 @@ func TestLaunchedWorkerInfo_String(t *testing.T) {
 	// assert output when download not complete
 	expectedWorkerInfo := "initial worker " + w.staticHostPubKey.ShortString()
 	expectedPieceInfo := "piece 1"
-	expectedEstInfo := "estimated complete 10000 ms"
+	expectedEstInfo := "estimated complete 15000 ms"
 	expectedDurInfo := "not responded after 5000ms"
 	if !strings.Contains(lwi.String(), expectedWorkerInfo) ||
 		!strings.Contains(lwi.String(), expectedPieceInfo) ||
@@ -710,7 +714,8 @@ func mockWorker(jobTime time.Duration) *worker {
 	worker.newPriceTable()
 	worker.staticPriceTable().staticPriceTable = newDefaultPriceTable()
 	worker.initJobReadQueue()
-	worker.staticJobReadQueue.weightedJobTime64k = float64(jobTime)
+	worker.staticJobReadQueue.staticDT64k = skymodules.NewDistributionTrackerStandard()
+	worker.staticJobReadQueue.staticDT64k.AddDataPoint(jobTime)
 	return worker
 }
 

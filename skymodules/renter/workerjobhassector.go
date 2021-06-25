@@ -30,6 +30,124 @@ const (
 	hasSectorBatchSize = 13
 )
 
+// JobTime tracks multiple potential durations of a job. e.g. the p50, p90 and
+// p99.
+type JobTime []time.Duration
+
+// ResolveTime turns a JobTime into a ResolveTime by giving it a start time.
+func (jt JobTime) ResolveTime(start time.Time) ResolveTime {
+	return ResolveTime{
+		start: start,
+		times: append(JobTime{}, jt...), // deep copy
+	}
+}
+
+// ReadTime creates a new ReadTime given an existing ResolveTime and JobTime.
+// The ResolveTime belongs to an unresolved job and the JobTime is the duration
+// of the job that depends on it.
+func (rt ResolveTime) ReadTime(jt JobTime) ReadTime {
+	return ReadTime{
+		rt:    rt,
+		times: jt,
+	}
+}
+
+// Min returns the smallest duration within the JobTime.
+func (jt JobTime) Min() time.Duration {
+	return jt[0]
+}
+
+// Max returns the largest duration within the JobTime.
+func (jt JobTime) Max() time.Duration {
+	return jt[len(jt)-1]
+}
+
+// ResolveTime is a JobTime with added start time. It's used to estimate when a
+// given Job is expected to finish given the passed time since the start.
+type ResolveTime struct {
+	start time.Time
+	times JobTime
+}
+
+// ReadTime is the time of a read job that depends on another job resolving
+// before it can be launched.
+type ReadTime struct {
+	rt    ResolveTime
+	times JobTime
+}
+
+// Duration returns the estimated duration of the read job. The larger the delay
+// on the underlying unresolved job, the longer the duration of the read job.
+func (rt ReadTime) Duration() time.Duration {
+	_, i := rt.rt.time()
+	return rt.times[i]
+}
+
+// Add adds another adds a resolve time to the curren time. The length of the
+// durations must match.
+func (rt ResolveTime) Add(jt JobTime) ResolveTime {
+	if len(rt.times) != len(jt) {
+		build.Critical("lengths of times don't match")
+		return rt
+	}
+	rtNew := ResolveTime{
+		times: append(JobTime{}, rt.times...),
+		start: rt.start,
+	}
+	// TODO: this shouldn't just add like that. Instead it should use the
+	// values from rt to determine what index to use and then add the values
+	// from rt2.
+	for i, t := range jt {
+		rtNew.times[i] += t
+	}
+	return rtNew
+}
+
+// AddToJobTime adds some duration to the job time.
+func (jt JobTime) AddToJobTime(d time.Duration) JobTime {
+	jtNew := make(JobTime, len(jt))
+	for i := range jtNew {
+		jtNew[i] = jt[i] + d
+	}
+	return jtNew
+}
+
+// AddToJobTime adds some duration to the underlying job time.
+func (rt *ResolveTime) AddToJobTime(d time.Duration) ResolveTime {
+	rtNew := ResolveTime{
+		times: rt.times.AddToJobTime(d),
+		start: rt.start,
+	}
+	return rtNew
+}
+
+// Time returns the time we expect the task to resolve. It returns the closest
+// expected time by going through the list of potential durations and choosing
+// the lowest one that's still in the future. If no such time is found, the
+// largest duration is chosen.
+func (rt ResolveTime) Time() time.Time {
+	t, _ := rt.time()
+	return t
+}
+
+// time returns the time we expect the task to resolve. It returns the closest
+// expected time by going through the list of potential durations and choosing
+// the lowest one that's still in the future. If no such time is found, the
+// largest duration is chosen.
+func (rt ResolveTime) time() (time.Time, int) {
+	if len(rt.times) == 0 {
+		build.Critical("empty resolve time")
+		return time.Time{}, 0
+	}
+	passedTime := time.Since(rt.start)
+	for i, d := range rt.times {
+		if passedTime < d {
+			return rt.start.Add(d), i
+		}
+	}
+	return rt.start.Add(rt.times.Max()), len(rt.times) - 1
+}
+
 // errEstimateAboveMax is returned if a HasSector job wasn't added due to the
 // estimate exceeding the max.
 var errEstimateAboveMax = errors.New("can't add job since estimate is above max timeout")
@@ -329,16 +447,15 @@ func (j *jobHasSectorBatch) managedHasSector(parent opentracing.Span) (results [
 // callAddWithEstimate will add a job to the queue and return a timestamp for
 // when the job is estimated to complete. An error will be returned if the job
 // is not successfully queued.
-func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector, maxEstimate time.Duration) (time.Time, error) {
+func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector, maxEstimate time.Duration) (ResolveTime, error) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	now := time.Now()
 	estimate := jq.expectedJobTime()
-	if estimate > maxEstimate {
-		return time.Time{}, errEstimateAboveMax
+	if estimate.Max() > maxEstimate {
+		return ResolveTime{}, errEstimateAboveMax
 	}
 	j.externJobStartTime = now
-	j.externEstimatedJobDuration = estimate
 
 	wsl := jq.staticWorkerObj.staticLoopState
 	j.staticSpan.LogKV("readDataOutstanding", atomic.LoadUint64(&wsl.atomicReadDataOutstanding))
@@ -346,9 +463,9 @@ func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector, maxEstimate ti
 	j.staticSpan.LogKV("queusize", jq.jobs.Len())
 
 	if !jq.add(j) {
-		return time.Time{}, errors.New("unable to add job to queue")
+		return ResolveTime{}, errors.New("unable to add job to queue")
 	}
-	return now.Add(estimate), nil
+	return estimate.ResolveTime(now), nil
 }
 
 // callExpectedJobTime returns the expected amount of time that this job will
@@ -356,7 +473,7 @@ func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector, maxEstimate ti
 //
 // TODO: idealy we pass `numSectors` here and get the expected job time
 // depending on the amount of instructions in the program.
-func (jq *jobHasSectorQueue) callExpectedJobTime() time.Duration {
+func (jq *jobHasSectorQueue) callExpectedJobTime() JobTime {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	return jq.expectedJobTime()
@@ -370,11 +487,12 @@ func (jq *jobHasSectorQueue) callUpdateJobTimeMetrics(jobTime time.Duration) {
 	jq.staticDT.AddDataPoint(jobTime)
 }
 
+var jobTimePercentiles = []float64{0.5, 0.6, 0.7, 0.8, 0.9, .99, .999}
+
 // expectedJobTime will return the amount of time that a job is expected to
 // take, given the current conditions of the queue.
-func (jq *jobHasSectorQueue) expectedJobTime() time.Duration {
-	percentiles := jq.staticDT.Percentiles()
-	return percentiles[0][1]
+func (jq *jobHasSectorQueue) expectedJobTime() JobTime {
+	return jq.staticDT.PercentilesCustom(jobTimePercentiles)[0]
 }
 
 // initJobHasSectorQueue will init the queue for the has sector jobs.

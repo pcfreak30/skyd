@@ -290,16 +290,21 @@ func (dt *DistributionTracker) AddDataPoint(dur time.Duration) {
 //	 + the p999
 //	 + the p9999
 func (dt *DistributionTracker) Percentiles() [][]time.Duration {
+	return dt.PercentilesCustom([]float64{.9, .99, .999, .9999})
+}
+
+// PercentilesCustom returns the provided percentiles for 4 timings for each
+// distribution in the tracker.
+func (dt *DistributionTracker) PercentilesCustom(ps []float64) [][]time.Duration {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
 	timings := make([][]time.Duration, len(dt.distributions))
 	for i := 0; i < len(timings); i++ {
-		timings[i] = make([]time.Duration, 4)
-		timings[i][0] = dt.distributions[i].PStat(.9)
-		timings[i][1] = dt.distributions[i].PStat(.99)
-		timings[i][2] = dt.distributions[i].PStat(.999)
-		timings[i][3] = dt.distributions[i].PStat(.9999)
+		timings[i] = make([]time.Duration, len(ps))
+		for j, p := range ps {
+			timings[i][j] = dt.distributions[i].PStat(p)
+		}
 	}
 	return timings
 }

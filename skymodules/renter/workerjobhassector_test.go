@@ -3,6 +3,7 @@ package renter
 import (
 	"context"
 	"testing"
+	"time"
 
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -154,5 +155,44 @@ func TestHasSectorJobExpectedBandwidth(t *testing.T) {
 	dl, ul = numPacketsRequiredForSectors(17)
 	if dl != 2 || ul != 2 {
 		t.Fatal("unexpected")
+	}
+}
+
+// TestResolveTime tests the ResolveTime type.
+func TestResolveTime(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	jt := JobTime{10 * time.Millisecond, 50 * time.Millisecond, 100 * time.Millisecond}
+	now := time.Now()
+	rt := jt.ResolveTime(now)
+
+	until0 := now.Add(jt[0])
+	until1 := now.Add(jt[1])
+	until2 := now.Add(jt[2])
+
+	resolvedTime := rt.Time()
+	if resolvedTime != until0 {
+		t.Fatal("wrong", resolvedTime, until0)
+	}
+	time.Sleep(time.Until(until0))
+
+	resolvedTime = rt.Time()
+	if resolvedTime != until1 {
+		t.Fatal("wrong", resolvedTime, until1)
+	}
+	time.Sleep(time.Until(until1))
+
+	resolvedTime = rt.Time()
+	if resolvedTime != until2 {
+		t.Fatal("wrong", resolvedTime, until2)
+	}
+
+	time.Sleep(time.Until(until2))
+	resolvedTime = rt.Time()
+	if resolvedTime != until2 {
+		t.Fatal("wrong", resolvedTime, until2)
 	}
 }

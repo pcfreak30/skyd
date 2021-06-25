@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"context"
 	"math"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -45,15 +46,15 @@ func TestProjectDownloadChunkHeap(t *testing.T) {
 	}
 
 	worker := heap.Pop(&wh).(*pdcInitialWorker)
-	if worker == nil || worker.completeTime != tMin1 {
+	if worker == nil || !reflect.DeepEqual(worker.completeTime, tMin1) {
 		t.Fatal("unexpected")
 	}
 	worker = heap.Pop(&wh).(*pdcInitialWorker)
-	if worker == nil || worker.completeTime != tMin5 {
+	if worker == nil || !reflect.DeepEqual(worker.completeTime, tMin5) {
 		t.Fatal("unexpected")
 	}
 	worker = heap.Pop(&wh).(*pdcInitialWorker)
-	if worker == nil || worker.completeTime != tMin10 {
+	if worker == nil || !reflect.DeepEqual(worker.completeTime, tMin10) {
 		t.Fatal("unexpected")
 	}
 }
@@ -80,7 +81,8 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 		}
 		w.staticSetPriceTable(pt)
 		w.initJobReadQueue()
-		w.staticJobReadQueue.weightedJobTime64k = float64(expectedJobTime)
+		w.staticJobReadQueue.staticDT64k = skymodules.NewDistributionTrackerStandard()
+		w.staticJobReadQueue.staticDT64k.AddDataPoint(expectedJobTime)
 		return w
 	}
 
@@ -94,15 +96,15 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 	now := time.Now()
 	unresolvedWorkers := []*pcwsUnresolvedWorker{
 		{
-			staticExpectedResolvedTime: now.Add(dur100MS),
+			staticExpectedResolvedTime: JobTime{dur100MS}.ResolveTime(now),
 			staticWorker:               worker1,
 		}, // 300ms
 		{
-			staticExpectedResolvedTime: now.Add(dur50MS),
+			staticExpectedResolvedTime: JobTime{dur50MS}.ResolveTime(now),
 			staticWorker:               worker2,
 		}, // 150ms
 		{
-			staticExpectedResolvedTime: now.Add(dur200MS),
+			staticExpectedResolvedTime: JobTime{dur200MS}.ResolveTime(now),
 			staticWorker:               worker3,
 		}, // 250ms
 	}
@@ -144,7 +146,7 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 
 	// make the read estimates for worker 3 return 0, verify it's not part of
 	// initial worker heap and worker 1 took its place
-	worker3.staticJobReadQueue.weightedJobTime64k = 0
+	worker3.staticJobReadQueue.staticDT64k = skymodules.NewDistributionTrackerStandard()
 	wh = pdc.initialWorkerHeap(unresolvedWorkers)
 	first = heap.Pop(&wh).(*pdcInitialWorker)
 	if first.worker.staticHostPubKeyStr != worker1.staticHostPubKeyStr {
@@ -156,7 +158,7 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 	// expected read estimate was 200ms and we add twice the amount of time the
 	// worker is late resolving - 800ms late means 1600ms penalty, add the
 	// original 200ms to get 1800ms total.
-	unresolvedWorkers[0].staticExpectedResolvedTime = time.Now().Add(-800 * time.Millisecond)
+	unresolvedWorkers[0].staticExpectedResolvedTime = newTestResolveTime(time.Now().Add(-800*time.Millisecond), 0)
 	wh = pdc.initialWorkerHeap(unresolvedWorkers)
 	first = heap.Pop(&wh).(*pdcInitialWorker)
 	completeTimeInS := math.Round(time.Until(first.completeTime).Seconds())
@@ -177,7 +179,7 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 	// skip the worker
 	worker1.staticJobReadQueue.cooldownUntil = time.Now().Add(time.Second)
 	wh = pdc.initialWorkerHeap(unresolvedWorkers)
-	if wh.Len() != 0 {
+	if wh.Len() != 1 {
 		t.Fatal("unexpected", wh.Len())
 	}
 

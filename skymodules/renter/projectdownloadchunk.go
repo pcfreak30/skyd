@@ -47,7 +47,7 @@ type (
 
 		// expectedCompleteTime indicates the time when the download is expected
 		// to complete. This is used to determine whether or not a download is late.
-		expectedCompleteTime time.Time
+		expectedCompleteTime ResolveTime
 
 		worker *worker
 	}
@@ -132,11 +132,7 @@ type (
 
 		// staticExpectedCompleteTime is an estimate of when we expect the
 		// worker to have completed the download.
-		staticExpectedCompleteTime time.Time
-
-		// staticExpectedDuration is the estimated amount of time for this
-		// worker to complete the download.
-		staticExpectedDuration time.Duration
+		staticExpectedCompleteTime ResolveTime
 
 		// staticJobAddTime is the time at which the job was added to the worker.
 		staticJobAddTime time.Time
@@ -175,7 +171,8 @@ type (
 func (lwi *launchedWorkerInfo) String() string {
 	pdcId := hex.EncodeToString(lwi.staticPDC.uid[:])
 	hostKey := lwi.staticWorker.staticHostPubKey.ShortString()
-	estimate := lwi.staticExpectedDuration.Milliseconds()
+	completeTime := lwi.staticExpectedCompleteTime.Time()
+	estimate := completeTime.Sub(lwi.staticLaunchTime).Milliseconds()
 
 	var wDescr string
 	if lwi.staticIsOverdriveWorker {
@@ -429,7 +426,6 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 					workerMsg += fmt.Sprintln("duration:", w.jobDuration.Milliseconds())
 					workerMsg += fmt.Sprintln("totalDuration:", w.totalDuration.Milliseconds())
 					workerMsg += fmt.Sprintln("expected complete time:", w.staticExpectedCompleteTime)
-					workerMsg += fmt.Sprintln("expected duration:", w.staticExpectedDuration.Milliseconds())
 					workerMsg += fmt.Sprintln("overdrive:", w.staticIsOverdriveWorker)
 					workerMsg += fmt.Sprintln("timeUntilJobAdd:", w.staticJobAddTime.Sub(pdc.launchTime).Milliseconds())
 					workerMsg += fmt.Sprintln("timeBetweenAddAndComplete:", w.completeTime.Sub(w.staticJobAddTime).Milliseconds())
@@ -458,7 +454,7 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 // A time is returned which indicates the expected return time of the worker's
 // download. A bool is returned which indicates whether or not the launch was
 // successful.
-func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOverdrive bool) (time.Time, bool) {
+func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOverdrive bool) (ResolveTime, bool) {
 	// Sanity check that the pieceOffset and pieceLength are segment aligned.
 	if pdc.pieceOffset%crypto.SegmentSize != 0 ||
 		pdc.pieceLength%crypto.SegmentSize != 0 {
@@ -499,7 +495,6 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 			staticJobAddTime:           time.Now(),
 			staticLaunchTime:           time.Now(),
 			staticExpectedCompleteTime: expectedCompleteTime,
-			staticExpectedDuration:     time.Until(expectedCompleteTime),
 
 			staticPDC:    pdc,
 			staticWorker: w,
