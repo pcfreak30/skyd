@@ -543,7 +543,7 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 	}
 
 	// verify the expected dur matches the initial queue estimate
-	expectedDur := time.Until(uw.staticExpectedResolvedTime)
+	expectedDur := time.Until(uw.staticExpectedResolvedTime.Time())
 	expectedDurInS := math.Round(expectedDur.Seconds())
 	if expectedDurInS != pcwsHasSectorTimeout.Seconds() {
 		t.Log(expectedDurInS)
@@ -560,7 +560,7 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 
 	// verify the cooldown is being reflected in the estimate
 	uw = ws.unresolvedWorkers["myworker"]
-	expectedDur = time.Until(uw.staticExpectedResolvedTime)
+	expectedDur = time.Until(uw.staticExpectedResolvedTime.Time())
 	expectedDurInS = math.Round(expectedDur.Seconds())
 	if expectedDurInS != pcwsHasSectorTimeout.Seconds()+60 {
 		t.Log(expectedDurInS)

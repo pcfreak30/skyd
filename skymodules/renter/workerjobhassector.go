@@ -29,6 +29,32 @@ const (
 	hasSectorBatchSize = 13
 )
 
+type JobTime []time.Duration
+
+func (jt JobTime) ResolveTime(start time.Time) ResolveTime {
+	return ResolveTime{
+		start: start,
+		times: append(JobTime{}, jt...), // deep copy
+	}
+}
+
+func (jt JobTime) Max() time.Duration {
+	return jt[len(jt)-1]
+}
+
+type ResolveTime struct {
+	start time.Time
+	times JobTime
+}
+
+func (rt ResolveTime) Add(d time.Duration) ResolveTime {
+	panic("not implemented")
+}
+
+func (rt ResolveTime) Time() time.Time {
+	panic("not implemented")
+}
+
 // errEstimateAboveMax is returned if a HasSector job wasn't added due to the
 // estimate exceeding the max.
 var errEstimateAboveMax = errors.New("can't add job since estimate is above max timeout")
@@ -313,20 +339,19 @@ func (j *jobHasSectorBatch) managedHasSector() (results [][]bool, err error) {
 // callAddWithEstimate will add a job to the queue and return a timestamp for
 // when the job is estimated to complete. An error will be returned if the job
 // is not successfully queued.
-func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector, maxEstimate time.Duration) (time.Time, error) {
+func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector, maxEstimate time.Duration) (ResolveTime, error) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	now := time.Now()
 	estimate := jq.expectedJobTime()
-	if estimate > maxEstimate {
-		return time.Time{}, errEstimateAboveMax
+	if estimate.Max() > maxEstimate {
+		return ResolveTime{}, errEstimateAboveMax
 	}
 	j.externJobStartTime = now
-	j.externEstimatedJobDuration = estimate
 	if !jq.add(j) {
-		return time.Time{}, errors.New("unable to add job to queue")
+		return ResolveTime{}, errors.New("unable to add job to queue")
 	}
-	return now.Add(estimate), nil
+	return estimate.ResolveTime(now), nil
 }
 
 // callExpectedJobTime returns the expected amount of time that this job will
@@ -334,7 +359,7 @@ func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector, maxEstimate ti
 //
 // TODO: idealy we pass `numSectors` here and get the expected job time
 // depending on the amount of instructions in the program.
-func (jq *jobHasSectorQueue) callExpectedJobTime() time.Duration {
+func (jq *jobHasSectorQueue) callExpectedJobTime() JobTime {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	return jq.expectedJobTime()
@@ -350,9 +375,8 @@ func (jq *jobHasSectorQueue) callUpdateJobTimeMetrics(jobTime time.Duration) {
 
 // expectedJobTime will return the amount of time that a job is expected to
 // take, given the current conditions of the queue.
-func (jq *jobHasSectorQueue) expectedJobTime() time.Duration {
-	percentiles := jq.staticDT.Percentiles()
-	return percentiles[0][2]
+func (jq *jobHasSectorQueue) expectedJobTime() JobTime {
+	return jq.staticDT.PercentilesCustom([]float64{.1, .2, .3, .4, .5, .6, .7, .8, .9, .99, .999})[0]
 }
 
 // initJobHasSectorQueue will init the queue for the has sector jobs.

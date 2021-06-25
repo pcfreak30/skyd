@@ -70,7 +70,7 @@ const (
 type pcwsUnresolvedWorker struct {
 	// The expected time that the worker will resolve. A worker is considered
 	// resolved if the HasSector job has finished.
-	staticExpectedResolvedTime time.Time
+	staticExpectedResolvedTime ResolveTime
 
 	// The worker that is performing the HasSector job.
 	staticWorker *worker
