@@ -663,7 +663,7 @@ func TestLaunchedWorkerInfo_String(t *testing.T) {
 	// assert output when download not complete
 	expectedWorkerInfo := "initial worker " + w.staticHostPubKey.ShortString()
 	expectedPieceInfo := "piece 1"
-	expectedEstInfo := "estimated complete 10000 ms"
+	expectedEstInfo := "estimated complete 15000 ms"
 	expectedDurInfo := "not responded after 5000ms"
 	if !strings.Contains(lwi.String(), expectedWorkerInfo) ||
 		!strings.Contains(lwi.String(), expectedPieceInfo) ||

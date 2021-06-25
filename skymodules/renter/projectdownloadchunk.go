@@ -169,7 +169,7 @@ func (lwi *launchedWorkerInfo) String() string {
 	pdcId := hex.EncodeToString(lwi.staticPDC.uid[:])
 	hostKey := lwi.staticWorker.staticHostPubKey.ShortString()
 	completeTime := lwi.staticExpectedCompleteTime.Time()
-	estimate := lwi.staticLaunchTime.Sub(completeTime).Milliseconds()
+	estimate := completeTime.Sub(lwi.staticLaunchTime).Milliseconds()
 
 	var wDescr string
 	if lwi.staticIsOverdriveWorker {
