@@ -49,19 +49,20 @@ func (jt JobTime) Max() time.Duration {
 // ResolveTime is a JobTime with added start time. It's used to estimate when a
 // given Job is expected to finish given the passed time since the start.
 type ResolveTime struct {
-	penalty time.Duration
-	start   time.Time
-	times   JobTime
+	start time.Time
+	times JobTime
 }
 
-// AddPenalty adds a penalty to the resolve time. The penalty doesn't influence
-// the individual durations of the underlying JobTime. Instead it is applied
-// after choosing the right duration. Otherwise adding a penalty might cause the
-// resolve time to decrease since it jumps back from e.g. the p90 to the p50.
-func (rt ResolveTime) AddPenalty(d time.Duration) ResolveTime {
-	newRT := rt.times.ResolveTime(rt.start.Add(d))
-	newRT.penalty += d
-	return newRT
+// AddToJobTime adds some duration to the underlying job time.
+func (rt *ResolveTime) AddToJobTime(d time.Duration) ResolveTime {
+	rtNew := ResolveTime{
+		times: append(JobTime{}, rt.times...),
+		start: rt.start,
+	}
+	for i := range rtNew.times {
+		rtNew.times[i] += d
+	}
+	return rtNew
 }
 
 // Time returns the time we expect the task to resolve. It returns the closest
@@ -76,10 +77,10 @@ func (rt ResolveTime) Time() time.Time {
 	passedTime := time.Since(rt.start)
 	for _, d := range rt.times {
 		if passedTime < d {
-			return rt.start.Add(d).Add(rt.penalty)
+			return rt.start.Add(d)
 		}
 	}
-	return rt.start.Add(rt.times.Max()).Add(rt.penalty)
+	return rt.start.Add(rt.times.Max())
 }
 
 // errEstimateAboveMax is returned if a HasSector job wasn't added due to the

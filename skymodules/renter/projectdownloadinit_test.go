@@ -27,18 +27,9 @@ func TestProjectDownloadChunkHeap(t *testing.T) {
 	}
 
 	now := time.Now()
-	tMin1 := ResolveTime{
-		start: now,
-		times: JobTime{time.Minute},
-	}
-	tMin5 := ResolveTime{
-		start: now,
-		times: JobTime{5 * time.Minute},
-	}
-	tMin10 := ResolveTime{
-		start: now,
-		times: JobTime{10 * time.Minute},
-	}
+	tMin1 := now.Add(time.Minute)
+	tMin5 := now.Add(5 * time.Minute)
+	tMin10 := now.Add(10 * time.Minute)
 
 	// add one element
 	heap.Push(&wh, &pdcInitialWorker{completeTime: tMin5})
@@ -168,11 +159,11 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 	unresolvedWorkers[0].staticExpectedResolvedTime = JobTime{0}.ResolveTime(time.Now().Add(-800 * time.Millisecond))
 	wh = pdc.initialWorkerHeap(unresolvedWorkers)
 	first = heap.Pop(&wh).(*pdcInitialWorker)
-	completeTimeInS := math.Round(time.Until(first.completeTime.Time()).Seconds())
-	t.Log(time.Until(first.completeTime.Time()))
+	completeTimeInS := math.Round(time.Until(first.completeTime).Seconds())
+	t.Log(time.Until(first.completeTime))
 	t.Log(time.Until(unresolvedWorkers[0].staticExpectedResolvedTime.Time()))
 	if completeTimeInS != 2 {
-		t.Fatal("unexpected", completeTimeInS, time.Until(first.completeTime.Time()))
+		t.Fatal("unexpected", completeTimeInS, time.Until(first.completeTime))
 	}
 
 	// manually manipulate the cooldown for worker 1's jobreadqueue, this should
@@ -226,11 +217,11 @@ func TestProjectDownloadChunk_createInitialWorkerSet(t *testing.T) {
 	dur175MS := 175 * time.Millisecond
 
 	now := time.Now()
-	t50MS := JobTime{dur50MS}.ResolveTime(now)
-	t75MS := JobTime{dur75MS}.ResolveTime(now)
-	t100MS := JobTime{dur100MS}.ResolveTime(now)
-	t125MS := JobTime{dur125MS}.ResolveTime(now)
-	t150MS := JobTime{dur150MS}.ResolveTime(now)
+	t50MS := now.Add(dur50MS)
+	t75MS := now.Add(dur75MS)
+	t100MS := now.Add(dur100MS)
+	t125MS := now.Add(dur125MS)
+	t150MS := now.Add(dur150MS)
 
 	pS := types.SiacoinPrecision.MulFloat(1e-12)
 

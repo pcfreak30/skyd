@@ -113,7 +113,7 @@ type pdcInitialWorker struct {
 	// so assuming an additional full 'readDuration' per read is overly
 	// pessimistic, at the same time we prefer to spread our downloads over
 	// multiple workers so the pessimism is not too bad.
-	completeTime ResolveTime
+	completeTime time.Time
 	cost         types.Currency
 	readDuration time.Duration
 
@@ -131,7 +131,7 @@ type pdcWorkerHeap []*pdcInitialWorker
 
 func (wh *pdcWorkerHeap) Len() int { return len(*wh) }
 func (wh *pdcWorkerHeap) Less(i, j int) bool {
-	return (*wh)[i].completeTime.Time().Before((*wh)[j].completeTime.Time())
+	return (*wh)[i].completeTime.Before((*wh)[j].completeTime)
 }
 func (wh *pdcWorkerHeap) Swap(i, j int)      { (*wh)[i], (*wh)[j] = (*wh)[j], (*wh)[i] }
 func (wh *pdcWorkerHeap) Push(x interface{}) { *wh = append(*wh, x.(*pdcInitialWorker)) }
@@ -181,9 +181,9 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		// that there is some unusual circumstance preventing the worker from
 		// being on time and that it may be another while before the worker
 		// resolves; favor some other worker instead.
-		resolveTime := uw.staticExpectedResolvedTime
-		if resolveTime.Time().Before(time.Now()) {
-			resolveTime = resolveTime.AddPenalty(3 * time.Since(resolveTime.Time()))
+		resolveTime := uw.staticExpectedResolvedTime.Time()
+		if resolveTime.Before(time.Now()) {
+			resolveTime = time.Now().Add(2 * time.Since(resolveTime))
 		}
 
 		// Determine the expected readDuration and cost for this worker. Add the
@@ -194,7 +194,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		if readDuration == 0 {
 			continue
 		}
-		completeTime := resolveTime.AddPenalty(readDuration)
+		completeTime := resolveTime.Add(readDuration)
 
 		// Create the pieces for the unresolved worker. Because the unresolved
 		// worker could be potentially used to fetch any piece (we won't know
@@ -252,10 +252,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 				readDuration := jrq.callExpectedJobTime(pdc.pieceLength)
 				resolvedWorkersMap[w.staticHostPubKeyStr] = &pdcInitialWorker{
 					// TODO: change this
-					completeTime: ResolveTime{
-						start: time.Now(),
-						times: JobTime{readDuration},
-					},
+					completeTime: time.Now().Add(readDuration),
 					cost:         cost,
 					readDuration: readDuration,
 
@@ -468,7 +465,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 			copyWorker.pieces[bestSpotPiecePos] = copyWorker.pieces[piecesLen-1]
 			copyWorker.pieces = copyWorker.pieces[:piecesLen-1]
 
-			copyWorker.completeTime = nextWorker.completeTime.AddPenalty(nextWorker.readDuration)
+			copyWorker.completeTime = nextWorker.completeTime.Add(nextWorker.readDuration)
 			heap.Push(&workerHeap, &copyWorker)
 		}
 	}
