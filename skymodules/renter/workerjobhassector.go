@@ -465,7 +465,7 @@ func (jq *jobHasSectorQueue) callUpdateJobTimeMetrics(jobTime time.Duration) {
 	jq.staticDT.AddDataPoint(jobTime)
 }
 
-var jobTimePercentiles = []float64{.99, .999}
+var jobTimePercentiles = []float64{0.5, 0.6, 0.7, 0.8, 0.9, .99, .999}
 
 // expectedJobTime will return the amount of time that a job is expected to
 // take, given the current conditions of the queue.
