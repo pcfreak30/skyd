@@ -404,7 +404,7 @@ func (jq *jobHasSectorQueue) callUpdateJobTimeMetrics(jobTime time.Duration) {
 // expectedJobTime will return the amount of time that a job is expected to
 // take, given the current conditions of the queue.
 func (jq *jobHasSectorQueue) expectedJobTime() JobTime {
-	return jq.staticDT.PercentilesCustom([]float64{.9, .99, .999})[0]
+	return jq.staticDT.PercentilesCustom([]float64{.99, .999})[0]
 }
 
 // initJobHasSectorQueue will init the queue for the has sector jobs.
