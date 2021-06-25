@@ -93,16 +93,20 @@ func (sm *skylinkManager) managedAddUnpinRequest(skylink skymodules.Skylink) {
 }
 
 // BlocklistHash returns the hash to be used in the blocklist
-//
-// TODO: Test. Generate a V1 skylink and the a V2 skylink from the V1 skylink.
-// Calling this function on them should result in the same hash.
 func (r *Renter) BlocklistHash(ctx context.Context, sl skymodules.Skylink) (crypto.Hash, error) {
 	err := r.tg.Add()
 	if err != nil {
 		return crypto.Hash{}, err
 	}
 	defer r.tg.Done()
+	return r.managedBlocklistHash(ctx, sl)
+}
 
+// managedBlocklistHash returns the hash to be used in the blocklist
+//
+// TODO: Test. Generate a V1 skylink and the a V2 skylink from the V1 skylink.
+// Calling this function on them should result in the same hash.
+func (r *Renter) managedBlocklistHash(ctx context.Context, sl skymodules.Skylink) (crypto.Hash, error) {
 	// We want to return the hash of the merkleroot of the V1 skylink. This
 	// means for V2 skylinks we need to resolve it first.
 	switch {
@@ -141,7 +145,11 @@ func (r *Renter) UnpinSkylink(skylink skymodules.Skylink) error {
 
 	// Check if skylink is blocked. If it is we can return early since the bubble
 	// code will handle deletion of blocked files.
-	if r.staticSkynetBlocklist.IsBlocked(skylink) {
+	blocked, err := r.managedIsBlocked(r.tg.StopCtx(), skylink)
+	if err != nil {
+		return err
+	}
+	if blocked {
 		return ErrSkylinkBlocked
 	}
 
@@ -153,4 +161,15 @@ func (r *Renter) UnpinSkylink(skylink skymodules.Skylink) error {
 	// Add the unpin request
 	r.staticSkylinkManager.managedAddUnpinRequest(skylink)
 	return nil
+}
+
+// managedIsBlocked returns whether or not a skylink is blocked. This method can
+// be used for both V1 and V2 skylinks.
+func (r *Renter) managedIsBlocked(ctx context.Context, sl skymodules.Skylink) (bool, error) {
+	hash, err := r.managedBlocklistHash(ctx, sl)
+	if err != nil {
+		return false, errors.AddContext(err, "unable to get blocklist hash")
+	}
+
+	return r.staticSkynetBlocklist.IsHashBlocked(hash), nil
 }

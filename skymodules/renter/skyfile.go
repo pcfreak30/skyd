@@ -322,7 +322,11 @@ func (r *Renter) managedCreateSkylinkFromFileNode(ctx context.Context, sup skymo
 	}
 
 	// Check if the new skylink is blocked
-	if r.staticSkynetBlocklist.IsBlocked(skylink) {
+	blocked, err := r.managedIsBlocked(ctx, skylink)
+	if err != nil {
+		return skymodules.Skylink{}, err
+	}
+	if blocked {
 		err = ErrSkylinkBlocked
 		// Skylink is blocked, return error and try and delete file
 		deleteErr := r.DeleteFile(sup.SiaPath)
@@ -758,7 +762,11 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	}
 
 	// Check if link is blocked
-	if r.staticSkynetBlocklist.IsBlocked(link) {
+	blocked, err := r.managedIsBlocked(ctx, link)
+	if err != nil {
+		return nil, nil, err
+	}
+	if blocked {
 		return nil, nil, ErrSkylinkBlocked
 	}
 
@@ -804,7 +812,11 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 	}
 
 	// Check if link is blocked
-	if r.staticSkynetBlocklist.IsBlocked(link) {
+	blocked, err := r.managedIsBlocked(ctx, link)
+	if err != nil {
+		return nil, nil, err
+	}
+	if blocked {
 		return nil, nil, ErrSkylinkBlocked
 	}
 
@@ -873,18 +885,21 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 	if skylink.IsSkylinkV2() {
 		return errors.New("can't pin version 2 skylink")
 	}
-
-	// Check if link is blocked
-	if r.staticSkynetBlocklist.IsBlocked(skylink) {
-		return ErrSkylinkBlocked
-	}
-
 	// Create a context.
 	ctx := r.tg.StopCtx()
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
+	}
+
+	// Check if link is blocked
+	blocked, err := r.managedIsBlocked(ctx, skylink)
+	if err != nil {
+		return err
+	}
+	if blocked {
+		return ErrSkylinkBlocked
 	}
 
 	// Create a span.
@@ -1013,7 +1028,11 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 	}
 
 	// Check if the new skylink is blocked
-	if r.staticSkynetBlocklist.IsBlocked(skylink) {
+	blocked, err := r.managedIsBlocked(r.tg.StopCtx(), skylink)
+	if err != nil {
+		return skymodules.Skylink{}, err
+	}
+	if blocked {
 		return skymodules.Skylink{}, ErrSkylinkBlocked
 	}
 
@@ -1216,7 +1235,11 @@ func (r *Renter) UploadSkyfile(ctx context.Context, sup skymodules.SkyfileUpload
 	}
 
 	// Check if skylink is blocked
-	if r.staticSkynetBlocklist.IsBlocked(skylink) && !sup.DryRun {
+	blocked, err := r.managedIsBlocked(ctx, skylink)
+	if err != nil {
+		return skymodules.Skylink{}, err
+	}
+	if blocked && !sup.DryRun {
 		// No need to try and delete the file, the above defer func will handle
 		// the deletion
 		return skymodules.Skylink{}, ErrSkylinkBlocked
@@ -1241,7 +1264,12 @@ func (r *Renter) managedIsFileNodeBlocked(fileNode *filesystem.FileNode) bool {
 			continue
 		}
 		// Check if skylink is blocked
-		if r.staticSkynetBlocklist.IsBlocked(skylink) {
+		blocked, err := r.managedIsBlocked(r.tg.StopCtx(), skylink)
+		if err != nil {
+			r.staticLog.Printf("WARN: error checking if skylink (%v) is blocked: %v", skylink, err)
+			continue
+		}
+		if blocked {
 			return true
 		}
 	}
@@ -1274,7 +1302,11 @@ func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, sl skymodules.S
 	}
 
 	// Check if link is blocked
-	if r.staticSkynetBlocklist.IsBlocked(skylink) {
+	blocked, err := r.managedIsBlocked(ctx, skylink)
+	if err != nil {
+		return skymodules.Skylink{}, nil, err
+	}
+	if blocked {
 		return skymodules.Skylink{}, nil, ErrSkylinkBlocked
 	}
 	return skylink, srv, nil
@@ -1335,12 +1367,25 @@ func (r *Renter) managedTryResolveSkylinkV2Recursive(ctx context.Context, link s
 	// Check if link needs to be resolved from V2 to V1.
 	for i := 0; i < int(MaxSkylinkV2ResolvingDepth) && link.IsSkylinkV2(); i++ {
 		var srv *skymodules.RegistryEntry
-		link, srv, err = r.managedTryResolveSkylinkV2(ctx, link)
+		link, srv, err = r.managedTryResolveSkylinkV2WithoutBlocklistCheck(ctx, link)
 		if err != nil {
 			return skymodules.Skylink{}, nil, err
 		}
 		if srv != nil {
 			srvs = append(srvs, *srv)
+		}
+	}
+
+	// If we made it to a V1 link check if it is blocked. We only check if
+	// we have reached a V1 link because if it is still a V2 link we don't
+	// know if it is still a nested V2 link.
+	if link.IsSkylinkV1() {
+		blocked, err := r.managedIsBlocked(ctx, link)
+		if err != nil {
+			return skymodules.Skylink{}, nil, err
+		}
+		if blocked {
+			return skymodules.Skylink{}, nil, ErrSkylinkBlocked
 		}
 	}
 	return link, srvs, nil
