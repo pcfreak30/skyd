@@ -157,12 +157,10 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 	// expected read estimate was 200ms and we add twice the amount of time the
 	// worker is late resolving - 800ms late means 1600ms penalty, add the
 	// original 200ms to get 1800ms total.
-	unresolvedWorkers[0].staticExpectedResolvedTime = JobTime{0}.ResolveTime(time.Now().Add(-800 * time.Millisecond))
+	unresolvedWorkers[0].staticExpectedResolvedTime = newTestResolveTime(time.Now().Add(-800*time.Millisecond), 0)
 	wh = pdc.initialWorkerHeap(unresolvedWorkers)
 	first = heap.Pop(&wh).(*pdcInitialWorker)
 	completeTimeInS := math.Round(time.Until(first.completeTime).Seconds())
-	t.Log(time.Until(first.completeTime))
-	t.Log(time.Until(unresolvedWorkers[0].staticExpectedResolvedTime.Time()))
 	if completeTimeInS != 2 {
 		t.Fatal("unexpected", completeTimeInS, time.Until(first.completeTime))
 	}
@@ -171,7 +169,7 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 	// skip the worker
 	worker1.staticJobReadQueue.cooldownUntil = time.Now().Add(time.Second)
 	wh = pdc.initialWorkerHeap(unresolvedWorkers)
-	if wh.Len() != 0 {
+	if wh.Len() != 1 {
 		t.Fatal("unexpected", wh.Len())
 	}
 
