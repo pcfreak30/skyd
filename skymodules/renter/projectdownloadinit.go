@@ -183,7 +183,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		// resolves; favor some other worker instead.
 		resolveTime := uw.staticExpectedResolvedTime
 		if resolveTime.Time().Before(time.Now()) {
-			resolveTime = resolveTime.Add(2 * time.Since(resolveTime.Time()))
+			resolveTime = resolveTime.AddPenalty(3 * time.Since(resolveTime.Time()))
 		}
 
 		// Determine the expected readDuration and cost for this worker. Add the
@@ -194,7 +194,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		if readDuration == 0 {
 			continue
 		}
-		completeTime := resolveTime.Add(readDuration)
+		completeTime := resolveTime.AddPenalty(readDuration)
 
 		// Create the pieces for the unresolved worker. Because the unresolved
 		// worker could be potentially used to fetch any piece (we won't know
@@ -468,7 +468,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 			copyWorker.pieces[bestSpotPiecePos] = copyWorker.pieces[piecesLen-1]
 			copyWorker.pieces = copyWorker.pieces[:piecesLen-1]
 
-			copyWorker.completeTime = nextWorker.completeTime.Add(nextWorker.readDuration)
+			copyWorker.completeTime = nextWorker.completeTime.AddPenalty(nextWorker.readDuration)
 			heap.Push(&workerHeap, &copyWorker)
 		}
 	}
