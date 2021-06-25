@@ -29,8 +29,11 @@ const (
 	hasSectorBatchSize = 13
 )
 
+// JobTime tracks multiple potential durations of a job. e.g. the p50, p90 and
+// p99.
 type JobTime []time.Duration
 
+// ResolveTime turns a JobTime into a ResolveTime by giving it a start time.
 func (jt JobTime) ResolveTime(start time.Time) ResolveTime {
 	return ResolveTime{
 		start: start,
@@ -38,21 +41,39 @@ func (jt JobTime) ResolveTime(start time.Time) ResolveTime {
 	}
 }
 
+// Max returns the largest duration within the JobTime.
 func (jt JobTime) Max() time.Duration {
 	return jt[len(jt)-1]
 }
 
+// ResolveTime is a JobTime with added start time. It's used to estimate when a
+// given Job is expected to finish given the passed time since the start.
 type ResolveTime struct {
 	start time.Time
 	times JobTime
 }
 
+// Add adds the given duration to the resolve time by shifting the start point.
 func (rt ResolveTime) Add(d time.Duration) ResolveTime {
-	panic("not implemented")
+	return rt.times.ResolveTime(rt.start.Add(d))
 }
 
+// Time returns the time we expect the task to resolve. It returns the closest
+// expected time by going through the list of potential durations and choosing
+// the lowest one that's still in the future. If no such time is found, the
+// largest duration is chosen.
 func (rt ResolveTime) Time() time.Time {
-	panic("not implemented")
+	if len(rt.times) == 0 {
+		build.Critical("empty resolve time")
+		return time.Time{}
+	}
+	passedTime := time.Since(rt.start)
+	for _, d := range rt.times {
+		if passedTime < d {
+			return rt.start.Add(d)
+		}
+	}
+	return rt.start.Add(rt.times.Max())
 }
 
 // errEstimateAboveMax is returned if a HasSector job wasn't added due to the
