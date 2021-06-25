@@ -2547,13 +2547,6 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies
 		t.Fatal(err)
 	}
 	blockedSiaPaths = append(blockedSiaPaths, sp, skyfilePath)
-	for _, siaPath := range blockedSiaPaths {
-		_, err = r.RenterFileRootGet(siaPath)
-		if err != nil {
-			t.Log(siaPath)
-			t.Fatal(err)
-		}
-	}
 
 	// Blocklist the skylink
 	remove = []string{}
@@ -2644,6 +2637,7 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies
 	for _, siaPath := range blockedSiaPaths {
 		_, err = r.RenterFileRootGet(siaPath)
 		if err != nil {
+			t.Log(siaPath)
 			t.Fatal(err)
 		}
 	}

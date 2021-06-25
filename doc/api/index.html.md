@@ -3398,6 +3398,11 @@ curl -A "Sia-Agent" --user "":<apipassword> --data '{"remove" : ["GAC38Gan6YHVpL
 updates the list of skylinks that should be blocked from Skynet. This endpoint
 can be used to both add and remove skylinks from the blocklist.
 
+**NOTE:** this endpoint accepts both V1 and V2 skylinks. When a V2 skylink is
+submitted, it is resolved into a V1 skylink so that the data behind the V1
+skylink is blocked. This allows for the V2 skylink to be updated to point to new
+content that isn't blocked.
+
 ### Path Parameters
 ### REQUIRED
 At least one of the following fields needs to be non empty.
