@@ -352,19 +352,19 @@ func (jq *jobHasSectorQueue) callUpdateJobTimeMetrics(jobTime time.Duration) {
 
 // expectedJobTime will return the amount of time that a job is expected to
 // take, given the current conditions of the queue.
-// NOTE: We use the p9999 for the HasSector estimate because we want to avoid as
+// NOTE: We use the p90 for the HasSector estimate because we want to avoid as
 // much as possible waiting on a result from a host. In 98% of cases, the actual
 // result will come back faster than the estimate. Because all HasSector jobs
 // are launched in parallel, we get to make use of the time saved from requests
-// that are faster than their p9999 estimate even though we don't anticipate it
-// - using the p9999 estimate here really improves our long tail numbers without
+// that are faster than their p90 estimate even though we don't anticipate it -
+// using the p90 estimate here really improves our long tail numbers without
 // damaging our median numbers much. We can't use the same strategy for
 // ReadSector because we only launch a small number of ReadSector jobs. Focusing
-// in on the p9999 of the ReadSector jobs results in us avoiding workers that
-// have really strong median results but occasional flakes, which really harms
-// the median performance of our downloads.
+// in on the p90 of the ReadSector jobs results in us avoiding workers that have
+// really strong median results but occasional flakes, which really harms the
+// median performance of our downloads.
 func (jq *jobHasSectorQueue) expectedJobTime() time.Duration {
-	return jq.staticDT.Percentiles()[0][3] // p9999
+	return jq.staticDT.Percentiles()[0][0] // p90
 }
 
 // initJobHasSectorQueue will init the queue for the has sector jobs.
