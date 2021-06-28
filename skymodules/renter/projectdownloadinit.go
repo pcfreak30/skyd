@@ -243,6 +243,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 			// Ignore this worker if the worker is not currently equipped to
 			// perform async work, or if the read queue is on a cooldown.
 			jrq := w.staticJobReadQueue
+			jhsq := w.staticJobHasSectorQueue
 			if !w.managedAsyncReady() || jrq.callOnCooldown() {
 				continue
 			}
@@ -256,11 +257,19 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 				elem.pieces = append(elem.pieces, uint64(i))
 			} else {
 				cost := jrq.callExpectedJobCost(pdc.pieceLength)
-				readDuration := jrq.callExpectedJobTime(pdc.pieceLength)
+
+				// Get a current resolve estimate and plug in
+				// the negative time it took that worker to
+				// resolve. That way it seems like this worker
+				// just resolved.
+				resolveDuration := jhsq.callExpectedJobTime()
+				resolveTime := resolveDuration.ResolveTime(time.Now().Add(-pieceDownload.staticResolveTime))
+				readTime := resolveTime.ReadTime(jrq.callExpectedJobTime(pdc.pieceLength))
+
 				resolvedWorkersMap[w.staticHostPubKeyStr] = &pdcInitialWorker{
-					completeTime: time.Now().Add(readDuration.Min()),
+					completeTime: time.Now().Add(readTime.Duration()),
 					cost:         cost,
-					readDuration: readDuration.Min(),
+					readDuration: readTime.Duration(),
 
 					pieces:     []uint64{uint64(i)},
 					unresolved: false,

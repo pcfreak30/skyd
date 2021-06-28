@@ -49,6 +49,8 @@ type (
 		// to complete. This is used to determine whether or not a download is late.
 		expectedCompleteTime ResolveTime
 
+		staticResolveTime time.Duration
+
 		worker *worker
 	}
 
@@ -245,7 +247,8 @@ func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <
 		resp := ws.resolvedWorkers[i]
 		for _, pieceIndex := range resp.pieceIndices {
 			pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], &pieceDownload{
-				worker: resp.worker,
+				worker:            resp.worker,
+				staticResolveTime: resp.staticJobTime,
 			})
 		}
 	}
