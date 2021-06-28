@@ -331,12 +331,8 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 	// do not want to exclude this worker if it is on a cooldown, however we do
 	// want to take into consideration the cooldown period when we estimate the
 	// expected resolve time.
-	var coolDownPenalty time.Duration
 	if w.managedOnMaintenanceCooldown() {
-		wms := w.staticMaintenanceState
-		wms.mu.Lock()
-		coolDownPenalty = time.Until(wms.cooldownUntil)
-		wms.mu.Unlock()
+		return errEstimateAboveMax
 	}
 
 	// Create and launch the job.
@@ -351,12 +347,11 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 		cancel()
 		return errors.AddContext(err, fmt.Sprintf("unable to add has sector job to %v", w.staticHostPubKeyStr))
 	}
-	expectedResolveTime := expectedJobTime.Add(coolDownPenalty)
 
 	// Create the unresolved worker for this job.
 	uw := &pcwsUnresolvedWorker{
 		staticWorker:               w,
-		staticExpectedResolvedTime: expectedResolveTime,
+		staticExpectedResolvedTime: expectedJobTime,
 	}
 
 	// Add the unresolved worker to the worker state. Technically this doesn't
