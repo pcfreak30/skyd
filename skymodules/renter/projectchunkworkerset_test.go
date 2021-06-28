@@ -527,7 +527,9 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 	}
 
 	// launch the worker
-	w.staticJobHasSectorQueue.weightedJobTime = float64(pcwsHasSectorTimeout)
+	seedTime := time.Duration(pcwsHasSectorTimeout / 2)
+	w.staticJobHasSectorQueue.staticDT = skymodules.NewDistributionTrackerStandard()
+	w.staticJobHasSectorQueue.callUpdateJobTimeMetrics(seedTime)
 	responseChan = make(chan *jobHasSectorResponse, 0)
 	err = pcws.managedLaunchWorker(w, responseChan, ws)
 	if err != nil {
@@ -544,7 +546,7 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 	// verify the expected dur matches the initial queue estimate
 	expectedDur := time.Until(uw.staticExpectedResolvedTime)
 	expectedDurInS := math.Round(expectedDur.Seconds())
-	if expectedDurInS != pcwsHasSectorTimeout.Seconds() {
+	if expectedDurInS != float64(seedTime.Seconds()) {
 		t.Log(expectedDurInS)
 		t.Fatal("unexpected")
 	}
@@ -561,7 +563,7 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 	uw = ws.unresolvedWorkers["myworker"]
 	expectedDur = time.Until(uw.staticExpectedResolvedTime)
 	expectedDurInS = math.Round(expectedDur.Seconds())
-	if expectedDurInS != pcwsHasSectorTimeout.Seconds()+60 {
+	if expectedDurInS != seedTime.Seconds()+60 {
 		t.Log(expectedDurInS)
 		t.Fatal("unexpected")
 	}
