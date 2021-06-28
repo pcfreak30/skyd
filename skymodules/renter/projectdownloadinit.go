@@ -92,7 +92,7 @@ import (
 // maxWaitUnresolvedWorkerUpdate defines the amount of time we want to wait for
 // unresolved workers to become resolved when trying to create the initial
 // worker set.
-const maxWaitUnresolvedWorkerUpdate = 10 * time.Millisecond
+const maxWaitUnresolvedWorkerUpdate = 30 * time.Millisecond
 
 // errNotEnoughWorkers is returned if the working set does not have enough
 // workers to successfully complete the download
@@ -293,7 +293,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 // set. If workers are going a lot time and remaining unresolved, a penalty is
 // applied which will eventually break those workers and revert to preferring
 // the already resolved workers.
-func (pdc *projectDownloadChunk) createInitialWorkerSet(parent opentracing.Span, workerHeap pdcWorkerHeap) ([]*pdcInitialWorker, error) {
+func (pdc *projectDownloadChunk) createInitialWorkerSet(parent opentracing.Span, workerHeap pdcWorkerHeap, force bool) ([]*pdcInitialWorker, error) {
 	// Convenience variable.
 	ec := pdc.workerSet.staticErasureCoder
 	gs := types.NewCurrency(new(big.Int).Exp(big.NewInt(10), big.NewInt(33), nil)) // 1GS
@@ -525,7 +525,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(parent opentracing.Span,
 		return nil, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v", totalPieces, ec.MinPieces()))
 	}
 
-	if isUnresolved {
+	if isUnresolved && !force {
 		span.LogKV("isUnresolved", fmt.Sprintf("worker %v - complete time %v - read dur %v", unresolvedPiece.worker.staticHostPubKey, time.Until(unresolvedPiece.completeTime), unresolvedPiece.readDuration))
 		return nil, nil
 	}
@@ -555,6 +555,7 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 	parent := opentracing.SpanFromContext(pdc.ctx)
 	span := opentracing.StartSpan("launchInitialWorkers", opentracing.FollowsFrom(parent.Context()))
 	defer span.Finish()
+	force := false
 	for {
 		cont, err := func() (bool, error) {
 			var loopSpan opentracing.Span
@@ -577,7 +578,7 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 			tmp.Finish()
 
 			// Create an initial worker set
-			finalWorkers, err := pdc.createInitialWorkerSet(loopSpan, workerHeap)
+			finalWorkers, err := pdc.createInitialWorkerSet(loopSpan, workerHeap, force)
 			if err != nil {
 				return false, errors.AddContext(err, "unable to build initial set of workers")
 			}
@@ -606,6 +607,7 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 				// have caused an already resolved worker to be favoured over the
 				// unresolved worker in the set.
 				loopSpan.LogKV("maxWait", fmt.Sprintf("%v | worker max wait triggered\n", time.Since(start)))
+				force = true
 			case <-pdc.ctx.Done():
 				return false, errors.New("timed out while trying to build initial set of workers")
 			}
