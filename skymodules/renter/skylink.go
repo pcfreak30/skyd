@@ -103,9 +103,6 @@ func (r *Renter) BlocklistHash(ctx context.Context, sl skymodules.Skylink) (cryp
 }
 
 // managedBlocklistHash returns the hash to be used in the blocklist
-//
-// TODO: Test. Generate a V1 skylink and the a V2 skylink from the V1 skylink.
-// Calling this function on them should result in the same hash.
 func (r *Renter) managedBlocklistHash(ctx context.Context, sl skymodules.Skylink) (crypto.Hash, error) {
 	// We want to return the hash of the merkleroot of the V1 skylink. This
 	// means for V2 skylinks we need to resolve it first.
