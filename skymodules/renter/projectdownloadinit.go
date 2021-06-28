@@ -517,9 +517,10 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(parent opentracing.Span,
 	// the best set is done and all of the workers in the best set are resolved,
 	// return the best set and everything else is nil.
 	totalPieces := 0
+	unresolvedPieces := 0
 	isUnresolved := false
 	var unresolvedPiece *pdcInitialWorker
-	for _, piece := range bestSet {
+	for i, piece := range bestSet {
 		if piece == nil {
 			continue
 		}
@@ -528,12 +529,17 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(parent opentracing.Span,
 		if unresolvedPiece == nil && piece.unresolved {
 			unresolvedPiece = piece
 		}
+		if piece.unresolved {
+			bestSet[i] = nil
+			unresolvedPieces++
+		}
 	}
 
 	if totalPieces < ec.MinPieces() {
 		return nil, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v", totalPieces, ec.MinPieces()))
 	}
 
+	force = force && (totalPieces-unresolvedPieces) >= ec.MinPieces()
 	if isUnresolved && !force {
 		span.LogKV("isUnresolved", fmt.Sprintf("worker %v - complete time %v - read dur %v", unresolvedPiece.worker.staticHostPubKey, time.Until(unresolvedPiece.completeTime), unresolvedPiece.readDuration))
 		return nil, nil
