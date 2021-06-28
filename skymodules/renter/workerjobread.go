@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"math"
 	"sync/atomic"
 	"time"
 
@@ -71,6 +72,10 @@ type (
 		weightedEarlyJobs64kDelta float64
 		weightedEarlyJobs1mDelta  float64
 		weightedEarlyJobs4mDelta  float64
+
+		weightedJobs64kSquaredDelta float64
+		weightedJobs1mSquaredDelta  float64
+		weightedJobs4mSquaredDelta  float64
 
 		*jobGenericQueue
 	}
@@ -326,23 +331,27 @@ func (jq *jobReadQueue) callUpdateJobTimeMetrics(length uint64, jobTime time.Dur
 	var nLateJobs, nEarlyJobs *uint64
 	var weightedLateJobsDelta, weightedEarlyJobsDelta *float64
 	var dt *skymodules.DistributionTracker
+	var weightedJobsSquaredDelta *float64
 	if length <= size64K {
 		nLateJobs = &jq.nLateJobs64k
 		nEarlyJobs = &jq.nEarlyJobs64k
 		weightedLateJobsDelta = &jq.weightedLateJobs64kDelta
 		weightedEarlyJobsDelta = &jq.weightedEarlyJobs64kDelta
+		weightedJobsSquaredDelta = &jq.weightedJobs64kSquaredDelta
 		dt = jq.staticDT64k
 	} else if length <= size1M {
 		nLateJobs = &jq.nLateJobs1m
 		nEarlyJobs = &jq.nEarlyJobs1m
 		weightedLateJobsDelta = &jq.weightedLateJobs1mDelta
 		weightedEarlyJobsDelta = &jq.weightedEarlyJobs1mDelta
+		weightedJobsSquaredDelta = &jq.weightedJobs1mSquaredDelta
 		dt = jq.staticDT1m
 	} else {
 		nLateJobs = &jq.nLateJobs4m
 		nEarlyJobs = &jq.nEarlyJobs4m
 		weightedLateJobsDelta = &jq.weightedLateJobs4mDelta
 		weightedEarlyJobsDelta = &jq.weightedEarlyJobs4mDelta
+		weightedJobsSquaredDelta = &jq.weightedJobs4mSquaredDelta
 		dt = jq.staticDT4m
 	}
 
@@ -359,6 +368,7 @@ func (jq *jobReadQueue) callUpdateJobTimeMetrics(length uint64, jobTime time.Dur
 		delta = expectedJobTime - jobTime
 		*weightedEarlyJobsDelta = expMovingAvgHotStart(*weightedEarlyJobsDelta, float64(delta), jobReadPerformanceDecay)
 	}
+	*weightedJobsSquaredDelta = expMovingAvgHotStart(*weightedJobsSquaredDelta, math.Pow(float64(delta), 2), jobReadPerformanceDecay)
 	dt.AddDataPoint(jobTime)
 }
 

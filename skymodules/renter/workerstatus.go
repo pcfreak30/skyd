@@ -154,6 +154,10 @@ func (w *worker) callReadJobStatus() skymodules.WorkerReadJobsStatus {
 		NumLateJobs1m:  jrq.nLateJobs1m,
 		NumLateJobs4m:  jrq.nLateJobs4m,
 
+		Variance64k: toMS(jrq.weightedJobs64kSquaredDelta) / (jrq.nEarlyJobs64k + jrq.nLateJobs64k - 1),
+		Variance1m:  toMS(jrq.weightedJobs1mSquaredDelta) / (jrq.nEarlyJobs1m + jrq.nLateJobs1m - 1),
+		Variance4m:  toMS(jrq.weightedJobs4mSquaredDelta) / (jrq.nEarlyJobs4m + jrq.nLateJobs4m - 1),
+
 		ConsecutiveFailures: status.consecutiveFailures,
 		JobQueueSize:        status.size,
 		RecentErr:           recentErrString,

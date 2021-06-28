@@ -1033,6 +1033,10 @@ type (
 		AvgEarlyDelta1m  uint64 `json:"avgearlydelta1m"`  // in ms
 		AvgEarlyDelta4m  uint64 `json:"avgearlydelta4m"`  // in ms
 
+		Variance64k uint64 `json:"variance64k"` // in ms
+		Variance1m  uint64 `json:"variance1m"`  // in ms
+		Variance4m  uint64 `json:"variance4m"`  // in ms
+
 		NumLateJobs64k uint64 `json:"numlatejobs64k"`
 		NumLateJobs1m  uint64 `json:"numlatejobs1m"`
 		NumLateJobs4m  uint64 `json:"numlatejobs4m"`

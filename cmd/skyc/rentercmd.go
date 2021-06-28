@@ -2356,14 +2356,14 @@ func renterworkersrjcmd(cmd *cobra.Command, args []string) {
 
 	// print header
 	size := args[0]
-	header := fmt.Sprintf("Host PubKey\tJobs\tAvgJobTime%s (ms)\tEarlyJobs%s\tAvgEarlyDelta%s (ms)\tLateJobs%s\tAvgLateDelta%s (ms)\tConsecFail\tErrorAt\tError", size, size, size, size, size)
+	header := fmt.Sprintf("Host PubKey\tJobs\tAvgJobTime%s (ms)\tEarlyJobs%s\tVariance%s (ms)\tAvgEarlyDelta%s (ms)\tLateJobs%s\tAvgLateDelta%s (ms)\tConsecFail\tErrorAt\tError", size, size, size, size, size, size)
 	fmt.Fprintln(w, "\nWorker Read Jobs  \n\n"+header)
 
 	// print rows
 	for _, worker := range rw.Workers {
 		rjs := worker.ReadJobsStatus
 
-		var avgJobTime, numEarlyJobs, avgEarlyDelta, numLateJobs, avgLateDelta uint64
+		var avgJobTime, numEarlyJobs, avgEarlyDelta, numLateJobs, avgLateDelta, variance uint64
 		switch size {
 		case "64k":
 			avgJobTime = rjs.AvgJobTime64k
@@ -2371,18 +2371,21 @@ func renterworkersrjcmd(cmd *cobra.Command, args []string) {
 			avgEarlyDelta = rjs.AvgEarlyDelta64k
 			numLateJobs = rjs.NumLateJobs64k
 			avgLateDelta = rjs.AvgLateDelta64k
+			variance = rjs.Variance64k
 		case "1m":
 			avgJobTime = rjs.AvgJobTime1m
 			numEarlyJobs = rjs.NumEarlyJobs1m
 			avgEarlyDelta = rjs.AvgEarlyDelta1m
 			numLateJobs = rjs.NumLateJobs1m
 			avgLateDelta = rjs.AvgLateDelta1m
+			variance = rjs.Variance1m
 		case "4m":
 			avgJobTime = rjs.AvgJobTime4m
 			numEarlyJobs = rjs.NumEarlyJobs4m
 			avgEarlyDelta = rjs.AvgEarlyDelta4m
 			numLateJobs = rjs.NumLateJobs4m
 			avgLateDelta = rjs.AvgLateDelta4m
+			variance = rjs.Variance4m
 		default:
 			die("unknown size category - use '64k', '1m' or '4m'")
 		}
@@ -2400,10 +2403,11 @@ func renterworkersrjcmd(cmd *cobra.Command, args []string) {
 		fmt.Fprintf(w, "%v", worker.HostPubKey.String())
 
 		// ReadJobs Info
-		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\n",
+		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\n",
 			rjs.JobQueueSize,
 			avgJobTime,
 			numEarlyJobs,
+			variance,
 			avgEarlyDelta,
 			numLateJobs,
 			avgLateDelta,
