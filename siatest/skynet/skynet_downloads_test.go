@@ -63,31 +63,52 @@ func TestSkynetDownloads(t *testing.T) {
 func testDownloadSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	// upload a single file using a stream
-	testName := "SingleFileRegular"
-	size := fastrand.Uint64n(100) + 100
-	data := fastrand.Bytes(int(size))
-	skylink, _, _, err := r.UploadNewSkyfileWithDataBlocking("SingleFileRegular", data, false)
-	if err != nil {
-		t.Fatal(err)
+	// Define the test
+	downloadtest := func(testName string, size uint64) error {
+		// upload a single file using a stream
+		data := fastrand.Bytes(int(size))
+		skylink, _, _, err := r.UploadNewSkyfileWithDataBlocking(testName, data, false)
+		if err != nil {
+			return err
+		}
+
+		// verify downloads
+		//
+		// note: these switch from un-cached to cached downloads partway through. By
+		// passing verification on all pieces of the test, we are confirming that
+		// the caching is correct.
+		err = verifyDownloadRaw(t, r, skylink, data, testName)
+		if err != nil {
+			return errors.AddContext(err, "raw download failed")
+		}
+		err = verifyDownloadDirectory(t, r, skylink, data, testName)
+		if err != nil {
+			return errors.AddContext(err, "directory download failed")
+		}
+		err = verifyDownloadAsArchive(t, r, skylink, fileMap{testName: data}, testName)
+		if err != nil {
+			return errors.AddContext(err, "archive download failed")
+		}
+		return nil
 	}
 
-	// verify downloads
-	//
-	// note: these switch from un-cached to cached downloads partway through. By
-	// passing verification on all pieces of the test, we are confirming that
-	// the caching is correct.
-	err = verifyDownloadRaw(t, r, skylink, data, testName)
-	if err != nil {
-		t.Fatal(err)
+	// Define test cases
+	var tests = []struct {
+		name string
+		size uint64
+	}{
+		{"SingleFileRegular_Small", fastrand.Uint64n(100) + 100},
+		{"SingleFileRegular_Large", modules.SectorSize + 100},
+		{"SingleFileRegular_Zero", 0},
 	}
-	err = verifyDownloadDirectory(t, r, skylink, data, testName)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = verifyDownloadAsArchive(t, r, skylink, fileMap{"SingleFileRegular": data}, testName)
-	if err != nil {
-		t.Fatal(err)
+
+	// Run tests
+	for _, test := range tests {
+		err := downloadtest(test.name, test.size)
+		if err != nil {
+			t.Log("Test:", test.name)
+			t.Fatal(err)
+		}
 	}
 }
 
