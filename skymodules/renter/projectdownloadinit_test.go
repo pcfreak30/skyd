@@ -121,7 +121,7 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 
 	// create the initial worker heap and validate the order in which the
 	// unresolved workers were added
-	wh := pdc.initialWorkerHeap(unresolvedWorkers)
+	wh := pdc.initialWorkerHeap(unresolvedWorkers, false)
 	first := heap.Pop(&wh).(*pdcInitialWorker)
 	if first.worker.staticHostPubKeyStr != worker2.staticHostPubKeyStr {
 		t.Fatal("unexpected")
@@ -138,7 +138,7 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 	// put worker 2 on maintenance cooldown, very it's not part of the initial
 	// worker heap and worker 3 took its place
 	worker2.staticMaintenanceState.cooldownUntil = time.Now().Add(time.Minute)
-	wh = pdc.initialWorkerHeap(unresolvedWorkers)
+	wh = pdc.initialWorkerHeap(unresolvedWorkers, false)
 	first = heap.Pop(&wh).(*pdcInitialWorker)
 	if first.worker.staticHostPubKeyStr != worker3.staticHostPubKeyStr {
 		t.Fatal("unexpected")
@@ -147,7 +147,7 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 	// make the read estimates for worker 3 return 0, verify it's not part of
 	// initial worker heap and worker 1 took its place
 	worker3.staticJobReadQueue.staticDT64k = skymodules.NewDistributionTrackerStandard()
-	wh = pdc.initialWorkerHeap(unresolvedWorkers)
+	wh = pdc.initialWorkerHeap(unresolvedWorkers, false)
 	first = heap.Pop(&wh).(*pdcInitialWorker)
 	if first.worker.staticHostPubKeyStr != worker1.staticHostPubKeyStr {
 		t.Fatal("unexpected")
@@ -159,7 +159,7 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 	// worker is late resolving - 800ms late means 1600ms penalty, add the
 	// original 200ms to get 1800ms total.
 	unresolvedWorkers[0].staticExpectedResolvedTime = newTestResolveTime(time.Now().Add(-800*time.Millisecond), 0)
-	wh = pdc.initialWorkerHeap(unresolvedWorkers)
+	wh = pdc.initialWorkerHeap(unresolvedWorkers, false)
 	first = heap.Pop(&wh).(*pdcInitialWorker)
 	completeTimeInS := math.Round(time.Until(first.completeTime).Seconds())
 	if completeTimeInS != 2 {
@@ -178,7 +178,7 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 	// manually manipulate the cooldown for worker 1's jobreadqueue, this should
 	// skip the worker
 	worker1.staticJobReadQueue.cooldownUntil = time.Now().Add(time.Second)
-	wh = pdc.initialWorkerHeap(unresolvedWorkers)
+	wh = pdc.initialWorkerHeap(unresolvedWorkers, false)
 	if wh.Len() != 1 {
 		t.Fatal("unexpected", wh.Len())
 	}
@@ -302,7 +302,7 @@ func TestProjectDownloadChunk_createInitialWorkerSet(t *testing.T) {
 	// create an initial worker set, we expect this to fail due to the fact
 	// there's not enough workers, seeing as w1 and w2 return the same piece,
 	// rendering w1 unuseful.
-	iws, err := pdc.createInitialWorkerSet(nil, wh, false)
+	iws, err := pdc.createInitialWorkerSet(nil, wh)
 	if !errors.Contains(err, errNotEnoughWorkers) || iws != nil {
 		t.Fatal("unexpected")
 	}
@@ -310,7 +310,7 @@ func TestProjectDownloadChunk_createInitialWorkerSet(t *testing.T) {
 	// add a fourth worker, we expect it to succeed now and return an initial
 	// worker set that can download min pieces
 	wh = workersToHeap(w1, w2, w3, w4)
-	iws, err = pdc.createInitialWorkerSet(nil, wh, false)
+	iws, err = pdc.createInitialWorkerSet(nil, wh)
 	if err != nil {
 		t.Fatal("unexpected", err)
 	}
@@ -320,7 +320,7 @@ func TestProjectDownloadChunk_createInitialWorkerSet(t *testing.T) {
 
 	// add another worker, undercutting w4 in price
 	wh = workersToHeap(w1, w2, w3, w4, w5)
-	iws, err = pdc.createInitialWorkerSet(nil, wh, false)
+	iws, err = pdc.createInitialWorkerSet(nil, wh)
 	if err != nil {
 		t.Fatal("unexpected", err)
 	}
@@ -331,7 +331,7 @@ func TestProjectDownloadChunk_createInitialWorkerSet(t *testing.T) {
 	// add another worker, it's super fast and able to download two pieces in
 	// under the time it takes w3 to download 1
 	wh = workersToHeap(w1, w2, w3, w4, w5, w6)
-	iws, err = pdc.createInitialWorkerSet(nil, wh, false)
+	iws, err = pdc.createInitialWorkerSet(nil, wh)
 	if err != nil {
 		t.Fatal("unexpected", err)
 	}

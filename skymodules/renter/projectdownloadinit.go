@@ -152,10 +152,13 @@ func (wh *pdcWorkerHeap) Pop() interface{} {
 // cooldown for the read job. The worker heap optimizes for speed, not cost.
 // Cost is taken into account at a later point where the initial worker set is
 // built.
-func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnresolvedWorker) pdcWorkerHeap {
+func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnresolvedWorker, ignoreUnresolved bool) pdcWorkerHeap {
 	// Add all of the unresolved workers to the heap.
 	var workerHeap pdcWorkerHeap
 	for _, uw := range unresolvedWorkers {
+		if ignoreUnresolved {
+			break
+		}
 		// Ignore workers that are on a maintenance cooldown. Good performing
 		// workers are generally never on maintenance cooldown, so by skipping
 		// them here we avoid ever waiting for them to resolve.
@@ -302,7 +305,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 // set. If workers are going a lot time and remaining unresolved, a penalty is
 // applied which will eventually break those workers and revert to preferring
 // the already resolved workers.
-func (pdc *projectDownloadChunk) createInitialWorkerSet(parent opentracing.Span, workerHeap pdcWorkerHeap, force bool) ([]*pdcInitialWorker, error) {
+func (pdc *projectDownloadChunk) createInitialWorkerSet(parent opentracing.Span, workerHeap pdcWorkerHeap) ([]*pdcInitialWorker, error) {
 	// Convenience variable.
 	ec := pdc.workerSet.staticErasureCoder
 	gs := types.NewCurrency(new(big.Int).Exp(big.NewInt(10), big.NewInt(33), nil)) // 1GS
@@ -539,8 +542,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(parent opentracing.Span,
 		return nil, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v", totalPieces, ec.MinPieces()))
 	}
 
-	force = force && (totalPieces-unresolvedPieces) >= ec.MinPieces()
-	if isUnresolved && !force {
+	if isUnresolved {
 		span.LogKV("isUnresolved", fmt.Sprintf("worker %v - complete time %v - read dur %v", unresolvedPiece.worker.staticHostPubKey, time.Until(unresolvedPiece.completeTime), unresolvedPiece.readDuration))
 		return nil, nil
 	}
@@ -589,11 +591,11 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 			// Create a list of usable workers, sorted by the amount of time they
 			// are expected to take to return.
 			tmp = opentracing.StartSpan("initialWorkerHeap", opentracing.FollowsFrom(loopSpan.Context()))
-			workerHeap := pdc.initialWorkerHeap(unresolvedWorkers)
+			workerHeap := pdc.initialWorkerHeap(unresolvedWorkers, force)
 			tmp.Finish()
 
 			// Create an initial worker set
-			finalWorkers, err := pdc.createInitialWorkerSet(loopSpan, workerHeap, force)
+			finalWorkers, err := pdc.createInitialWorkerSet(loopSpan, workerHeap)
 			if err != nil {
 				return false, errors.AddContext(err, "unable to build initial set of workers")
 			}
