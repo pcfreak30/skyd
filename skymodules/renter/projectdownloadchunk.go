@@ -136,6 +136,8 @@ type (
 		// worker to have completed the download.
 		staticExpectedCompleteTime ResolveTime
 
+		staticExpectedDuration time.Duration
+
 		// staticJobAddTime is the time at which the job was added to the worker.
 		staticJobAddTime time.Time
 
@@ -427,6 +429,8 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 					var workerMsg string
 					workerMsg += fmt.Sprintln("host:", w.staticWorker.staticHostPubKey.ShortString())
 					workerMsg += fmt.Sprintln("duration:", w.jobDuration.Milliseconds())
+					workerMsg += fmt.Sprintln("expected duration at launch:", w.staticExpectedDuration)
+					workerMsg += fmt.Sprintln("expected duration at finish:", w.staticLaunchTime.Sub(w.staticExpectedCompleteTime.Time()))
 					workerMsg += fmt.Sprintln("totalDuration:", w.totalDuration.Milliseconds())
 					workerMsg += fmt.Sprintln("expected complete time:", w.staticExpectedCompleteTime)
 					workerMsg += fmt.Sprintln("overdrive:", w.staticIsOverdriveWorker)
@@ -491,13 +495,15 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 
 	// Track the launched worker
 	if added {
+		now := time.Now()
 		pdc.launchedWorkers = append(pdc.launchedWorkers, &launchedWorkerInfo{
 			staticPieceIndex:        pieceIndex,
 			staticIsOverdriveWorker: isOverdrive,
 
-			staticJobAddTime:           time.Now(),
-			staticLaunchTime:           time.Now(),
+			staticJobAddTime:           now,
+			staticLaunchTime:           now,
 			staticExpectedCompleteTime: expectedCompleteTime,
+			staticExpectedDuration:     expectedCompleteTime.Time().Sub(now),
 
 			staticPDC:    pdc,
 			staticWorker: w,
