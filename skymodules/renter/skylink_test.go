@@ -212,7 +212,7 @@ func TestBlocklistHash(t *testing.T) {
 	}
 
 	// Check hash returned from V1 Skylinks
-	hash, err := r.BlocklistHash(context.Background(), skylinkV1)
+	hash, err := r.managedBlocklistHash(context.Background(), skylinkV1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +237,7 @@ func TestBlocklistHash(t *testing.T) {
 	skylinkV2 := skymodules.NewSkylinkV2(spk, srv.Tweak)
 
 	// Check V2 link created from V1 link to verify that it also returns the same hash
-	hash, err = r.BlocklistHash(context.Background(), skylinkV2)
+	hash, err = r.managedBlocklistHash(context.Background(), skylinkV2)
 	if err != nil {
 		t.Fatal(err)
 	}

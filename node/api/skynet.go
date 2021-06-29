@@ -331,20 +331,8 @@ func (api *API) skynetBlocklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 	ctx, cancel := context.WithTimeout(req.Context(), timeout)
 	defer cancel()
 
-	// Convert to Skylinks or Hash
-	addHashes, err := api.parseBlocklistHashes(ctx, params.Add, params.IsHash)
-	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("error parsing blocklist additions: %v", err)}, http.StatusBadRequest)
-		return
-	}
-	removeHashes, err := api.parseBlocklistHashes(ctx, params.Remove, params.IsHash)
-	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("error parsing blocklist removals: %v", err)}, http.StatusBadRequest)
-		return
-	}
-
 	// Update the Skynet Blocklist
-	err = api.renter.UpdateSkynetBlocklist(addHashes, removeHashes)
+	err = api.renter.UpdateSkynetBlocklist(ctx, params.Add, params.Remove, params.IsHash)
 	if err != nil {
 		WriteError(w, Error{"unable to update the skynet blocklist: " + err.Error()}, http.StatusInternalServerError)
 		return

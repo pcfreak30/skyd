@@ -3,7 +3,6 @@ package api
 import (
 	"archive/tar"
 	"archive/zip"
-	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -159,35 +158,6 @@ func (rw *monetizedWriter) Write(b []byte) (int, error) {
 		}
 	}
 	return n, nil
-}
-
-// parseBlocklistHashes parses the input parameter string slice and returns the
-// appropriate hash to be added to the blocklist.
-func (api *API) parseBlocklistHashes(ctx context.Context, paramStrs []string, isHash bool) ([]crypto.Hash, error) {
-	hashes := make([]crypto.Hash, len(paramStrs))
-	for i, paramStr := range paramStrs {
-		var hash crypto.Hash
-		// Convert Hash
-		if isHash {
-			err := hash.LoadString(paramStr)
-			if err != nil {
-				return nil, errors.AddContext(err, "error parsing hash")
-			}
-		} else {
-			// Convert Skylink
-			var skylink skymodules.Skylink
-			err := skylink.LoadString(paramStr)
-			if err != nil {
-				return nil, errors.AddContext(err, "error parsing skylink")
-			}
-			hash, err = api.renter.BlocklistHash(ctx, skylink)
-			if err != nil {
-				return nil, errors.AddContext(err, "error generating skylink blocklist hash")
-			}
-		}
-		hashes[i] = hash
-	}
-	return hashes, nil
 }
 
 // buildETag is a helper function that returns an ETag.

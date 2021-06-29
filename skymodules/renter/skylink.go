@@ -92,35 +92,6 @@ func (sm *skylinkManager) managedAddUnpinRequest(skylink skymodules.Skylink) {
 	sm.unpinRequests[skylinkStr] = time.Now().Add(TargetHealthCheckFrequency * 2)
 }
 
-// BlocklistHash returns the hash to be used in the blocklist
-func (r *Renter) BlocklistHash(ctx context.Context, sl skymodules.Skylink) (crypto.Hash, error) {
-	err := r.tg.Add()
-	if err != nil {
-		return crypto.Hash{}, err
-	}
-	defer r.tg.Done()
-	return r.managedBlocklistHash(ctx, sl)
-}
-
-// managedBlocklistHash returns the hash to be used in the blocklist
-func (r *Renter) managedBlocklistHash(ctx context.Context, sl skymodules.Skylink) (crypto.Hash, error) {
-	// We want to return the hash of the merkleroot of the V1 skylink. This
-	// means for V2 skylinks we need to resolve it first.
-	switch {
-	case sl.IsSkylinkV1():
-		return crypto.HashObject(sl.MerkleRoot()), nil
-	case sl.IsSkylinkV2():
-		slv1, _, err := r.managedTryResolveSkylinkV2WithoutBlocklistCheck(ctx, sl)
-		if err != nil {
-			return crypto.Hash{}, errors.AddContext(err, "unable to resolve V2 skylink")
-		}
-		return crypto.HashObject(slv1.MerkleRoot()), nil
-	default:
-		build.Critical(ErrInvalidSkylinkVersion)
-	}
-	return crypto.Hash{}, ErrInvalidSkylinkVersion
-}
-
 // UnpinSkylink unpins a skylink from the renter by removing the underlying
 // siafile.
 //
@@ -160,6 +131,33 @@ func (r *Renter) UnpinSkylink(skylink skymodules.Skylink) error {
 	return nil
 }
 
+// managedBlocklistHash returns the hash to be used in the blocklist
+func (r *Renter) managedBlocklistHash(ctx context.Context, sl skymodules.Skylink) (crypto.Hash, error) {
+	// We want to return the hash of the merkleroot of the V1 skylink. This
+	// means for V2 skylinks we need to resolve it first.
+	switch {
+	case sl.IsSkylinkV1():
+		return crypto.HashObject(sl.MerkleRoot()), nil
+	case sl.IsSkylinkV2():
+		// NOTE: We don't want to check the blocklist while the V2 link
+		// is being resolved. This is so a link that is already on the
+		// block list could be added again in a large user generated
+		// list.
+		slv1, _, err := r.managedTryResolveSkylinkV2Recursive(ctx, sl, false)
+		if err != nil {
+			return crypto.Hash{}, errors.AddContext(err, "unable to resolve V2 skylink")
+		}
+		// Sanity Check to see if v2 link was properly resolved
+		if slv1.IsSkylinkV1() {
+			return crypto.Hash{}, errors.New("V2 skylink is nested too many times")
+		}
+		return crypto.HashObject(slv1.MerkleRoot()), nil
+	default:
+		build.Critical(ErrInvalidSkylinkVersion)
+	}
+	return crypto.Hash{}, ErrInvalidSkylinkVersion
+}
+
 // managedIsBlocked returns whether or not a skylink is blocked. This method can
 // be used for both V1 and V2 skylinks.
 func (r *Renter) managedIsBlocked(ctx context.Context, sl skymodules.Skylink) (bool, error) {
@@ -169,4 +167,33 @@ func (r *Renter) managedIsBlocked(ctx context.Context, sl skymodules.Skylink) (b
 	}
 
 	return r.staticSkynetBlocklist.IsHashBlocked(hash), nil
+}
+
+// managedParseBlocklistHashes parses the input hash string slice and returns
+// the appropriate hash to be added to the blocklist.
+func (r *Renter) managedParseBlocklistHashes(ctx context.Context, hashStrs []string, isHash bool) ([]crypto.Hash, error) {
+	hashes := make([]crypto.Hash, len(hashStrs))
+	for i, paramStr := range hashStrs {
+		var hash crypto.Hash
+		// Convert Hash
+		if isHash {
+			err := hash.LoadString(paramStr)
+			if err != nil {
+				return nil, errors.AddContext(err, "error parsing hash")
+			}
+		} else {
+			// Convert Skylink
+			var skylink skymodules.Skylink
+			err := skylink.LoadString(paramStr)
+			if err != nil {
+				return nil, errors.AddContext(err, "error parsing skylink")
+			}
+			hash, err = r.managedBlocklistHash(ctx, skylink)
+			if err != nil {
+				return nil, errors.AddContext(err, "error generating skylink blocklist hash")
+			}
+		}
+		hashes[i] = hash
+	}
+	return hashes, nil
 }

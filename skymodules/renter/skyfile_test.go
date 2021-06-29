@@ -43,7 +43,7 @@ func TestTryResolveSkylinkV2(t *testing.T) {
 	skylinkV2 := skymodules.NewSkylinkV2(spk, srv.Tweak)
 
 	// Resolve it.
-	slV1, entry, err := wt.rt.renter.managedTryResolveSkylinkV2(context.Background(), skylinkV2)
+	slV1, entry, err := wt.rt.renter.managedTryResolveSkylinkV2(context.Background(), skylinkV2, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestTryResolveSkylinkV2(t *testing.T) {
 	}
 
 	// Try resolving the v1 skylink. Should be a no-op.
-	slV1, entry, err = wt.rt.renter.managedTryResolveSkylinkV2(context.Background(), skylinkV1)
+	slV1, entry, err = wt.rt.renter.managedTryResolveSkylinkV2(context.Background(), skylinkV1, true)
 	if err != nil {
 		t.Fatal(err)
 	}

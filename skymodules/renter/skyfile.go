@@ -404,13 +404,25 @@ func (r *Renter) Blocklist() ([]crypto.Hash, error) {
 }
 
 // UpdateSkynetBlocklist updates the list of hashed merkleroots that are blocked
-func (r *Renter) UpdateSkynetBlocklist(additions, removals []crypto.Hash) error {
+func (r *Renter) UpdateSkynetBlocklist(ctx context.Context, additions, removals []string, isHash bool) error {
 	err := r.tg.Add()
 	if err != nil {
 		return err
 	}
 	defer r.tg.Done()
-	return r.staticSkynetBlocklist.UpdateBlocklist(additions, removals)
+
+	// Parse the hashes that should be added to the blocklist
+	addHashes, err := r.managedParseBlocklistHashes(ctx, additions, isHash)
+	if err != nil {
+		return errors.AddContext(err, "unable to parse blocklist additions")
+	}
+	removeHashes, err := r.managedParseBlocklistHashes(ctx, removals, isHash)
+	if err != nil {
+		return errors.AddContext(err, "unable to parse blocklist removals")
+	}
+
+	// Update the blocklist
+	return r.staticSkynetBlocklist.UpdateBlocklist(addHashes, removeHashes)
 }
 
 // Portals returns the list of known skynet portals.
@@ -751,7 +763,7 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	ctx = opentracing.ContextWithSpan(ctx, span)
 
 	// Check if link needs to be resolved from V2 to V1.
-	link, srvs, err := r.managedTryResolveSkylinkV2Recursive(ctx, link)
+	link, srvs, err := r.managedTryResolveSkylinkV2Recursive(ctx, link, true)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -806,7 +818,7 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 	ctx = opentracing.ContextWithSpan(ctx, span)
 
 	// Check if link needs to be resolved from V2 to V1.
-	link, srvs, err := r.managedTryResolveSkylinkV2Recursive(ctx, link)
+	link, srvs, err := r.managedTryResolveSkylinkV2Recursive(ctx, link, true)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1282,7 +1294,7 @@ func (r *Renter) ResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (s
 		return skymodules.Skylink{}, nil, err
 	}
 	defer r.tg.Done()
-	slResolved, srv, err := r.managedTryResolveSkylinkV2(ctx, sl)
+	slResolved, srv, err := r.managedTryResolveSkylinkV2(ctx, sl, true)
 	if err != nil {
 		return skymodules.Skylink{}, nil, err
 	}
@@ -1294,32 +1306,7 @@ func (r *Renter) ResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (s
 
 // managedTryResolveSkylinkV2 resolves a V2 skylink to a V1 skylink. If the
 // skylink is not a V2 skylink, the input link is returned.
-func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (skymodules.Skylink, *skymodules.RegistryEntry, error) {
-	// Try and resolve the skylink
-	skylink, srv, err := r.managedTryResolveSkylinkV2WithoutBlocklistCheck(ctx, sl)
-	if err != nil {
-		return skymodules.Skylink{}, nil, err
-	}
-
-	// Check if link is blocked
-	blocked, err := r.managedIsBlocked(ctx, skylink)
-	if err != nil {
-		return skymodules.Skylink{}, nil, err
-	}
-	if blocked {
-		return skymodules.Skylink{}, nil, ErrSkylinkBlocked
-	}
-	return skylink, srv, nil
-}
-
-// managedTryResolveSkylinkV2WithoutBlocklistCheck resolves a V2 skylink to a V1
-// skylink without checking if it is blocked. If the skylink is not a V2
-// skylink, the input link is returned.
-//
-// NOTE: This method should only be used by the blocklist code as a way to
-// remove a V2 link from the blocklist. All other cases should use
-// managedTryResolveSkylinkV2
-func (r *Renter) managedTryResolveSkylinkV2WithoutBlocklistCheck(ctx context.Context, sl skymodules.Skylink) (skylink skymodules.Skylink, _ *skymodules.RegistryEntry, err error) {
+func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink, blocklistCheck bool) (skylink skymodules.Skylink, _ *skymodules.RegistryEntry, err error) {
 	// If the Skylink is a V1 Skylink, just return the skylink
 	if sl.IsSkylinkV1() {
 		return sl, nil, nil
@@ -1358,16 +1345,30 @@ func (r *Renter) managedTryResolveSkylinkV2WithoutBlocklistCheck(ctx context.Con
 	if skylink == (skymodules.Skylink{}) {
 		return skymodules.Skylink{}, nil, ErrRootNotFound
 	}
+
+	// See if we need to check the blocklist
+	if !blocklistCheck {
+		return skylink, &srv, nil
+	}
+
+	// Check if link is blocked
+	blocked, err := r.managedIsBlocked(ctx, skylink)
+	if err != nil {
+		return skymodules.Skylink{}, nil, err
+	}
+	if blocked {
+		return skymodules.Skylink{}, nil, ErrSkylinkBlocked
+	}
 	return skylink, &srv, nil
 }
 
 // managedTryResolveSkylinkV2Recursive resolves a V2 skylink to a V1 skylink. If
 // the skylink is not a V2 skylink, the input link is returned.
-func (r *Renter) managedTryResolveSkylinkV2Recursive(ctx context.Context, link skymodules.Skylink) (_ skymodules.Skylink, srvs []skymodules.RegistryEntry, err error) {
+func (r *Renter) managedTryResolveSkylinkV2Recursive(ctx context.Context, link skymodules.Skylink, blocklistCheck bool) (_ skymodules.Skylink, srvs []skymodules.RegistryEntry, err error) {
 	// Check if link needs to be resolved from V2 to V1.
 	for i := 0; i < int(MaxSkylinkV2ResolvingDepth) && link.IsSkylinkV2(); i++ {
 		var srv *skymodules.RegistryEntry
-		link, srv, err = r.managedTryResolveSkylinkV2WithoutBlocklistCheck(ctx, link)
+		link, srv, err = r.managedTryResolveSkylinkV2(ctx, link, blocklistCheck)
 		if err != nil {
 			return skymodules.Skylink{}, nil, err
 		}
@@ -1379,7 +1380,7 @@ func (r *Renter) managedTryResolveSkylinkV2Recursive(ctx context.Context, link s
 	// If we made it to a V1 link check if it is blocked. We only check if
 	// we have reached a V1 link because if it is still a V2 link we don't
 	// know if it is still a nested V2 link.
-	if link.IsSkylinkV1() {
+	if link.IsSkylinkV1() && blocklistCheck {
 		blocked, err := r.managedIsBlocked(ctx, link)
 		if err != nil {
 			return skymodules.Skylink{}, nil, err
