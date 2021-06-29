@@ -43,7 +43,7 @@ func TestTryResolveSkylinkV2(t *testing.T) {
 	skylinkV2 := skymodules.NewSkylinkV2(spk, srv.Tweak)
 
 	// Resolve it.
-	slV1, err := wt.rt.renter.managedTryResolveSkylinkV2(context.Background(), skylinkV2)
+	slV1, entry, err := wt.rt.renter.managedTryResolveSkylinkV2(context.Background(), skylinkV2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,12 +53,23 @@ func TestTryResolveSkylinkV2(t *testing.T) {
 		t.Fatal("skylinks don't match")
 	}
 
+	// Entry shouldn't be nil.
+	expectedSRV := skymodules.NewRegistryEntry(spk, srv)
+	if !reflect.DeepEqual(*entry, expectedSRV) {
+		t.Log(entry)
+		t.Log(expectedSRV)
+		t.Fatal("entry mismatch")
+	}
+
 	// Try resolving the v1 skylink. Should be a no-op.
-	slV1, err = wt.rt.renter.managedTryResolveSkylinkV2(context.Background(), skylinkV1)
+	slV1, entry, err = wt.rt.renter.managedTryResolveSkylinkV2(context.Background(), skylinkV1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(skylinkV1, slV1) {
 		t.Fatal("skylinks don't match")
+	}
+	if entry != nil {
+		t.Fatal("entry should be nil")
 	}
 }

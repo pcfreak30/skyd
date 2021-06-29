@@ -734,7 +734,7 @@ func TestSubscriptionNotifications(t *testing.T) {
 	// The worker should have updated the cache.
 	cache := wt.staticRegistryCache
 	cachedRev, exists := cache.Get(modules.DeriveRegistryEntryID(spk1, rv1.Tweak))
-	if !exists || cachedRev != rv1.Revision {
+	if !exists || !reflect.DeepEqual(cachedRev, rv1.RegistryValue) {
 		t.Fatal("cache wasn't updated correctyl")
 	}
 	_, exists = cache.Get(modules.DeriveRegistryEntryID(spk2, rv2.Tweak))
@@ -788,7 +788,7 @@ func TestSubscriptionNotifications(t *testing.T) {
 		if !exists {
 			return errors.New("rv1: cached entry doesn't exist")
 		}
-		if cachedRev != rv1.Revision {
+		if !reflect.DeepEqual(cachedRev, rv1.RegistryValue) {
 			return fmt.Errorf("rv1: wrong cached value %v != %v", cachedRev, rv1.Revision)
 		}
 		// rv2 should be updated to rv2a
@@ -796,7 +796,7 @@ func TestSubscriptionNotifications(t *testing.T) {
 		if !exists {
 			return errors.New("rv2: cached entry doesn't exist")
 		}
-		if cachedRev != rv2a.Revision {
+		if !reflect.DeepEqual(cachedRev, rv2a.RegistryValue) {
 			return fmt.Errorf("rv2: wrong cached value %v != %v", cachedRev, rv2a.Revision)
 		}
 		return nil
@@ -1001,8 +1001,8 @@ func TestHandleNotification(t *testing.T) {
 		// The worker cache and subscription should be updated.
 		err := build.Retry(100, 100*time.Millisecond, func() error {
 			// Check worker cache.
-			if revNum, found := wt.staticRegistryCache.Get(sid); !found || revNum != rv.Revision {
-				return fmt.Errorf("cache wasn't updated %v != %v %v", revNum, rv.Revision, found)
+			if rev, found := wt.staticRegistryCache.Get(sid); !found || !reflect.DeepEqual(rev, rv.RegistryValue) {
+				return fmt.Errorf("cache wasn't updated %v != %v %v", rev, rv.Revision, found)
 			}
 			// Check subscription.
 			subInfo.mu.Lock()
@@ -1043,8 +1043,8 @@ func TestHandleNotification(t *testing.T) {
 		// Check fields.
 		err := build.Retry(100, 100*time.Millisecond, func() error {
 			// Check worker cache. Should be set to rv2.
-			if revNum, found := wt.staticRegistryCache.Get(sid); !found || revNum != rv2.Revision {
-				return fmt.Errorf("cache wasn't updated %v != %v %v", revNum, rv2.Revision, found)
+			if rev, found := wt.staticRegistryCache.Get(sid); !found || !reflect.DeepEqual(rev, rv2.RegistryValue) {
+				return fmt.Errorf("cache wasn't updated %v != %v %v", rev, rv2, found)
 			}
 			// Check subscription. Should be set to rv2.
 			subInfo.mu.Lock()
@@ -1056,7 +1056,7 @@ func TestHandleNotification(t *testing.T) {
 			subInfo.mu.Unlock()
 			// Stream should have been closed.
 			if closer.staticCount() != 1 {
-				return errors.New("stream should have been closed")
+				return fmt.Errorf("stream should have been closed: %v", closer.staticCount())
 			}
 			return nil
 		})
@@ -1080,8 +1080,8 @@ func TestHandleNotification(t *testing.T) {
 		// Check fields.
 		err := build.Retry(100, 100*time.Millisecond, func() error {
 			// Check worker cache. Should be set to rv.
-			if revNum, found := wt.staticRegistryCache.Get(sid); !found || revNum != rv.Revision {
-				return fmt.Errorf("cache wasn't updated %v != %v %v", revNum, rv.Revision, found)
+			if rev, found := wt.staticRegistryCache.Get(sid); !found || !reflect.DeepEqual(rev, rv.RegistryValue) {
+				return fmt.Errorf("cache wasn't updated %v != %v %v", rev, rv.Revision, found)
 			}
 			// Check subscription. Should be set to rv.
 			subInfo.mu.Lock()
@@ -1112,8 +1112,8 @@ func TestHandleNotification(t *testing.T) {
 		// Check fields.
 		err := build.Retry(100, 100*time.Millisecond, func() error {
 			// Check worker cache. Should be set to rv.
-			if revNum, found := wt.staticRegistryCache.Get(sid); !found || revNum != rv.Revision {
-				return fmt.Errorf("cache wasn't updated %v != %v %v", revNum, rv.Revision, found)
+			if rev, found := wt.staticRegistryCache.Get(sid); !found || !reflect.DeepEqual(rev, rv.RegistryValue) {
+				return fmt.Errorf("cache wasn't updated %v != %v %v", rev, rv.Revision, found)
 			}
 			// Check subscription. Should be set to rv.
 			subInfo.mu.Lock()

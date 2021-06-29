@@ -25,6 +25,10 @@ var (
 	// ErrProjectTimedOut is returned when the project timed out
 	ErrProjectTimedOut = errors.New("project timed out")
 
+	// errWorkerOnCooldown is returned when an operation failed due to the
+	// worker being on a cooldown.
+	errWorkerOnCooldown = errors.New("can't launch worker since it is on a cooldown")
+
 	// pcwsWorkerStateResetTime defines the amount of time that the pcws will
 	// wait before resetting / refreshing the worker state, meaning that all of
 	// the workers will do another round of HasSector queries on the network.
@@ -327,16 +331,12 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 		return errors.AddContext(err, fmt.Sprintf("price gouging for chunk worker set detected in worker %v", w.staticHostPubKeyStr))
 	}
 
-	// Check whether the worker is on a cooldown. Because the PCWS is cached, we
-	// do not want to exclude this worker if it is on a cooldown, however we do
-	// want to take into consideration the cooldown period when we estimate the
-	// expected resolve time.
-	var coolDownPenalty time.Duration
+	// Check whether the worker is on a maintenance cooldown and exclude it
+	// if it is since we can't be sure that the problem that caused the
+	// cooldown is reolved after the cooldown is over. In fact it's very
+	// likely that it's not.
 	if w.managedOnMaintenanceCooldown() {
-		wms := w.staticMaintenanceState
-		wms.mu.Lock()
-		coolDownPenalty = time.Until(wms.cooldownUntil)
-		wms.mu.Unlock()
+		return errWorkerOnCooldown
 	}
 
 	// Create and launch the job.
@@ -351,12 +351,11 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 		cancel()
 		return errors.AddContext(err, fmt.Sprintf("unable to add has sector job to %v", w.staticHostPubKeyStr))
 	}
-	expectedResolveTime := expectedJobTime.Add(coolDownPenalty)
 
 	// Create the unresolved worker for this job.
 	uw := &pcwsUnresolvedWorker{
 		staticWorker:               w,
-		staticExpectedResolvedTime: expectedResolveTime,
+		staticExpectedResolvedTime: expectedJobTime,
 	}
 
 	// Add the unresolved worker to the worker state. Technically this doesn't
@@ -381,7 +380,7 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorkers(ws *pcwsWorkerState) {
 	responseChan := make(chan *jobHasSectorResponse, len(workers))
 	for _, w := range workers {
 		err := pcws.managedLaunchWorker(w, responseChan, ws)
-		if err != nil && !errors.Contains(err, errEstimateAboveMax) {
+		if err != nil && !errors.Contains(err, errEstimateAboveMax) && !errors.Contains(err, errWorkerOnCooldown) {
 			pcws.staticRenter.staticLog.Debugf("failed to launch worker: %v", err)
 		}
 	}

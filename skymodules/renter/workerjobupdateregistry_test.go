@@ -53,7 +53,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 	}
 
 	// The entries should match.
-	if !reflect.DeepEqual(*lookedUpRV, rv) {
+	if !reflect.DeepEqual(lookedUpRV.SignedRegistryValue, rv) {
 		t.Fatal("entries don't match")
 	}
 
@@ -172,7 +172,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 	}
 
 	// The entries should match.
-	if !reflect.DeepEqual(*lookedUpRV, rv) {
+	if !reflect.DeepEqual(lookedUpRV.SignedRegistryValue, rv) {
 		t.Fatal("entries don't match")
 	}
 
@@ -191,7 +191,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 	}
 
 	// The entries should match.
-	if !reflect.DeepEqual(*lookedUpRV, rv) {
+	if !reflect.DeepEqual(lookedUpRV.SignedRegistryValue, rv) {
 		t.Fatal("entries don't match")
 	}
 }
@@ -231,7 +231,7 @@ func TestUpdateRegistryLyingHost(t *testing.T) {
 	}
 
 	// The entries should match.
-	if !reflect.DeepEqual(*lookedUpRV, rv) {
+	if !reflect.DeepEqual(lookedUpRV.SignedRegistryValue, rv) {
 		t.Fatal("entries don't match")
 	}
 
@@ -299,13 +299,13 @@ func TestUpdateRegistryInvalidCached(t *testing.T) {
 	rv.Revision -= 2
 	rv = rv.Sign(sk)
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
-	if !errors.Contains(err, errHostLowerRevisionThanCache) {
+	if !errors.Contains(err, errHostCheating) {
 		t.Fatal(err)
 	}
 
 	// Make sure there is a recent error and cooldown.
 	wt.staticJobUpdateRegistryQueue.mu.Lock()
-	if !errors.Contains(wt.staticJobUpdateRegistryQueue.recentErr, errHostLowerRevisionThanCache) {
+	if !errors.Contains(wt.staticJobUpdateRegistryQueue.recentErr, errHostCheating) {
 		t.Fatal("wrong recent error", wt.staticJobUpdateRegistryQueue.recentErr)
 	}
 	if wt.staticJobUpdateRegistryQueue.cooldownUntil == (time.Time{}) {

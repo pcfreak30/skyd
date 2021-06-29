@@ -229,7 +229,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		staticAccount:       account,
 		staticBalanceTarget: balanceTarget,
 
-		staticRegistryCache: newRegistryCache(registryCacheSize),
+		staticRegistryCache: newRegistryCache(registryCacheSize, hostPubKey),
 
 		staticSubscriptionInfo: &subscriptionInfos{
 			subscriptions:  make(map[modules.RegistryEntryID]*subscription),

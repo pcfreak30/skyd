@@ -506,7 +506,7 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 	w.initJobHasSectorQueue()
 
 	// give it a name and set an initial estimate on the HS queue
-	w.staticJobHasSectorQueue.weightedJobTime = float64(123 * time.Second)
+	w.staticJobHasSectorQueue.callUpdateJobTimeMetrics(123 * time.Second)
 	w.staticHostPubKeyStr = "myworker"
 
 	// ensure PT is valid
@@ -527,7 +527,9 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 	}
 
 	// launch the worker
-	w.staticJobHasSectorQueue.weightedJobTime = float64(pcwsHasSectorTimeout)
+	seedTime := time.Duration(pcwsHasSectorTimeout / 2)
+	w.staticJobHasSectorQueue.staticDT = skymodules.NewDistributionTrackerStandard()
+	w.staticJobHasSectorQueue.callUpdateJobTimeMetrics(seedTime)
 	responseChan = make(chan *jobHasSectorResponse, 0)
 	err = pcws.managedLaunchWorker(w, responseChan, ws)
 	if err != nil {
@@ -540,11 +542,12 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 		t.Log(ws.unresolvedWorkers)
 		t.Fatal("unexpected")
 	}
+	delete(ws.unresolvedWorkers, "myworker")
 
 	// verify the expected dur matches the initial queue estimate
 	expectedDur := time.Until(uw.staticExpectedResolvedTime)
 	expectedDurInS := math.Round(expectedDur.Seconds())
-	if expectedDurInS != pcwsHasSectorTimeout.Seconds() {
+	if expectedDurInS != float64(seedTime.Seconds()) {
 		t.Log(expectedDurInS)
 		t.Fatal("unexpected")
 	}
@@ -553,16 +556,13 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 	minuteFromNow := time.Now().Add(time.Minute)
 	w.staticMaintenanceState.cooldownUntil = minuteFromNow
 	err = pcws.managedLaunchWorker(w, responseChan, ws)
-	if err != nil {
+	if !errors.Contains(err, errWorkerOnCooldown) {
 		t.Fatal(err)
 	}
 
 	// verify the cooldown is being reflected in the estimate
-	uw = ws.unresolvedWorkers["myworker"]
-	expectedDur = time.Until(uw.staticExpectedResolvedTime)
-	expectedDurInS = math.Round(expectedDur.Seconds())
-	if expectedDurInS != pcwsHasSectorTimeout.Seconds()+60 {
-		t.Log(expectedDurInS)
-		t.Fatal("unexpected")
+	_, exists = ws.unresolvedWorkers["myworker"]
+	if exists {
+		t.Fatal("worker shouldn't have been launched")
 	}
 }

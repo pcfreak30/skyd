@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -455,4 +456,33 @@ func (r *Renter) threadedPruneTUSUploads() {
 		}
 		r.staticSkynetTUSUploader.PruneUploads()
 	}
+}
+
+// TUSPreUploadCreateCallback is called before creating an upload. It is used to
+// dynamically check the maximum size of the user's upload according to a set
+// header field.
+func TUSPreUploadCreateCallback(hook handler.HookEvent) error {
+	// Sanity check that the size is not deferred.
+	if hook.Upload.SizeIsDeferred {
+		err := errors.New("uploads with deferred size are not supported")
+		return handler.NewHTTPError(err, http.StatusBadRequest)
+	}
+	// Get user's max upload size from request.
+	maxSizeStr := hook.HTTPRequest.Header.Get("SkynetMaxUploadSize")
+	if maxSizeStr == "" {
+		err := errors.New("SkynetMaxUploadSize header is missing")
+		return handler.NewHTTPError(err, http.StatusBadRequest)
+	}
+	var maxSize int64
+	_, err := fmt.Sscan(maxSizeStr, &maxSize)
+	if err != nil {
+		err = errors.AddContext(err, "failed to parse SkynetMaxUploadSize")
+		return handler.NewHTTPError(err, http.StatusBadRequest)
+	}
+	// Check upload size against max size.
+	if hook.Upload.Size > maxSize {
+		err = fmt.Errorf("upload exceeds maximum size: %v > %v", hook.Upload.Size, maxSize)
+		return handler.NewHTTPError(err, http.StatusRequestEntityTooLarge)
+	}
+	return nil
 }
