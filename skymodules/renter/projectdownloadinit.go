@@ -87,10 +87,17 @@ import (
 // pessimistic, but guarantees that we do not overload a particular worker and
 // slow the entire download down.
 
-// maxWaitUnresolvedWorkerUpdate defines the amount of time we want to wait for
-// unresolved workers to become resolved when trying to create the initial
-// worker set.
-const maxWaitUnresolvedWorkerUpdate = 10 * time.Millisecond
+const (
+	// maxWaitUnresolvedWorkerUpdate defines the amount of time we want to
+	// wait for unresolved workers to become resolved when trying to create
+	// the initial worker set.
+	maxWaitUnresolvedWorkerUpdate = 10 * time.Millisecond
+
+	// delayedWorkerPenalty is the penalty applied to the resolve time of a
+	// worker that has missed its expected resolve time when determining the
+	// expected completion time.
+	delayedWorkerPenalty = time.Hour
+)
 
 // errNotEnoughWorkers is returned if the working set does not have enough
 // workers to successfully complete the download
@@ -183,7 +190,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		// resolves; favor some other worker instead.
 		resolveTime := uw.staticExpectedResolvedTime
 		if resolveTime.Before(time.Now()) {
-			resolveTime = resolveTime.Add(time.Hour)
+			resolveTime = resolveTime.Add(delayedWorkerPenalty)
 		}
 
 		// Determine the expected readDuration and cost for this worker. Add the
