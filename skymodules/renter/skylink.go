@@ -143,7 +143,7 @@ func (r *Renter) managedBlocklistHash(ctx context.Context, sl skymodules.Skylink
 		// is being resolved. This is so a link that is already on the
 		// block list could be added again in a large user generated
 		// list.
-		slv1, _, err := r.managedTryResolveSkylinkV2Recursive(ctx, sl, false)
+		slv1, _, err := r.managedTryResolveSkylinkV2(ctx, sl, false)
 		if err != nil {
 			return crypto.Hash{}, errors.AddContext(err, "unable to resolve V2 skylink")
 		}

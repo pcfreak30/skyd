@@ -763,7 +763,7 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	ctx = opentracing.ContextWithSpan(ctx, span)
 
 	// Check if link needs to be resolved from V2 to V1.
-	link, srvs, err := r.managedTryResolveSkylinkV2Recursive(ctx, link, true)
+	link, srvs, err := r.managedTryResolveSkylinkV2(ctx, link, true)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -818,7 +818,7 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 	ctx = opentracing.ContextWithSpan(ctx, span)
 
 	// Check if link needs to be resolved from V2 to V1.
-	link, srvs, err := r.managedTryResolveSkylinkV2Recursive(ctx, link, true)
+	link, srvs, err := r.managedTryResolveSkylinkV2(ctx, link, true)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1289,24 +1289,24 @@ func (r *Renter) managedIsFileNodeBlocked(fileNode *filesystem.FileNode) bool {
 }
 
 // ResolveSkylinkV2 resolves a V2 skylink to a V1 skylink if possible.
-func (r *Renter) ResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (skymodules.Skylink, *skymodules.RegistryEntry, error) {
+func (r *Renter) ResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (skymodules.Skylink, []skymodules.RegistryEntry, error) {
 	if err := r.tg.Add(); err != nil {
 		return skymodules.Skylink{}, nil, err
 	}
 	defer r.tg.Done()
-	slResolved, srv, err := r.managedTryResolveSkylinkV2(ctx, sl, true)
+	slResolved, srvs, err := r.managedTryResolveSkylinkV2(ctx, sl, true)
 	if err != nil {
 		return skymodules.Skylink{}, nil, err
 	}
 	if slResolved == sl {
 		return skymodules.Skylink{}, nil, ErrInvalidSkylinkVersion
 	}
-	return slResolved, srv, nil
+	return slResolved, srvs, nil
 }
 
-// managedTryResolveSkylinkV2 resolves a V2 skylink to a V1 skylink. If the
-// skylink is not a V2 skylink, the input link is returned.
-func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink, blocklistCheck bool) (skylink skymodules.Skylink, _ *skymodules.RegistryEntry, err error) {
+// managedResolveSkylinkV2 resolves a V2 skylink to a V1 skylink. If the skylink
+// is not a V2 skylink, the input link is returned.
+func (r *Renter) managedResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink, blocklistCheck bool) (skylink skymodules.Skylink, _ *skymodules.RegistryEntry, err error) {
 	// If the Skylink is a V1 Skylink, just return the skylink
 	if sl.IsSkylinkV1() {
 		return sl, nil, nil
@@ -1362,13 +1362,15 @@ func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, sl skymodules.S
 	return skylink, &srv, nil
 }
 
-// managedTryResolveSkylinkV2Recursive resolves a V2 skylink to a V1 skylink. If
-// the skylink is not a V2 skylink, the input link is returned.
-func (r *Renter) managedTryResolveSkylinkV2Recursive(ctx context.Context, link skymodules.Skylink, blocklistCheck bool) (_ skymodules.Skylink, srvs []skymodules.RegistryEntry, err error) {
+// managedTryResolveSkylinkV2 tries to resolve a V2 skylink to a V1 skylink. If
+// the skylink is not a V2 skylink, the input link is returned. If the V2
+// skylink is a nested V2 skylink, it will continue to try and resolve down to a
+// V1 skylink until MaxSkylinkV2ResolvingDepth is met
+func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, link skymodules.Skylink, blocklistCheck bool) (_ skymodules.Skylink, srvs []skymodules.RegistryEntry, err error) {
 	// Check if link needs to be resolved from V2 to V1.
 	for i := 0; i < int(MaxSkylinkV2ResolvingDepth) && link.IsSkylinkV2(); i++ {
 		var srv *skymodules.RegistryEntry
-		link, srv, err = r.managedTryResolveSkylinkV2(ctx, link, blocklistCheck)
+		link, srv, err = r.managedResolveSkylinkV2(ctx, link, blocklistCheck)
 		if err != nil {
 			return skymodules.Skylink{}, nil, err
 		}

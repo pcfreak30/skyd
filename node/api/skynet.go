@@ -1510,7 +1510,7 @@ func (api *API) skylinkResolveGET(w http.ResponseWriter, req *http.Request, ps h
 	// Attach proof.
 	var proof []skymodules.RegistryEntry
 	if srv != nil {
-		proof = append(proof, *srv)
+		proof = append(proof, srv...)
 	}
 	err = attachRegistryEntryProof(w, proof)
 	if err != nil {
