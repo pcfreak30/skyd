@@ -147,10 +147,6 @@ func (r *Renter) managedBlocklistHash(ctx context.Context, sl skymodules.Skylink
 		if err != nil {
 			return crypto.Hash{}, errors.AddContext(err, "unable to resolve V2 skylink")
 		}
-		// Sanity Check to see if v2 link was properly resolved
-		if slv1.IsSkylinkV1() {
-			return crypto.Hash{}, errors.New("V2 skylink is nested too many times")
-		}
 		return crypto.HashObject(slv1.MerkleRoot()), nil
 	default:
 		build.Critical(ErrInvalidSkylinkVersion)

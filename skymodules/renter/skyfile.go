@@ -85,6 +85,10 @@ var (
 	// ErrSkylinkBlocked is the error returned when a skylink is blocked
 	ErrSkylinkBlocked = errors.New("skylink is blocked")
 
+	// ErrSkylinkNesting is the error returned when a skylink is nested more
+	// times than MaxSkylinkV2ResolvingDepth
+	ErrSkylinkNesting = errors.New("skylink is nested more times than is supported")
+
 	// ErrInvalidSkylinkVersion is returned when an operation fails due to the
 	// skylink having the wrong version.
 	ErrInvalidSkylinkVersion = errors.New("skylink had unexpected version")
@@ -768,20 +772,6 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 		return nil, nil, err
 	}
 
-	// Check if link resolved to a v1 link.
-	if !link.IsSkylinkV1() {
-		return nil, nil, errors.AddContext(ErrRootNotFound, "failed to fully resolve skylink - max number of recursions reached")
-	}
-
-	// Check if link is blocked
-	blocked, err := r.managedIsBlocked(ctx, link)
-	if err != nil {
-		return nil, nil, err
-	}
-	if blocked {
-		return nil, nil, ErrSkylinkBlocked
-	}
-
 	// Download the data
 	streamer, err := r.managedDownloadSkylink(ctx, link, timeout, pricePerMS)
 	if errors.Contains(err, ErrProjectTimedOut) {
@@ -821,15 +811,6 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 	link, srvs, err := r.managedTryResolveSkylinkV2(ctx, link, true)
 	if err != nil {
 		return nil, nil, err
-	}
-
-	// Check if link is blocked
-	blocked, err := r.managedIsBlocked(ctx, link)
-	if err != nil {
-		return nil, nil, err
-	}
-	if blocked {
-		return nil, nil, ErrSkylinkBlocked
 	}
 
 	// Find the fetch size.
@@ -1365,7 +1346,8 @@ func (r *Renter) managedResolveSkylinkV2(ctx context.Context, sl skymodules.Skyl
 // managedTryResolveSkylinkV2 tries to resolve a V2 skylink to a V1 skylink. If
 // the skylink is not a V2 skylink, the input link is returned. If the V2
 // skylink is a nested V2 skylink, it will continue to try and resolve down to a
-// V1 skylink until MaxSkylinkV2ResolvingDepth is met
+// V1 skylink until MaxSkylinkV2ResolvingDepth is met. If the skylink is nested
+// more times than MaxSkylinkV2ResolvingDepth then an error is returned.
 func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, link skymodules.Skylink, blocklistCheck bool) (_ skymodules.Skylink, srvs []skymodules.RegistryEntry, err error) {
 	// Check if link needs to be resolved from V2 to V1.
 	for i := 0; i < int(MaxSkylinkV2ResolvingDepth) && link.IsSkylinkV2(); i++ {
@@ -1379,10 +1361,13 @@ func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, link skymodules
 		}
 	}
 
-	// If we made it to a V1 link check if it is blocked. We only check if
-	// we have reached a V1 link because if it is still a V2 link we don't
-	// know if it is still a nested V2 link.
-	if link.IsSkylinkV1() && blocklistCheck {
+	// If we are still a V2 skylink it means that the skylink is nested more times that is currently supported so return an error.
+	if link.IsSkylinkV2() {
+		return skymodules.Skylink{}, nil, ErrSkylinkNesting
+	}
+
+	// If we made it to a V1 link check if it is blocked.
+	if blocklistCheck {
 		blocked, err := r.managedIsBlocked(ctx, link)
 		if err != nil {
 			return skymodules.Skylink{}, nil, err
