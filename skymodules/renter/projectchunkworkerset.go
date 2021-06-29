@@ -331,10 +331,10 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 		return errors.AddContext(err, fmt.Sprintf("price gouging for chunk worker set detected in worker %v", w.staticHostPubKeyStr))
 	}
 
-	// Check whether the worker is on a cooldown. Because the PCWS is cached, we
-	// do not want to exclude this worker if it is on a cooldown, however we do
-	// want to take into consideration the cooldown period when we estimate the
-	// expected resolve time.
+	// Check whether the worker is on a maintenance cooldown and exclude it
+	// if it is since we can't be sure that the problem that caused the
+	// cooldown is reolved after the cooldown is over. In fact it's very
+	// likely that it's not.
 	if w.managedOnMaintenanceCooldown() {
 		return errWorkerOnCooldown
 	}
