@@ -493,6 +493,10 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 // If workers fail or are late, additional workers will be launched to ensure
 // that the download still completes.
 func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
+	if parent := opentracing.SpanFromContext(pdc.ctx); parent != nil {
+		span := opentracing.StartSpan("threadedCollectAndOverdrivePieces", opentracing.ChildOf(parent.Context()))
+		defer span.Finish()
+	}
 	// Loop until the download has either failed or completed.
 	start := time.Now()
 	for {
