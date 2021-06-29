@@ -25,6 +25,10 @@ var (
 	// ErrProjectTimedOut is returned when the project timed out
 	ErrProjectTimedOut = errors.New("project timed out")
 
+	// errWorkerOnCooldown is returned when an operation failed due to the
+	// worker being on a cooldown.
+	errWorkerOnCooldown = errors.New("can't launch worker since it is on a cooldown")
+
 	// pcwsWorkerStateResetTime defines the amount of time that the pcws will
 	// wait before resetting / refreshing the worker state, meaning that all of
 	// the workers will do another round of HasSector queries on the network.
@@ -332,7 +336,7 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 	// want to take into consideration the cooldown period when we estimate the
 	// expected resolve time.
 	if w.managedOnMaintenanceCooldown() {
-		return errEstimateAboveMax
+		return errWorkerOnCooldown
 	}
 
 	// Create and launch the job.
@@ -376,7 +380,7 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorkers(ws *pcwsWorkerState) {
 	responseChan := make(chan *jobHasSectorResponse, len(workers))
 	for _, w := range workers {
 		err := pcws.managedLaunchWorker(w, responseChan, ws)
-		if err != nil && !errors.Contains(err, errEstimateAboveMax) {
+		if err != nil && !errors.Contains(err, errEstimateAboveMax) && !errors.Contains(err, errWorkerOnCooldown) {
 			pcws.staticRenter.staticLog.Debugf("failed to launch worker: %v", err)
 		}
 	}
