@@ -116,23 +116,41 @@ func testDownloadSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 // uploaded using a multipart upload.
 func testDownloadSingleFileMultiPart(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
-
-	// TEST: non-html default path - expect the file's content dut to the single
-	// file exception from the HTML-only default path restriction.
 	testName := "SingleFileMultiPart"
-	data := []byte("contents_file1.png")
-	files := []siatest.TestFile{{Name: "file1.png", Data: data}}
-	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking("SingleFileMultiPartPNG", files, "", false, false)
+
+	// Define Download Test
+	downloadTest := func(fileName string, files []siatest.TestFile) error {
+		// Upload File
+		skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(fileName, files, "", false, false)
+		if err != nil {
+			return errors.AddContext(err, "unable to upload file")
+		}
+
+		// verify downloads
+		err = verifyDownloadRaw(t, r, skylink, files[0].Data, testName)
+		if err != nil {
+			return errors.AddContext(err, "raw download failed")
+		}
+		err = verifyDownloadAsArchive(t, r, skylink, fileMapFromFiles(files), testName)
+		if err != nil {
+			return errors.AddContext(err, "archive download failed")
+		}
+		return nil
+	}
+
+	// Test Zero Byte File
+	data := []byte{}
+	files := []siatest.TestFile{{Name: "zero.png", Data: data}}
+	err := downloadTest("SingleFileMultiPartPNG_Zero", files)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// verify downloads
-	err = verifyDownloadRaw(t, r, skylink, data, testName)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = verifyDownloadAsArchive(t, r, skylink, fileMapFromFiles(files), testName)
+	// TEST: non-html default path - expect the file's content due to the single
+	// file exception from the HTML-only default path restriction.
+	data = []byte("contents_file1.png")
+	files = []siatest.TestFile{{Name: "file1.png", Data: data}}
+	err = downloadTest("SingleFileMultiPartPNG", files)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,17 +158,7 @@ func testDownloadSingleFileMultiPart(t *testing.T, tg *siatest.TestGroup) {
 	// TEST: html default path - expect success
 	data = []byte("contents_file1.html")
 	files = []siatest.TestFile{{Name: "file1.html", Data: data}}
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking("SingleFileMultiPartHTML", files, "", false, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// verify downloads
-	err = verifyDownloadRaw(t, r, skylink, data, testName)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = verifyDownloadAsArchive(t, r, skylink, fileMapFromFiles(files), testName)
+	err = downloadTest("SingleFileMultiPartHTML", files)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -890,7 +898,7 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 		t.Log("Test:", testName)
 		t.Log("expected:", expectedFiles)
 		t.Log("actual  :", files)
-		return errors.New("Unexpected files")
+		return errors.New("Unexpected files for zip")
 	}
 	ct := header.Get("Content-type")
 	if ct != "application/zip" {
@@ -914,7 +922,7 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 		t.Log("Test:", testName)
 		t.Log("expected:", expectedFiles)
 		t.Log("actual  :", files)
-		return errors.New("Unexpected files")
+		return errors.New("Unexpected files for tar")
 	}
 	ct = header.Get("Content-type")
 	if ct != "application/x-tar" {
@@ -939,9 +947,10 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 		return err
 	}
 	if !reflect.DeepEqual(files, expectedFiles) {
+		t.Log("Test:", testName)
 		t.Log("expected:", expectedFiles)
 		t.Log("actual  :", files)
-		return errors.New("Unexpected files")
+		return errors.New("Unexpected files for tar gz")
 	}
 	ct = header.Get("Content-type")
 	if ct != "application/gzip" {

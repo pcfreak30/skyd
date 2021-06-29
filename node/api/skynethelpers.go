@@ -444,6 +444,7 @@ func serveArchive(dst io.Writer, src io.ReadSeeker, md skymodules.SkyfileMetadat
 				build.Critical("SkyfileMetadata is missing length")
 			}
 
+			// Seek back to the start
 			_, err = src.Seek(0, io.SeekStart)
 			if err != nil {
 				return errors.AddContext(err, "serveArchive: failed to seek to start of skyfile")
