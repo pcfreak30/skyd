@@ -431,17 +431,20 @@ func serveArchive(dst io.Writer, src io.ReadSeeker, md skymodules.SkyfileMetadat
 	if len(files) == 0 {
 		length := md.Length
 		if md.Length == 0 {
-			// v150Compat a missing length is fine for legacy links but new
-			// links should always have the length set.
-			if build.Release == "testing" {
-				build.Critical("SkyfileMetadata is missing length")
-			}
 			// Fetch the length of the file by seeking to the end and then back
 			// to the start.
 			seekLen, err := src.Seek(0, io.SeekEnd)
 			if err != nil {
 				return errors.AddContext(err, "serveArchive: failed to seek to end of skyfile")
 			}
+
+			// v150Compat a missing length is fine for legacy links but new
+			// links should always have the length set.
+			if build.Release == "testing" && seekLen != 0 {
+				build.Critical("SkyfileMetadata is missing length")
+			}
+
+			// Seek back to the start
 			_, err = src.Seek(0, io.SeekStart)
 			if err != nil {
 				return errors.AddContext(err, "serveArchive: failed to seek to start of skyfile")
