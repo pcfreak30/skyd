@@ -5259,7 +5259,7 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// Download the file using that link. Should fail.
 	_, err = r.SkynetSkylinkGet(slv2.String())
-	if err == nil || !strings.Contains(err.Error(), renter.ErrRootNotFound.Error()) {
+	if err == nil || !strings.Contains(err.Error(), renter.ErrSkylinkNesting.Error()) {
 		t.Fatal("should fail to resolve v2 skylink with more than 2 layers of recursion", err)
 	}
 
