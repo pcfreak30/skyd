@@ -211,7 +211,7 @@ type (
 
 // skynetBaseSectorHandlerGET accepts a skylink as input and will return the
 // encoded basesector.
-func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse the skylink from the raw URL of the request. Any special characters
 	// in the raw URL are encoded, allowing us to differentiate e.g. the '?'
 	// that begins query parameters from the encoded version '%3F'.
@@ -410,7 +410,7 @@ func (api *API) skynetPortalsHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 // skynetRootHandlerGET handles the api call for a download by root request.
 // This call returns the encoded sector.
-func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse the query params.
 	queryForm, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
@@ -504,7 +504,7 @@ func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, p
 
 // skynetSkylinkHandlerGET accepts a skylink as input and will stream the data
 // from the skylink out of the response body as output.
-func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse the skylink from the raw URL of the request. Any special characters
 	// in the raw URL are encoded, allowing us to differentiate e.g. the '?'
 	// that begins query parameters from the encoded version '%3F'.
@@ -640,8 +640,23 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}
 
+	// If we're running in "web" directory resolution mode we want to track the
+	// status code and file content that we need to return in case we need to
+	// serve a "file not found".
+	notFoundSubfilePath := ""
+	notFoundStatusCode := http.StatusNotFound
+	if metadata.DirResMode == skymodules.DirResModeWeb {
+		if metadata.DirResNotFound != "" {
+			notFoundSubfilePath = skymodules.EnsurePrefix(metadata.DirResNotFound, "/")
+		}
+		if metadata.DirResNotFoundCode != 0 {
+			notFoundStatusCode = metadata.DirResNotFoundCode
+		}
+	}
+
 	var isSubfile bool
 	responseContentType := metadata.ContentType()
+	responseStatusCode := http.StatusOK
 
 	// Serve the contents of the file at the default path if one is set. Note
 	// that we return the metadata for the entire Skylink when we serve the
@@ -675,53 +690,44 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s), please specify a format", defaultPath)}, http.StatusBadRequest)
 			return
 		}
-		metaForPath, isFile, offset, size := metadata.ForPath(defaultPath)
-		if len(metaForPath.Subfiles) == 0 {
-			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v", path)}, http.StatusNotFound)
+		// TODO The rest of this block can be replaced with `path = defaultPath` but only if we don't change the behaviour.
+		// We will try to serve the defaultPath. If the file cannot be found,
+		// serve the custom "not found" content and status code. If that also
+		// turns out to be not possible, simply error out.
+		statusCode, err := servePathOrNotFound(defaultPath, &metadata, &responseContentType, &isSubfile, &streamer, notFoundSubfilePath, notFoundStatusCode)
+		if err.Message != "" || (statusCode != http.StatusOK && statusCode != notFoundStatusCode) {
+			WriteError(w, err, statusCode)
 			return
 		}
-		if !isFile {
-			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, please specify a specific path or a format in order to download the content", defaultPath)}, http.StatusNotFound)
-			return
-		}
-		streamer, err = NewLimitStreamer(streamer, streamer.Metadata(), streamer.RawMetadata(), streamer.Skylink(), streamer.Layout(), offset, size)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
-			return
-		}
-		isSubfile = isFile
-		responseContentType = metaForPath.ContentType()
+		responseStatusCode = statusCode
 	}
 
-	// Serve the contents of the skyfile at path if one is set
+	// Serve the contents of the skyfile at path if one is set.
 	if path != "/" {
-		metadataForPath, file, offset, size := metadata.ForPath(path)
-		if len(metadataForPath.Subfiles) == 0 {
-			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound)
+		statusCode, err := servePathOrNotFound(path, &metadata, &responseContentType, &isSubfile, &streamer, notFoundSubfilePath, notFoundStatusCode)
+		if err.Message != "" || (statusCode != http.StatusOK && statusCode != notFoundStatusCode) {
+			WriteError(w, err, statusCode)
 			return
 		}
-		// NOTE: we don't have an actual raw metadata for the subpath. So we are
-		// marshaling the temporary metadata. This should be good enough since
-		// the metadata can't be used to create a skylink anyway.
-		rawMetadataForPath, err := json.Marshal(metadataForPath)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to marshal subfile metadata for path %v", path)}, http.StatusNotFound)
-			return
-		}
-		streamer, err = NewLimitStreamer(streamer, metadataForPath, rawMetadataForPath, streamer.Skylink(), streamer.Layout(), offset, size)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
-			return
-		}
-
-		metadata = metadataForPath
-		isSubfile = file
+		responseStatusCode = statusCode
 	}
 
 	// If we are serving more than one file, and the format is not
 	// specified, default to downloading it as a zip archive.
 	if !isSubfile && metadata.IsDirectory() && format == skymodules.SkyfileFormatNotSpecified {
-		format = skymodules.SkyfileFormatZip
+		if metadata.DirResMode == skymodules.DirResModeWeb {
+			// Serve the local index file instead of the directory.
+			localIndexPath := skymodules.EnsureSuffix(skymodules.EnsurePrefix(path, "/"), "/") + "index.html"
+			statusCode, err := servePathOrNotFound(localIndexPath, &metadata, &responseContentType, &isSubfile, &streamer, notFoundSubfilePath, notFoundStatusCode)
+			if err.Message != "" || (statusCode != http.StatusOK && statusCode != notFoundStatusCode) {
+				WriteError(w, err, statusCode)
+				return
+			}
+			responseStatusCode = statusCode
+		} else {
+			// Assume "standard" mode.
+			format = skymodules.SkyfileFormatZip
+		}
 	}
 
 	// Encode the Layout
@@ -734,7 +740,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 	// Set the ETag response header
 	//
-	// NOTE: we use the Skylink returned by the streamer to buid the ETag with,
+	// NOTE: we use the Skylink returned by the streamer to build the ETag with,
 	// this is very important as the incoming skylink might have been a V2
 	// skylink that got resolved to a v1 skylink. We don't want to build the
 	// ETag on the V2 skylink as that is constant, even though the data might
@@ -797,6 +803,12 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// library from sniffing the file's content type.
 	if responseContentType != "" {
 		w.Header().Set("Content-Type", responseContentType)
+	}
+	// This allows us to return a custom status code.
+	// TODO What happens if the content we try to server is bigger that the
+	// 	threshold and http.ServerContent tries to set http.StatusPartialContent?
+	if responseStatusCode != http.StatusOK {
+		w.WriteHeader(responseStatusCode)
 	}
 
 	// Monetize the response if necessary by wrapping the response writer in a
@@ -925,7 +937,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 
 // skynetTUSUploadSkylinkGET is the handler for the /skynet/tus/skylink/:id
 // endpoint.
-func (api *API) skynetTUSUploadSkylinkGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skynetTUSUploadSkylinkGET(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	// Get id from path.
 	id := ps.ByName("id")
 
@@ -1083,7 +1095,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 // skynetStatsHandlerGET responds with a JSON with statistical data about
 // skynet, e.g. number of files uploaded, total size, etc.
-func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	// Pull the skynet stats from the root directory
 	dirs, err := api.renter.DirList(skymodules.RootSiaPath())
 	if err != nil {
@@ -1570,7 +1582,7 @@ func (api *API) skynetRestoreHandlerPOST(w http.ResponseWriter, req *http.Reques
 }
 
 // skynetMetadataHandlerGET is the handler for the /skynet/metadata endpoint.
-func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse the skylink from the raw URL of the request. Any special characters
 	// in the raw URL are encoded, allowing us to differentiate e.g. the '?'
 	// that begins query parameters from the encoded version '%3F'.
@@ -1720,4 +1732,50 @@ func (api *API) skynetSkylinkUnpinHandlerPOST(w http.ResponseWriter, req *http.R
 		return
 	}
 	WriteSuccess(w)
+}
+
+// servePath is a helper function that overrides the content that we are about
+// to serve. It's designed specifically for use by skynetStatsHandlerGET and
+// should not be used elsewhere.
+// TODO Refactor this to not have all these side effects and just return the changing values.
+func servePath(path string, meta *skymodules.SkyfileMetadata, responseContentType *string, isSubfile *bool, streamer *skymodules.SkyfileStreamer) (statusCode int, error Error) {
+	metadataForPath, file, offset, size := meta.ForPath(path)
+	if len(metadataForPath.Subfiles) == 0 {
+		return http.StatusNotFound, Error{fmt.Sprintf("failed to download contents for path: %v", path)}
+	}
+	// NOTE: we don't have an actual raw metadata for the subpath. So we are
+	// marshaling the temporary metadata. This should be good enough since
+	// the metadata can't be used to create a skylink anyway.
+	rawMetadataForPath, err := json.Marshal(metadataForPath)
+	if err != nil {
+		return http.StatusNotFound, Error{fmt.Sprintf("failed to marshal subfile metadata for path %v", path)}
+	}
+	*streamer, err = NewLimitStreamer(*streamer, metadataForPath, rawMetadataForPath, (*streamer).Skylink(), (*streamer).Layout(), offset, size)
+	if err != nil {
+		return http.StatusInternalServerError, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}
+	}
+	*meta = metadataForPath
+	*responseContentType = metadataForPath.ContentType()
+	*isSubfile = file
+	return http.StatusOK, Error{}
+}
+
+// servePathOrNotFound is a helper function that overrides the content that we
+// are about to serve. If the content is not found, we'll return the custom
+// "not found" content and code. It's designed specifically for use by
+// skynetStatsHandlerGET and should not be used elsewhere.
+func servePathOrNotFound(path string, meta *skymodules.SkyfileMetadata, responseContentType *string, isSubfile *bool, streamer *skymodules.SkyfileStreamer, notFoundPath string, notFoundStatusCode int) (statusCode int, error Error) {
+	statusCode, err := servePath(path, meta, responseContentType, isSubfile, streamer)
+	if statusCode == http.StatusNotFound {
+		// Serve the custom "not found" content.
+		statusCode, err = servePath(notFoundPath, meta, responseContentType, isSubfile, streamer)
+	}
+	if err.Message != "" || statusCode != http.StatusOK {
+		// TODO This might turn out confusing in case the custom "not found" code specified by the skapp is 200,
+		// 	as a Vue app might request.
+		if statusCode != http.StatusNotFound {
+			statusCode = notFoundStatusCode
+		}
+	}
+	return statusCode, error
 }
