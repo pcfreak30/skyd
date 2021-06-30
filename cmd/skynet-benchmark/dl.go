@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"strconv"
 	"strings"
 	"sync"
@@ -52,7 +52,7 @@ const (
 	fetchSize10mb = 10e6 // Once over 4 MB, fetch size doesn't matter, can use exact sizes.
 
 	// The total number of files of each size that we download during testing.
-	filesPerDir = 200
+	filesPerDir = 1000
 )
 
 // dl is a command that downloads skyfiles from Skynet in various sizes, ranging
@@ -194,17 +194,18 @@ func downloadFileSet(dir skymodules.SiaPath, fileSize int, threads uint64) (stat
 				atomic.AddUint64(&atomicDownloadErrors, 1)
 				return
 			}
+			defer reader.Close()
 
 			// Download and discard the result, we only care about the speeds,
 			// not the data.
-			data, err := ioutil.ReadAll(reader)
+			n, err := io.Copy(io.Discard, reader)
 			if err != nil {
-				fmt.Printf("Error performing download on %v, only got %v bytes: %v\n", i, len(data), err)
+				fmt.Printf("Error performing download on %v, only got %v bytes: %v\n", i, n, err)
 				atomic.AddUint64(&atomicDownloadErrors, 1)
 				return
 			}
-			if len(data) != fileSize {
-				fmt.Printf("Error performing download on %v, got %v bytes when expecting %v\n", i, len(data), fileSize)
+			if n != int64(fileSize) {
+				fmt.Printf("Error performing download on %v, got %v bytes when expecting %v\n", i, n, fileSize)
 				atomic.AddUint64(&atomicDownloadErrors, 1)
 				return
 			}
