@@ -157,7 +157,7 @@ func (wh *pdcWorkerHeap) Pop() interface{} {
 // cooldown for the read job. The worker heap optimizes for speed, not cost.
 // Cost is taken into account at a later point where the initial worker set is
 // built.
-func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnresolvedWorker) pdcWorkerHeap {
+func (pdc *projectDownloadChunk) initialWorkerHeap(start time.Time, unresolvedWorkers []*pcwsUnresolvedWorker) pdcWorkerHeap {
 	// Add all of the unresolved workers to the heap.
 	var workerHeap pdcWorkerHeap
 	for _, uw := range unresolvedWorkers {
@@ -190,7 +190,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		// resolves; favor some other worker instead.
 		resolveTime := uw.staticExpectedResolvedTime
 		if resolveTime.Before(time.Now()) {
-			resolveTime = resolveTime.Add(delayedWorkerPenalty)
+			resolveTime = resolveTime.Add(2 * time.Since(start))
 		}
 
 		// Determine the expected readDuration and cost for this worker. Add the
@@ -507,6 +507,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 // launched and then launch them. This is a non-blocking function that returns
 // once jobs have been scheduled for MinPieces workers.
 func (pdc *projectDownloadChunk) launchInitialWorkers() error {
+	start := time.Now()
 	for {
 		// Get the list of unresolved workers. This will also grab an update, so
 		// any workers that have resolved recently will be reflected in the
@@ -515,7 +516,7 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 
 		// Create a list of usable workers, sorted by the amount of time they
 		// are expected to take to return.
-		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers)
+		workerHeap := pdc.initialWorkerHeap(start, unresolvedWorkers)
 
 		// Create an initial worker set
 		finalWorkers, err := pdc.createInitialWorkerSet(workerHeap)
