@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -287,6 +288,10 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(start time.Time, unresolvedWo
 // applied which will eventually break those workers and revert to preferring
 // the already resolved workers.
 func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap) ([]*pdcInitialWorker, error) {
+	if parent := opentracing.SpanFromContext(pdc.ctx); parent != nil {
+		span := opentracing.StartSpan("createInitialWorkerSet", opentracing.ChildOf(parent.Context()))
+		defer span.Finish()
+	}
 	// Convenience variable.
 	ec := pdc.workerSet.staticErasureCoder
 	gs := types.NewCurrency(new(big.Int).Exp(big.NewInt(10), big.NewInt(33), nil)) // 1GS
