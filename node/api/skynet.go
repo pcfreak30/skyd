@@ -180,9 +180,12 @@ type (
 	// RegistryHandlerGET is the response returned by the registryHandlerGET
 	// handler.
 	RegistryHandlerGET struct {
-		Data      string `json:"data"`
-		Revision  uint64 `json:"revision"`
-		Signature string `json:"signature"`
+		Data      string                    `json:"data"`
+		Revision  uint64                    `json:"revision"`
+		DataKey   crypto.Hash               `json:"datakey"`
+		PublicKey types.SiaPublicKey        `json:"publickey"`
+		Signature string                    `json:"signature"`
+		Type      modules.RegistryEntryType `json:"type"`
 	}
 
 	// RegistryHandlerRequestPOST is the expected format of the json request for
@@ -254,7 +257,7 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 	}
 
 	// Fetch the skyfile's streamer to serve the basesector of the file
-	streamer, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
+	streamer, srvs, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
 	if err != nil {
 		handleSkynetError(w, "failed to fetch base sector", err)
 		return
@@ -264,6 +267,13 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 		// error here.
 		_ = streamer.Close()
 	}()
+
+	// Attach proof.
+	err = attachRegistryEntryProof(w, srvs)
+	if err != nil {
+		WriteError(w, Error{"unable to attach proof: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
 
 	// Serve the basesector
 	http.ServeContent(w, req, "", time.Time{}, streamer)
@@ -582,7 +592,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 
 	// Fetch the skyfile's metadata and a streamer to download the file
-	streamer, err := api.renter.DownloadSkylink(skylink, timeout, pricePerMS)
+	streamer, srvs, err := api.renter.DownloadSkylink(skylink, timeout, pricePerMS)
 	if err != nil {
 		handleSkynetError(w, "failed to fetch skylink", err)
 		return
@@ -592,6 +602,13 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		// error here.
 		_ = streamer.Close()
 	}()
+
+	// Attach proof.
+	err = attachRegistryEntryProof(w, srvs)
+	if err != nil {
+		WriteError(w, Error{"unable to attach proof: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
 
 	// Validate Metadata
 	metadata := streamer.Metadata()
@@ -1472,8 +1489,11 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 	// Send response.
 	WriteJSON(w, RegistryHandlerGET{
 		Data:      hex.EncodeToString(srv.Data),
+		DataKey:   srv.Tweak,
 		Revision:  srv.Revision,
+		PublicKey: srv.PubKey,
 		Signature: hex.EncodeToString(srv.Signature[:]),
+		Type:      srv.Type,
 	})
 }
 
@@ -1512,9 +1532,20 @@ func (api *API) skylinkResolveGET(w http.ResponseWriter, req *http.Request, ps h
 	// Resolve skylink.
 	ctx, cancel := context.WithTimeout(req.Context(), timeout)
 	defer cancel()
-	slV1, err := api.renter.ResolveSkylinkV2(ctx, sl)
+	slV1, srv, err := api.renter.ResolveSkylinkV2(ctx, sl)
 	if err != nil {
 		handleSkynetError(w, "Failed to resolve skylink", err)
+		return
+	}
+
+	// Attach proof.
+	var proof []skymodules.RegistryEntry
+	if srv != nil {
+		proof = append(proof, *srv)
+	}
+	err = attachRegistryEntryProof(w, proof)
+	if err != nil {
+		WriteError(w, Error{"unable to attach proof: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
@@ -1588,7 +1619,7 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 	w.Header().Set("Skynet-Skylink", skylink.String())
 
 	// Fetch the skyfile's streamer to serve the basesector of the file
-	streamer, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
+	streamer, srvs, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
 	if err != nil {
 		handleSkynetError(w, "failed to fetch base sector", err)
 		return
@@ -1598,6 +1629,13 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 		// error here.
 		_ = streamer.Close()
 	}()
+
+	// Attach proof.
+	err = attachRegistryEntryProof(w, srvs)
+	if err != nil {
+		WriteError(w, Error{"unable to attach proof: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
 
 	// Read base sector.
 	baseSector, err := ioutil.ReadAll(streamer)

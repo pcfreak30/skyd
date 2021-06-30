@@ -736,3 +736,23 @@ func computeMonetizationPayout(amt, base types.Currency, rand io.Reader) (types.
 	}
 	return types.ZeroCurrency, nil
 }
+
+// RegistryEntry is a complete registry entry including the pubkey needed to
+// verify it.
+type RegistryEntry struct {
+	modules.SignedRegistryValue
+	PubKey types.SiaPublicKey
+}
+
+// Verify verifies the entry.
+func (re RegistryEntry) Verify() error {
+	return re.SignedRegistryValue.Verify(re.PubKey.ToPublicKey())
+}
+
+// NewRegistryEntry creates a new RegistryEntry.
+func NewRegistryEntry(spk types.SiaPublicKey, srv modules.SignedRegistryValue) RegistryEntry {
+	return RegistryEntry{
+		SignedRegistryValue: srv,
+		PubKey:              spk,
+	}
+}

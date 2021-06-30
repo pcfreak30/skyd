@@ -3258,6 +3258,8 @@ The protocol is implemented on the following endpoints:
 
 For detailed information about the protocol check out the [specification](https://tus.io/protocols/resumable-upload.html).
 
+### Chunk Size
+
 For uploads to work with Skyd, you need to make sure that the chunk size of
 your TUS client is configured correctly. Otherwise, the upload will return an
 error which contains the expected chunk size. Right now the chunk size is
@@ -3270,9 +3272,19 @@ When using the defaults, the overhead is 0 and the dataPieces are 10. That's
 because all files uploaded using this protocol are automatically considered
 large uploads.
 
+### Skylink
+
 The Skylink for a TUS upload can be found at the following endpoint once the
 upload finished successfully.  It will be returned both as a JSON object in
 the response body as well as the http response header `"Skynet-Skylink"`.
+
+### Max Upload Size
+
+To limit the upload size of a file globally, set the `TUS_MAXSIZE` environment
+variable to the maximum number of bytes any user can upload. In addition to that
+global limit, the `SkynetMaxUploadSize` http header needs to be set on TUS
+requests for creating a new upload. This is the local limit for the specific
+upload. For security, both the global and local limit need to be set. 
 
 ## /skynet/upload/tus/:id [GET]
 > curl example  

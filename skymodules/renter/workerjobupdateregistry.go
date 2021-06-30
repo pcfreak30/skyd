@@ -24,10 +24,9 @@ const (
 // valid signature but is still invalid due to its revision number.
 var errHostOutdatedProof = errors.New("host returned proof with invalid revision number")
 
-// errHostLowerRevisionThanCache is returned whenever the host claims that the
-// latest revision of the registry entry it knows is lower than the one it is
-// supposed to have according to the cache.
-var errHostLowerRevisionThanCache = errors.New("host claims that the latest revision it knows is lower than the one in the cache")
+// errHostCheating is returned when a host is known to be in possession of a
+// more recent registry value but returned an outdated one.
+var errHostCheating = errors.New("host is cheating by returning an outdated entry")
 
 type (
 	// jobUpdateRegistry contains information about a UpdateRegistry query.
@@ -99,7 +98,7 @@ func (j *jobUpdateRegistry) callDiscard(err error) {
 func (j *jobUpdateRegistry) callExecute() {
 	start := time.Now()
 	w := j.staticQueue.staticWorker()
-	sid := modules.DeriveRegistryEntryID(j.staticSiaPublicKey, j.staticSignedRegistryValue.Tweak)
+	rid := modules.DeriveRegistryEntryID(j.staticSiaPublicKey, j.staticSignedRegistryValue.Tweak)
 
 	// Finish job span at the end.
 	defer j.staticSpan.Finish()
@@ -154,15 +153,13 @@ func (j *jobUpdateRegistry) callExecute() {
 		}
 		// If the entry is valid and the revision is also valid, check if we
 		// have a higher revision number in the cache than the provided one.
-		// TODO: update the cache to store the hash in addition to the revision
-		// number for verifying the pow.
-		cachedRevision, cached := w.staticRegistryCache.Get(sid)
-		if cached && cachedRevision > rv.Revision {
-			sendResponse(nil, errHostLowerRevisionThanCache)
-			j.staticQueue.callReportFailure(errHostLowerRevisionThanCache)
-			span.LogKV("error", errHostLowerRevisionThanCache)
+		errCheating := w.managedCheckHostCheating(rid, rv, true)
+		if errCheating != nil {
+			sendResponse(nil, errCheating)
+			j.staticQueue.callReportFailure(errCheating)
+			span.LogKV("error", errCheating)
 			j.staticSpan.SetTag("success", false)
-			w.staticRegistryCache.Set(sid, rv, true) // adjust the cache
+			w.staticRegistryCache.Set(rid, rv, true) // adjust the cache
 			return
 		}
 		// If the entry is the same as as the one we want to set, consider this
@@ -191,7 +188,7 @@ func (j *jobUpdateRegistry) callExecute() {
 	j.staticSpan.SetTag("success", true)
 
 	// Update the registry cache.
-	w.staticRegistryCache.Set(sid, j.staticSignedRegistryValue, false)
+	w.staticRegistryCache.Set(rid, j.staticSignedRegistryValue, false)
 
 	// Send the response and report success.
 	sendResponse(nil, nil)

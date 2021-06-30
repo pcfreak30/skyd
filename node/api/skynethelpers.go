@@ -3,6 +3,7 @@ package api
 import (
 	"archive/tar"
 	"archive/zip"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -571,4 +572,27 @@ func handleSkynetError(w http.ResponseWriter, prefix string, err error) {
 		WriteError(w, httpErr, http.StatusInternalServerError)
 		return
 	}
+}
+
+// attachRegistryEntryProof takes a number of registry entries and parses them.
+// The result is then attached to an API response for the client to verify the
+// response against.
+func attachRegistryEntryProof(w http.ResponseWriter, srvs []skymodules.RegistryEntry) error {
+	proofChain := make([]RegistryHandlerGET, 0, len(srvs))
+	for _, srv := range srvs {
+		proofChain = append(proofChain, RegistryHandlerGET{
+			Data:      hex.EncodeToString(srv.Data),
+			DataKey:   srv.Tweak,
+			Revision:  srv.Revision,
+			PublicKey: srv.PubKey,
+			Signature: hex.EncodeToString(srv.Signature[:]),
+			Type:      srv.Type,
+		})
+	}
+	b, err := json.Marshal(proofChain)
+	if err != nil {
+		return err
+	}
+	w.Header().Set("Proof", string(b))
+	return nil
 }

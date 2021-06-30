@@ -105,14 +105,18 @@ func (c *Client) SkynetTUSClientCustom(chunkSize int64, ct crypto.CipherType, da
 	return tus.NewClient(fmt.Sprintf("http://%v/skynet/tus", c.Address), config)
 }
 
-// SkynetTUSNewUploadFromBytes returns a ready-to-use tus client and upload for
-// some data and chunkSize.
-func (c *Client) SkynetTUSNewUploadFromBytes(data []byte, chunkSize int64) (*tus.Client, *tus.Upload, error) {
+// SkynetTUSNewUploadFromBytesWithMaxSize returns a ready-to-use tus client and
+// upload for some data and chunkSize while also specifying the maxSize of this
+// download.
+func (c *Client) SkynetTUSNewUploadFromBytesWithMaxSize(data []byte, chunkSize, maxSize int64) (*tus.Client, *tus.Upload, error) {
 	// Get client.
 	tc, err := c.SkynetTUSClient(chunkSize)
 	if err != nil {
 		return nil, nil, err
 	}
+
+	// Set the maxSize in the header.
+	tc.Header.Set("SkynetMaxUploadSize", fmt.Sprint(maxSize))
 
 	// Create the uploader and upload the data.
 	r := bytes.NewReader(data)
@@ -121,10 +125,17 @@ func (c *Client) SkynetTUSNewUploadFromBytes(data []byte, chunkSize int64) (*tus
 	return tc, upload, nil
 }
 
-// SkynetTUSUploadFromBytes uploads some bytes using the /skynet/tus endpoint
-// and the specified chunkSize.
-func (c *Client) SkynetTUSUploadFromBytes(data []byte, chunkSize int64, fileName, fileType string) (string, error) {
-	tc, upload, err := c.SkynetTUSNewUploadFromBytes(data, chunkSize)
+// SkynetTUSNewUploadFromBytes returns a ready-to-use tus client and upload for
+// some data and chunkSize.
+func (c *Client) SkynetTUSNewUploadFromBytes(data []byte, chunkSize int64) (*tus.Client, *tus.Upload, error) {
+	return c.SkynetTUSNewUploadFromBytesWithMaxSize(data, chunkSize, int64(len(data)))
+}
+
+// SkynetTUSUploadFromBytesWithMaxSize uploads some bytes using the /skynet/tus
+// endpoint and the specified chunkSize while also specifying the max size of
+// the upload.
+func (c *Client) SkynetTUSUploadFromBytesWithMaxSize(data []byte, chunkSize int64, fileName, fileType string, maxSize int64) (string, error) {
+	tc, upload, err := c.SkynetTUSNewUploadFromBytesWithMaxSize(data, chunkSize, maxSize)
 	if err != nil {
 		return "", err
 	}
@@ -158,6 +169,12 @@ func (c *Client) SkynetTUSUploadFromBytes(data []byte, chunkSize int64, fileName
 		return "", err
 	}
 	return skylink, nil
+}
+
+// SkynetTUSUploadFromBytes uploads some bytes using the /skynet/tus endpoint
+// and the specified chunkSize.
+func (c *Client) SkynetTUSUploadFromBytes(data []byte, chunkSize int64, fileName, fileType string) (string, error) {
+	return c.SkynetTUSUploadFromBytesWithMaxSize(data, chunkSize, fileName, fileType, int64(len(data)))
 }
 
 // SkynetSkylinkGetWithETag uses the /skynet/skylink endpoint to download a
@@ -869,6 +886,7 @@ func (c *Client) RegistryReadWithTimeout(spk types.SiaPublicKey, dataKey crypto.
 	if err != nil {
 		return modules.SignedRegistryValue{}, errors.AddContext(err, "failed to decode signature")
 	}
+
 	// Decode signature.
 	var sig crypto.Signature
 	sigBytes, err := hex.DecodeString(rhg.Signature)
@@ -879,7 +897,14 @@ func (c *Client) RegistryReadWithTimeout(spk types.SiaPublicKey, dataKey crypto.
 		return modules.SignedRegistryValue{}, fmt.Errorf("unexpected signature length %v != %v", len(sigBytes), len(sig))
 	}
 	copy(sig[:], sigBytes)
-	return modules.NewSignedRegistryValue(dataKey, data, rhg.Revision, sig, modules.RegistryTypeWithoutPubkey), nil
+
+	// Verify pubkey.
+	if !rhg.PublicKey.Equals(spk) {
+		return modules.SignedRegistryValue{}, fmt.Errorf("unexpected pubkey %v != %v", rhg.PublicKey, spk)
+	}
+
+	srv := modules.NewSignedRegistryValue(dataKey, data, rhg.Revision, sig, rhg.Type)
+	return srv, srv.Verify(spk.ToPublicKey())
 }
 
 // RegistryUpdate queries the /skynet/registry [POST] endpoint.
