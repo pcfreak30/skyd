@@ -7,6 +7,8 @@ package renter
 
 import (
 	"sync"
+
+	"github.com/opentracing/opentracing-go"
 )
 
 // leastRecentlyUsedCacheNode is a node in the leastRecentlyUsedCache. It has an
@@ -65,7 +67,7 @@ func (lru *leastRecentlyUsedCache) callEvictAll() {
 // node to be placed at the most recent point of the LRU. If the node is not
 // currently in the LRU and the LRU is full, the least recently used node of the
 // LRU will be evicted.
-func (lru *leastRecentlyUsedCache) callUpdate(index uint64) {
+func (lru *leastRecentlyUsedCache) callUpdate(parent opentracing.Span, index uint64) {
 	lru.mu.Lock()
 	// Check if the node is already in the LRU. If so, move that node to the
 	// front of the list.
@@ -82,7 +84,7 @@ func (lru *leastRecentlyUsedCache) callUpdate(index uint64) {
 	}
 	lru.insertHead(node)
 	lru.mu.Unlock()
-	lru.staticStreamBuffer.callFetchDataSection(index)
+	lru.staticStreamBuffer.callFetchDataSection(parent, index)
 
 	// Eviction needs to straddle the consistency domain of the lru and the
 	// consistency domain of the stream buffer, so it has to be a managed call.

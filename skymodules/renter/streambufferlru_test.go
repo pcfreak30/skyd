@@ -57,7 +57,8 @@ func TestStreamLRU(t *testing.T) {
 	}
 
 	// Add the first node.
-	lru.callUpdate(0)
+	span := opentracing.NoopTracer{}.StartSpan("noop")
+	lru.callUpdate(span, 0)
 	// Check that the lru has one node.
 	if lru.head == nil {
 		t.Fatal("bad")
@@ -77,9 +78,9 @@ func TestStreamLRU(t *testing.T) {
 	}
 
 	// Add nodes 1, 2, 3, then perform an integrity check.
-	lru.callUpdate(1)
-	lru.callUpdate(2)
-	lru.callUpdate(3)
+	lru.callUpdate(span, 1)
+	lru.callUpdate(span, 2)
+	lru.callUpdate(span, 3)
 	if len(lru.nodes) != 4 {
 		t.Fatal("bad")
 	}
@@ -103,7 +104,7 @@ func TestStreamLRU(t *testing.T) {
 	}
 
 	// Call update with 4, this should cause an eviction.
-	lru.callUpdate(4)
+	lru.callUpdate(span, 4)
 	if len(lru.nodes) != 4 {
 		t.Fatal("bad", len(lru.nodes))
 	}
@@ -135,7 +136,7 @@ func TestStreamLRU(t *testing.T) {
 	}
 
 	// Call update with 1, this should move 1 to the head of the LRU.
-	lru.callUpdate(1)
+	lru.callUpdate(span, 1)
 	if len(lru.nodes) != 4 {
 		t.Fatal("bad", len(lru.nodes))
 	}
@@ -160,7 +161,7 @@ func TestStreamLRU(t *testing.T) {
 
 	// Call update with 3, this should move 3 to the head of the LRU. Unlike the
 	// previous check, which updated the tail, this check updates a center node.
-	lru.callUpdate(3)
+	lru.callUpdate(span, 3)
 	if len(lru.nodes) != 4 {
 		t.Fatal("bad", len(lru.nodes))
 	}
@@ -193,7 +194,7 @@ func TestStreamLRU(t *testing.T) {
 	}
 
 	// Call update with 3 again, nothing should change.
-	lru.callUpdate(3)
+	lru.callUpdate(span, 3)
 	if len(lru.nodes) != 4 {
 		t.Fatal("bad", len(lru.nodes))
 	}
@@ -244,7 +245,7 @@ func TestStreamLRU(t *testing.T) {
 	}
 
 	// Try inserting another new node, this should evict '2'.
-	lru.callUpdate(10)
+	lru.callUpdate(span, 10)
 	if len(lru.nodes) != 4 {
 		t.Fatal("bad", len(lru.nodes))
 	}
@@ -295,7 +296,7 @@ func TestStreamLRU(t *testing.T) {
 	}
 
 	// Add another node and attempt to evict the tail node.
-	lru.callUpdate(2)
+	lru.callUpdate(span, 2)
 	lru.managedEvict()
 	if len(lru.nodes) != 4 {
 		t.Fatal("bad", len(lru.nodes))

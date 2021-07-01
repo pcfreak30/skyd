@@ -502,6 +502,10 @@ func (s *stream) Seek(offset int64, whence int) (int64, error) {
 // prepareOffset will ensure that the dataSection containing the offset is made
 // available in the LRU, and that the following dataSection is also available.
 func (s *stream) prepareOffset() {
+	spanRef := opentracing.ChildOf(s.staticSpan.Context())
+	span := opentracing.StartSpan("prepareOffset", spanRef)
+	defer span.Finish()
+
 	// Convenience variables.
 	dataSize := s.staticStreamBuffer.staticDataSize
 	dataSectionSize := s.staticStreamBuffer.staticDataSectionSize
@@ -515,21 +519,21 @@ func (s *stream) prepareOffset() {
 	// streamBuffer to fetch the dataSection if the dataSection is not already
 	// in the streamBuffer cache.
 	index := s.offset / dataSectionSize
-	s.lru.callUpdate(index)
+	s.lru.callUpdate(span, index)
 
 	// If there is a following data section, update that as well. This update is
 	// done regardless of the minimumLookahead, we always want to buffer at
 	// least one more piece than the current piece.
 	nextIndex := index + 1
 	if nextIndex*dataSectionSize < dataSize {
-		s.lru.callUpdate(nextIndex)
+		s.lru.callUpdate(span, nextIndex)
 	}
 
 	// Keep adding more pieces to the buffer until we have buffered at least
 	// minimumLookahead total data or have reached the end of the stream.
 	nextIndex++
 	for i := dataSectionSize * 2; i < minimumLookahead && nextIndex*dataSectionSize < dataSize; i += dataSectionSize {
-		s.lru.callUpdate(nextIndex)
+		s.lru.callUpdate(span, nextIndex)
 		nextIndex++
 	}
 }
@@ -537,14 +541,14 @@ func (s *stream) prepareOffset() {
 // callFetchDataSection will increment the refcount of a dataSection in the
 // stream buffer. If the dataSection is not currently available in the stream
 // buffer, the data section will be fetched from the dataSource.
-func (sb *streamBuffer) callFetchDataSection(index uint64) {
+func (sb *streamBuffer) callFetchDataSection(parent opentracing.Span, index uint64) {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
 
 	// Fetch the relevant dataSection, creating a new one if necessary.
 	dataSection, exists := sb.dataSections[index]
 	if !exists {
-		dataSection = sb.newDataSection(index)
+		dataSection = sb.newDataSection(parent, index)
 	}
 	// Increment the refcount of the dataSection.
 	dataSection.refCount++
@@ -597,7 +601,7 @@ func (sb *streamBuffer) managedPrepareNewStream(ctx context.Context, initialOffs
 
 // newDataSection will create a new data section for the streamBuffer and spin
 // up a goroutine to pull the data from the data source.
-func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
+func (sb *streamBuffer) newDataSection(parent opentracing.Span, index uint64) *dataSection {
 	// Convenience variables.
 	dataSize := sb.staticDataSize
 	dataSectionSize := sb.staticDataSectionSize
@@ -627,8 +631,7 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 		defer close(ds.dataAvailable)
 
 		// Create a child span for the data section
-		spanRef := opentracing.ChildOf(sb.staticSpan.Context())
-		span := opentracing.StartSpan("newDataSection", spanRef)
+		span := opentracing.StartSpan("newDataSection", opentracing.ChildOf(parent.Context()))
 		span.LogKV("index", index)
 		defer func() {
 			if ds.externErr != nil {
