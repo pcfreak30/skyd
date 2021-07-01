@@ -433,6 +433,12 @@ func validateDefaultPath(defaultPath string, subfiles SkyfileSubfiles) (string, 
 // validateDirResMode ensures the given combination of directory resolution
 // settings is valid and usable.
 func validateDirResMode(mode, notFound string, notFoundCode int, subfiles SkyfileSubfiles) error {
+	if mode == "" {
+		mode = DirResModeStandard
+	}
+	if notFoundCode == 0 {
+		notFoundCode = http.StatusNotFound
+	}
 	if mode != DirResModeWeb && (notFound != "" || notFoundCode != http.StatusNotFound) {
 		return errors.New("custom 'not found' file and/or code can only be set in directory resolution mode 'web'")
 	}

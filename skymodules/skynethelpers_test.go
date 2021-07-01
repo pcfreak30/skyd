@@ -3,6 +3,7 @@ package skymodules
 import (
 	"encoding/json"
 	"math"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -188,6 +189,67 @@ func testValidateSkyfileMetadata(t *testing.T) {
 		t.Fatal("unexpected outcome")
 	}
 
+	// verify invalid directory resolution mode + custom 'not found' code
+	// combination
+	invalid = metadata
+	// we set a custom 'not found' code but do not set the mode. instead, we
+	// rely on the default mode to be 'standard'.
+	invalid.DirResNotFoundCode = http.StatusOK
+	err = ValidateSkyfileMetadata(invalid)
+	if err == nil || !strings.Contains(err.Error(), "custom 'not found' file and/or code can only be set in directory resolution mode 'web'") {
+		t.Fatalf("unexpected outcome: %+v", err)
+	}
+
+	// verify that we can set a custom 'not found' code in 'standard' mode, as
+	// long as it's the default 404.
+	valid := metadata
+	valid.DirResNotFoundCode = http.StatusNotFound
+	err = ValidateSkyfileMetadata(valid)
+	if err != nil {
+		t.Fatalf("unexpected error %+v", err)
+	}
+
+	// verify invalid directory resolution mode + custom 'not found' file path
+	invalid = metadata
+	invalid.DirResNotFound = "404.html"
+	invalid.Subfiles = SkyfileSubfiles{
+		"404.html": SkyfileSubfileMetadata{
+			Filename:    "404.html",
+			ContentType: "text/html",
+			Len:         1,
+		},
+	}
+	err = ValidateSkyfileMetadata(invalid)
+	if err == nil || !strings.Contains(err.Error(), "custom 'not found' file and/or code can only be set in directory resolution mode 'web'") {
+		t.Fatalf("unexpected outcome: %+v", err)
+	}
+
+	// verify valid directory resolution mode + custom 'not found' file path
+	valid = metadata
+	valid.DirResMode = DirResModeWeb
+	valid.DirResNotFound = "404.html"
+	valid.Subfiles = SkyfileSubfiles{
+		"404.html": SkyfileSubfileMetadata{
+			Filename:    "404.html",
+			ContentType: "text/html",
+			Len:         1,
+		},
+	}
+	err = ValidateSkyfileMetadata(valid)
+	if err != nil {
+		t.Fatalf("unexpected error %+v", err)
+	}
+
+	// verify valid directory resolution mode + non-existent custom 'not found'
+	// file path
+	invalid = metadata
+	invalid.DirResMode = DirResModeWeb
+	invalid.DirResNotFound = "doesnotexist.html"
+	err = ValidateSkyfileMetadata(invalid)
+	if err == nil || !strings.Contains(err.Error(), "no such path") {
+		t.Fatalf("unexpected outcome: %+v", err)
+	}
+
 	// verify invalid length
 	invalid = metadata
 	invalid.Subfiles = SkyfileSubfiles{
@@ -238,7 +300,7 @@ func testValidateSkyfileMetadata(t *testing.T) {
 
 	// verify legacy file. It is valid since it only has a single
 	// subfile and a zero length.
-	valid := metadata
+	valid = metadata
 	valid.Subfiles = SkyfileSubfiles{
 		"validkey": SkyfileSubfileMetadata{
 			Filename: "validkey",
