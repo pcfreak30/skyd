@@ -171,7 +171,7 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-c
 		for _, pieceDownload := range activePiece {
 			// Don't consider any workers from this piece if the piece is
 			// completed.
-			if pieceDownload.completed {
+			if pieceDownload.completed && pieceDownload.downloadErr == nil {
 				break
 			}
 
