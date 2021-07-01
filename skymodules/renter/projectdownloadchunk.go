@@ -493,10 +493,11 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 // If workers fail or are late, additional workers will be launched to ensure
 // that the download still completes.
 func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
+	span := opentracing.NoopTracer{}.StartSpan("noop")
 	if parent := opentracing.SpanFromContext(pdc.ctx); parent != nil {
-		span := opentracing.StartSpan("threadedCollectAndOverdrivePieces", opentracing.ChildOf(parent.Context()))
-		defer span.Finish()
+		span = opentracing.StartSpan("threadedCollectAndOverdrivePieces", opentracing.ChildOf(parent.Context()))
 	}
+	defer span.Finish()
 	// Loop until the download has either failed or completed.
 	start := time.Now()
 	for {
@@ -522,12 +523,16 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 		// Determine when the next overdrive check needs to run.
 		select {
 		case <-pdc.ctx.Done():
+			span.LogKV("timeout", time.Since(start).Milliseconds())
 			pdc.fail(fmt.Errorf("download timed out after %vms", time.Since(start).Milliseconds()))
 			return
 		case jrr := <-pdc.workerResponseChan:
+			span.LogKV("response", jrr.staticErr)
 			pdc.handleJobReadResponse(jrr)
 		case <-workersLateChan:
+			span.LogKV("chan", "late")
 		case <-workersUpdatedChan:
+			span.LogKV("response", "update")
 		}
 	}
 }
