@@ -461,7 +461,7 @@ func (s *stream) Read(b []byte) (int, error) {
 	s.offset += uint64(n)
 
 	// Send the call to prepare the next data section.
-	s.prepareOffset()
+	s.prepareOffset(span)
 	return n, nil
 }
 
@@ -473,6 +473,11 @@ func (s *stream) Seek(offset int64, whence int) (int64, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// Create a child span.
+	spanRef := opentracing.ChildOf(s.staticSpan.Context())
+	span := opentracing.StartSpan("Seek", spanRef)
+	defer span.Finish()
 
 	// Update the offset of the stream according to the inputs.
 	dataSize := s.staticStreamBuffer.staticDataSize
@@ -495,15 +500,14 @@ func (s *stream) Seek(offset int64, whence int) (int64, error) {
 	}
 
 	// Prepare the fetch of the updated offset.
-	s.prepareOffset()
+	s.prepareOffset(span)
 	return int64(s.offset), nil
 }
 
 // prepareOffset will ensure that the dataSection containing the offset is made
 // available in the LRU, and that the following dataSection is also available.
-func (s *stream) prepareOffset() {
-	spanRef := opentracing.ChildOf(s.staticSpan.Context())
-	span := opentracing.StartSpan("prepareOffset", spanRef)
+func (s *stream) prepareOffset(parent opentracing.Span) {
+	span := opentracing.StartSpan("prepareOffset", opentracing.ChildOf(parent.Context()))
 	defer span.Finish()
 
 	// Convenience variables.
@@ -586,6 +590,8 @@ func (sb *streamBuffer) managedPrepareNewStream(ctx context.Context, initialOffs
 	}
 
 	// Create a stream that points to the stream buffer.
+	parent := opentracing.SpanFromContext(ctx)
+	span := opentracing.StartSpan("Stream", opentracing.ChildOf(parent.Context()))
 	stream := &stream{
 		lru:    newLeastRecentlyUsedCache(dataSectionsToCache, sb),
 		offset: initialOffset,
@@ -593,9 +599,9 @@ func (sb *streamBuffer) managedPrepareNewStream(ctx context.Context, initialOffs
 		staticContext:      sb.staticTG.StopCtx(),
 		staticReadTimeout:  timeout,
 		staticStreamBuffer: sb,
-		staticSpan:         opentracing.SpanFromContext(ctx),
+		staticSpan:         span,
 	}
-	stream.prepareOffset()
+	stream.prepareOffset(span)
 	return stream
 }
 
