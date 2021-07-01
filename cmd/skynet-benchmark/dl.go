@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"strconv"
 	"strings"
 	"sync"
@@ -198,7 +199,7 @@ func downloadFileSet(dir skymodules.SiaPath, fileSize int, threads uint64) (stat
 
 			// Download and discard the result, we only care about the speeds,
 			// not the data.
-			n, err := io.Copy(io.Discard, reader)
+			n, err := io.Copy(ioutil.Discard, reader)
 			if err != nil {
 				fmt.Printf("Error performing download on %v, only got %v bytes: %v\n", i, n, err)
 				atomic.AddUint64(&atomicDownloadErrors, 1)
