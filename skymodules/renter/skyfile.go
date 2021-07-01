@@ -742,6 +742,7 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	// Create a new span.
 	span := opentracing.StartSpan("DownloadSkylink")
 	span.SetTag("skylink", link.String())
+	defer span.Finish()
 
 	// Attach the span to the ctx
 	ctx = opentracing.ContextWithSpan(ctx, span)

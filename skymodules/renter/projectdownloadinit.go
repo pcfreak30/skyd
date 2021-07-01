@@ -287,11 +287,10 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(start time.Time, unresolvedWo
 // set. If workers are going a lot time and remaining unresolved, a penalty is
 // applied which will eventually break those workers and revert to preferring
 // the already resolved workers.
-func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap) ([]*pdcInitialWorker, error) {
-	if parent := opentracing.SpanFromContext(pdc.ctx); parent != nil {
-		span := opentracing.StartSpan("createInitialWorkerSet", opentracing.ChildOf(parent.Context()))
-		defer span.Finish()
-	}
+func (pdc *projectDownloadChunk) createInitialWorkerSet(parent opentracing.Span, workerHeap pdcWorkerHeap) ([]*pdcInitialWorker, error) {
+	span := opentracing.StartSpan("createInitialWorkerSet", opentracing.ChildOf(parent.Context()))
+	defer span.Finish()
+
 	// Convenience variable.
 	ec := pdc.workerSet.staticErasureCoder
 	gs := types.NewCurrency(new(big.Int).Exp(big.NewInt(10), big.NewInt(33), nil)) // 1GS
@@ -506,6 +505,9 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 // once jobs have been scheduled for MinPieces workers.
 func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 	start := time.Now()
+	parent := opentracing.SpanFromContext(pdc.ctx)
+	span := opentracing.StartSpan("launchInitialWorkers", opentracing.ChildOf(parent.Context()))
+	defer span.Finish()
 	for {
 		// Get the list of unresolved workers. This will also grab an update, so
 		// any workers that have resolved recently will be reflected in the
@@ -517,7 +519,7 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 		workerHeap := pdc.initialWorkerHeap(start, unresolvedWorkers)
 
 		// Create an initial worker set
-		finalWorkers, err := pdc.createInitialWorkerSet(workerHeap)
+		finalWorkers, err := pdc.createInitialWorkerSet(span, workerHeap)
 		if err != nil {
 			return errors.AddContext(err, "unable to build initial set of workers")
 		}

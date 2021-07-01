@@ -78,10 +78,7 @@ func dl() {
 	// room for metadata overhead. The expected filesize used is the largest
 	// filesize that fits inside of the file limits for the metrics collector.
 	sizes := [][]uint64{
-		{exactSize64kb, fetchSize64kb},
-		{exactSize1mb, fetchSize1mb},
 		{exactSize4mb, fetchSize4mb},
-		{exactSize10mb, fetchSize10mb},
 	}
 
 	fmt.Println("Beginning uploading test files.")
