@@ -323,6 +323,7 @@ func (pdc *projectDownloadChunk) tryOverdrive(parent opentracing.Span) (<-chan s
 		// worker is ready. If there are no more overdrive workers, these
 		// channels will be nil and therefore never fire.
 		workerLaunched, expectedReturnTime, wakeChan, expectedReadyChan := pdc.tryLaunchOverdriveWorker()
+		span.LogKV("workerLaunched", workerLaunched)
 		if !workerLaunched {
 			return wakeChan, expectedReadyChan
 		}
