@@ -188,6 +188,11 @@ func (j jobHasSectorBatch) callExecute() {
 		build.Critical("empty hasSectorBatch")
 		return
 	}
+	for _, hsj := range j.staticJobs {
+		// Start span for execution.
+		span := opentracing.StartSpan("callExecute", opentracing.ChildOf(hsj.staticSpan.Context()))
+		defer span.Finish()
+	}
 
 	start := time.Now()
 	w := j.staticJobs[0].staticQueue.staticWorker()
@@ -196,6 +201,7 @@ func (j jobHasSectorBatch) callExecute() {
 
 	for i := range j.staticJobs {
 		hsj := j.staticJobs[i]
+
 		// Handle its span
 		if err != nil {
 			hsj.staticSpan.LogKV("error", err)
