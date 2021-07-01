@@ -145,7 +145,7 @@ func (pdc *projectDownloadChunk) bestOverdriveUnresolvedWorker(puws []*pcwsUnres
 // TODO: Remember the edge case where all unresolved workers have not returned
 // yet and there are no other options. There is no timer in that case, only
 // blocking on workersUpdatedChan.
-func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-chan struct{}, <-chan time.Time) {
+func (pdc *projectDownloadChunk) findBestOverdriveWorker(span opentracing.Span) (*worker, uint64, <-chan struct{}, <-chan time.Time) {
 	// Find the best unresolved worker. The return values include an 'adjusted
 	// duration', which indicates how long the worker takes accounting for
 	// pricing, and the 'wait duration', which is the max amount of time that we
@@ -196,6 +196,7 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-c
 		// All 'nil' return values, meaning the download can succeed by waiting
 		// for already launched workers to return, but cannot succeed by
 		// launching new workers because no new workers are available.
+		span.LogKV("nil case", buwExists, baw == nil)
 		return nil, 0, nil, nil
 	}
 
@@ -204,10 +205,17 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-c
 	buwNoBaw := buwExists && baw == nil
 	buwBetter := !buwLate && buwAdjustedDuration < bawAdjustedDuration
 	if buwNoBaw || buwBetter {
+		span.LogKV("buw better", "")
+		span.LogKV("buwExists", buwExists)
+		span.LogKV("bawNil", baw == nil)
+		span.LogKV("buwLate", buwLate)
+		span.LogKV("buwAdjustedDuration", buwAdjustedDuration)
+		span.LogKV("bawAdjustedDuration", bawAdjustedDuration)
 		return nil, 0, updateChan, time.After(buwWaitDuration)
 	}
 
 	// Return the baw.
+	span.LogKV("baw found", "")
 	return baw, uint64(bawPieceIndex), nil, nil
 }
 
@@ -219,12 +227,12 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-c
 // returned which indicates an update to the worker state, and a time.After()
 // will be returned which indicates when the worker flips over to being late and
 // therefore another worker should be selected.
-func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-chan struct{}, <-chan time.Time) {
+func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker(span opentracing.Span) (bool, time.Time, <-chan struct{}, <-chan time.Time) {
 	// Loop until either a launch succeeds or until the best worker is not
 	// found.
 	retry := 0
 	for {
-		worker, pieceIndex, wakeChan, workerLateChan := pdc.findBestOverdriveWorker()
+		worker, pieceIndex, wakeChan, workerLateChan := pdc.findBestOverdriveWorker(span)
 		if worker == nil {
 			return false, time.Time{}, wakeChan, workerLateChan
 		}
@@ -322,7 +330,7 @@ func (pdc *projectDownloadChunk) tryOverdrive(parent opentracing.Span) (<-chan s
 		// expectedReadyChan, one of which will fire when the next overdrive
 		// worker is ready. If there are no more overdrive workers, these
 		// channels will be nil and therefore never fire.
-		workerLaunched, expectedReturnTime, wakeChan, expectedReadyChan := pdc.tryLaunchOverdriveWorker()
+		workerLaunched, expectedReturnTime, wakeChan, expectedReadyChan := pdc.tryLaunchOverdriveWorker(span)
 		span.LogKV("workerLaunched", workerLaunched)
 		if !workerLaunched {
 			return wakeChan, expectedReadyChan
