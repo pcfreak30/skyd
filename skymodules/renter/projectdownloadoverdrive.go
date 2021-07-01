@@ -173,16 +173,20 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker(span opentracing.Span) 
 			// Don't consider any workers from this piece if the piece is
 			// completed.
 			if pieceDownload.completed {
+				span.LogKV("break", pieceDownload.completed)
 				break
 			}
 
 			// Skip over failed pieces or pieces that have already launched.
 			if pieceDownload.downloadErr != nil || pieceDownload.launched {
+				span.LogKV("continue err", pieceDownload.downloadErr != nil)
+				span.LogKV("continue launched", pieceDownload.launched)
 				continue
 			}
 
 			// Determine if this worker is better than any existing worker.
 			workerAdjustedDuration := pdc.adjustedReadDuration(pieceDownload.worker)
+			span.LogKV("workerAdjustedDuration", workerAdjustedDuration)
 			if workerAdjustedDuration < bawAdjustedDuration {
 				bawAdjustedDuration = workerAdjustedDuration
 				bawPieceIndex = i
@@ -205,7 +209,8 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker(span opentracing.Span) 
 	buwNoBaw := buwExists && baw == nil
 	buwBetter := !buwLate && buwAdjustedDuration < bawAdjustedDuration
 	if buwNoBaw || buwBetter {
-		span.LogKV("buw better", "")
+		span.LogKV("buwNoBaw", buwNoBaw)
+		span.LogKV("buw better", buwBetter)
 		span.LogKV("buwExists", buwExists)
 		span.LogKV("bawNil", baw == nil)
 		span.LogKV("buwLate", buwLate)
