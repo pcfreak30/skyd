@@ -4,6 +4,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/types"
 )
@@ -304,10 +305,14 @@ func (pdc *projectDownloadChunk) overdriveStatus() (int, time.Time) {
 // channels, one of which will fire when tryOverdrive should be called again. If
 // there are no more overdrive workers to try, these channels may both be 'nil'
 // and therefore will never fire.
-func (pdc *projectDownloadChunk) tryOverdrive() (<-chan struct{}, <-chan time.Time) {
+func (pdc *projectDownloadChunk) tryOverdrive(parent opentracing.Span) (<-chan struct{}, <-chan time.Time) {
+	span := opentracing.StartSpan("tryOverdrive", opentracing.ChildOf(parent.Context()))
+	defer span.Finish()
 	// Fetch the number of overdrive workers that are needed, and the latest
 	// return time of any active worker.
 	neededOverdriveWorkers, latestReturn := pdc.overdriveStatus()
+	span.LogKV("neededOverdriveWorkers", neededOverdriveWorkers)
+	span.LogKV("latestReturn", time.Until(latestReturn).Milliseconds())
 
 	// Launch all of the workers that are needed. If at any point a launch
 	// fails, return the status channels to try again.
