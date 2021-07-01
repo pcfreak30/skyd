@@ -295,8 +295,8 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		dirResNotFound = skymodules.EnsurePrefix(dirResNotFound, "/")
 	}
 
-	// parse 'dirResNotFoundCode' query parameter
-	dirResNotFoundCode := 404
+	// parse 'dirresnotfoundcode' query parameter
+	dirResNotFoundCode := http.StatusNotFound
 	dirResNotFoundCodeStr := queryForm.Get("dirresnotfoundcode")
 	if dirResNotFoundCodeStr != "" {
 		dirResNotFoundCode, err = strconv.Atoi(dirResNotFoundCodeStr)
@@ -307,8 +307,8 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 
 	// verify that we're not trying to override 404 page and code in standard
 	// mode
-	if dirResMode == skymodules.DirResModeStandard && (dirResNotFound != "" || dirResNotFoundCode != 404) {
-		return nil, nil, errors.AddContext(skymodules.ErrInvalidDirectoryResolution, "DirResNotFound and DirResNotFoundCode are only compatible with DirResMode 'standard'")
+	if dirResMode == skymodules.DirResModeStandard && (dirResNotFound != "" || dirResNotFoundCode != http.StatusNotFound) {
+		return nil, nil, errors.AddContext(skymodules.ErrInvalidDirectoryResolution, "DirResNotFound and DirResNotFoundCode are only compatible with DirResMode 'web'")
 	}
 
 	// parse 'dryrun' query parameter
@@ -414,6 +414,11 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 	// verify default path params are not set if it's not a multipart upload
 	if !isMultipartRequest(mediaType) && (disableDefaultPath || defaultPath != "") {
 		return nil, nil, errors.New("DefaultPath and DisableDefaultPath can only be set on multipart uploads")
+	}
+
+	// verify default path params are not set if it's not a multipart upload
+	if !isMultipartRequest(mediaType) && dirResMode == skymodules.DirResModeWeb {
+		return nil, nil, errors.New("DirResMode 'web' can only be set on multipart uploads")
 	}
 
 	// verify convertpath and filename are not combined

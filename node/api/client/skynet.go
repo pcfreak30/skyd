@@ -1043,6 +1043,11 @@ func urlValuesFromSkyfileMultipartUploadParameters(sup skymodules.SkyfileMultipa
 
 	values.Set("defaultpath", sup.DefaultPath)
 	values.Set("disabledefaultpath", strconv.FormatBool(sup.DisableDefaultPath))
+
+	values.Set("dirresmode", sup.DirResMode)
+	values.Set("dirresnotfound", sup.DirResNotFound)
+	values.Set("dirresnotfoundcode", strconv.Itoa(sup.DirResNotFoundCode))
+
 	return values, nil
 }
 

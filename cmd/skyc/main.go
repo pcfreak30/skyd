@@ -3,8 +3,11 @@ package main
 import (
 	"fmt"
 	"math"
+	"net/http"
 	"os"
 	"reflect"
+
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 
 	"github.com/spf13/cobra"
 
@@ -392,6 +395,9 @@ func initCmds() *cobra.Command {
 	skynetUploadCmd.Flags().BoolVarP(&skynetUploadSeparately, "separately", "", false, "Upload each file separately, generating individual skylinks")
 	skynetUploadCmd.Flags().StringVar(&skynetUploadDefaultPath, "defaultpath", "", "Specify the file to serve when no specific file is specified.")
 	skynetUploadCmd.Flags().BoolVarP(&skynetUploadDisableDefaultPath, "disabledefaultpath", "", false, "This skyfile will not have a default path. The only way to use it is to download it. Mutually exclusive with --defaultpath")
+	skynetUploadCmd.Flags().StringVar(&skynetUploadDirResMode, "dirresmode", skymodules.DirResModeStandard, "Specify the directory resolution mode: 'web' makes accessing directories serve the index.html contained in them, 'standard' (default) downloads them as zip.")
+	skynetUploadCmd.Flags().StringVar(&skynetUploadDirResNotFound, "dirresmodenotfound", "", "Specify the path of a custom file to be served on a 'not found' event.")
+	skynetUploadCmd.Flags().IntVar(&skynetUploadDirResNotFoundCode, "dirresmodenotfoundcode", http.StatusNotFound, "Specify a custom status code to be returned on a 'not found' event. Defaults to 404.")
 	skynetUploadCmd.Flags().BoolVarP(&skynetUploadSilent, "silent", "", false, "Don't report progress while uploading")
 	skynetUploadCmd.Flags().StringVar(&skykeyID, "skykeyid", "", "Specify the skykey to be used by its key identifier.")
 	skynetUploadCmd.Flags().StringVar(&skykeyName, "skykeyname", "", "Specify the skykey to be used by name.")

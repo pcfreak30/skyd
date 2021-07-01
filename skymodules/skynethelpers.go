@@ -336,6 +336,12 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 		}
 	}
 
+	// validate directory resolution mode
+	err = validateDirResMode(metadata.DirResMode, metadata.DirResNotFound, metadata.DirResNotFoundCode, metadata.Subfiles)
+	if err != nil {
+		return errors.AddContext(err, "metadata contains invalid directory resolution configuration")
+	}
+
 	// Make sure the returned metadata has valid monetization settings.
 	if err := ValidateMonetization(metadata.Monetization); err != nil {
 		return errors.AddContext(err, "metadata has invalid monetization")
@@ -422,4 +428,20 @@ func validateDefaultPath(defaultPath string, subfiles SkyfileSubfiles) (string, 
 	}
 
 	return defaultPath, nil
+}
+
+// validateDirResMode ensures the given combination of directory resolution
+// settings is valid and usable.
+func validateDirResMode(mode, notFound string, notFoundCode int, subfiles SkyfileSubfiles) error {
+	if mode != DirResModeWeb && (notFound != "" || notFoundCode != http.StatusNotFound) {
+		return errors.New("custom 'not found' file and/or code can only be set in directory resolution mode 'web'")
+	}
+	if mode == DirResModeWeb && notFound != "" {
+		// check if we have a subfile at the given 'not found' path.
+		_, found := subfiles[strings.TrimPrefix(notFound, "/")]
+		if !found {
+			return fmt.Errorf("no such path: %s", notFound)
+		}
+	}
+	return nil
 }
