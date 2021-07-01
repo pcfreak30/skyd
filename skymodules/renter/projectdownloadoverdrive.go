@@ -172,7 +172,7 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker(span opentracing.Span) 
 		for _, pieceDownload := range activePiece {
 			// Don't consider any workers from this piece if the piece is
 			// completed.
-			if pieceDownload.completed {
+			if pieceDownload.completed && pieceDownload.downloadErr == nil {
 				span.LogKV("break", pieceDownload.completed)
 				break
 			}
