@@ -213,18 +213,23 @@ func (w *worker) staticUpdatePriceTable() {
 	// host, we use the time it took for a single round trip as an initial
 	// estimate for both the HS and RJ queue job time estimates.
 	var elapsed time.Duration
+	var downloaded uint64
 	defer func() {
 		// As a safety precaution, set the elapsed duration to the minimum
 		// estimate in case we did not manage to update the price table
 		// successfully.
 		if err != nil && elapsed < minInitialEstimate {
 			elapsed = minInitialEstimate
+			downloaded = 1 << 16
+		}
+		adjustElapsed := func(size int64) time.Duration {
+			return elapsed * time.Duration(size) / time.Duration(downloaded)
 		}
 		w.staticSetInitialEstimates.Do(func() {
 			w.staticJobHasSectorQueue.callUpdateJobTimeMetrics(elapsed)
-			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<16, elapsed)
-			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<20, elapsed)
-			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<24, elapsed)
+			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<16, adjustElapsed(1<<16))
+			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<20, adjustElapsed(1<<20))
+			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<24, adjustElapsed(1<<24))
 		})
 	}()
 
@@ -298,6 +303,7 @@ func (w *worker) staticUpdatePriceTable() {
 		return
 	}
 	elapsed = time.Since(start)
+	downloaded = stream.Limit().Downloaded()
 
 	// decode the JSON
 	var pt modules.RPCPriceTable
