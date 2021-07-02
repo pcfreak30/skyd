@@ -295,6 +295,17 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(parent opentracing.Span,
 	ec := pdc.workerSet.staticErasureCoder
 	gs := types.NewCurrency(new(big.Int).Exp(big.NewInt(10), big.NewInt(33), nil)) // 1GS
 
+	for _, worker := range workerHeap {
+		if worker.unresolved {
+			continue
+		}
+		if len(worker.pieces) == 0 {
+			continue
+		}
+		span.LogKV("goodWorker", worker.worker.staticHostPubKey)
+		span.LogKV("goodWorkerCompleteTime", time.Until(worker.completeTime).Milliseconds())
+	}
+
 	// Keep track of the current best set, and the amount of time it will take
 	// the best set to return. And keep track of the current working set, and
 	// the amount of time it will take the current working set to return.
