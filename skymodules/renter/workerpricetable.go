@@ -223,8 +223,8 @@ func (w *worker) staticUpdatePriceTable() {
 		w.staticSetInitialEstimates.Do(func() {
 			w.staticJobHasSectorQueue.callUpdateJobTimeMetrics(elapsed)
 			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<16, elapsed)
-			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<20, elapsed)
-			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<24, elapsed)
+			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<20, 2*elapsed)
+			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<24, 4*elapsed)
 		})
 	}()
 
