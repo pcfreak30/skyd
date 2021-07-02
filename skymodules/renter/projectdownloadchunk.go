@@ -533,6 +533,10 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 			return
 		case jrr := <-pdc.workerResponseChan:
 			span.LogKV("response", jrr.staticErr)
+			if jrr.staticErr == nil {
+				launchedWorker := pdc.launchedWorkers[jrr.staticMetadata.staticLaunchedWorkerIndex]
+				span.LogKV("delta", jrr.staticJobTime.Milliseconds()-int64(launchedWorker.staticExpectedDuration))
+			}
 			pdc.handleJobReadResponse(jrr)
 		case <-workersLateChan:
 			span.LogKV("chan", "late")

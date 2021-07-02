@@ -313,9 +313,9 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(parent opentracing.Span,
 		}
 		s := fmt.Sprintf(`
 Worker: %v
-ExpectedResolveTime: %v
-ActualResolveTime: %v
-ExpectedCompleteTime: %v
+ExpectedResolveTime: in %vms
+ActualResolveTime: in %vms
+ExpectedCompleteTime: in %vms
 `, worker.worker.staticHostPubKey.String(),
 			time.Until(worker.expectedResolveTime).Milliseconds(),
 			time.Until(worker.actualResolveTime).Milliseconds(),
