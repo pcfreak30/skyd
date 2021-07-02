@@ -118,6 +118,9 @@ type pdcInitialWorker struct {
 	cost         types.Currency
 	readDuration time.Duration
 
+	expectedResolveTime time.Time
+	actualResolveTime   time.Time
+
 	// The list of pieces indicates which pieces the worker is capable of
 	// fetching. If 'unresolved' is set to true, the worker will be treated as
 	// though it can fetch the first 'MinPieces' pieces.
@@ -212,6 +215,8 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(start time.Time, unresolvedWo
 			cost:         cost,
 			readDuration: readDuration,
 
+			expectedResolveTime: uw.staticExpectedResolvedTime,
+
 			pieces:     pieces,
 			unresolved: true,
 			worker:     w,
@@ -253,6 +258,10 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(start time.Time, unresolvedWo
 				readDuration := jrq.callExpectedJobTime(pdc.pieceLength)
 				resolvedWorkersMap[w.staticHostPubKeyStr] = &pdcInitialWorker{
 					completeTime: time.Now().Add(readDuration),
+
+					expectedResolveTime: pieceDownload.expectedResolveTime,
+					actualResolveTime:   pieceDownload.actualResolveTime,
+
 					cost:         cost,
 					readDuration: readDuration,
 
@@ -302,8 +311,17 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(parent opentracing.Span,
 		if len(worker.pieces) == 0 {
 			continue
 		}
-		span.LogKV("goodWorker", worker.worker.staticHostPubKey)
-		span.LogKV("goodWorkerCompleteTime", time.Until(worker.completeTime).Milliseconds())
+		s := fmt.Sprintf(`
+Worker: %v
+ExpectedResolveTime: %v
+ActualResolveTime: %v
+ExpectedCompleteTime: %v
+`, worker.worker.staticHostPubKey.String(),
+			time.Until(worker.expectedResolveTime).Milliseconds(),
+			time.Until(worker.actualResolveTime).Milliseconds(),
+			time.Until(worker.completeTime).Milliseconds())
+
+		span.LogKV("worker", s)
 	}
 
 	// Keep track of the current best set, and the amount of time it will take

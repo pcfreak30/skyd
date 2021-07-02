@@ -85,9 +85,11 @@ type pcwsUnresolvedWorker struct {
 // at that index. There is also an error field that will be set in the event an
 // error occurred while performing the HasSector query.
 type pcwsWorkerResponse struct {
-	worker       *worker
-	pieceIndices []uint64
-	err          error
+	worker          *worker
+	pieceIndices    []uint64
+	expectedJobTime time.Time
+	actualJobTime   time.Time
+	err             error
 }
 
 // pcwsWorkerState contains the worker state for a single thread that is
@@ -277,7 +279,7 @@ func (ws *pcwsWorkerState) registerForWorkerUpdate() <-chan struct{} {
 // emptied or errored because the worker selection algorithms in the downloads
 // may wish to be able to view which workers have failed. This is currently
 // unused, but certain computational optimizations in the future depend on it.
-func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
+func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse, expectedJobTime time.Time) {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 
@@ -296,8 +298,9 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	// resolved workers as supporting no indices.
 	if resp.staticErr != nil {
 		ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
-			worker: w,
-			err:    resp.staticErr,
+			worker:          w,
+			expectedJobTime: expectedJobTime,
+			err:             resp.staticErr,
 		})
 		return
 	}
@@ -313,8 +316,10 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	// Add this worker to the set of resolved workers (even if there are no
 	// indices that the worker can fetch).
 	ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
-		worker:       w,
-		pieceIndices: indices,
+		worker:          w,
+		expectedJobTime: expectedJobTime,
+		actualJobTime:   time.Now(),
+		pieceIndices:    indices,
 	})
 }
 
@@ -340,13 +345,14 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 	}
 
 	// Create and launch the job.
+	var expectedJobTime time.Time
 	ctx, cancel := context.WithTimeout(pcws.staticCtx, pcwsHasSectorTimeout)
 	jhs := w.newJobHasSectorWithPostExecutionHook(ctx, responseChan, func(resp *jobHasSectorResponse) {
-		ws.managedHandleResponse(resp)
+		ws.managedHandleResponse(resp, expectedJobTime)
 		cancel()
 	}, pcws.staticPieceRoots...)
 
-	expectedJobTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs, pcwsHasSectorTimeout)
+	expectedJobTime, err = w.staticJobHasSectorQueue.callAddWithEstimate(jhs, pcwsHasSectorTimeout)
 	if err != nil {
 		cancel()
 		return errors.AddContext(err, fmt.Sprintf("unable to add has sector job to %v", w.staticHostPubKeyStr))
