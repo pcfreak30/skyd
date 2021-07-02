@@ -155,6 +155,58 @@ func (wh *pdcWorkerHeap) Pop() interface{} {
 // Cost is taken into account at a later point where the initial worker set is
 // built.
 func (pdc *projectDownloadChunk) initialWorkerHeap(start time.Time, unresolvedWorkers []*pcwsUnresolvedWorker) pdcWorkerHeap {
+	// Add the resolved workers to the heap. In the worker state, the resolved
+	// workers are organized as a series of available pieces, because that is
+	// what made the overdrive code the easiest.
+	foundPieces := 0
+	resolvedWorkersMap := make(map[string]*pdcInitialWorker)
+	for i, piece := range pdc.availablePieces {
+		for _, pieceDownload := range piece {
+			w := pieceDownload.worker
+			pt := w.staticPriceTable().staticPriceTable
+			allowance := w.staticCache().staticRenterAllowance
+
+			// Ignore this worker if its host is considered to be price gouging.
+			err := checkProjectDownloadGouging(pt, allowance)
+			if err != nil {
+				continue
+			}
+
+			// Ignore this worker if the worker is not currently equipped to
+			// perform async work, or if the read queue is on a cooldown.
+			jrq := w.staticJobReadQueue
+			if !w.managedAsyncReady() || jrq.callOnCooldown() {
+				continue
+			}
+
+			// If the worker is already in the resolved workers map, add this
+			// piece to the set of pieces the worker can complete. Otherwise,
+			// create a new element for this worker.
+			foundPieces++
+			elem, exists := resolvedWorkersMap[w.staticHostPubKeyStr]
+			if exists {
+				// Elem is a pointer, so the map does not need to be updated.
+				elem.pieces = append(elem.pieces, uint64(i))
+			} else {
+				cost := jrq.callExpectedJobCost(pdc.pieceLength)
+				readDuration := jrq.callExpectedJobTime(pdc.pieceLength)
+				resolvedWorkersMap[w.staticHostPubKeyStr] = &pdcInitialWorker{
+					completeTime: time.Now().Add(readDuration),
+
+					expectedResolveTime: pieceDownload.expectedResolveTime,
+					actualResolveTime:   pieceDownload.actualResolveTime,
+
+					cost:         cost,
+					readDuration: readDuration,
+
+					pieces:     []uint64{uint64(i)},
+					unresolved: false,
+					worker:     w,
+				}
+			}
+		}
+	}
+
 	// Add all of the unresolved workers to the heap.
 	var workerHeap pdcWorkerHeap
 	for _, uw := range unresolvedWorkers {
@@ -198,7 +250,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(start time.Time, unresolvedWo
 		if readDuration == 0 {
 			continue
 		}
-		completeTime := resolveTime.Add(readDuration)
+		completeTime := resolveTime.Add(readDuration).Add(time.Since(start) * time.Duration(foundPieces))
 
 		// Create the pieces for the unresolved worker. Because the unresolved
 		// worker could be potentially used to fetch any piece (we won't know
@@ -221,56 +273,6 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(start time.Time, unresolvedWo
 			unresolved: true,
 			worker:     w,
 		})
-	}
-
-	// Add the resolved workers to the heap. In the worker state, the resolved
-	// workers are organized as a series of available pieces, because that is
-	// what made the overdrive code the easiest.
-	resolvedWorkersMap := make(map[string]*pdcInitialWorker)
-	for i, piece := range pdc.availablePieces {
-		for _, pieceDownload := range piece {
-			w := pieceDownload.worker
-			pt := w.staticPriceTable().staticPriceTable
-			allowance := w.staticCache().staticRenterAllowance
-
-			// Ignore this worker if its host is considered to be price gouging.
-			err := checkProjectDownloadGouging(pt, allowance)
-			if err != nil {
-				continue
-			}
-
-			// Ignore this worker if the worker is not currently equipped to
-			// perform async work, or if the read queue is on a cooldown.
-			jrq := w.staticJobReadQueue
-			if !w.managedAsyncReady() || jrq.callOnCooldown() {
-				continue
-			}
-
-			// If the worker is already in the resolved workers map, add this
-			// piece to the set of pieces the worker can complete. Otherwise,
-			// create a new element for this worker.
-			elem, exists := resolvedWorkersMap[w.staticHostPubKeyStr]
-			if exists {
-				// Elem is a pointer, so the map does not need to be updated.
-				elem.pieces = append(elem.pieces, uint64(i))
-			} else {
-				cost := jrq.callExpectedJobCost(pdc.pieceLength)
-				readDuration := jrq.callExpectedJobTime(pdc.pieceLength)
-				resolvedWorkersMap[w.staticHostPubKeyStr] = &pdcInitialWorker{
-					completeTime: time.Now().Add(readDuration),
-
-					expectedResolveTime: pieceDownload.expectedResolveTime,
-					actualResolveTime:   pieceDownload.actualResolveTime,
-
-					cost:         cost,
-					readDuration: readDuration,
-
-					pieces:     []uint64{uint64(i)},
-					unresolved: false,
-					worker:     w,
-				}
-			}
-		}
 	}
 
 	// Push a pdcInitialWorker into the heap for each worker in the resolved
