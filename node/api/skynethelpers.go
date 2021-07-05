@@ -308,7 +308,7 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 	// verify that we're not trying to override 404 page and code in standard
 	// mode
 	if dirResMode == skymodules.DirResModeStandard && (dirResNotFound != "" || dirResNotFoundCode != http.StatusNotFound) {
-		return nil, nil, errors.AddContext(skymodules.ErrInvalidDirectoryResolution, "DirResNotFound and DirResNotFoundCode are only compatible with DirResMode 'web'")
+		return nil, nil, skymodules.ErrInvalidDirectoryResolutionMode
 	}
 
 	// parse 'dryrun' query parameter
