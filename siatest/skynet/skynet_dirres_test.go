@@ -41,16 +41,15 @@ func testStdMode(t *testing.T, tg *siatest.TestGroup) {
 		{Name: "index.html", Data: []byte(fc1)},
 		{Name: "about.html", Data: []byte(fc2)},
 	}
-	skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, skymodules.DirResModeStandard, "", http.StatusNotFound, false, nil, "", skykey.SkykeyID{})
+	skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, skymodules.DirResModeStandard, "", http.StatusNotFound, true, nil, "", skykey.SkykeyID{})
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
-	status, _, err := r.SkynetSkylinkHead(skylink + "/nonexistent_file.html")
+	status, content, err := r.SkynetSkylinkHead(skylink + "/nonexistent_file.html")
 	if status != http.StatusNotFound {
-		t.Log(err)
 		t.Fatalf("Expected status 404, got %d", status)
 	}
-	if status != http.StatusNotFound || (err != nil && !strings.Contains(err.Error(), "failed to download contents for path")) {
+	if err != nil && !strings.Contains(err.Error(), "failed to download contents for path") {
 		t.Fatal(err)
 	}
 }
@@ -67,12 +66,12 @@ func testStdModeCustomNotFound(t *testing.T, tg *siatest.TestGroup) {
 		{Name: "404.html", Data: []byte(fc2)},
 	}
 	// Try to upload with standard mode and a custom 'not found' file that exists.
-	_, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, skymodules.DirResModeStandard, "404.html", http.StatusNotFound, false, nil, "", skykey.SkykeyID{})
+	_, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, skymodules.DirResModeStandard, "404.html", http.StatusNotFound, true, nil, "", skykey.SkykeyID{})
 	if err == nil || !strings.Contains(err.Error(), skymodules.ErrInvalidDirectoryResolutionMode.Error()) {
 		t.Fatalf("Expected to get ErrInvalidDirectoryResolutionMode error, got %+v", err)
 	}
 	// Try to upload with standard mode and a custom 'not found' status code.
-	_, _, _, err = r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, skymodules.DirResModeStandard, "", http.StatusOK, false, nil, "", skykey.SkykeyID{})
+	_, _, _, err = r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, skymodules.DirResModeStandard, "", http.StatusOK, true, nil, "", skykey.SkykeyID{})
 	if err == nil || !strings.Contains(err.Error(), skymodules.ErrInvalidDirectoryResolutionMode.Error()) {
 		t.Fatalf("Expected to get ErrInvalidDirectoryResolutionMode error, got %+v", err)
 	}
@@ -90,13 +89,11 @@ func testWebModeNothingCustom(t *testing.T, tg *siatest.TestGroup) {
 		{Name: "index.html", Data: []byte(fc1)},
 		{Name: "about.html", Data: []byte(fc2)},
 	}
-	skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, skymodules.DirResModeWeb, "", http.StatusNotFound, false, nil, "", skykey.SkykeyID{})
+	skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, skymodules.DirResModeWeb, "", http.StatusNotFound, true, nil, "", skykey.SkykeyID{})
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
 	status, _, err := r.SkynetSkylinkHead(skylink + "/nonexistent_file.html")
-	// TODO Check whether this will error out.
-	t.Log(" >>> testWebModeNothingCustom", err)
 	if status != http.StatusNotFound || (err != nil && !strings.Contains(err.Error(), "failed to download contents for path")) {
 		t.Fatal(err)
 	}
@@ -113,7 +110,7 @@ func testWebModeCustomResponse(t *testing.T, tg *siatest.TestGroup) {
 		{Name: "index.html", Data: []byte(fc1)},
 		{Name: "404.html", Data: []byte(fc2)},
 	}
-	skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, skymodules.DirResModeWeb, "404.html", http.StatusOK, false, nil, "", skykey.SkykeyID{})
+	skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, skymodules.DirResModeWeb, "404.html", http.StatusOK, true, nil, "", skykey.SkykeyID{})
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
@@ -144,7 +141,7 @@ func testWebModeCustomNotFoundDoesNotExist(t *testing.T, tg *siatest.TestGroup) 
 		{Name: "index.html", Data: []byte(fc1)},
 		{Name: "about.html", Data: []byte(fc2)},
 	}
-	_, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, skymodules.DirResModeWeb, "doesntexist.html", http.StatusOK, false, nil, "", skykey.SkykeyID{})
+	_, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, skymodules.DirResModeWeb, "doesntexist.html", http.StatusOK, true, nil, "", skykey.SkykeyID{})
 	if err == nil || !strings.Contains(err.Error(), "no such path") {
 		t.Fatalf("Expected to get 'no such path' error, got %+v", err)
 	}
@@ -153,186 +150,247 @@ func testWebModeCustomNotFoundDoesNotExist(t *testing.T, tg *siatest.TestGroup) 
 func testSkynetDirectoryResolution_TableTest(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	fc1 := []byte("main index")
-	fc2 := []byte("custom not found")
-	fc3 := []byte("about index")
-	fc4 := []byte("good news index")
+	fMainIndex := []byte("main index")
+	fCustomNotFound := []byte("custom not found")
+	fAboutIndex := []byte("about index")
+	fGoodNewsIndex := []byte("good news index")
 
 	subfiles := []siatest.TestFile{
-		{Name: "src/index.html", Data: fc1},
-		{Name: "src/404.html", Data: fc2},
-		{Name: "about/index.html", Data: fc3},
-		{Name: "news/good-news/index.html", Data: fc4},
+		{Name: "index.html", Data: fMainIndex},
+		{Name: "404.html", Data: fCustomNotFound},
+		{Name: "about/index.html", Data: fAboutIndex},
+		{Name: "news/good-news/index.html", Data: fGoodNewsIndex},
 	}
 
+	skylinkStandard, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking("standard", subfiles, "", false, skymodules.DirResModeStandard, "", http.StatusNotFound, true, nil, "", skykey.SkykeyID{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	skylinkDefaultNotFound, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking("default_not_found", subfiles, "", false, skymodules.DirResModeWeb, "", http.StatusNotFound, true, nil, "", skykey.SkykeyID{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	skylinkCustomNotFound, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking("custom_not_found", subfiles, "", false, skymodules.DirResModeWeb, "404.html", http.StatusTeapot, true, nil, "", skykey.SkykeyID{})
+	skylinkCustomNotFound, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking("custom_not_found", subfiles, "", false, skymodules.DirResModeWeb, "404.html", http.StatusIMUsed, true, nil, "", skykey.SkykeyID{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	skylinkNoExistNotFound, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking("noexist_not_found", subfiles, "", false, skymodules.DirResModeWeb, "noexist.html", http.StatusNotFound, true, nil, "", skykey.SkykeyID{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	// TODO How do I create a file with bad meta? Do we even need to test for that? Do we need to?
+	//   The idea is that we might come across a file with bad meta uploaded via a custom portal.
+	//   The goal is not to serve a meaningful error but to make sure that the bad meta can't crash us.
 
 	tests := []struct {
-		name                   string
-		skylink                string
-		requestPath            string
-		expectedContent        []byte
-		expectedStatusCode     int
-		expectedErrStrDownload string
+		name                    string
+		skylink                 string
+		requestPath             string
+		expectedContent         []byte
+		expectedStatusCode      int
+		expectedErrStrDownload  string
+		expectZippedDirAsOutput bool
 	}{
-		// Web mode, no custom "not found" settings. Same as standard mode.
+		// Standard mode
 		{
 			name:               "standard, index, request path ''",
-			skylink:            skylinkDefaultNotFound,
+			skylink:            skylinkStandard,
 			requestPath:        "",
-			expectedContent:    fc1,
+			expectedContent:    fMainIndex,
 			expectedStatusCode: 200,
 		},
 		{
 			name:               "standard, index, request path '/index.html'",
-			skylink:            skylinkDefaultNotFound,
+			skylink:            skylinkStandard,
 			requestPath:        "/index.html",
-			expectedContent:    fc1,
+			expectedContent:    fMainIndex,
 			expectedStatusCode: 200,
 		},
 		{
-			name:               "standard, about, request path '/about'",
-			skylink:            skylinkDefaultNotFound,
-			requestPath:        "/about",
-			expectedContent:    fc3,
-			expectedStatusCode: 200,
+			name:                    "standard, about, request path '/about'",
+			skylink:                 skylinkStandard,
+			requestPath:             "/about",
+			expectedStatusCode:      200,
+			expectZippedDirAsOutput: true,
 		},
 		{
 			name:               "standard, about, request path '/about/index.html'",
-			skylink:            skylinkDefaultNotFound,
+			skylink:            skylinkStandard,
 			requestPath:        "/about/index.html",
-			expectedContent:    fc3,
+			expectedContent:    fAboutIndex,
 			expectedStatusCode: 200,
 		},
 		{
-			name:               "standard, news, request path '/news/good-news'",
-			skylink:            skylinkDefaultNotFound,
-			requestPath:        "/news/good-news",
-			expectedContent:    fc4,
-			expectedStatusCode: 200,
+			name:                    "standard, news, request path '/news/good-news'",
+			skylink:                 skylinkStandard,
+			requestPath:             "/news/good-news",
+			expectedStatusCode:      200,
+			expectZippedDirAsOutput: true,
 		},
 		{
 			name:               "standard, news, request path '/news/good-news/index.html'",
-			skylink:            skylinkDefaultNotFound,
+			skylink:            skylinkStandard,
 			requestPath:        "/news/good-news/index.html",
-			expectedContent:    fc4,
+			expectedContent:    fGoodNewsIndex,
 			expectedStatusCode: 200,
 		},
-		// Web mode, valid custom "not found settings".
 		{
-			name:                   "custom, bad news, request path '/news/bad-news'",
+			name:                   "standard, bad news, request path '/news/bad-news'",
+			skylink:                skylinkStandard,
+			requestPath:            "/news/bad-news",
+			expectedContent:        nil,
+			expectedStatusCode:     http.StatusNotFound,
+			expectedErrStrDownload: "failed to download contents for path",
+		},
+		{
+			name:                   "standard, bad news, request path '/news/bad-news/index.html'",
+			skylink:                skylinkStandard,
+			requestPath:            "/news/bad-news/index.html",
+			expectedContent:        nil,
+			expectedStatusCode:     http.StatusNotFound,
+			expectedErrStrDownload: "failed to download contents for path",
+		},
+		// Web mode, no custom "not found" settings. Same as standard mode.
+		{
+			name:               "web-default, index, request path ''",
+			skylink:            skylinkDefaultNotFound,
+			requestPath:        "",
+			expectedContent:    fMainIndex,
+			expectedStatusCode: 200,
+		},
+		{
+			name:               "web-default, index, request path '/index.html'",
+			skylink:            skylinkDefaultNotFound,
+			requestPath:        "/index.html",
+			expectedContent:    fMainIndex,
+			expectedStatusCode: 200,
+		},
+		{
+			// We don't expect this to be zipped because this is the actual
+			// use case of web mode.
+			name:               "web-default, about, request path '/about'",
+			skylink:            skylinkDefaultNotFound,
+			requestPath:        "/about",
+			expectedContent:    fAboutIndex,
+			expectedStatusCode: 200,
+		},
+		{
+			name:               "web-default, about, request path '/about/index.html'",
+			skylink:            skylinkDefaultNotFound,
+			requestPath:        "/about/index.html",
+			expectedContent:    fAboutIndex,
+			expectedStatusCode: 200,
+		},
+		{
+			// We don't expect this to be zipped because this is the actual
+			// use case of web mode.
+			name:               "web-default, news, request path '/news/good-news'",
+			skylink:            skylinkDefaultNotFound,
+			requestPath:        "/news/good-news",
+			expectedContent:    fGoodNewsIndex,
+			expectedStatusCode: 200,
+		},
+		{
+			name:               "web-default, news, request path '/news/good-news/index.html'",
+			skylink:            skylinkDefaultNotFound,
+			requestPath:        "/news/good-news/index.html",
+			expectedContent:    fGoodNewsIndex,
+			expectedStatusCode: 200,
+		},
+		{
+			name:                   "web-default, bad news, request path '/news/bad-news'",
 			skylink:                skylinkDefaultNotFound,
 			requestPath:            "/news/bad-news",
 			expectedContent:        nil,
 			expectedStatusCode:     http.StatusNotFound,
-			expectedErrStrDownload: "path not found??",
+			expectedErrStrDownload: "failed to download contents for path",
 		},
 		{
-			name:                   "custom, bad news, request path '/news/bad-news/index.html'",
+			name:                   "web-default, bad news, request path '/news/bad-news/index.html'",
 			skylink:                skylinkDefaultNotFound,
 			requestPath:            "/news/bad-news/index.html",
 			expectedContent:        nil,
 			expectedStatusCode:     http.StatusNotFound,
-			expectedErrStrDownload: "path not found??",
+			expectedErrStrDownload: "failed to download contents for path",
 		},
+		// Web mode, custom "not found settings".
 		{
-			name:               "custom, news, request path '/news'",
+			name:               "web-custom, index, request path ''",
 			skylink:            skylinkCustomNotFound,
-			requestPath:        "/news",
-			expectedContent:    fc2,
-			expectedStatusCode: http.StatusTeapot,
+			requestPath:        "",
+			expectedContent:    fMainIndex,
+			expectedStatusCode: 200,
 		},
 		{
-			name:               "custom, news, request path '/news/index.html'",
+			name:               "web-custom, index, request path '/index.html'",
 			skylink:            skylinkCustomNotFound,
-			requestPath:        "/news/index.html",
-			expectedContent:    fc2,
-			expectedStatusCode: http.StatusTeapot,
+			requestPath:        "/index.html",
+			expectedContent:    fMainIndex,
+			expectedStatusCode: 200,
 		},
 		{
-			name:               "custom, bad news, request path '/news/bad-news'",
+			// We don't expect this to be zipped because this is the actual
+			// use case of web mode.
+			name:               "web-custom, about, request path '/about'",
+			skylink:            skylinkCustomNotFound,
+			requestPath:        "/about",
+			expectedContent:    fAboutIndex,
+			expectedStatusCode: 200,
+		},
+		{
+			name:               "web-custom, about, request path '/about/index.html'",
+			skylink:            skylinkCustomNotFound,
+			requestPath:        "/about/index.html",
+			expectedContent:    fAboutIndex,
+			expectedStatusCode: 200,
+		},
+		{
+			// We don't expect this to be zipped because this is the actual
+			// use case of web mode.
+			name:               "web-custom, news, request path '/news/good-news'",
+			skylink:            skylinkCustomNotFound,
+			requestPath:        "/news/good-news",
+			expectedContent:    fGoodNewsIndex,
+			expectedStatusCode: 200,
+		},
+		{
+			name:               "web-custom, news, request path '/news/good-news/index.html'",
+			skylink:            skylinkCustomNotFound,
+			requestPath:        "/news/good-news/index.html",
+			expectedContent:    fGoodNewsIndex,
+			expectedStatusCode: 200,
+		},
+		{
+			name:               "web-custom, bad news, request path '/news/bad-news'",
 			skylink:            skylinkCustomNotFound,
 			requestPath:        "/news/bad-news",
-			expectedContent:    fc2,
-			expectedStatusCode: http.StatusTeapot,
+			expectedContent:    fCustomNotFound,
+			expectedStatusCode: http.StatusIMUsed,
 		},
 		{
-			name:               "custom, bad news, request path '/news/bad-news/index.html'",
+			name:               "web-custom, bad news, request path '/news/bad-news/index.html'",
 			skylink:            skylinkCustomNotFound,
 			requestPath:        "/news/bad-news/index.html",
-			expectedContent:    fc2,
-			expectedStatusCode: http.StatusTeapot,
-		},
-		// Web mode, invalid custom "not found" settings.
-		{
-			name:                   "bad custom, bad news, request path '/news/bad-news'",
-			skylink:                skylinkNoExistNotFound,
-			requestPath:            "/news/bad-news",
-			expectedContent:        nil,
-			expectedStatusCode:     http.StatusNotFound,
-			expectedErrStrDownload: "path not found??",
-		},
-		{
-			name:                   "bad custom, bad news, request path '/news/bad-news/index.html'",
-			skylink:                skylinkNoExistNotFound,
-			requestPath:            "/news/bad-news/index.html",
-			expectedContent:        nil,
-			expectedStatusCode:     http.StatusNotFound,
-			expectedErrStrDownload: "path not found??",
-		},
-		{
-			name:               "bad custom, news, request path '/news'",
-			skylink:            skylinkNoExistNotFound,
-			requestPath:        "/news",
-			expectedContent:    fc2,
-			expectedStatusCode: http.StatusTeapot,
-		},
-		{
-			name:               "bad custom, news, request path '/news/index.html'",
-			skylink:            skylinkNoExistNotFound,
-			requestPath:        "/news/index.html",
-			expectedContent:    fc2,
-			expectedStatusCode: http.StatusTeapot,
-		},
-		{
-			name:               "bad custom, bad news, request path '/news/bad-news'",
-			skylink:            skylinkNoExistNotFound,
-			requestPath:        "/news/bad-news",
-			expectedContent:    fc2,
-			expectedStatusCode: http.StatusTeapot,
-		},
-		{
-			name:               "bad custom, bad news, request path '/news/bad-news/index.html'",
-			skylink:            skylinkNoExistNotFound,
-			requestPath:        "/news/bad-news/index.html",
-			expectedContent:    fc2,
-			expectedStatusCode: http.StatusTeapot,
+			expectedContent:    fCustomNotFound,
+			expectedStatusCode: http.StatusIMUsed,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			content, err := r.SkynetSkylinkGet(tt.skylink)
+			content, err := r.SkynetSkylinkGet(tt.skylink + tt.requestPath)
 			if err == nil && tt.expectedErrStrDownload != "" {
-				t.Fatalf("Expected error '%s', got <nil>", tt.expectedErrStrDownload)
+				t.Fatalf("Test name: %s. Expected error '%s', got <nil>", tt.name, tt.expectedErrStrDownload)
 			}
 			if err != nil && (tt.expectedErrStrDownload == "" || !strings.Contains(err.Error(), tt.expectedErrStrDownload)) {
-				t.Fatalf("Expected error '%s', got '%s'", tt.expectedErrStrDownload, err.Error())
+				t.Fatalf("Test name: %s. Expected error '%s', got '%s'", tt.name, tt.expectedErrStrDownload, err.Error())
 			}
-			if tt.expectedErrStrDownload == "" && !bytes.Equal(content, tt.expectedContent) {
-				t.Fatalf("Content mismatch! Expected %d bytes, got %d bytes.", len(tt.expectedContent), len(content))
+			if tt.expectZippedDirAsOutput {
+				ct := http.DetectContentType(content)
+				if ct != "application/x-gzip" && ct != "application/zip" {
+					t.Fatalf("Expected zipped content, got %s", string(content))
+
+				}
+			} else if tt.expectedErrStrDownload == "" && !bytes.Equal(content, tt.expectedContent) {
+				t.Fatalf("Test name: %s. Content mismatch! Expected %d bytes, got %d bytes.", tt.name, len(tt.expectedContent), len(content))
 			}
+			// TODO Do a HEAD request and compare status codes.
 		})
 	}
 }

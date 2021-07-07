@@ -74,6 +74,8 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "NoWorkers", Test: testSkynetNoWorkers},
 		{Name: "DefaultPath", Test: testSkynetDefaultPath},
 		{Name: "DefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
+		{Name: "DirectoryResolution", Test: testSkynetDirectoryResolution},
+		{Name: "DirectoryResolution_TableTest", Test: testSkynetDirectoryResolution_TableTest},
 		{Name: "SingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
 		{Name: "DownloadFormats", Test: testSkynetDownloadFormats},
 		{Name: "DownloadBaseSector", Test: testSkynetDownloadBaseSectorNoEncryption},

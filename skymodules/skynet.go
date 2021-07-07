@@ -314,9 +314,12 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 	// All paths must be absolute.
 	path = EnsurePrefix(path, "/")
 	metadata := SkyfileMetadata{
-		Filename:     path,
-		Monetization: sm.Monetization,
-		Subfiles:     make(SkyfileSubfiles),
+		Filename:           path,
+		Monetization:       sm.Monetization,
+		Subfiles:           make(SkyfileSubfiles),
+		DirResMode:         sm.DirResMode,
+		DirResNotFound:     sm.DirResNotFound,
+		DirResNotFoundCode: sm.DirResNotFoundCode,
 	}
 
 	// Try to find an exact match

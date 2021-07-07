@@ -340,6 +340,12 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 	}
 
 	// validate directory resolution mode
+	if metadata.DirResMode == "" {
+		metadata.DirResMode = DirResModeStandard
+	}
+	if metadata.DirResNotFoundCode == 0 {
+		metadata.DirResNotFoundCode = http.StatusNotFound
+	}
 	err = validateDirResMode(metadata.DirResMode, metadata.DirResNotFound, metadata.DirResNotFoundCode, metadata.Subfiles)
 	if err != nil {
 		return errors.AddContext(err, "metadata contains invalid directory resolution configuration")
@@ -436,12 +442,6 @@ func validateDefaultPath(defaultPath string, subfiles SkyfileSubfiles) (string, 
 // validateDirResMode ensures the given combination of directory resolution
 // settings is valid and usable.
 func validateDirResMode(mode, notFound string, notFoundCode int, subfiles SkyfileSubfiles) error {
-	if mode == "" {
-		mode = DirResModeStandard
-	}
-	if notFoundCode == 0 {
-		notFoundCode = http.StatusNotFound
-	}
 	if mode != DirResModeWeb && (notFound != "" || notFoundCode != http.StatusNotFound) {
 		return ErrInvalidDirectoryResolutionMode
 	}
