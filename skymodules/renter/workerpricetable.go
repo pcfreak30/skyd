@@ -217,14 +217,14 @@ func (w *worker) staticUpdatePriceTable() {
 		// As a safety precaution, set the elapsed duration to the minimum
 		// estimate in case we did not manage to update the price table
 		// successfully.
-		if err != nil || elapsed < minInitialEstimate {
+		if err != nil && elapsed < minInitialEstimate {
 			elapsed = minInitialEstimate
 		}
 		w.staticSetInitialEstimates.Do(func() {
 			w.staticJobHasSectorQueue.callUpdateJobTimeMetrics(elapsed)
 			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<16, elapsed)
-			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<20, 2*elapsed)
-			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<24, 4*elapsed)
+			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<20, elapsed)
+			w.staticJobReadQueue.callUpdateJobTimeMetrics(1<<24, elapsed)
 		})
 	}()
 
