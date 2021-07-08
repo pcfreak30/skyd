@@ -59,6 +59,16 @@ func (tn *TestNode) NewSkylinkV2(sl skymodules.Skylink) (SkylinkV2, error) {
 	}, nil
 }
 
+// NewSkylinkV2FromString creates a new V2 skylink from a V1 skylink string.
+func (tn *TestNode) NewSkylinkV2FromString(sl string) (SkylinkV2, error) {
+	var skylink skymodules.Skylink
+	err := skylink.LoadString(sl)
+	if err != nil {
+		return SkylinkV2{}, err
+	}
+	return tn.NewSkylinkV2(skylink)
+}
+
 // UploadNewSkyfileWithDataBlocking attempts to upload a skyfile with given
 // data. After it has successfully performed the upload, it will verify the file
 // can be downloaded using its Skylink. Returns the skylink, the parameters used

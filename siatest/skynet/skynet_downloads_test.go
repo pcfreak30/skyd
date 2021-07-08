@@ -63,31 +63,52 @@ func TestSkynetDownloads(t *testing.T) {
 func testDownloadSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	// upload a single file using a stream
-	testName := "SingleFileRegular"
-	size := fastrand.Uint64n(100) + 100
-	data := fastrand.Bytes(int(size))
-	skylink, _, _, err := r.UploadNewSkyfileWithDataBlocking("SingleFileRegular", data, false)
-	if err != nil {
-		t.Fatal(err)
+	// Define the test
+	downloadtest := func(testName string, size uint64) error {
+		// upload a single file using a stream
+		data := fastrand.Bytes(int(size))
+		skylink, _, _, err := r.UploadNewSkyfileWithDataBlocking(testName, data, false)
+		if err != nil {
+			return err
+		}
+
+		// verify downloads
+		//
+		// note: these switch from un-cached to cached downloads partway through. By
+		// passing verification on all pieces of the test, we are confirming that
+		// the caching is correct.
+		err = verifyDownloadRaw(t, r, skylink, data, testName)
+		if err != nil {
+			return errors.AddContext(err, "raw download failed")
+		}
+		err = verifyDownloadDirectory(t, r, skylink, data, testName)
+		if err != nil {
+			return errors.AddContext(err, "directory download failed")
+		}
+		err = verifyDownloadAsArchive(t, r, skylink, fileMap{testName: data}, testName)
+		if err != nil {
+			return errors.AddContext(err, "archive download failed")
+		}
+		return nil
 	}
 
-	// verify downloads
-	//
-	// note: these switch from un-cached to cached downloads partway through. By
-	// passing verification on all pieces of the test, we are confirming that
-	// the caching is correct.
-	err = verifyDownloadRaw(t, r, skylink, data, testName)
-	if err != nil {
-		t.Fatal(err)
+	// Define test cases
+	var tests = []struct {
+		name string
+		size uint64
+	}{
+		{"SingleFileRegular_Small", fastrand.Uint64n(100) + 100},
+		{"SingleFileRegular_Large", modules.SectorSize + 100},
+		{"SingleFileRegular_Zero", 0},
 	}
-	err = verifyDownloadDirectory(t, r, skylink, data, testName)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = verifyDownloadAsArchive(t, r, skylink, fileMap{"SingleFileRegular": data}, testName)
-	if err != nil {
-		t.Fatal(err)
+
+	// Run tests
+	for _, test := range tests {
+		err := downloadtest(test.name, test.size)
+		if err != nil {
+			t.Log("Test:", test.name)
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -95,23 +116,41 @@ func testDownloadSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 // uploaded using a multipart upload.
 func testDownloadSingleFileMultiPart(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
-
-	// TEST: non-html default path - expect the file's content dut to the single
-	// file exception from the HTML-only default path restriction.
 	testName := "SingleFileMultiPart"
-	data := []byte("contents_file1.png")
-	files := []siatest.TestFile{{Name: "file1.png", Data: data}}
-	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking("SingleFileMultiPartPNG", files, "", false, false)
+
+	// Define Download Test
+	downloadTest := func(fileName string, files []siatest.TestFile) error {
+		// Upload File
+		skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(fileName, files, "", false, false)
+		if err != nil {
+			return errors.AddContext(err, "unable to upload file")
+		}
+
+		// verify downloads
+		err = verifyDownloadRaw(t, r, skylink, files[0].Data, testName)
+		if err != nil {
+			return errors.AddContext(err, "raw download failed")
+		}
+		err = verifyDownloadAsArchive(t, r, skylink, fileMapFromFiles(files), testName)
+		if err != nil {
+			return errors.AddContext(err, "archive download failed")
+		}
+		return nil
+	}
+
+	// Test Zero Byte File
+	data := []byte{}
+	files := []siatest.TestFile{{Name: "zero.png", Data: data}}
+	err := downloadTest("SingleFileMultiPartPNG_Zero", files)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// verify downloads
-	err = verifyDownloadRaw(t, r, skylink, data, testName)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = verifyDownloadAsArchive(t, r, skylink, fileMapFromFiles(files), testName)
+	// TEST: non-html default path - expect the file's content due to the single
+	// file exception from the HTML-only default path restriction.
+	data = []byte("contents_file1.png")
+	files = []siatest.TestFile{{Name: "file1.png", Data: data}}
+	err = downloadTest("SingleFileMultiPartPNG", files)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,17 +158,7 @@ func testDownloadSingleFileMultiPart(t *testing.T, tg *siatest.TestGroup) {
 	// TEST: html default path - expect success
 	data = []byte("contents_file1.html")
 	files = []siatest.TestFile{{Name: "file1.html", Data: data}}
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking("SingleFileMultiPartHTML", files, "", false, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// verify downloads
-	err = verifyDownloadRaw(t, r, skylink, data, testName)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = verifyDownloadAsArchive(t, r, skylink, fileMapFromFiles(files), testName)
+	err = downloadTest("SingleFileMultiPartHTML", files)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -929,7 +958,7 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 		t.Log("Test:", testName)
 		t.Log("expected:", expectedFiles)
 		t.Log("actual  :", files)
-		return errors.New("Unexpected files")
+		return errors.New("Unexpected files for zip")
 	}
 	ct := header.Get("Content-type")
 	if ct != "application/zip" {
@@ -953,7 +982,7 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 		t.Log("Test:", testName)
 		t.Log("expected:", expectedFiles)
 		t.Log("actual  :", files)
-		return errors.New("Unexpected files")
+		return errors.New("Unexpected files for tar")
 	}
 	ct = header.Get("Content-type")
 	if ct != "application/x-tar" {
@@ -978,9 +1007,10 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 		return err
 	}
 	if !reflect.DeepEqual(files, expectedFiles) {
+		t.Log("Test:", testName)
 		t.Log("expected:", expectedFiles)
 		t.Log("actual  :", files)
-		return errors.New("Unexpected files")
+		return errors.New("Unexpected files for tar gz")
 	}
 	ct = header.Get("Content-type")
 	if ct != "application/gzip" {

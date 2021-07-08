@@ -159,26 +159,25 @@ func (r *Renter) managedInitUploadStream(up skymodules.FileUploadParams) (*files
 	return r.staticFileSystem.OpenSiaFile(siaPath)
 }
 
-// callUploadStreamFromReaderWithFileNode reads from the provided reader until
+// callUploadStreamFromReaderWithFileNodeNoBlock reads from the provided reader until
 // io.EOF is reached and upload the data to the Sia network. Depending on
 // whether backup is true or false, the siafile for the upload will be stored in
 // the siafileset or backupfileset.
 //
-// callUploadStreamFromReader will return as soon as the data is available on
-// the Sia network, this will happen faster than the entire upload is complete -
-// the streamer may continue uploading in the background after returning while
-// it is boosting redundancy.
-func (r *Renter) callUploadStreamFromReaderWithFileNode(ctx context.Context, fileNode *filesystem.FileNode, reader skymodules.ChunkReader, offset int64) (n int64, err error) {
+// callUploadStreamFromReader will return as soon as all data to upload is read
+// from the reader and passed on to the upload code but before the data is
+// available on the network.
+func (r *Renter) callUploadStreamFromReaderWithFileNodeNoBlock(ctx context.Context, fileNode *filesystem.FileNode, reader skymodules.ChunkReader, offset int64) (_ []*unfinishedUploadChunk, n int64, err error) {
 	// Sanity check offset.
 	if offset%int64(fileNode.ChunkSize()) != 0 {
-		return 0, fmt.Errorf("callUploadStreamFromReaderWithFileNode called with invalid offset %v mod %v != 0", offset, fileNode.ChunkSize())
+		return nil, 0, fmt.Errorf("callUploadStreamFromReaderWithFileNode called with invalid offset %v mod %v != 0", offset, fileNode.ChunkSize())
 	}
 	startChunkIndex := uint64(offset) / fileNode.ChunkSize()
 
 	// If Peek is false to start then we are dealing with a zero byte file
 	// and should just return as there is nothing to upload to the network.
 	if !reader.Peek() {
-		return 0, nil
+		return nil, 0, nil
 	}
 
 	// Build a map of host public keys.
@@ -196,7 +195,7 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(ctx context.Context, fil
 	availableWorkers := len(r.staticWorkerPool.workers)
 	r.staticWorkerPool.mu.RUnlock()
 	if availableWorkers < minWorkers {
-		return 0, fmt.Errorf("Need at least %v workers for upload but got only %v", minWorkers, availableWorkers)
+		return nil, 0, fmt.Errorf("Need at least %v workers for upload but got only %v", minWorkers, availableWorkers)
 	}
 
 	// Read the chunks we want to upload one by one from the input stream using
@@ -215,14 +214,14 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(ctx context.Context, fil
 		// Grow the SiaFile to the right size. Otherwise buildUnfinishedChunk
 		// won't realize that there are pieces which haven't been repaired yet.
 		if err = fileNode.SiaFile.GrowNumChunks(chunkIndex + 1); err != nil {
-			return n, err
+			return nil, n, err
 		}
 
 		// Start the chunk upload.
 		offline, goodForRenew, _, _ := r.callRenterContractsAndUtilities()
 		uuc, err := r.managedBuildUnfinishedChunk(ctx, fileNode, chunkIndex, hosts, pks, memoryPriorityHigh, offline, goodForRenew, r.staticUserUploadMemoryManager)
 		if err != nil {
-			return n, errors.AddContext(err, "unable to fetch chunk for stream")
+			return nil, n, errors.AddContext(err, "unable to fetch chunk for stream")
 		}
 
 		// Create a new shard set it to be the source reader of the chunk.
@@ -234,7 +233,7 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(ctx context.Context, fil
 			// Add the chunk to the upload heap's repair map.
 			pushed, err := r.managedPushChunkForRepair(uuc, chunkTypeStreamChunk)
 			if err != nil {
-				return n, errors.AddContext(err, "unable to push chunk")
+				return nil, n, errors.AddContext(err, "unable to push chunk")
 			}
 			if !pushed {
 				// The chunk wasn't added to the repair map meaning it must have
@@ -242,7 +241,7 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(ctx context.Context, fil
 				_, read, err := ss.ReadChunk()
 				n += int64(read)
 				if err != nil {
-					return n, errors.AddContext(err, "unable to read pushed chunk")
+					return nil, n, errors.AddContext(err, "unable to read pushed chunk")
 				}
 			}
 			chunks = append(chunks, uuc)
@@ -254,13 +253,13 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(ctx context.Context, fil
 			_, read, err := ss.ReadChunk()
 			n += int64(read)
 			if err != nil {
-				return n, errors.AddContext(err, "unable to read chunk")
+				return nil, n, errors.AddContext(err, "unable to read chunk")
 			}
 		}
 		// Wait for the shard to be read.
 		select {
 		case <-r.tg.StopChan():
-			return n, errors.New("interrupted by shutdown")
+			return nil, n, errors.New("interrupted by shutdown")
 		case <-ss.signalChan:
 		}
 
@@ -271,7 +270,7 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(ctx context.Context, fil
 			n += int64(ssN)
 			break
 		} else if ss.err != nil {
-			return n, ss.err
+			return nil, n, ss.err
 		}
 		n += int64(ss.n)
 
@@ -280,7 +279,24 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(ctx context.Context, fil
 			break
 		}
 	}
+	return chunks, n, err
+}
 
+// callUploadStreamFromReaderWithFileNode reads from the provided reader until
+// io.EOF is reached and upload the data to the Sia network. Depending on
+// whether backup is true or false, the siafile for the upload will be stored in
+// the siafileset or backupfileset.
+//
+// callUploadStreamFromReader will return as soon as the data is available on
+// the Sia network, this will happen faster than the entire upload is complete -
+// the streamer may continue uploading in the background after returning while
+// it is boosting redundancy.
+func (r *Renter) callUploadStreamFromReaderWithFileNode(ctx context.Context, fileNode *filesystem.FileNode, reader skymodules.ChunkReader, offset int64) (n int64, err error) {
+	// Start upload.
+	chunks, n, err := r.callUploadStreamFromReaderWithFileNodeNoBlock(ctx, fileNode, reader, offset)
+	if err != nil {
+		return n, err
+	}
 	// Wait for all chunks to become available.
 	for _, chunk := range chunks {
 		select {
@@ -295,13 +311,12 @@ func (r *Renter) callUploadStreamFromReaderWithFileNode(ctx context.Context, fil
 			return n, errors.AddContext(err, "upload streamer failed to get all data available")
 		}
 	}
-
 	// Disrupt to force an error and ensure the fileNode is being closed
 	// correctly.
 	if r.staticDeps.Disrupt("failUploadStreamFromReader") {
 		return n, errors.New("disrupted by failUploadStreamFromReader")
 	}
-	return
+	return n, nil
 }
 
 // callUploadStreamFromReader reads from the provided reader until io.EOF is

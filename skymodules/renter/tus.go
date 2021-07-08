@@ -66,6 +66,7 @@ type (
 		fanout   []byte
 		fileNode *filesystem.FileNode
 		staticUP skymodules.FileUploadParams
+		chunks   []*unfinishedUploadChunk
 
 		// small upload related fields.
 		isSmall bool
@@ -339,11 +340,13 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 	// Upload.
 	onlyOnePieceNeeded := ec.MinPieces() == 1 && fileNode.MasterKey().Type() == crypto.TypePlain
 	cr := NewFanoutChunkReader(src, ec, onlyOnePieceNeeded, fileNode.MasterKey())
-	n, err = uploader.staticRenter.callUploadStreamFromReaderWithFileNode(ctx, fileNode, cr, offset)
+	var chunks []*unfinishedUploadChunk
+	chunks, n, err = uploader.staticRenter.callUploadStreamFromReaderWithFileNodeNoBlock(ctx, fileNode, cr, offset)
 
 	// Increment offset and append fanout.
 	u.fi.Offset += n
 	u.fanout = append(u.fanout, cr.Fanout()...)
+	u.chunks = append(u.chunks, chunks...)
 	return n, err
 }
 
@@ -406,6 +409,25 @@ func (u *skynetTUSUpload) FinishUpload(ctx context.Context) (err error) {
 	defer func() {
 		err = errors.Compose(err, u.Close())
 	}()
+
+	u.mu.Lock()
+	chunks := u.chunks
+	u.mu.Unlock()
+
+	// Wait for potentially unfinished chunks to finish.
+	for _, chunk := range chunks {
+		select {
+		case <-ctx.Done():
+			err = errors.New("upload timed out")
+		case <-chunk.staticAvailableChan:
+			chunk.mu.Lock()
+			err = chunk.err
+			chunk.mu.Unlock()
+		}
+		if err != nil {
+			return err
+		}
+	}
 
 	u.mu.Lock()
 	defer u.mu.Unlock()
