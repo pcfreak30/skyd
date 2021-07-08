@@ -2269,8 +2269,11 @@ func TestSkynetBlocklist(t *testing.T) {
 	t.Run("BlocklistHash", func(t *testing.T) {
 		testSkynetBlocklistHash(t, tg, deps)
 	})
-	t.Run("BlocklistSkylink", func(t *testing.T) {
-		testSkynetBlocklistSkylink(t, tg, deps)
+	t.Run("BlocklistSkylinkV1", func(t *testing.T) {
+		testSkynetBlocklistSkylink(t, tg, deps, false)
+	})
+	t.Run("BlocklistSkylinkV2", func(t *testing.T) {
+		testSkynetBlocklistSkylink(t, tg, deps, true)
 	})
 	t.Run("BlocklistUpgrade", func(t *testing.T) {
 		testSkynetBlocklistUpgrade(t, tg)
@@ -2280,17 +2283,17 @@ func TestSkynetBlocklist(t *testing.T) {
 // testSkynetBlocklistHash tests the skynet blocklist module when submitting
 // hashes of the skylink's merkleroot
 func testSkynetBlocklistHash(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyToggleDisableDeleteBlockedFiles) {
-	testSkynetBlocklist(t, tg, deps, true)
+	testSkynetBlocklist(t, tg, deps, true, false)
 }
 
 // testSkynetBlocklistSkylink tests the skynet blocklist module when submitting
 // skylinks
-func testSkynetBlocklistSkylink(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyToggleDisableDeleteBlockedFiles) {
-	testSkynetBlocklist(t, tg, deps, false)
+func testSkynetBlocklistSkylink(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyToggleDisableDeleteBlockedFiles, isV2Skylink bool) {
+	testSkynetBlocklist(t, tg, deps, false, isV2Skylink)
 }
 
 // testSkynetBlocklist tests the skynet blocklist module
-func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyToggleDisableDeleteBlockedFiles, isHash bool) {
+func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyToggleDisableDeleteBlockedFiles, isHash, isV2Skylink bool) {
 	r := tg.Renters()[0]
 	deps.DisableDeleteBlockedFiles(true)
 
@@ -2300,6 +2303,15 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies
 	skylink, sup, sshp, err := r.UploadNewSkyfileBlocking(t.Name(), size, false)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Convert to V2 Skylink
+	if isV2Skylink {
+		skylinkV2, err := r.NewSkylinkV2FromString(skylink)
+		if err != nil {
+			t.Fatal(err)
+		}
+		skylink = skylinkV2.Skylink.String()
 	}
 
 	// Remember the siaPaths of the blocked files
@@ -2344,8 +2356,8 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies
 		t.Fatal(err)
 	}
 
-	// Confirm that the Skylink is blocked by verifying the merkleroot is in
-	// the blocklist
+	// Confirm that the Skylink is blocked by verifying the hash of the V1
+	// skylink is in the blocklist
 	sbg, err := r.SkynetBlocklistGet()
 	if err != nil {
 		t.Fatal(err)
@@ -2425,12 +2437,15 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies
 		BaseChunkRedundancy: 2,
 		Force:               true,
 	}
-	err = r.SkynetSkylinkPinPost(skylink, pinlup)
-	if err == nil {
-		t.Fatal("Expected pin to fail")
-	}
-	if !strings.Contains(err.Error(), renter.ErrSkylinkBlocked.Error()) {
-		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlocked, err)
+	// Pinning is only supported for V1 Skylink
+	if !isV2Skylink {
+		err = r.SkynetSkylinkPinPost(skylink, pinlup)
+		if err == nil {
+			t.Fatal("Expected pin to fail")
+		}
+		if !strings.Contains(err.Error(), renter.ErrSkylinkBlocked.Error()) {
+			t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlocked, err)
+		}
 	}
 
 	// Remove skylink from blocklist
@@ -2473,10 +2488,13 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies
 		t.Log(fetchedData)
 	}
 
-	// Pinning the skylink should also work now
-	err = r.SkynetSkylinkPinPost(skylink, pinlup)
-	if err != nil {
-		t.Fatal(err)
+	// Pinning is only supported for V1 Skylink
+	if !isV2Skylink {
+		// Pinning the skylink should also work now
+		err = r.SkynetSkylinkPinPost(skylink, pinlup)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// Upload a normal siafile with 1-of-N redundancy
@@ -2495,6 +2513,15 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies
 	}
 	convertSkylink := convertSSHP.Skylink
 
+	// Convert to V2 Skylink
+	if isV2Skylink {
+		skylinkV2, err := r.NewSkylinkV2FromString(convertSkylink)
+		if err != nil {
+			t.Fatal(err)
+		}
+		convertSkylink = skylinkV2.Skylink.String()
+	}
+
 	// Confirm there is a siafile and a skyfile
 	_, err = r.RenterFileGet(rf.SiaPath())
 	if err != nil {
@@ -2507,6 +2534,11 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies
 	_, err = r.RenterFileRootGet(skyfilePath)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// For V2 Skylinks reset the blocklist to account for pinning not being supported for V2 Skylinks.
+	if isV2Skylink {
+		blockedSiaPaths = []skymodules.SiaPath{}
 	}
 
 	// Make sure all blockedSiaPaths are root paths
@@ -2534,7 +2566,6 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	sbg, err = r.SkynetBlocklistGet()
 	if err != nil {
 		t.Fatal(err)
@@ -2606,7 +2637,8 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies
 	for _, siaPath := range blockedSiaPaths {
 		_, err = r.RenterFileRootGet(siaPath)
 		if err != nil {
-			t.Error(err)
+			t.Log(siaPath)
+			t.Fatal(err)
 		}
 	}
 
@@ -5227,7 +5259,7 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// Download the file using that link. Should fail.
 	_, err = r.SkynetSkylinkGet(slv2.String())
-	if err == nil || !strings.Contains(err.Error(), renter.ErrRootNotFound.Error()) {
+	if err == nil || !strings.Contains(err.Error(), renter.ErrSkylinkNesting.Error()) {
 		t.Fatal("should fail to resolve v2 skylink with more than 2 layers of recursion", err)
 	}
 

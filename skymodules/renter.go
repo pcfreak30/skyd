@@ -1271,7 +1271,7 @@ type Renter interface {
 	ReadRegistryRID(ctx context.Context, rid modules.RegistryEntryID) (RegistryEntry, error)
 
 	// ResolveSkylinkV2 resolves a V2 skylink to a V1 skylink if possible.
-	ResolveSkylinkV2(ctx context.Context, sl Skylink) (Skylink, *RegistryEntry, error)
+	ResolveSkylinkV2(ctx context.Context, sl Skylink) (Skylink, []RegistryEntry, error)
 
 	// ScoreBreakdown will return the score for a host db entry using the
 	// hostdb's weighting algorithm.
@@ -1408,7 +1408,7 @@ type Renter interface {
 
 	// UpdateSkynetBlocklist updates the list of hashed merkleroots that are
 	// blocked
-	UpdateSkynetBlocklist(additions, removals []crypto.Hash) error
+	UpdateSkynetBlocklist(ctx context.Context, additions, removals []string, isHash bool) error
 
 	// UpdateSkynetPortals updates the list of known skynet portals.
 	UpdateSkynetPortals(additions []SkynetPortal, removals []modules.NetAddress) error

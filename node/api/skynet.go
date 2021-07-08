@@ -311,54 +311,28 @@ func (api *API) skynetBlocklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 		return
 	}
 
-	// Convert to Skylinks or Hash
-	addHashes := make([]crypto.Hash, len(params.Add))
-	for i, addStr := range params.Add {
-		var hash crypto.Hash
-		// Convert Hash
-		if params.IsHash {
-			err := hash.LoadString(addStr)
-			if err != nil {
-				WriteError(w, Error{fmt.Sprintf("error parsing hash: %v", err)}, http.StatusBadRequest)
-				return
-			}
-		} else {
-			// Convert Skylink
-			var skylink skymodules.Skylink
-			err := skylink.LoadString(addStr)
-			if err != nil {
-				WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
-				return
-			}
-			hash = crypto.HashObject(skylink.MerkleRoot())
+	// Parse the timeout.
+	timeout := renter.MaxRegistryReadTimeout
+	timeoutStr := req.FormValue("timeout")
+	if timeoutStr != "" {
+		timeoutInt, err := strconv.Atoi(timeoutStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
 		}
-		addHashes[i] = hash
-	}
-	removeHashes := make([]crypto.Hash, len(params.Remove))
-	for i, removeStr := range params.Remove {
-		var hash crypto.Hash
-		// Convert Hash
-		if params.IsHash {
-			err := hash.LoadString(removeStr)
-			if err != nil {
-				WriteError(w, Error{fmt.Sprintf("error parsing hash: %v", err)}, http.StatusBadRequest)
-				return
-			}
-		} else {
-			// Convert Skylink
-			var skylink skymodules.Skylink
-			err := skylink.LoadString(removeStr)
-			if err != nil {
-				WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
-				return
-			}
-			hash = crypto.HashObject(skylink.MerkleRoot())
+		timeout = time.Duration(timeoutInt) * time.Second
+		if timeout > renter.MaxRegistryReadTimeout || timeout == 0 {
+			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %ds", renter.MaxRegistryReadTimeout)}, http.StatusBadRequest)
+			return
 		}
-		removeHashes[i] = hash
 	}
 
+	// Generate context
+	ctx, cancel := context.WithTimeout(req.Context(), timeout)
+	defer cancel()
+
 	// Update the Skynet Blocklist
-	err = api.renter.UpdateSkynetBlocklist(addHashes, removeHashes)
+	err = api.renter.UpdateSkynetBlocklist(ctx, params.Add, params.Remove, params.IsHash)
 	if err != nil {
 		WriteError(w, Error{"unable to update the skynet blocklist: " + err.Error()}, http.StatusInternalServerError)
 		return
@@ -1536,7 +1510,7 @@ func (api *API) skylinkResolveGET(w http.ResponseWriter, req *http.Request, ps h
 	// Attach proof.
 	var proof []skymodules.RegistryEntry
 	if srv != nil {
-		proof = append(proof, *srv)
+		proof = append(proof, srv...)
 	}
 	err = attachRegistryEntryProof(w, proof)
 	if err != nil {
