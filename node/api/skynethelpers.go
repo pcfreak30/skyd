@@ -303,10 +303,15 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		if err != nil {
 			return nil, nil, errors.AddContext(err, "unable to parse 'dirresnotfoundcode' parameter")
 		}
+		if dirResNotFoundCode == 0 {
+			dirResNotFoundCode = http.StatusNotFound
+		}
+		if dirResNotFoundCode != http.StatusNotFound && (dirResNotFoundCode < 200 || dirResNotFoundCode > 299) {
+			return nil, nil, errors.New("invalid 'dirresnotfoundcode' value, it needs to be between 200 and 299")
+		}
 	}
 
-	// verify that we're not trying to override 404 page and code in standard
-	// mode
+	// verify that we're not trying to override 404 page and code in std mode
 	if dirResMode == skymodules.DirResModeStandard && (dirResNotFound != "" || dirResNotFoundCode != http.StatusNotFound) {
 		return nil, nil, skymodules.ErrInvalidDirectoryResolutionMode
 	}

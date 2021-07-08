@@ -452,5 +452,8 @@ func validateDirResMode(mode, notFound string, notFoundCode int, subfiles Skyfil
 			return fmt.Errorf("no such path: %s", notFound)
 		}
 	}
+	if notFoundCode != http.StatusNotFound && (notFoundCode < 200 || notFoundCode > 299) {
+		return fmt.Errorf("invalid 'not found status code' value %d - value must either be 404 or between 200 and 299", notFoundCode)
+	}
 	return nil
 }

@@ -755,7 +755,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			streamer = *newStreamer
 			responseStatusCode = statusCode
 		} else {
-			// Assume "standard" mode.
+			// Assume std mode.
 			format = skymodules.SkyfileFormatZip
 		}
 	}
@@ -836,13 +836,12 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 	// This allows us to return a custom status code.
 	// TODO What happens if the content we try to server is bigger that the
-	// 	threshold and http.ServerContent tries to set http.StatusPartialContent?
+	// 	threshold and http.ServeContent tries to set http.StatusPartialContent?
 	//
-	// TODO This is the only way to send a non-200 response code without rewriting http.ServeContent. But we might be fine with only allowing 200 for the moment, as that's what Vue needs. In that case we can just comment this out. We can only use 200-299 right now, anyway, because of the stuff in client.go.
+	// TODO This is the only way to send a non-200 response code without rewriting http.ServeContent. But we might be fine with only allowing 200 for the moment, as that's what Vue needs. In that case we can just comment this out. We can only use 200-299 right now, anyway, because of the stuff in mode/api/client/client.go which tries to readAPIError(res.Body) if the status is anything else.
 	if responseStatusCode != http.StatusOK {
 		w.WriteHeader(responseStatusCode)
 	}
-	// TODO Where should I put that the custom not found code can only be 200-299?
 
 	// Monetize the response if necessary by wrapping the response writer in a
 	// monetized one.

@@ -472,7 +472,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 	// verify 'dirresnotfoundcode'
 	req = buildRequest(url.Values{"dirresmode": []string{skymodules.DirResModeWeb}, "dirresnotfoundcode": []string{"200"}}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
-	if params.dirResNotFoundCode != 200 {
+	if params.dirResNotFoundCode != http.StatusOK {
 		t.Fatal("Unexpected")
 	}
 	req = buildRequest(url.Values{"dirresmode": []string{skymodules.DirResModeStandard}, "dirresnotfoundcode": []string{"200"}}, http.Header{})

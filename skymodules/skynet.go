@@ -49,10 +49,10 @@ const (
 	// LicenseMonetization is the first skynet monetization license.
 	LicenseMonetization = "CAB-Ra8Zi6jew3w63SJUAKnsBRiZdpmQGLehLJbTd-b_Mg"
 
-	// DirResModeStandard is the name of the `standard` directory resolution
+	// DirResModeStandard is the name of the "std" directory resolution
 	// mode, in which directories are downloaded.
-	DirResModeStandard = "standard"
-	// DirResModeWeb is the name of the `web` directory resolution mode, in
+	DirResModeStandard = "std"
+	// DirResModeWeb is the name of the "web" directory resolution mode, in
 	// which directories are not downloaded and instead of that we serve the
 	// index.html files found in them.
 	DirResModeWeb = "web"
@@ -188,17 +188,18 @@ type (
 		// name/ID to be used for this specific upload.
 		FileSpecificSkykey skykey.Skykey
 
-		// Directory resolution mode can be either `standard` or `web`. This
+		// Directory resolution mode can be either "std" or "web". This
 		// mode changes the behaviour of accessing a directory of the skyfile:
-		// `standard` means the directory will be downloaded
-		// `web` means that we'll attempt to serve `index.html` from the
+		// "std" means the directory will be downloaded
+		// "web" means that we'll attempt to serve `index.html` from the
 		// directory and will return a 404 if it doesn't exist.
 		DirResMode string
 		// DirResNotFound defines the custom 404 error page of the skapp, if any.
 		// If left empty, we'll serve DirResNotFoundCode and no content.
 		DirResNotFound string
 		// DirResNotFoundCode defines the custom status code to be returned when
-		// a requested file is not found. Defaults to 404.
+		// a requested file is not found. Allowed values: between 200 and 299.
+		// Defaults to 404.
 		DirResNotFoundCode int
 	}
 
@@ -224,17 +225,18 @@ type (
 		// content will be automatically served for the skyfile.
 		DisableDefaultPath bool
 
-		// Directory resolution mode can be either `standard` or `web`. This
+		// Directory resolution mode can be either "std" or "web". This
 		// mode changes the behaviour of accessing a directory of the skyfile:
-		// `standard` means the directory will be downloaded
-		// `web` means that we'll attempt to serve `index.html` from the
+		// "std" means the directory will be downloaded
+		// "web" means that we'll attempt to serve `index.html` from the
 		// directory and will return a 404 if it doesn't exist.
 		DirResMode string
 		// DirResNotFound defines the custom 404 error page of the skapp, if any.
 		// If left empty, we'll serve DirResNotFoundCode and no content.
 		DirResNotFound string
 		// DirResNotFoundCode defines the custom status code to be returned when
-		// a requested file is not found. Defaults to 404.
+		// a requested file is not found. Allowed values: between 200 and 299.
+		// Defaults to 404.
 		DirResNotFoundCode int
 
 		// ContentType indicates the media of the data supplied by the reader.

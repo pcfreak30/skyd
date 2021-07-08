@@ -75,7 +75,7 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "DefaultPath", Test: testSkynetDefaultPath},
 		{Name: "DefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
 		{Name: "DirectoryResolution", Test: testSkynetDirectoryResolution},
-		{Name: "DirectoryResolution_TableTest", Test: testSkynetDirectoryResolution_TableTest},
+		{Name: "DirectoryResolution_TableTest", Test: testDirRes_TableTest},
 		{Name: "SingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
 		{Name: "DownloadFormats", Test: testSkynetDownloadFormats},
 		{Name: "DownloadBaseSector", Test: testSkynetDownloadBaseSectorNoEncryption},
@@ -799,7 +799,10 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 					Len:         uint64(len(nestedFile.Data)),
 				},
 			},
-			Length: uint64(len(rootFile.Data) + len(nestedFile.Data)),
+			Length:             uint64(len(rootFile.Data) + len(nestedFile.Data)),
+			DirResMode:         skymodules.DirResModeStandard,
+			DirResNotFound:     "",
+			DirResNotFoundCode: http.StatusNotFound,
 		}
 		if !reflect.DeepEqual(expected, fileMetadata) {
 			t.Log("Expected:", expected)

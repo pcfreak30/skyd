@@ -91,9 +91,9 @@ var (
 	skynetUnpinRoot                bool   // Use root as the base instead of the Skynet folder.
 	skynetUploadDefaultPath        string // Specify the file to serve when no specific file is specified.
 	skynetUploadDisableDefaultPath bool   // This skyfile will not have a default path. The only way to use it is to download it.
-	skynetUploadDirResMode         string // Specify the directory resolution mode. "standard" will download the directory while "web" will serve the "index.html" contained within it.
+	skynetUploadDirResMode         string // Specify the directory resolution mode. "std" will download the directory while "web" will serve the "index.html" contained within it.
 	skynetUploadDirResNotFound     string // Override the standard "not found" page in "web" mode.
-	skynetUploadDirResNotFoundCode int    // Override the standard "not found" status code in "web" mode.
+	skynetUploadDirResNotFoundCode int    // Override the standard "not found" status code in "web" mode. Allowed values: 200-299.
 	skynetUploadDryRun             bool   // Perform a dry-run of the upload. This returns the skylink without actually uploading the file to the network.
 	skynetUploadRoot               bool   // Use root as the base instead of the Skynet folder.
 	skynetUploadSeparately         bool   // When uploading all files from a directory, upload each file separately, generating individual skylinks.
@@ -395,7 +395,7 @@ func initCmds() *cobra.Command {
 	skynetUploadCmd.Flags().BoolVarP(&skynetUploadSeparately, "separately", "", false, "Upload each file separately, generating individual skylinks")
 	skynetUploadCmd.Flags().StringVar(&skynetUploadDefaultPath, "defaultpath", "", "Specify the file to serve when no specific file is specified.")
 	skynetUploadCmd.Flags().BoolVarP(&skynetUploadDisableDefaultPath, "disabledefaultpath", "", false, "This skyfile will not have a default path. The only way to use it is to download it. Mutually exclusive with --defaultpath")
-	skynetUploadCmd.Flags().StringVar(&skynetUploadDirResMode, "dirresmode", skymodules.DirResModeStandard, "Specify the directory resolution mode: 'web' makes accessing directories serve the index.html contained in them, 'standard' (default) downloads them as zip.")
+	skynetUploadCmd.Flags().StringVar(&skynetUploadDirResMode, "dirresmode", skymodules.DirResModeStandard, "Specify the directory resolution mode: 'web' makes accessing directories serve the index.html contained in them, 'std' (default) downloads them as zip.")
 	skynetUploadCmd.Flags().StringVar(&skynetUploadDirResNotFound, "dirresmodenotfound", "", "Specify the path of a custom file to be served on a 'not found' event.")
 	skynetUploadCmd.Flags().IntVar(&skynetUploadDirResNotFoundCode, "dirresmodenotfoundcode", http.StatusNotFound, "Specify a custom status code to be returned on a 'not found' event. Defaults to 404.")
 	skynetUploadCmd.Flags().BoolVarP(&skynetUploadSilent, "silent", "", false, "Don't report progress while uploading")

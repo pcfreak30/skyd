@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"gitlab.com/NebulousLabs/fastrand"
+
 	"gitlab.com/SkynetLabs/skyd/siatest"
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -15,11 +17,11 @@ import (
 // parameters work correctly
 func testSkynetDirectoryResolution(t *testing.T, tg *siatest.TestGroup) {
 	subTests := []siatest.SubTest{
-		{Name: "StandardModeDefaultBehaviour", Test: testStdMode},
-		{Name: "StandardModeCustomNotFound", Test: testStdModeCustomNotFound},
-		{Name: "WebModeNoCustomNotFound", Test: testWebModeNothingCustom},
-		{Name: "WebModeCustomResponse", Test: testWebModeCustomResponse},
-		{Name: "WebModeCustomNotFoundDoesNotExist", Test: testWebModeCustomNotFoundDoesNotExist},
+		{Name: "StandardModeDefaultBehaviour", Test: testDirResStdMode},
+		{Name: "StandardModeCustomNotFound", Test: testDirResStdModeCustomNotFound},
+		{Name: "WebModeNoCustomNotFound", Test: testDirResWebModeNothingCustom},
+		{Name: "WebModeCustomResponse", Test: testDirResWebModeCustomResponse},
+		{Name: "WebModeCustomNotFoundDoesNotExist", Test: testDirResWebModeCustomNotFoundDoesNotExist},
 	}
 
 	// Run subtests
@@ -30,9 +32,9 @@ func testSkynetDirectoryResolution(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testStdModeHappyCase ensures that a standard mode skyfile returns the
-// standard response to requests for nonexistent files.
-func testStdMode(t *testing.T, tg *siatest.TestGroup) {
+// testStdModeHappyCase ensures that a std mode skyfile returns the standard
+// response to requests for nonexistent files.
+func testDirResStdMode(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 	fc1 := "File1Contents"
 	fc2 := "File2Contents"
@@ -45,7 +47,7 @@ func testStdMode(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
-	status, content, err := r.SkynetSkylinkHead(skylink + "/nonexistent_file.html")
+	status, _, err := r.SkynetSkylinkHead(skylink + "/nonexistent_file.html")
 	if status != http.StatusNotFound {
 		t.Fatalf("Expected status 404, got %d", status)
 	}
@@ -54,9 +56,9 @@ func testStdMode(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testStdModeCustomNotFound ensures that we cannot upload a standard mode
+// testDirResStdModeCustomNotFound ensures that we cannot upload a std mode
 // skyfile with custom not found response.
-func testStdModeCustomNotFound(t *testing.T, tg *siatest.TestGroup) {
+func testDirResStdModeCustomNotFound(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 	fc1 := "File1Contents"
 	fc2 := "File2Contents"
@@ -77,10 +79,10 @@ func testStdModeCustomNotFound(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testWebModeNothingCustom ensures that a web mode skyfile without any custom
+// testDirResWebModeNothingCustom ensures that a web mode skyfile without any custom
 // not found content responds to requests for nonexistent files in the same way
 // a standard mode skyfile does.
-func testWebModeNothingCustom(t *testing.T, tg *siatest.TestGroup) {
+func testDirResWebModeNothingCustom(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 	fc1 := "File1Contents"
 	fc2 := "File2Contents"
@@ -99,9 +101,9 @@ func testWebModeNothingCustom(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testWebModeCustomResponse ensures that a web mode skyfile with custom not
-// found response delivers the configured not found response.
-func testWebModeCustomResponse(t *testing.T, tg *siatest.TestGroup) {
+// testDirResWebModeCustomResponse ensures that a web mode skyfile with custom
+// not found response delivers the configured not found response.
+func testDirResWebModeCustomResponse(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 	fc1 := "File1Contents"
 	fc2 := "File2Contents"
@@ -130,9 +132,9 @@ func testWebModeCustomResponse(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testWebModeCustomNotFoundDoesNotExist ensures that a web mode skyfile with
+// testDirResWebModeCustomNotFoundDoesNotExist ensures that a web mode skyfile with
 // custom not found response delivers the configured not found response.
-func testWebModeCustomNotFoundDoesNotExist(t *testing.T, tg *siatest.TestGroup) {
+func testDirResWebModeCustomNotFoundDoesNotExist(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 	fc1 := "File1Contents"
 	fc2 := "File2Contents"
@@ -147,7 +149,8 @@ func testWebModeCustomNotFoundDoesNotExist(t *testing.T, tg *siatest.TestGroup) 
 	}
 }
 
-func testSkynetDirectoryResolution_TableTest(t *testing.T, tg *siatest.TestGroup) {
+// testDirRes_TableTest ensures all standard scenarios are properly supported.
+func testDirRes_TableTest(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	fMainIndex := []byte("main index")
@@ -193,20 +196,20 @@ func testSkynetDirectoryResolution_TableTest(t *testing.T, tg *siatest.TestGroup
 			skylink:            skylinkStandard,
 			requestPath:        "",
 			expectedContent:    fMainIndex,
-			expectedStatusCode: 200,
+			expectedStatusCode: http.StatusOK,
 		},
 		{
 			name:               "standard, index, request path '/index.html'",
 			skylink:            skylinkStandard,
 			requestPath:        "/index.html",
 			expectedContent:    fMainIndex,
-			expectedStatusCode: 200,
+			expectedStatusCode: http.StatusOK,
 		},
 		{
 			name:                    "standard, about, request path '/about'",
 			skylink:                 skylinkStandard,
 			requestPath:             "/about",
-			expectedStatusCode:      200,
+			expectedStatusCode:      http.StatusOK,
 			expectZippedDirAsOutput: true,
 		},
 		{
@@ -214,13 +217,13 @@ func testSkynetDirectoryResolution_TableTest(t *testing.T, tg *siatest.TestGroup
 			skylink:            skylinkStandard,
 			requestPath:        "/about/index.html",
 			expectedContent:    fAboutIndex,
-			expectedStatusCode: 200,
+			expectedStatusCode: http.StatusOK,
 		},
 		{
 			name:                    "standard, news, request path '/news/good-news'",
 			skylink:                 skylinkStandard,
 			requestPath:             "/news/good-news",
-			expectedStatusCode:      200,
+			expectedStatusCode:      http.StatusOK,
 			expectZippedDirAsOutput: true,
 		},
 		{
@@ -228,7 +231,7 @@ func testSkynetDirectoryResolution_TableTest(t *testing.T, tg *siatest.TestGroup
 			skylink:            skylinkStandard,
 			requestPath:        "/news/good-news/index.html",
 			expectedContent:    fGoodNewsIndex,
-			expectedStatusCode: 200,
+			expectedStatusCode: http.StatusOK,
 		},
 		{
 			name:                   "standard, bad news, request path '/news/bad-news'",
@@ -252,14 +255,14 @@ func testSkynetDirectoryResolution_TableTest(t *testing.T, tg *siatest.TestGroup
 			skylink:            skylinkDefaultNotFound,
 			requestPath:        "",
 			expectedContent:    fMainIndex,
-			expectedStatusCode: 200,
+			expectedStatusCode: http.StatusOK,
 		},
 		{
 			name:               "web-default, index, request path '/index.html'",
 			skylink:            skylinkDefaultNotFound,
 			requestPath:        "/index.html",
 			expectedContent:    fMainIndex,
-			expectedStatusCode: 200,
+			expectedStatusCode: http.StatusOK,
 		},
 		{
 			// We don't expect this to be zipped because this is the actual
@@ -268,14 +271,14 @@ func testSkynetDirectoryResolution_TableTest(t *testing.T, tg *siatest.TestGroup
 			skylink:            skylinkDefaultNotFound,
 			requestPath:        "/about",
 			expectedContent:    fAboutIndex,
-			expectedStatusCode: 200,
+			expectedStatusCode: http.StatusOK,
 		},
 		{
 			name:               "web-default, about, request path '/about/index.html'",
 			skylink:            skylinkDefaultNotFound,
 			requestPath:        "/about/index.html",
 			expectedContent:    fAboutIndex,
-			expectedStatusCode: 200,
+			expectedStatusCode: http.StatusOK,
 		},
 		{
 			// We don't expect this to be zipped because this is the actual
@@ -284,14 +287,14 @@ func testSkynetDirectoryResolution_TableTest(t *testing.T, tg *siatest.TestGroup
 			skylink:            skylinkDefaultNotFound,
 			requestPath:        "/news/good-news",
 			expectedContent:    fGoodNewsIndex,
-			expectedStatusCode: 200,
+			expectedStatusCode: http.StatusOK,
 		},
 		{
 			name:               "web-default, news, request path '/news/good-news/index.html'",
 			skylink:            skylinkDefaultNotFound,
 			requestPath:        "/news/good-news/index.html",
 			expectedContent:    fGoodNewsIndex,
-			expectedStatusCode: 200,
+			expectedStatusCode: http.StatusOK,
 		},
 		{
 			name:                   "web-default, bad news, request path '/news/bad-news'",
@@ -315,14 +318,14 @@ func testSkynetDirectoryResolution_TableTest(t *testing.T, tg *siatest.TestGroup
 			skylink:            skylinkCustomNotFound,
 			requestPath:        "",
 			expectedContent:    fMainIndex,
-			expectedStatusCode: 200,
+			expectedStatusCode: http.StatusOK,
 		},
 		{
 			name:               "web-custom, index, request path '/index.html'",
 			skylink:            skylinkCustomNotFound,
 			requestPath:        "/index.html",
 			expectedContent:    fMainIndex,
-			expectedStatusCode: 200,
+			expectedStatusCode: http.StatusOK,
 		},
 		{
 			// We don't expect this to be zipped because this is the actual
@@ -331,14 +334,14 @@ func testSkynetDirectoryResolution_TableTest(t *testing.T, tg *siatest.TestGroup
 			skylink:            skylinkCustomNotFound,
 			requestPath:        "/about",
 			expectedContent:    fAboutIndex,
-			expectedStatusCode: 200,
+			expectedStatusCode: http.StatusOK,
 		},
 		{
 			name:               "web-custom, about, request path '/about/index.html'",
 			skylink:            skylinkCustomNotFound,
 			requestPath:        "/about/index.html",
 			expectedContent:    fAboutIndex,
-			expectedStatusCode: 200,
+			expectedStatusCode: http.StatusOK,
 		},
 		{
 			// We don't expect this to be zipped because this is the actual
@@ -347,14 +350,14 @@ func testSkynetDirectoryResolution_TableTest(t *testing.T, tg *siatest.TestGroup
 			skylink:            skylinkCustomNotFound,
 			requestPath:        "/news/good-news",
 			expectedContent:    fGoodNewsIndex,
-			expectedStatusCode: 200,
+			expectedStatusCode: http.StatusOK,
 		},
 		{
 			name:               "web-custom, news, request path '/news/good-news/index.html'",
 			skylink:            skylinkCustomNotFound,
 			requestPath:        "/news/good-news/index.html",
 			expectedContent:    fGoodNewsIndex,
-			expectedStatusCode: 200,
+			expectedStatusCode: http.StatusOK,
 		},
 		{
 			name:               "web-custom, bad news, request path '/news/bad-news'",
@@ -372,9 +375,11 @@ func testSkynetDirectoryResolution_TableTest(t *testing.T, tg *siatest.TestGroup
 		},
 	}
 
+	var content []byte
+	var status int
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			content, err := r.SkynetSkylinkGet(tt.skylink + tt.requestPath)
+			content, err = r.SkynetSkylinkGet(tt.skylink + tt.requestPath)
 			if err == nil && tt.expectedErrStrDownload != "" {
 				t.Fatalf("Test name: %s. Expected error '%s', got <nil>", tt.name, tt.expectedErrStrDownload)
 			}
@@ -390,7 +395,13 @@ func testSkynetDirectoryResolution_TableTest(t *testing.T, tg *siatest.TestGroup
 			} else if tt.expectedErrStrDownload == "" && !bytes.Equal(content, tt.expectedContent) {
 				t.Fatalf("Test name: %s. Content mismatch! Expected %d bytes, got %d bytes.", tt.name, len(tt.expectedContent), len(content))
 			}
-			// TODO Do a HEAD request and compare status codes.
+			status, _, err = r.SkynetSkylinkHead(tt.skylink + tt.requestPath)
+			if err != nil && (tt.expectedErrStrDownload == "" || !strings.Contains(err.Error(), tt.expectedErrStrDownload)) {
+				t.Fatalf("Test name: %s. (HEAD) Expected error '%s', got '%s'", tt.name, tt.expectedErrStrDownload, err.Error())
+			}
+			if status != tt.expectedStatusCode {
+				t.Fatalf("Test name: %s. Expected status code %d, got %d", tt.name, tt.expectedStatusCode, status)
+			}
 		})
 	}
 }
