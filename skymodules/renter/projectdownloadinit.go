@@ -3,6 +3,7 @@ package renter
 import (
 	"container/heap"
 	"fmt"
+	"math"
 	"math/big"
 	"time"
 
@@ -113,6 +114,7 @@ type pdcInitialWorker struct {
 	// so assuming an additional full 'readDuration' per read is overly
 	// pessimistic, at the same time we prefer to spread our downloads over
 	// multiple workers so the pessimism is not too bad.
+	resolveTime  time.Time
 	completeTime time.Time
 	cost         types.Currency
 	readDuration time.Duration
@@ -207,6 +209,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 
 		// Push the element into the heap.
 		heap.Push(&workerHeap, &pdcInitialWorker{
+			resolveTime:  uw.staticExpectedResolvedTime,
 			completeTime: completeTime,
 			cost:         cost,
 			readDuration: readDuration,
@@ -318,6 +321,11 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	var workingSetCost types.Currency
 	var workingSetDuration time.Duration
 
+	// Keep track of all unresolved workers separately. After building the best
+	// set using resolved workers, we'll use this slice to decide whether we
+	// want to hold off or launch.
+	var unresolvedWorkerHeap pdcWorkerHeap
+
 	// Build the best set that we can. Each iteration will attempt to improve
 	// the working set by adding a new worker. This may or may not succeed,
 	// depending on how cheap the worker is and how slow the worker is. Each
@@ -329,6 +337,13 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		if nextWorker == nil {
 			build.Critical("wasn't expecting to pop a nil worker")
 			break
+		}
+
+		// Build the best set only using resolved workers. Keep track of this
+		// worker though as we
+		if nextWorker.unresolved {
+			heap.Push(&unresolvedWorkerHeap, nextWorker)
+			continue
 		}
 
 		// Iterate through the working set and determine the cost and index of
@@ -475,25 +490,134 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	// are yet unresolved, return the updateChan and everything else is nil, if
 	// the best set is done and all of the workers in the best set are resolved,
 	// return the best set and everything else is nil.
-	totalPieces := 0
-	isUnresolved := false
+	//
+	// Take into account the unresolved workers when counting total pieces. They
+	// might still resolve positively and are thus "hopeful" pieces.
+	hopefulPieces := len(unresolvedWorkerHeap)
+	securedPieces := 0
 	for _, piece := range bestSet {
 		if piece == nil {
 			continue
 		}
-		totalPieces++
-		isUnresolved = isUnresolved || piece.unresolved
+		securedPieces++
 	}
 
+	totalPieces := hopefulPieces + securedPieces
 	if totalPieces < ec.MinPieces() {
-		return nil, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v", totalPieces, ec.MinPieces()))
+		return nil, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v", hopefulPieces, ec.MinPieces()))
 	}
 
-	if isUnresolved {
+	// If we don't have enough pieces secured to reach min pieces, we can't but
+	// hold off and wait for more unresolved workers to resolve.
+	if securedPieces < ec.MinPieces() {
 		return nil, nil
 	}
 
-	return bestSet, nil
+	// calcExpectedTimeSaved is an inline function to calculate if and how much
+	// time the given worker is expected to save on the complete time of the
+	// given set.
+	calcExpectedTimeSaved := func(set []*pdcInitialWorker, w *pdcInitialWorker) time.Duration {
+		// calculate the max complete time, essentially find the slowest worker
+		var maxCompleteTime time.Time
+		for _, w := range set {
+			if w.completeTime.After(maxCompleteTime) {
+				maxCompleteTime = w.completeTime
+			}
+		}
+
+		// find out whether the given worker is useful
+		workerUseful := false
+		bestSpotIndex := uint64(0)
+		bestImprovement := time.Duration(0)
+		for _, index := range w.pieces {
+			if set[index] == nil {
+				workerUseful = true
+				bestSpotIndex = index
+				break
+			}
+			if set[index].completeTime.After(w.completeTime) {
+				improvement := set[index].completeTime.Sub(w.completeTime)
+				if improvement > bestImprovement {
+					bestImprovement = improvement
+					bestSpotIndex = index
+				}
+				workerUseful = true
+			}
+		}
+
+		// if not useful, return no time save
+		if !workerUseful {
+			return time.Duration(math.MaxInt64)
+		}
+
+		// however if useful, swap out the worker and recalculate max complete
+		// time, only if we beat that we save time
+		set[bestSpotIndex] = w
+		var updatedMaxCompleteTime time.Time
+		for _, w := range set {
+			if w.completeTime.After(updatedMaxCompleteTime) {
+				updatedMaxCompleteTime = w.completeTime
+			}
+		}
+
+		if updatedMaxCompleteTime.Before(maxCompleteTime) {
+			return maxCompleteTime.Sub(updatedMaxCompleteTime)
+		}
+
+		// the worker did not improve the set
+		return time.Duration(math.MaxInt64)
+	}
+
+	// Calculate the EV to decide whether we want to go with the current best
+	// set, or if we want to hold off and wait more for unresolved workers to
+	// come in and improve upon it.
+	bestEV := float64(0)
+	currentEV := float64(0)
+	totalRisk := time.Duration(0)
+	for len(unresolvedWorkerHeap) > 0 {
+		// Grab the next worker from the heap.
+		uw := heap.Pop(&workerHeap).(*pdcInitialWorker)
+		if uw == nil {
+			build.Critical("wasn't expecting to pop a nil worker")
+			break
+		}
+
+		// Figure out the incremental risk of adding this worker
+		newRisk := float64(time.Until(uw.resolveTime) - totalRisk)
+		totalRisk = time.Until(uw.resolveTime)
+
+		// A little trick to help us depend more on overdrive. The idea is that
+		// the overdrive code will have some value of risk above which it'll
+		// launch an extra worker regardless if that worker resolves with a with
+		// a piece, meaning that we don't need to take a risk on waiting for
+		// that worker. By using extra bandwidth, we can reap all of the rewards
+		// without taking on any extra risk at all.
+		overdriveThreshold := 300 * time.Millisecond
+		if totalRisk > overdriveThreshold {
+			break
+		}
+
+		// Compute the expected payout of waiting for this worker.
+		// chanceOfSuccess is the historic probability that a worker has a piece
+		jhsq := uw.worker.staticJobHasSectorQueue
+		chanceOfSuccess := jhsq.callChanceOfSuccess()
+		actualRisk := newRisk * (1 - chanceOfSuccess)
+
+		expectedTimeSave := calcExpectedTimeSaved(bestSet, uw)
+		payoff := newRisk * chanceOfSuccess * expectedTimeSave
+		currentEV += payoff - actualRisk
+		if currentEV > bestEV {
+			bestEV = currentEV
+		}
+	}
+
+	if bestEV > 0 {
+		// Continue Waiting
+		return nil, nil
+	} else {
+		// Use current set
+		return bestSet, nil
+	}
 }
 
 // launchInitialWorkers will pick the initial set of workers that needs to be

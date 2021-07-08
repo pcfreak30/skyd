@@ -58,6 +58,9 @@ type (
 		// worker's recent performance for jobHasSectorQueue.
 		weightedJobTime float64
 
+		totalAvailable uint64
+		totalJobs      uint64
+
 		*jobGenericQueue
 	}
 
@@ -234,6 +237,8 @@ func (j jobHasSectorBatch) callExecute() {
 		if err2 != nil {
 			w.staticRenter.staticLog.Println("callExecute: launch failed", err)
 		}
+
+		jq.callUpdateAvailabilityMetrics(availables[i])
 	}
 }
 
@@ -345,6 +350,23 @@ func (jq *jobHasSectorQueue) callUpdateJobTimeMetrics(jobTime time.Duration) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	jq.weightedJobTime = expMovingAvgHotStart(jq.weightedJobTime, float64(jobTime), jobHasSectorPerformanceDecay)
+}
+
+func (jq *jobHasSectorQueue) callUpdateAvailabilityMetrics(availables []bool) {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	for _, available := range availables {
+		if available {
+			jq.totalAvailable++
+		}
+	}
+	jq.totalJobs += uint64(len(availables))
+}
+
+func (jq *jobHasSectorQueue) callChanceOfSuccess() float64 {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	return float64(jq.totalAvailable) / float64(jq.totalJobs)
 }
 
 // expectedJobTime will return the amount of time that a job is expected to
