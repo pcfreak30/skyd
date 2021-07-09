@@ -363,7 +363,7 @@ func (jq *jobHasSectorQueue) callUpdateAvailabilityMetrics(availables []bool) {
 	jq.totalJobs += uint64(len(availables))
 }
 
-func (jq *jobHasSectorQueue) callChanceOfSuccess() float64 {
+func (jq *jobHasSectorQueue) callSuccessRate() float64 {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	return float64(jq.totalAvailable) / float64(jq.totalJobs)

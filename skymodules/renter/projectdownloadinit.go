@@ -100,12 +100,14 @@ var errNotEnoughWorkers = errors.New("not enough workers to complete download")
 // pdcInitialWorker tracks information about a worker that is useful for
 // building the optimal set of launch workers.
 type pdcInitialWorker struct {
-	// The completeTime is the time at which we estimate the worker will have
-	// completed the download. It is based on the expected completion time of
-	// the  has sector job, plus the readDuration.
-	//
 	// The cost is the amount of money will be spent on fetching a single piece
 	// for this pdc.
+	//
+	// The expectedResolveTime is the time at which we estimate the worker will
+	// have resolved its HS job.
+	//
+	// The resolveTime is the actual time at which the worker resolved, which is
+	// when the HS job was done executing.
 	//
 	// The readDuration tracks the amount of time the worker is expected to take
 	// to execute a read job. The readDuration gets added to the duration each
@@ -114,10 +116,10 @@ type pdcInitialWorker struct {
 	// so assuming an additional full 'readDuration' per read is overly
 	// pessimistic, at the same time we prefer to spread our downloads over
 	// multiple workers so the pessimism is not too bad.
-	resolveTime  time.Time
-	completeTime time.Time
-	cost         types.Currency
-	readDuration time.Duration
+	cost                types.Currency
+	expectedResolveTime time.Time
+	resolveTime         time.Time
+	readDuration        time.Duration
 
 	// The list of pieces indicates which pieces the worker is capable of
 	// fetching. If 'unresolved' is set to true, the worker will be treated as
@@ -127,17 +129,30 @@ type pdcInitialWorker struct {
 	worker     *worker
 }
 
-// A heap of pdcInitialWorkers that is sorted by 'completeTime'. Workers that
-// have a sooner/earlier complete time will be popped off of the heap first.
-type pdcWorkerHeap []*pdcInitialWorker
-
-func (wh *pdcWorkerHeap) Len() int { return len(*wh) }
-func (wh *pdcWorkerHeap) Less(i, j int) bool {
-	return (*wh)[i].completeTime.Before((*wh)[j].completeTime)
+// expectedCompleteTime returns the time at which we estimate the worker will
+// have completed the download. It is based on the expectedResolveTime in case
+// the worker has not resolved its HS job yet, and the actual resolve time in
+// case it has, in combination with the expected read duration for the actual
+// download.
+func (piw *pdcInitialWorker) expectedCompleteTime() time.Time {
+	if piw.unresolved {
+		return piw.expectedResolveTime.Add(piw.readDuration)
+	}
+	return piw.resolveTime.Add(piw.readDuration)
 }
-func (wh *pdcWorkerHeap) Swap(i, j int)      { (*wh)[i], (*wh)[j] = (*wh)[j], (*wh)[i] }
-func (wh *pdcWorkerHeap) Push(x interface{}) { *wh = append(*wh, x.(*pdcInitialWorker)) }
-func (wh *pdcWorkerHeap) Pop() interface{} {
+
+// A heap of pdcInitialWorkers that is sorted by 'expectedCompleteTime'. Workers
+// that have a sooner/earlier complete time will be popped off of the heap
+// first.
+type pdcResolvedWorkerHeap []*pdcInitialWorker
+
+func (wh *pdcResolvedWorkerHeap) Len() int { return len(*wh) }
+func (wh *pdcResolvedWorkerHeap) Less(i, j int) bool {
+	return (*wh)[i].expectedCompleteTime().Before((*wh)[j].expectedCompleteTime())
+}
+func (wh *pdcResolvedWorkerHeap) Swap(i, j int)      { (*wh)[i], (*wh)[j] = (*wh)[j], (*wh)[i] }
+func (wh *pdcResolvedWorkerHeap) Push(x interface{}) { *wh = append(*wh, x.(*pdcInitialWorker)) }
+func (wh *pdcResolvedWorkerHeap) Pop() interface{} {
 	old := *wh
 	n := len(old)
 	x := old[n-1]
@@ -145,16 +160,34 @@ func (wh *pdcWorkerHeap) Pop() interface{} {
 	return x
 }
 
-// initialWorkerHeap will create a heap with all of the potential workers for
-// this piece. It will include all of the unresolved workers, and it will
-// attempt to exclude any workers that are known to be non-viable - for example
-// workers with no pieces that can be resolved or workers that are currently on
-// cooldown for the read job. The worker heap optimizes for speed, not cost.
-// Cost is taken into account at a later point where the initial worker set is
-// built.
-func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnresolvedWorker) pdcWorkerHeap {
+// A heap of pdcInitialWorkers that is sorted by 'expectedResolveTime'. Workers
+// that have a sooner/earlier complete time will be popped off of the heap
+// first.
+type pdcUnresolvedWorkerHeap []*pdcInitialWorker
+
+func (wh *pdcUnresolvedWorkerHeap) Len() int { return len(*wh) }
+func (wh *pdcUnresolvedWorkerHeap) Less(i, j int) bool {
+	return (*wh)[i].expectedResolveTime.Before((*wh)[j].expectedResolveTime)
+}
+func (wh *pdcUnresolvedWorkerHeap) Swap(i, j int)      { (*wh)[i], (*wh)[j] = (*wh)[j], (*wh)[i] }
+func (wh *pdcUnresolvedWorkerHeap) Push(x interface{}) { *wh = append(*wh, x.(*pdcInitialWorker)) }
+func (wh *pdcUnresolvedWorkerHeap) Pop() interface{} {
+	old := *wh
+	n := len(old)
+	x := old[n-1]
+	*wh = old[:n-1]
+	return x
+}
+
+// initialWorkerHeaps will create two heaps, one with the resolved potential
+// workers, and one with the unresolved workers for this piece. It will attempt
+// to exclude any workers that are known to be non-viable - for example workers
+// with no pieces that can be resolved or workers that are currently on cooldown
+// for the read job. The worker heap optimizes for speed, not cost. Cost is
+// taken into account at a later point where the initial worker set is built.
+func (pdc *projectDownloadChunk) initialWorkerHeaps(unresolvedWorkers []*pcwsUnresolvedWorker) (pdcResolvedWorkerHeap, pdcUnresolvedWorkerHeap) {
 	// Add all of the unresolved workers to the heap.
-	var workerHeap pdcWorkerHeap
+	var uWorkerHeap pdcUnresolvedWorkerHeap
 	for _, uw := range unresolvedWorkers {
 		// Ignore workers that are on a maintenance cooldown. Good performing
 		// workers are generally never on maintenance cooldown, so by skipping
@@ -196,7 +229,6 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		if readDuration == 0 {
 			continue
 		}
-		completeTime := resolveTime.Add(readDuration)
 
 		// Create the pieces for the unresolved worker. Because the unresolved
 		// worker could be potentially used to fetch any piece (we won't know
@@ -208,9 +240,8 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		}
 
 		// Push the element into the heap.
-		heap.Push(&workerHeap, &pdcInitialWorker{
+		heap.Push(&uWorkerHeap, &pdcInitialWorker{
 			resolveTime:  uw.staticExpectedResolvedTime,
-			completeTime: completeTime,
 			cost:         cost,
 			readDuration: readDuration,
 
@@ -223,6 +254,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 	// Add the resolved workers to the heap. In the worker state, the resolved
 	// workers are organized as a series of available pieces, because that is
 	// what made the overdrive code the easiest.
+	var rWorkerHeap pdcResolvedWorkerHeap
 	resolvedWorkersMap := make(map[string]*pdcInitialWorker)
 	for i, piece := range pdc.availablePieces {
 		for _, pieceDownload := range piece {
@@ -254,7 +286,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 				cost := jrq.callExpectedJobCost(pdc.pieceLength)
 				readDuration := jrq.callExpectedJobTime(pdc.pieceLength)
 				resolvedWorkersMap[w.staticHostPubKeyStr] = &pdcInitialWorker{
-					completeTime: time.Now().Add(readDuration),
+					resolveTime:  time.Now(),
 					cost:         cost,
 					readDuration: readDuration,
 
@@ -269,27 +301,13 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 	// Push a pdcInitialWorker into the heap for each worker in the resolved
 	// workers map.
 	for _, rw := range resolvedWorkersMap {
-		heap.Push(&workerHeap, rw)
+		heap.Push(&rWorkerHeap, rw)
 	}
-	return workerHeap
+	return rWorkerHeap, uWorkerHeap
 }
 
-// createInitialWorkerSet will go through the current set of workers and
-// determine the best set of workers to use when attempting to download a piece.
-// Note that we only return this best set if all workers from the worker set are
-// resolved, if that is not the case we simply return nil.
-//
-// NOTE: If there are any unresolved workers (meaning workers that have not
-// completed their HasSector jobs) which were selected as part of the best set
-// for the workers, 'nil' will be returned. This means that we may have a set of
-// resolved workers which is sufficient to begin fetching the file, and yet we
-// will not launch the download yet. If this is happening, it is because the yet
-// unresolved workers have a significantly better estimated time to complete the
-// full download than the resolved workers that were not included in the best
-// set. If workers are going a lot time and remaining unresolved, a penalty is
-// applied which will eventually break those workers and revert to preferring
-// the already resolved workers.
-func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap) ([]*pdcInitialWorker, error) {
+// TODO: docstring
+func (pdc *projectDownloadChunk) createBestWorkerSet(rWorkerHeap pdcResolvedWorkerHeap) []*pdcInitialWorker {
 	// Convenience variable.
 	ec := pdc.workerSet.staticErasureCoder
 	gs := types.NewCurrency(new(big.Int).Exp(big.NewInt(10), big.NewInt(33), nil)) // 1GS
@@ -321,29 +339,22 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	var workingSetCost types.Currency
 	var workingSetDuration time.Duration
 
-	// Keep track of all unresolved workers separately. After building the best
-	// set using resolved workers, we'll use this slice to decide whether we
-	// want to hold off or launch.
-	var unresolvedWorkerHeap pdcWorkerHeap
-
 	// Build the best set that we can. Each iteration will attempt to improve
 	// the working set by adding a new worker. This may or may not succeed,
 	// depending on how cheap the worker is and how slow the worker is. Each
 	// time that the working set is better than the best set, overwrite the best
 	// set with the new working set.
-	for len(workerHeap) > 0 {
+	for len(rWorkerHeap) > 0 {
 		// Grab the next worker from the heap.
-		nextWorker := heap.Pop(&workerHeap).(*pdcInitialWorker)
+		nextWorker := heap.Pop(&rWorkerHeap).(*pdcInitialWorker)
 		if nextWorker == nil {
 			build.Critical("wasn't expecting to pop a nil worker")
 			break
 		}
 
-		// Build the best set only using resolved workers. Keep track of this
-		// worker though as we
 		if nextWorker.unresolved {
-			heap.Push(&unresolvedWorkerHeap, nextWorker)
-			continue
+			build.Critical("wasn't expecting an unresolved worker")
+			break
 		}
 
 		// Iterate through the working set and determine the cost and index of
@@ -440,7 +451,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 			// Only do the eviction if we already have enough workers.
 			if enoughWorkers {
 				workingSetCost = workingSetCost.Sub(highestCost)
-				heap.Push(&workerHeap, workingSet[highestCostIndex])
+				heap.Push(&rWorkerHeap, workingSet[highestCostIndex])
 				workingSet[highestCostIndex] = nil
 			} else {
 				newWorker = true
@@ -448,7 +459,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		} else {
 			workingSetCost = workingSetCost.Add(nextWorker.cost)
 			workingSetCost = workingSetCost.Sub(workingSet[bestSpotIndex].cost)
-			heap.Push(&workerHeap, workingSet[bestSpotIndex])
+			heap.Push(&rWorkerHeap, workingSet[bestSpotIndex])
 			workingSet[bestSpotIndex] = nextWorker
 		}
 
@@ -479,106 +490,98 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 			copyWorker.pieces[bestSpotPiecePos] = copyWorker.pieces[piecesLen-1]
 			copyWorker.pieces = copyWorker.pieces[:piecesLen-1]
 
-			copyWorker.completeTime = nextWorker.completeTime.Add(nextWorker.readDuration)
-			heap.Push(&workerHeap, &copyWorker)
+			copyWorker.readDuration = 2 * nextWorker.readDuration
+			heap.Push(&rWorkerHeap, &copyWorker)
 		}
 	}
 
-	// We now have the best set. If the best set does not have enough workers to
-	// complete the download, return an error. If the best set has enough
-	// workers to complete the download but some of the workers in the best set
-	// are yet unresolved, return the updateChan and everything else is nil, if
-	// the best set is done and all of the workers in the best set are resolved,
-	// return the best set and everything else is nil.
-	//
-	// Take into account the unresolved workers when counting total pieces. They
-	// might still resolve positively and are thus "hopeful" pieces.
-	hopefulPieces := len(unresolvedWorkerHeap)
-	securedPieces := 0
-	for _, piece := range bestSet {
-		if piece == nil {
-			continue
+	return bestSet
+}
+
+// calculateExpectedTimeSaved takes a set of workers, expected to contain only
+// resolved worker, and a worker, which is expected to be an unresolved worker.
+// The function will calculate the expected time this unresolved worker might
+// save, if we find it is useful to add to the best set. If that is the case,
+// the updated set is returned alongside the expected time save.
+func calculateExpectedTimeSaved(set []*pdcInitialWorker, uWorker *pdcInitialWorker) ([]*pdcInitialWorker, time.Duration) {
+	// calculate the max complete time, essentially find the slowest worker
+	var maxCompleteTime time.Time
+	for _, w := range set {
+		if w.expectedCompleteTime().After(maxCompleteTime) {
+			maxCompleteTime = w.expectedCompleteTime()
 		}
-		securedPieces++
 	}
 
-	totalPieces := hopefulPieces + securedPieces
-	if totalPieces < ec.MinPieces() {
-		return nil, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v", hopefulPieces, ec.MinPieces()))
-	}
-
-	// If we don't have enough pieces secured to reach min pieces, we can't but
-	// hold off and wait for more unresolved workers to resolve.
-	if securedPieces < ec.MinPieces() {
-		return nil, nil
-	}
-
-	// calcExpectedTimeSaved is an inline function to calculate if and how much
-	// time the given worker is expected to save on the complete time of the
-	// given set.
-	calcExpectedTimeSaved := func(set []*pdcInitialWorker, w *pdcInitialWorker) time.Duration {
-		// calculate the max complete time, essentially find the slowest worker
-		var maxCompleteTime time.Time
-		for _, w := range set {
-			if w.completeTime.After(maxCompleteTime) {
-				maxCompleteTime = w.completeTime
-			}
+	// find out whether the given worker is useful
+	workerUseful := false
+	bestSpotIndex := uint64(0)
+	bestImprovement := time.Duration(0)
+	for _, index := range uWorker.pieces {
+		if set[index] == nil {
+			workerUseful = true
+			bestSpotIndex = index
+			break
 		}
 
-		// find out whether the given worker is useful
-		workerUseful := false
-		bestSpotIndex := uint64(0)
-		bestImprovement := time.Duration(0)
-		for _, index := range w.pieces {
-			if set[index] == nil {
-				workerUseful = true
+		currentExpectedCompleteTime := set[index].expectedCompleteTime()
+		potentialExpectedCompleteTime := uWorker.expectedCompleteTime()
+		if currentExpectedCompleteTime.After(potentialExpectedCompleteTime) {
+			// calculate delta
+			d := currentExpectedCompleteTime.Sub(potentialExpectedCompleteTime)
+			if d > bestImprovement {
+				bestImprovement = d
 				bestSpotIndex = index
-				break
 			}
-			if set[index].completeTime.After(w.completeTime) {
-				improvement := set[index].completeTime.Sub(w.completeTime)
-				if improvement > bestImprovement {
-					bestImprovement = improvement
-					bestSpotIndex = index
-				}
-				workerUseful = true
-			}
+			workerUseful = true
 		}
-
-		// if not useful, return no time save
-		if !workerUseful {
-			return time.Duration(math.MaxInt64)
-		}
-
-		// however if useful, swap out the worker and recalculate max complete
-		// time, only if we beat that we save time
-		set[bestSpotIndex] = w
-		var updatedMaxCompleteTime time.Time
-		for _, w := range set {
-			if w.completeTime.After(updatedMaxCompleteTime) {
-				updatedMaxCompleteTime = w.completeTime
-			}
-		}
-
-		if updatedMaxCompleteTime.Before(maxCompleteTime) {
-			return maxCompleteTime.Sub(updatedMaxCompleteTime)
-		}
-
-		// the worker did not improve the set
-		return time.Duration(math.MaxInt64)
 	}
 
+	// if not useful, return no time save
+	if !workerUseful {
+		return nil, time.Duration(math.MaxInt64)
+	}
+
+	// clone the set before making updates to it
+	clone := make([]*pdcInitialWorker, len(set))
+	copy(set, clone)
+
+	// if the worker is useful, replace it at the best spot index
+	clone[bestSpotIndex] = uWorker
+	var updatedMaxCompleteTime time.Time
+	for _, w := range set {
+		expectedCompleteTime := w.expectedCompleteTime()
+		if expectedCompleteTime.After(updatedMaxCompleteTime) {
+			updatedMaxCompleteTime = expectedCompleteTime
+		}
+	}
+
+	if updatedMaxCompleteTime.Before(maxCompleteTime) {
+		improvement := maxCompleteTime.Sub(updatedMaxCompleteTime)
+		return clone, improvement
+	}
+
+	// the worker did not improve the set
+	return nil, time.Duration(math.MaxInt64)
+}
+
+// TODO: docstring
+func calculateEV(set []*pdcInitialWorker, uWorkerHeap pdcUnresolvedWorkerHeap) float64 {
 	// Calculate the EV to decide whether we want to go with the current best
 	// set, or if we want to hold off and wait more for unresolved workers to
 	// come in and improve upon it.
 	bestEV := float64(0)
 	currentEV := float64(0)
 	totalRisk := time.Duration(0)
-	for len(unresolvedWorkerHeap) > 0 {
+	for len(uWorkerHeap) > 0 {
 		// Grab the next worker from the heap.
-		uw := heap.Pop(&workerHeap).(*pdcInitialWorker)
+		uw := heap.Pop(&uWorkerHeap).(*pdcInitialWorker)
 		if uw == nil {
 			build.Critical("wasn't expecting to pop a nil worker")
+			break
+		}
+
+		if !uw.unresolved {
+			build.Critical("wasn't expecting to pop a resolved worker")
 			break
 		}
 
@@ -600,24 +603,77 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		// Compute the expected payout of waiting for this worker.
 		// chanceOfSuccess is the historic probability that a worker has a piece
 		jhsq := uw.worker.staticJobHasSectorQueue
-		chanceOfSuccess := jhsq.callChanceOfSuccess()
+		chanceOfSuccess := jhsq.callSuccessRate()
 		actualRisk := newRisk * (1 - chanceOfSuccess)
 
-		expectedTimeSave := calcExpectedTimeSaved(bestSet, uw)
-		payoff := newRisk * chanceOfSuccess * expectedTimeSave
+		updated, expectedTimeSave := calculateExpectedTimeSaved(set, uw)
+		if updated != nil {
+			set = updated
+		}
+
+		payoff := newRisk * chanceOfSuccess * float64(expectedTimeSave.Milliseconds())
 		currentEV += payoff - actualRisk
 		if currentEV > bestEV {
 			bestEV = currentEV
 		}
 	}
 
-	if bestEV > 0 {
-		// Continue Waiting
-		return nil, nil
-	} else {
-		// Use current set
-		return bestSet, nil
+	return bestEV
+}
+
+// createInitialWorkerSet will go through the current set of workers and
+// determine the best set of workers to use when attempting to download a piece.
+// Note that we only return this best set if all workers from the worker set are
+// resolved, if that is not the case we simply return nil.
+//
+// NOTE: If there are any unresolved workers (meaning workers that have not
+// completed their HasSector jobs) which were selected as part of the best set
+// for the workers, 'nil' will be returned. This means that we may have a set of
+// resolved workers which is sufficient to begin fetching the file, and yet we
+// will not launch the download yet. If this is happening, it is because the yet
+// unresolved workers have a significantly better estimated time to complete the
+// full download than the resolved workers that were not included in the best
+// set. If workers are going a lot time and remaining unresolved, a penalty is
+// applied which will eventually break those workers and revert to preferring
+// the already resolved workers.
+func (pdc *projectDownloadChunk) createInitialWorkerSet(rWorkerHeap pdcResolvedWorkerHeap, uWorkerHeap pdcUnresolvedWorkerHeap) ([]*pdcInitialWorker, error) {
+	// Convenience variable.
+	ec := pdc.workerSet.staticErasureCoder
+
+	// Create the best worker set using only resolved workers.
+	bestSet := pdc.createBestWorkerSet(rWorkerHeap)
+
+	// Verify we have enough workers to complete the download by counting the
+	// pieces in the best set, and adding to that the amount of unresolved
+	// workers, which are still hopeful.
+	hopefulPieces := len(uWorkerHeap)
+	foundPieces := 0
+	for _, piece := range bestSet {
+		if piece == nil {
+			continue
+		}
+		foundPieces++
 	}
+	totalPieces := hopefulPieces + foundPieces
+	if totalPieces < ec.MinPieces() {
+		return nil, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v", hopefulPieces, ec.MinPieces()))
+	}
+
+	// If we don't have min pieces yet in the best set, we can not launch it
+	// yet. That means we can't but hold off and wait a bit for more unresolved
+	// workers to resolve.
+	if foundPieces < ec.MinPieces() {
+		return nil, nil
+	}
+
+	// Calculate the best EV using the current best set and the unresolved
+	// workers. If it's larger than zero we want to continue waiting, otherwise
+	// we launch the current best set.
+	bestEV := calculateEV(bestSet, uWorkerHeap)
+	if bestEV > 0 {
+		return nil, nil
+	}
+	return bestSet, nil
 }
 
 // launchInitialWorkers will pick the initial set of workers that needs to be
@@ -632,10 +688,10 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 
 		// Create a list of usable workers, sorted by the amount of time they
 		// are expected to take to return.
-		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers)
+		rWorkerHeap, uWorkerHeap := pdc.initialWorkerHeaps(unresolvedWorkers)
 
 		// Create an initial worker set
-		finalWorkers, err := pdc.createInitialWorkerSet(workerHeap)
+		finalWorkers, err := pdc.createInitialWorkerSet(rWorkerHeap, uWorkerHeap)
 		if err != nil {
 			return errors.AddContext(err, "unable to build initial set of workers")
 		}
