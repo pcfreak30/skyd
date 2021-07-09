@@ -546,7 +546,7 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces(initialWorker
 			launchedAvg := r.launchedODWorkers / r.launchedODs
 			r.launchedODMu.Unlock()
 
-			fmt.Printf("%v | num overdrive worker launched %v, avg %v\n", pdc, overdriveWorkersLaunched, launchedAvg)
+			fmt.Printf("%v | num overdrive worker launched %v, avg %v\n", pdc.uid, overdriveWorkersLaunched, launchedAvg)
 			pdc.finalize()
 			return
 		}
@@ -567,7 +567,7 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces(initialWorker
 				threshold := time.Duration(untilCompleteFloat * thresholdPct)
 
 				if jobTime < threshold && time.Now().After(canLaunchAgainAt) {
-					fmt.Printf("%v | overdrive worker is considerably better (%v%%), launching it, launch total is %v\n", pdc, thresholdPct, overdriveWorkersLaunched)
+					fmt.Printf("%v | overdrive worker is considerably better (%v%%), launching it, launch total is %v\n", pdc.uid, thresholdPct, overdriveWorkersLaunched)
 					pdc.launchWorker(worker, pieceIndex, true)
 					overdriveWorkersLaunched++
 					canLaunchAgainAt = time.Now().Add(consecutiveLaunchThreshold)
@@ -579,7 +579,7 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces(initialWorker
 			expectedCompleteTime := time.Now().Add(jobTime)
 			pdc.launchWorker(worker, pieceIndex, true)
 			overdriveWorkersLaunched++
-			fmt.Printf("%v | worst worker is late, launching another, launch total is %v\n", pdc, overdriveWorkersLaunched)
+			fmt.Printf("%v | worst worker is late, launching another, launch total is %v\n", pdc.uid, overdriveWorkersLaunched)
 			maxCompleteTime = expectedCompleteTime
 			canLaunchAgainAt = time.Now().Add(consecutiveLaunchThreshold)
 		}
