@@ -505,6 +505,11 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 // If workers fail or are late, additional workers will be launched to ensure
 // that the download still completes.
 func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces(initialWorkers []*pdcInitialWorker) {
+	r := pdc.workerState.staticRenter
+	r.launchedODMu.Lock()
+	r.launchedODs++
+	r.launchedODMu.Unlock()
+
 	// Find max complete time
 	var maxCompleteTime time.Time
 	var badPieceIndex int
@@ -527,15 +532,21 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces(initialWorker
 	}
 
 	lateLeeway := 50 * time.Millisecond
+	consecutiveLaunchThreshold := 50 * time.Millisecond
+	var canLaunchAgainAt time.Time
+
 	// Loop until the download has either failed or completed.
 	for {
 		// Check whether the download is comlete. An error means that the
 		// download has failed and can no longer make progress.
 		completed, err := pdc.finished()
 		if completed {
-			dt := pdc.workerState.staticRenter.staticLaunchedODWorkers
-			dt.AddDataPoint(time.Duration(overdriveWorkersLaunched+1) * 4 * time.Millisecond)
-			fmt.Printf("num overdrive worker launched %v, p90 %v\n", overdriveWorkersLaunched, dt.DistributionPStat(0, 0.9))
+			r.launchedODMu.Lock()
+			r.launchedODWorkers += uint64(overdriveWorkersLaunched)
+			launchedAvg := r.launchedODWorkers / r.launchedODs
+			r.launchedODMu.Unlock()
+
+			fmt.Printf("%v | num overdrive worker launched %v, avg %v\n", pdc, overdriveWorkersLaunched, launchedAvg)
 			pdc.finalize()
 			return
 		}
@@ -555,20 +566,22 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces(initialWorker
 				thresholdPct := improvementThreshold(overdriveWorkersLaunched)
 				threshold := time.Duration(untilCompleteFloat * thresholdPct)
 
-				if jobTime < threshold {
-					fmt.Printf("overdrive worker is considerably better (%v%%), launching it, launch total is %v\n", thresholdPct, overdriveWorkersLaunched)
+				if jobTime < threshold && time.Now().After(canLaunchAgainAt) {
+					fmt.Printf("%v | overdrive worker is considerably better (%v%%), launching it, launch total is %v\n", pdc, thresholdPct, overdriveWorkersLaunched)
 					pdc.launchWorker(worker, pieceIndex, true)
 					overdriveWorkersLaunched++
+					canLaunchAgainAt = time.Now().Add(consecutiveLaunchThreshold)
 				}
 			}
-		} else if worker != nil {
+		} else if worker != nil && time.Now().After(canLaunchAgainAt) {
 			jrq := worker.staticJobReadQueue
 			jobTime := jrq.callExpectedJobTime(pdc.lengthInChunk)
 			expectedCompleteTime := time.Now().Add(jobTime)
 			pdc.launchWorker(worker, pieceIndex, true)
 			overdriveWorkersLaunched++
-			fmt.Println("worst worker is late, launching another, launch total is ", overdriveWorkersLaunched)
+			fmt.Printf("%v | worst worker is late, launching another, launch total is %v\n", pdc, overdriveWorkersLaunched)
 			maxCompleteTime = expectedCompleteTime
+			canLaunchAgainAt = time.Now().Add(consecutiveLaunchThreshold)
 		}
 
 		// Run the overdrive code. This code needs to be asynchronous so that it
