@@ -11,7 +11,6 @@ import (
 	"github.com/tus/tusd/pkg/handler"
 	siaapi "go.sia.tech/siad/node/api"
 
-	"gitlab.com/NebulousLabs/log"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 )
@@ -174,16 +173,21 @@ func (api *API) buildHTTPRoutes() {
 			StoreComposer:           storeComposer,
 
 			// NOTE: comment logger out for debugging
-			Logger: log.DiscardLogger.Logger, // discard third party logging
+			//Logger: log.DiscardLogger.Logger, // discard third party logging
 		})
 		if err != nil {
 			build.Critical("failed to create skynet TUS handler", err)
 			return
 		}
+		optionsHandler := func(w http.ResponseWriter, req *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}
 		router.POST("/skynet/tus", RequireTUSMiddleware(tusHandler.PostFile, tusHandler))
+		router.OPTIONS("/skynet/tus", RequireTUSMiddleware(optionsHandler, tusHandler))
 		router.HEAD("/skynet/tus/:id", RequireTUSMiddleware(tusHandler.HeadFile, tusHandler))
 		router.PATCH("/skynet/tus/:id", RequireTUSMiddleware(tusHandler.PatchFile, tusHandler))
 		router.GET("/skynet/tus/:id", RequireTUSMiddleware(tusHandler.GetFile, tusHandler))
+		router.OPTIONS("/skynet/tus/:id", RequireTUSMiddleware(optionsHandler, tusHandler))
 		router.GET("/skynet/upload/tus/:id", api.skynetTUSUploadSkylinkGET)
 
 		// Directory endpoints
