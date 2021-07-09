@@ -364,6 +364,18 @@ func (pdc *projectDownloadChunk) finalize() {
 	}
 	pdc.downloadResponseChan <- dr
 }
+func (pdc *projectDownloadChunk) distributionTracker() *skymodules.DistributionTracker {
+	switch length := pdc.lengthInChunk; {
+	case length <= 61e3:
+		return pdc.workerState.staticRenter.staticLaunchedWorker64k
+	case length <= 982e3:
+		return pdc.workerState.staticRenter.staticLaunchedWorker1m
+	case length <= 3931e3:
+		return pdc.workerState.staticRenter.staticLaunchedWorker4m
+	default:
+		return nil
+	}
+}
 
 // finished returns true if the download is finished, and returns an error if
 // the download is unable to complete.
@@ -492,7 +504,20 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 // threadedCollectAndOverdrivePieces will wait for responses from the workers.
 // If workers fail or are late, additional workers will be launched to ensure
 // that the download still completes.
-func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
+func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces(initialWorkers []*pdcInitialWorker) {
+	// Find max complete time
+	var maxCompleteTime time.Time
+	var badPieceIndex int
+	for pieceIndex, iw := range initialWorkers {
+		if iw == nil {
+			continue
+		}
+		if iw.completeTime().After(maxCompleteTime) {
+			maxCompleteTime = iw.completeTime()
+			badPieceIndex = pieceIndex
+		}
+	}
+
 	// Loop until the download has either failed or completed.
 	for {
 		// Check whether the download is comlete. An error means that the
@@ -507,12 +532,40 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 			return
 		}
 
+		worker, pieceIndex, _, _ := pdc.findBestOverdriveWorker()
+		if time.Now().Before(maxCompleteTime) {
+			if worker != nil && pieceIndex == uint64(badPieceIndex) {
+				jrq := worker.staticJobReadQueue
+				jobTime := jrq.callExpectedJobTime(pdc.lengthInChunk)
+				currentTimeUntil := time.Until(maxCompleteTime).Nanoseconds()
+				threshold := time.Duration(float64(currentTimeUntil) * 0.8)
+				if jobTime < threshold {
+					fmt.Println("launching because better")
+					pdc.launchWorker(worker, pieceIndex, true)
+				}
+			}
+		} else if worker != nil {
+			jrq := worker.staticJobReadQueue
+			jobTime := jrq.callExpectedJobTime(pdc.lengthInChunk)
+			expectedCompleteTime := time.Now().Add(jobTime)
+			fmt.Println("launching because late")
+			pdc.launchWorker(worker, pieceIndex, true)
+			if expectedCompleteTime.After(maxCompleteTime) {
+				maxCompleteTime = expectedCompleteTime
+			}
+		}
+
 		// Run the overdrive code. This code needs to be asynchronous so that it
 		// does not block receiving on the workerResponseChan. The overdrive
 		// code will determine whether launching an overdrive worker is
 		// necessary, and will return a channel that will be closed when enough
 		// time has elapsed that another overdrive worker should be considered.
-		workersUpdatedChan, workersLateChan := pdc.tryOverdrive()
+		// workersUpdatedChan, workersLateChan := pdc.tryOverdrive()
+
+		ws := pdc.workerState
+		ws.mu.Lock()
+		workerUpdateChan := ws.registerForWorkerUpdate()
+		ws.mu.Unlock()
 
 		// Determine when the next overdrive check needs to run.
 		select {
@@ -521,8 +574,9 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 			return
 		case jrr := <-pdc.workerResponseChan:
 			pdc.handleJobReadResponse(jrr)
-		case <-workersLateChan:
-		case <-workersUpdatedChan:
+		case <-workerUpdateChan:
+			// case <-workersLateChan:
+			// case <-workersUpdatedChan:
 		}
 	}
 }

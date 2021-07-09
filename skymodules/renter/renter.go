@@ -254,6 +254,10 @@ type Renter struct {
 	statsChan chan struct{}
 	statsMu   sync.Mutex
 
+	staticLaunchedWorker64k *skymodules.DistributionTracker
+	staticLaunchedWorker1m  *skymodules.DistributionTracker
+	staticLaunchedWorker4m  *skymodules.DistributionTracker
+
 	// various performance stats
 	staticBaseSectorUploadStats *skymodules.DistributionTracker
 	staticChunkUploadStats      *skymodules.DistributionTracker
@@ -1108,6 +1112,11 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		mu:                   siasync.New(modules.SafeMutexDelay, 1),
 		staticTPool:          tpool,
 	}
+
+	r.staticLaunchedWorker64k = skymodules.NewDistributionTrackerStandard()
+	r.staticLaunchedWorker1m = skymodules.NewDistributionTrackerStandard()
+	r.staticLaunchedWorker4m = skymodules.NewDistributionTrackerStandard()
+
 	r.staticRegReadStats = skymodules.NewDistributionTrackerStandard()
 	r.staticRegReadStats.AddDataPoint(readRegistryStatsSeed) // Seed the stats so that startup doesn't say 0.
 	r.staticRegWriteStats = skymodules.NewDistributionTrackerStandard()

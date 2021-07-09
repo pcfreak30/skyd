@@ -304,6 +304,12 @@ func (dt *DistributionTracker) Percentiles() [][]time.Duration {
 	return timings
 }
 
+func (dt *DistributionTracker) DistributionPStat(index int64, p float64) time.Duration {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+	return dt.distributions[index].PStat(p)
+}
+
 // DataPoints returns the total number of items represented in each distribution.
 func (dt *DistributionTracker) DataPoints() []float64 {
 	dt.mu.Lock()

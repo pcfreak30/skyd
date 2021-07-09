@@ -156,7 +156,7 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-c
 	//
 	// buw = bestUnresolvedWorker
 	unresolvedWorkers, updateChan := pdc.unresolvedWorkers()
-	buwExists, buwLate, buwAdjustedDuration, buwWaitDuration, _ := pdc.bestOverdriveUnresolvedWorker(unresolvedWorkers)
+	buwExists, _, _, buwWaitDuration, _ := pdc.bestOverdriveUnresolvedWorker(unresolvedWorkers)
 
 	// Loop through the set of pieces to find the fastest worker that can be
 	// launched. Because this function is only called for overdrive workers, we
@@ -201,7 +201,7 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-c
 	// Return the buw values unconditionally if there is no baw. Also return the
 	// buw if the buw is not late and has a better duration than the baw.
 	buwNoBaw := buwExists && baw == nil
-	buwBetter := !buwLate && buwAdjustedDuration < bawAdjustedDuration
+	buwBetter := false // !buwLate && buwAdjustedDuration < bawAdjustedDuration
 	if buwNoBaw || buwBetter {
 		return nil, 0, updateChan, time.After(buwWaitDuration)
 	}

@@ -125,10 +125,10 @@ type pdcInitialWorker struct {
 }
 
 func (iw *pdcInitialWorker) completeTime() time.Time {
-	if iw.unresolved {
-		return iw.expectedResolveTime.Add(iw.readDuration)
+	if (iw.resolveTime != time.Time{}) {
+		return iw.resolveTime.Add(iw.readDuration)
 	}
-	return iw.resolveTime.Add(iw.readDuration)
+	return iw.expectedResolveTime.Add(iw.readDuration)
 }
 
 // A heap of pdcInitialWorkers that is sorted by 'completeTime'. Workers that
@@ -156,9 +156,9 @@ func (wh *pdcWorkerHeap) Pop() interface{} {
 // cooldown for the read job. The worker heap optimizes for speed, not cost.
 // Cost is taken into account at a later point where the initial worker set is
 // built.
-func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnresolvedWorker) pdcWorkerHeap {
+func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnresolvedWorker) (pdcWorkerHeap, pdcWorkerHeap) {
 	// Add all of the unresolved workers to the heap.
-	var workerHeap pdcWorkerHeap
+	var uWorkerHeap pdcWorkerHeap
 	for _, uw := range unresolvedWorkers {
 		// Ignore workers that are on a maintenance cooldown. Good performing
 		// workers are generally never on maintenance cooldown, so by skipping
@@ -211,7 +211,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		}
 
 		// Push the element into the heap.
-		heap.Push(&workerHeap, &pdcInitialWorker{
+		heap.Push(&uWorkerHeap, &pdcInitialWorker{
 			expectedResolveTime: resolveTime,
 
 			cost:         cost,
@@ -272,10 +272,11 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 
 	// Push a pdcInitialWorker into the heap for each worker in the resolved
 	// workers map.
+	var rWorkerHeap pdcWorkerHeap
 	for _, rw := range resolvedWorkersMap {
-		heap.Push(&workerHeap, rw)
+		heap.Push(&rWorkerHeap, rw)
 	}
-	return workerHeap
+	return rWorkerHeap, uWorkerHeap
 }
 
 // createInitialWorkerSet will go through the current set of workers and
@@ -293,7 +294,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 // set. If workers are going a lot time and remaining unresolved, a penalty is
 // applied which will eventually break those workers and revert to preferring
 // the already resolved workers.
-func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap) ([]*pdcInitialWorker, error) {
+func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap, numUnresolved int) ([]*pdcInitialWorker, error) {
 	// Convenience variable.
 	ec := pdc.workerSet.staticErasureCoder
 	gs := types.NewCurrency(new(big.Int).Exp(big.NewInt(10), big.NewInt(33), nil)) // 1GS
@@ -483,21 +484,15 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	// the best set is done and all of the workers in the best set are resolved,
 	// return the best set and everything else is nil.
 	totalPieces := 0
-	isUnresolved := false
 	for _, piece := range bestSet {
 		if piece == nil {
 			continue
 		}
 		totalPieces++
-		isUnresolved = isUnresolved || piece.unresolved
 	}
 
-	if totalPieces < ec.MinPieces() {
+	if numUnresolved+totalPieces < ec.MinPieces() {
 		return nil, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v", totalPieces, ec.MinPieces()))
-	}
-
-	if isUnresolved {
-		return nil, nil
 	}
 
 	return bestSet, nil
@@ -506,7 +501,9 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 // launchInitialWorkers will pick the initial set of workers that needs to be
 // launched and then launch them. This is a non-blocking function that returns
 // once jobs have been scheduled for MinPieces workers.
-func (pdc *projectDownloadChunk) launchInitialWorkers() error {
+func (pdc *projectDownloadChunk) launchInitialWorkers() ([]*pdcInitialWorker, error) {
+	dt := pdc.distributionTracker()
+	var maxWaitTriggered bool
 	for {
 		// Get the list of unresolved workers. This will also grab an update, so
 		// any workers that have resolved recently will be reflected in the
@@ -515,24 +512,48 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 
 		// Create a list of usable workers, sorted by the amount of time they
 		// are expected to take to return.
-		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers)
+		rWorkerHeap, uWorkerHeap := pdc.initialWorkerHeap(unresolvedWorkers)
 
 		// Create an initial worker set
-		finalWorkers, err := pdc.createInitialWorkerSet(workerHeap)
+		finalWorkers, err := pdc.createInitialWorkerSet(rWorkerHeap, len(uWorkerHeap))
 		if err != nil {
-			return errors.AddContext(err, "unable to build initial set of workers")
+			return nil, errors.AddContext(err, "unable to build initial set of workers")
 		}
 
 		// If the function returned an actual set of workers, we are good to
 		// launch.
 		if finalWorkers != nil {
-			for i, fw := range finalWorkers {
-				if fw == nil {
-					continue
+			var holdOff bool
+
+			if dt != nil {
+				var maxReadDuration time.Duration
+				for _, fw := range finalWorkers {
+					if fw == nil {
+						continue
+					}
+					if fw.readDuration > maxReadDuration {
+						maxReadDuration = fw.readDuration
+					}
 				}
-				pdc.launchWorker(fw.worker, uint64(i), false)
+
+				p70ReadDur := dt.DistributionPStat(0, 0.7)
+				if !maxWaitTriggered && maxReadDuration > p70ReadDur {
+					holdOff = true
+				}
 			}
-			return nil
+
+			if !holdOff {
+				for i, fw := range finalWorkers {
+					if fw == nil {
+						continue
+					}
+					if dt != nil {
+						dt.AddDataPoint(fw.readDuration)
+					}
+					pdc.launchWorker(fw.worker, uint64(i), false)
+				}
+				return finalWorkers, nil
+			}
 		}
 
 		select {
@@ -543,8 +564,9 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 			// to unresolved workers, and on every iteration this penalty might
 			// have caused an already resolved worker to be favoured over the
 			// unresolved worker in the set.
+			maxWaitTriggered = true
 		case <-pdc.ctx.Done():
-			return errors.New("timed out while trying to build initial set of workers")
+			return nil, errors.New("timed out while trying to build initial set of workers")
 		}
 	}
 }
