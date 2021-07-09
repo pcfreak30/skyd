@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -49,6 +50,9 @@ func TestSkynetTUSUploader(t *testing.T) {
 	// Run tests.
 	t.Run("Basic", func(t *testing.T) {
 		testTUSUploaderBasic(t, tg.Renters()[0])
+	})
+	t.Run("Options", func(t *testing.T) {
+		testOptionsHandler(t, tg.Renters()[0])
 	})
 	t.Run("TooLarge", func(t *testing.T) {
 		testTUSUploaderTooLarge(t, tg.Renters()[0])
@@ -207,6 +211,55 @@ func testTUSUploaderTooLarge(t *testing.T, r *siatest.TestNode) {
 	if err == nil {
 		t.Fatal(err)
 	}
+}
+
+// testOptionsHandler makes sure that the tus endpoints set the expected header
+// when requesting them with the OPTIONS request type.
+func testOptionsHandler(t *testing.T, r *siatest.TestNode) {
+	testEndpoint := func(url string) {
+		req, err := http.NewRequest("OPTIONS", url, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			t.Fatal("wrong status code", resp.StatusCode)
+		}
+		if err := resp.Body.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := resp.Header["Tus-Extension"]; !ok {
+			t.Fatal("missing header")
+		}
+		if _, ok := resp.Header["Tus-Resumable"]; !ok {
+			t.Fatal("missing header")
+		}
+		if _, ok := resp.Header["Tus-Version"]; !ok {
+			t.Fatal("missing header")
+		}
+	}
+
+	// Test /skynet/tus
+	testEndpoint(fmt.Sprintf("http://%s/skynet/tus", r.APIAddress()))
+
+	// Create an uploader to get an upload id.
+	chunkSize := 2 * int64(skymodules.ChunkSize(crypto.TypePlain, uint64(skymodules.RenterDefaultDataPieces)))
+	fileSize := chunkSize*5 + chunkSize/2 // 5 1/2 chunks.
+	uploadedData := fastrand.Bytes(int(fileSize))
+	tc, upload, err := r.SkynetTUSNewUploadFromBytes(uploadedData, chunkSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	uploader, err := tc.CreateUpload(upload)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test /skynet/tus/:id
+	testEndpoint(uploader.Url())
 }
 
 // testTUSUploaderPruneIdle checks that incomplete uploads get pruned after a
