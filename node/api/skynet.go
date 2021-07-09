@@ -808,7 +808,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		w.Header().Set("Content-Type", responseContentType)
 	}
 
-	// Overwrite the response writer to always serve a specific status code.
+	// Overwrite the response writer to return a custom status code instead of
+	// 200 OK.
 	drw := w
 	if serveCustomStatusCode {
 		drw = newCustomStatusResponseWriter(w, notFoundStatusCode)

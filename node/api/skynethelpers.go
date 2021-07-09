@@ -164,17 +164,17 @@ func (rw *monetizedWriter) Write(b []byte) (int, error) {
 }
 
 // customStatusResponseWriter is a wrapper for a response writer. It returns
-// a custom status code.
+// a custom status code instead of 200 OK.
 type customStatusResponseWriter struct {
 	staticInner            http.ResponseWriter
-	statucCustomStatusCode int
+	staticCustomStatusCode int
 }
 
 // newCustomStatusResponseWriter creates a new customStatusResponseWriter.
 func newCustomStatusResponseWriter(inner http.ResponseWriter, customStatusCode int) http.ResponseWriter {
 	return &customStatusResponseWriter{
 		staticInner:            inner,
-		statucCustomStatusCode: customStatusCode,
+		staticCustomStatusCode: customStatusCode,
 	}
 }
 
@@ -185,8 +185,12 @@ func (rw *customStatusResponseWriter) Header() http.Header {
 
 // WriteHeader calls the inner writers WriteHeader method but replaces any 404
 // code with the customNotFoundCode.
-func (rw *customStatusResponseWriter) WriteHeader(_ int) {
-	rw.staticInner.WriteHeader(rw.statucCustomStatusCode)
+func (rw *customStatusResponseWriter) WriteHeader(status int) {
+	code := status
+	if code == http.StatusOK {
+		code = rw.staticCustomStatusCode
+	}
+	rw.staticInner.WriteHeader(code)
 }
 
 // Write calls the inner writer Write method.
