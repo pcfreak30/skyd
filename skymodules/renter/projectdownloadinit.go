@@ -538,8 +538,8 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() ([]*pdcInitialWorker, er
 					}
 				}
 
-				p70ReadDur := dt.DistributionPStat(0, 0.7)
-				if !maxWaitTriggered && maxReadDuration > p70ReadDur {
+				p50ReadDur := dt.DistributionPStat(0, 0.5)
+				if !maxWaitTriggered && maxReadDuration > p50ReadDur {
 					holdOff = true
 				}
 			}
