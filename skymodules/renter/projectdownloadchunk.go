@@ -518,6 +518,14 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces(initialWorker
 		}
 	}
 
+	overdriveWorkersLaunched := 0
+	improvementThreshold := func(wLaunched int) float64 {
+		if wLaunched > 4 {
+			wLaunched = 4
+		}
+		return 0.9 - (float64(wLaunched) * 0.1)
+	}
+
 	// Loop until the download has either failed or completed.
 	for {
 		// Check whether the download is comlete. An error means that the
@@ -537,19 +545,25 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces(initialWorker
 			if worker != nil && pieceIndex == uint64(badPieceIndex) {
 				jrq := worker.staticJobReadQueue
 				jobTime := jrq.callExpectedJobTime(pdc.lengthInChunk)
-				currentTimeUntil := time.Until(maxCompleteTime).Nanoseconds()
-				threshold := time.Duration(float64(currentTimeUntil) * 0.8)
+				untilComplete := time.Until(maxCompleteTime)
+				untilCompleteFloat := float64(untilComplete.Nanoseconds())
+
+				thresholdPct := improvementThreshold(overdriveWorkersLaunched)
+				threshold := time.Duration(untilCompleteFloat * thresholdPct)
+
 				if jobTime < threshold {
-					fmt.Println("launching because better")
+					fmt.Printf("overdrive worker is considerably better (%v%%), launching it, launch total is %v\n", thresholdPct, overdriveWorkersLaunched)
 					pdc.launchWorker(worker, pieceIndex, true)
+					overdriveWorkersLaunched++
 				}
 			}
 		} else if worker != nil {
 			jrq := worker.staticJobReadQueue
 			jobTime := jrq.callExpectedJobTime(pdc.lengthInChunk)
 			expectedCompleteTime := time.Now().Add(jobTime)
-			fmt.Println("launching because late")
 			pdc.launchWorker(worker, pieceIndex, true)
+			overdriveWorkersLaunched++
+			fmt.Println("worst worker is late, launching another, launch total is ", overdriveWorkersLaunched)
 			if expectedCompleteTime.After(maxCompleteTime) {
 				maxCompleteTime = expectedCompleteTime
 			}

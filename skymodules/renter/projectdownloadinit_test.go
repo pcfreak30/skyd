@@ -118,7 +118,7 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 
 	// create the initial worker heap and validate the order in which the
 	// unresolved workers were added
-	wh := pdc.initialWorkerHeap(unresolvedWorkers)
+	wh, _ := pdc.initialWorkerHeap(unresolvedWorkers)
 	first := heap.Pop(&wh).(*pdcInitialWorker)
 	if first.worker.staticHostPubKeyStr != worker2.staticHostPubKeyStr {
 		t.Fatal("unexpected")
@@ -289,7 +289,7 @@ func TestProjectDownloadChunk_createInitialWorkerSet(t *testing.T) {
 	// create an initial worker set, we expect this to fail due to the fact
 	// there's not enough workers, seeing as w1 and w2 return the same piece,
 	// rendering w1 unuseful.
-	iws, err := pdc.createInitialWorkerSet(wh)
+	iws, err := pdc.createInitialWorkerSet(wh, 0)
 	if !errors.Contains(err, errNotEnoughWorkers) || iws != nil {
 		t.Fatal("unexpected")
 	}
@@ -297,7 +297,7 @@ func TestProjectDownloadChunk_createInitialWorkerSet(t *testing.T) {
 	// add a fourth worker, we expect it to succeed now and return an initial
 	// worker set that can download min pieces
 	wh = workersToHeap(w1, w2, w3, w4)
-	iws, err = pdc.createInitialWorkerSet(wh)
+	iws, err = pdc.createInitialWorkerSet(wh, 0)
 	if err != nil {
 		t.Fatal("unexpected", err)
 	}
@@ -307,7 +307,7 @@ func TestProjectDownloadChunk_createInitialWorkerSet(t *testing.T) {
 
 	// add another worker, undercutting w4 in price
 	wh = workersToHeap(w1, w2, w3, w4, w5)
-	iws, err = pdc.createInitialWorkerSet(wh)
+	iws, err = pdc.createInitialWorkerSet(wh, 0)
 	if err != nil {
 		t.Fatal("unexpected", err)
 	}
@@ -318,7 +318,7 @@ func TestProjectDownloadChunk_createInitialWorkerSet(t *testing.T) {
 	// add another worker, it's super fast and able to download two pieces in
 	// under the time it takes w3 to download 1
 	wh = workersToHeap(w1, w2, w3, w4, w5, w6)
-	iws, err = pdc.createInitialWorkerSet(wh)
+	iws, err = pdc.createInitialWorkerSet(wh, 0)
 	if err != nil {
 		t.Fatal("unexpected", err)
 	}
