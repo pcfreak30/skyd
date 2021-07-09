@@ -90,7 +90,7 @@ import (
 // maxWaitUnresolvedWorkerUpdate defines the amount of time we want to wait for
 // unresolved workers to become resolved when trying to create the initial
 // worker set.
-const maxWaitUnresolvedWorkerUpdate = 10 * time.Millisecond
+const maxWaitUnresolvedWorkerUpdate = 20 * time.Millisecond
 
 const maxWaitOverdriveLoop = 200 * time.Millisecond
 
@@ -538,8 +538,8 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() ([]*pdcInitialWorker, er
 					}
 				}
 
-				p50ReadDur := dt.DistributionPStat(0, 0.5)
-				if !maxWaitTriggered && maxReadDuration > p50ReadDur {
+				p25ReadDur := dt.DistributionPStat(0, 0.25)
+				if !maxWaitTriggered && maxReadDuration > p25ReadDur {
 					holdOff = true
 				}
 			}
