@@ -535,7 +535,7 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces(initialWorker
 		if completed {
 			dt := pdc.workerState.staticRenter.staticLaunchedODWorkers
 			dt.AddDataPoint(time.Duration(overdriveWorkersLaunched+1) * 4 * time.Millisecond)
-			fmt.Printf("num overdrive worker p90 %v\n", dt.DistributionPStat(0, 0.9))
+			fmt.Printf("num overdrive worker launched %v, p90 %v\n", overdriveWorkersLaunched, dt.DistributionPStat(0, 0.9))
 			pdc.finalize()
 			return
 		}
