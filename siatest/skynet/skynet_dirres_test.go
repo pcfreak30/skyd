@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/NebulousLabs/fastrand"
-
 	"gitlab.com/SkynetLabs/skyd/siatest"
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"

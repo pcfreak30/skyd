@@ -163,6 +163,37 @@ func (rw *monetizedWriter) Write(b []byte) (int, error) {
 	return n, nil
 }
 
+// customStatusResponseWriter is a wrapper for a response writer. It returns
+// a custom status code.
+type customStatusResponseWriter struct {
+	staticInner            http.ResponseWriter
+	statucCustomStatusCode int
+}
+
+// newCustomStatusResponseWriter creates a new customStatusResponseWriter.
+func newCustomStatusResponseWriter(inner http.ResponseWriter, customStatusCode int) http.ResponseWriter {
+	return &customStatusResponseWriter{
+		staticInner:            inner,
+		statucCustomStatusCode: customStatusCode,
+	}
+}
+
+// Header calls the inner writers Header method.
+func (rw *customStatusResponseWriter) Header() http.Header {
+	return rw.staticInner.Header()
+}
+
+// WriteHeader calls the inner writers WriteHeader method but replaces any 404
+// code with the customNotFoundCode.
+func (rw *customStatusResponseWriter) WriteHeader(_ int) {
+	rw.staticInner.WriteHeader(rw.statucCustomStatusCode)
+}
+
+// Write calls the inner writer Write method.
+func (rw *customStatusResponseWriter) Write(b []byte) (int, error) {
+	return rw.staticInner.Write(b)
+}
+
 // buildETag is a helper function that returns an ETag.
 func buildETag(skylink skymodules.Skylink, method, path string, format skymodules.SkyfileFormat) string {
 	return crypto.HashAll(
