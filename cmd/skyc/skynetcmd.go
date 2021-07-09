@@ -438,7 +438,7 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 	// NOTE: We want to get the directories recursively if we are either checking
 	// from root or the user wants recursive.
 	getRecursive := skynetLsRecursive || skynetLsRoot
-	dirs := getDirSorted(sp, true, getRecursive)
+	dirs := getDirSorted(sp, true, getRecursive, verbose)
 
 	// Determine the total number of Skyfiles and Skynet Directories. A Skynet
 	// directory is a directory that is either in the Skynet Folder or it contains
