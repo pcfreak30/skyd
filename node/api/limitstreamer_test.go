@@ -8,6 +8,7 @@ import (
 
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
+	"go.sia.tech/siad/crypto"
 )
 
 // TestLimitStreamer verifies the limit streamer properly returns the data
@@ -23,6 +24,19 @@ func TestLimitStreamer(t *testing.T) {
 	}
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Make sure the skylink is set.
+	sl, err := skymodules.NewSkylinkV1(crypto.HashBytes(data), 0, uint64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	streamer, err = NewLimitStreamer(streamer, skymodules.SkyfileMetadata{}, []byte{}, sl, skymodules.SkyfileLayout{}, 0, uint64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sl.String() != streamer.Skylink().String() {
+		t.Fatal("wrong skylink")
 	}
 
 	// test the limitreader where we wrap it, but at offset 0 and for the full
