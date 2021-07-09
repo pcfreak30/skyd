@@ -556,7 +556,7 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces(initialWorker
 				threshold := time.Duration(untilCompleteFloat * thresholdPct)
 
 				if jobTime < threshold {
-					// fmt.Printf("overdrive worker is considerably better (%v%%), launching it, launch total is %v\n", thresholdPct, overdriveWorkersLaunched)
+					fmt.Printf("overdrive worker is considerably better (%v%%), launching it, launch total is %v\n", thresholdPct, overdriveWorkersLaunched)
 					pdc.launchWorker(worker, pieceIndex, true)
 					overdriveWorkersLaunched++
 				}
@@ -567,7 +567,7 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces(initialWorker
 			expectedCompleteTime := time.Now().Add(jobTime)
 			pdc.launchWorker(worker, pieceIndex, true)
 			overdriveWorkersLaunched++
-			// fmt.Println("worst worker is late, launching another, launch total is ", overdriveWorkersLaunched)
+			fmt.Println("worst worker is late, launching another, launch total is ", overdriveWorkersLaunched)
 			maxCompleteTime = expectedCompleteTime
 		}
 
