@@ -85,7 +85,9 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "Registry", Test: testSkynetRegistryReadWrite},
 		{Name: "Stats", Test: testSkynetStats},
 	}
-
+	subTests = []siatest.SubTest{
+		{Name: "Basic", Test: testSkynetBasic},
+	}
 	// Run tests
 	if err := siatest.RunSubTests(t, groupParams, groupDir, subTests); err != nil {
 		t.Fatal(err)

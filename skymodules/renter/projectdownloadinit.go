@@ -99,10 +99,6 @@ var errNotEnoughWorkers = errors.New("not enough workers to complete download")
 // pdcInitialWorker tracks information about a worker that is useful for
 // building the optimal set of launch workers.
 type pdcInitialWorker struct {
-	// The completeTime is the time at which we estimate the worker will have
-	// completed the download. It is based on the expected completion time of
-	// the  has sector job, plus the readDuration.
-	//
 	// The cost is the amount of money will be spent on fetching a single piece
 	// for this pdc.
 	//
@@ -113,9 +109,12 @@ type pdcInitialWorker struct {
 	// so assuming an additional full 'readDuration' per read is overly
 	// pessimistic, at the same time we prefer to spread our downloads over
 	// multiple workers so the pessimism is not too bad.
-	completeTime time.Time
 	cost         types.Currency
 	readDuration time.Duration
+
+	// TODO: docstring
+	expectedResolveTime time.Time
+	resolveTime         time.Time
 
 	// The list of pieces indicates which pieces the worker is capable of
 	// fetching. If 'unresolved' is set to true, the worker will be treated as
@@ -125,13 +124,20 @@ type pdcInitialWorker struct {
 	worker     *worker
 }
 
+func (iw *pdcInitialWorker) completeTime() time.Time {
+	if iw.unresolved {
+		return iw.expectedResolveTime.Add(iw.readDuration)
+	}
+	return iw.resolveTime.Add(iw.readDuration)
+}
+
 // A heap of pdcInitialWorkers that is sorted by 'completeTime'. Workers that
 // have a sooner/earlier complete time will be popped off of the heap first.
 type pdcWorkerHeap []*pdcInitialWorker
 
 func (wh *pdcWorkerHeap) Len() int { return len(*wh) }
 func (wh *pdcWorkerHeap) Less(i, j int) bool {
-	return (*wh)[i].completeTime.Before((*wh)[j].completeTime)
+	return (*wh)[i].completeTime().Before((*wh)[j].completeTime())
 }
 func (wh *pdcWorkerHeap) Swap(i, j int)      { (*wh)[i], (*wh)[j] = (*wh)[j], (*wh)[i] }
 func (wh *pdcWorkerHeap) Push(x interface{}) { *wh = append(*wh, x.(*pdcInitialWorker)) }
@@ -194,7 +200,6 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		if readDuration == 0 {
 			continue
 		}
-		completeTime := resolveTime.Add(readDuration)
 
 		// Create the pieces for the unresolved worker. Because the unresolved
 		// worker could be potentially used to fetch any piece (we won't know
@@ -207,7 +212,8 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 
 		// Push the element into the heap.
 		heap.Push(&workerHeap, &pdcInitialWorker{
-			completeTime: completeTime,
+			expectedResolveTime: resolveTime,
+
 			cost:         cost,
 			readDuration: readDuration,
 
@@ -251,7 +257,8 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 				cost := jrq.callExpectedJobCost(pdc.pieceLength)
 				readDuration := jrq.callExpectedJobTime(pdc.pieceLength)
 				resolvedWorkersMap[w.staticHostPubKeyStr] = &pdcInitialWorker{
-					completeTime: time.Now().Add(readDuration),
+					resolveTime: time.Now(),
+
 					cost:         cost,
 					readDuration: readDuration,
 
@@ -464,7 +471,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 			copyWorker.pieces[bestSpotPiecePos] = copyWorker.pieces[piecesLen-1]
 			copyWorker.pieces = copyWorker.pieces[:piecesLen-1]
 
-			copyWorker.completeTime = nextWorker.completeTime.Add(nextWorker.readDuration)
+			copyWorker.readDuration = 2 * copyWorker.readDuration
 			heap.Push(&workerHeap, &copyWorker)
 		}
 	}

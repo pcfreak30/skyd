@@ -31,28 +31,28 @@ func TestProjectDownloadChunkHeap(t *testing.T) {
 	tMin10 := now.Add(10 * time.Minute)
 
 	// add one element
-	heap.Push(&wh, &pdcInitialWorker{completeTime: tMin5})
+	heap.Push(&wh, &pdcInitialWorker{expectedResolveTime: tMin5})
 	if wh.Len() != 1 {
 		t.Fatal("unexpected")
 	}
 
 	// add more elements in a way they should be popped off in a different order
-	heap.Push(&wh, &pdcInitialWorker{completeTime: tMin1})
-	heap.Push(&wh, &pdcInitialWorker{completeTime: tMin10})
+	heap.Push(&wh, &pdcInitialWorker{expectedResolveTime: tMin1})
+	heap.Push(&wh, &pdcInitialWorker{expectedResolveTime: tMin10})
 	if wh.Len() != 3 {
 		t.Fatal("unexpected")
 	}
 
 	worker := heap.Pop(&wh).(*pdcInitialWorker)
-	if worker == nil || worker.completeTime != tMin1 {
+	if worker == nil || worker.completeTime() != tMin1 {
 		t.Fatal("unexpected")
 	}
 	worker = heap.Pop(&wh).(*pdcInitialWorker)
-	if worker == nil || worker.completeTime != tMin5 {
+	if worker == nil || worker.completeTime() != tMin5 {
 		t.Fatal("unexpected")
 	}
 	worker = heap.Pop(&wh).(*pdcInitialWorker)
-	if worker == nil || worker.completeTime != tMin10 {
+	if worker == nil || worker.completeTime() != tMin10 {
 		t.Fatal("unexpected")
 	}
 }
@@ -158,10 +158,10 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 	unresolvedWorkers[0].staticExpectedResolvedTime = time.Now().Add(-800 * time.Millisecond)
 	wh = pdc.initialWorkerHeap(unresolvedWorkers)
 	first = heap.Pop(&wh).(*pdcInitialWorker)
-	completeTimeInS := math.Round(time.Until(first.completeTime).Seconds())
-	t.Log(time.Until(first.completeTime))
+	completeTimeInS := math.Round(time.Until(first.completeTime()).Seconds())
+	t.Log(time.Until(first.completeTime()))
 	if completeTimeInS != 2 {
-		t.Fatal("unexpected", completeTimeInS, time.Until(first.completeTime))
+		t.Fatal("unexpected", completeTimeInS, time.Until(first.completeTime()))
 	}
 
 	// manually manipulate the cooldown for worker 1's jobreadqueue, this should
@@ -225,46 +225,46 @@ func TestProjectDownloadChunk_createInitialWorkerSet(t *testing.T) {
 
 	// create a couple of workers
 	w1 := &pdcInitialWorker{
-		worker:       &worker{staticHostPubKeyStr: "w1"},
-		completeTime: t100MS,
-		readDuration: dur100MS,
-		pieces:       []uint64{0},
-		cost:         pS.Mul64(10),
+		worker:              &worker{staticHostPubKeyStr: "w1"},
+		expectedResolveTime: t100MS,
+		readDuration:        dur100MS,
+		pieces:              []uint64{0},
+		cost:                pS.Mul64(10),
 	} // 200
 	w2 := &pdcInitialWorker{
-		worker:       &worker{staticHostPubKeyStr: "w2"},
-		completeTime: t75MS,
-		readDuration: dur50MS,
-		pieces:       []uint64{0},
-		cost:         pS.Mul64(20),
+		worker:              &worker{staticHostPubKeyStr: "w2"},
+		expectedResolveTime: t75MS,
+		readDuration:        dur50MS,
+		pieces:              []uint64{0},
+		cost:                pS.Mul64(20),
 	} // 175
 	w3 := &pdcInitialWorker{
-		worker:       &worker{staticHostPubKeyStr: "w3"},
-		completeTime: t50MS,
-		readDuration: dur50MS,
-		pieces:       []uint64{1},
-		cost:         pS.Mul64(30),
+		worker:              &worker{staticHostPubKeyStr: "w3"},
+		expectedResolveTime: t50MS,
+		readDuration:        dur50MS,
+		pieces:              []uint64{1},
+		cost:                pS.Mul64(30),
 	} // 100
 	w4 := &pdcInitialWorker{
-		worker:       &worker{staticHostPubKeyStr: "w4"},
-		completeTime: t125MS,
-		readDuration: dur175MS,
-		pieces:       []uint64{2},
-		cost:         pS.Mul64(40),
+		worker:              &worker{staticHostPubKeyStr: "w4"},
+		expectedResolveTime: t125MS,
+		readDuration:        dur175MS,
+		pieces:              []uint64{2},
+		cost:                pS.Mul64(40),
 	} // 300
 	w5 := &pdcInitialWorker{
-		worker:       &worker{staticHostPubKeyStr: "w5"},
-		completeTime: t150MS,
-		readDuration: dur15MS,
-		pieces:       []uint64{3},
-		cost:         pS.Mul64(39), // undercut w4
+		worker:              &worker{staticHostPubKeyStr: "w5"},
+		expectedResolveTime: t150MS,
+		readDuration:        dur15MS,
+		pieces:              []uint64{3},
+		cost:                pS.Mul64(39), // undercut w4
 	} // 165
 	w6 := &pdcInitialWorker{
-		worker:       &worker{staticHostPubKeyStr: "w6"},
-		completeTime: t50MS,
-		readDuration: dur5MS, // super fast
-		pieces:       []uint64{3, 4},
-		cost:         pS.Mul64(50),
+		worker:              &worker{staticHostPubKeyStr: "w6"},
+		expectedResolveTime: t50MS,
+		readDuration:        dur5MS, // super fast
+		pieces:              []uint64{3, 4},
+		cost:                pS.Mul64(50),
 	} // 55
 
 	// create a heap and add the first three workers
