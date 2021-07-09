@@ -92,6 +92,8 @@ import (
 // worker set.
 const maxWaitUnresolvedWorkerUpdate = 10 * time.Millisecond
 
+const maxWaitOverdriveLoop = 200 * time.Millisecond
+
 // errNotEnoughWorkers is returned if the working set does not have enough
 // workers to successfully complete the download
 var errNotEnoughWorkers = errors.New("not enough workers to complete download")

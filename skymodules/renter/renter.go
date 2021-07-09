@@ -257,6 +257,7 @@ type Renter struct {
 	staticLaunchedWorker64k *skymodules.DistributionTracker
 	staticLaunchedWorker1m  *skymodules.DistributionTracker
 	staticLaunchedWorker4m  *skymodules.DistributionTracker
+	staticLaunchedODWorkers *skymodules.DistributionTracker
 
 	// various performance stats
 	staticBaseSectorUploadStats *skymodules.DistributionTracker
@@ -1116,6 +1117,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.staticLaunchedWorker64k = skymodules.NewDistributionTrackerStandard()
 	r.staticLaunchedWorker1m = skymodules.NewDistributionTrackerStandard()
 	r.staticLaunchedWorker4m = skymodules.NewDistributionTrackerStandard()
+
+	r.staticLaunchedODWorkers = skymodules.NewDistributionTrackerStandard()
 
 	r.staticRegReadStats = skymodules.NewDistributionTrackerStandard()
 	r.staticRegReadStats.AddDataPoint(readRegistryStatsSeed) // Seed the stats so that startup doesn't say 0.

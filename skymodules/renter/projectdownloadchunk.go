@@ -526,12 +526,16 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces(initialWorker
 		return 0.9 - (float64(wLaunched) * 0.1)
 	}
 
+	lateLeeway := 50 * time.Millisecond
 	// Loop until the download has either failed or completed.
 	for {
 		// Check whether the download is comlete. An error means that the
 		// download has failed and can no longer make progress.
 		completed, err := pdc.finished()
 		if completed {
+			dt := pdc.workerState.staticRenter.staticLaunchedODWorkers
+			dt.AddDataPoint(time.Duration(overdriveWorkersLaunched))
+			fmt.Printf("num overdrive worker p90 %v\n", dt.DistributionPStat(0, 0.9))
 			pdc.finalize()
 			return
 		}
@@ -541,7 +545,7 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces(initialWorker
 		}
 
 		worker, pieceIndex, _, _ := pdc.findBestOverdriveWorker()
-		if time.Now().Before(maxCompleteTime) {
+		if time.Now().Before(maxCompleteTime.Add(lateLeeway)) {
 			if worker != nil && pieceIndex == uint64(badPieceIndex) {
 				jrq := worker.staticJobReadQueue
 				jobTime := jrq.callExpectedJobTime(pdc.lengthInChunk)
@@ -552,7 +556,7 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces(initialWorker
 				threshold := time.Duration(untilCompleteFloat * thresholdPct)
 
 				if jobTime < threshold {
-					fmt.Printf("overdrive worker is considerably better (%v%%), launching it, launch total is %v\n", thresholdPct, overdriveWorkersLaunched)
+					// fmt.Printf("overdrive worker is considerably better (%v%%), launching it, launch total is %v\n", thresholdPct, overdriveWorkersLaunched)
 					pdc.launchWorker(worker, pieceIndex, true)
 					overdriveWorkersLaunched++
 				}
@@ -563,10 +567,8 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces(initialWorker
 			expectedCompleteTime := time.Now().Add(jobTime)
 			pdc.launchWorker(worker, pieceIndex, true)
 			overdriveWorkersLaunched++
-			fmt.Println("worst worker is late, launching another, launch total is ", overdriveWorkersLaunched)
-			if expectedCompleteTime.After(maxCompleteTime) {
-				maxCompleteTime = expectedCompleteTime
-			}
+			// fmt.Println("worst worker is late, launching another, launch total is ", overdriveWorkersLaunched)
+			maxCompleteTime = expectedCompleteTime
 		}
 
 		// Run the overdrive code. This code needs to be asynchronous so that it
@@ -589,6 +591,7 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces(initialWorker
 		case jrr := <-pdc.workerResponseChan:
 			pdc.handleJobReadResponse(jrr)
 		case <-workerUpdateChan:
+		case <-time.After(maxWaitOverdriveLoop):
 			// case <-workersLateChan:
 			// case <-workersUpdatedChan:
 		}
