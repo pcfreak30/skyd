@@ -175,10 +175,9 @@ func (rw *monetizedWriter) Write(b []byte) (int, error) {
 }
 
 // buildETag is a helper function that returns an ETag.
-func buildETag(skylink skymodules.Skylink, method, path string, format skymodules.SkyfileFormat) string {
+func buildETag(skylink skymodules.Skylink, path string, format skymodules.SkyfileFormat) string {
 	return crypto.HashAll(
 		skylink.String(),
-		method,
 		path,
 		string(format),
 		"1", // random variable to cache bust all existing ETags (SkylinkV2 fix)
