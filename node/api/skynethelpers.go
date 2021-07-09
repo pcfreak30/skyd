@@ -524,7 +524,7 @@ func serveArchive(w http.ResponseWriter, src io.ReadSeeker, format skymodules.Sk
 		gzw := gzip.NewWriter(w)
 		defer func() {
 			err = errors.Compose(err, gzw.Close())
-		} ()
+		}()
 		dst = gzw
 	case skymodules.SkyfileFormatZip:
 		archiveFunc = serveZip
