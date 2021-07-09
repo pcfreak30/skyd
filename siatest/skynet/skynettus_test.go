@@ -225,9 +225,6 @@ func testOptionsHandler(t *testing.T, r *siatest.TestNode) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if resp.StatusCode != http.StatusOK {
-			t.Fatal("wrong status code", resp.StatusCode)
-		}
 		if err := resp.Body.Close(); err != nil {
 			t.Fatal(err)
 		}
