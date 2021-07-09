@@ -543,7 +543,7 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces(initialWorker
 		if completed {
 			r.launchedODMu.Lock()
 			r.launchedODWorkers += uint64(overdriveWorkersLaunched)
-			launchedAvg := r.launchedODWorkers / r.launchedODs
+			launchedAvg := float64(r.launchedODWorkers) / float64(r.launchedODs)
 			r.launchedODMu.Unlock()
 
 			fmt.Printf("%v | num overdrive worker launched %v, avg %v\n", pdc.uid, overdriveWorkersLaunched, launchedAvg)
