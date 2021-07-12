@@ -256,8 +256,8 @@ github.com/subosito/gotenv v1.2.0/go.mod h1:N0PQaV/YGNqwC0u51sEeR/aUtSLEXKX9iv69
 github.com/syndtr/goleveldb v1.0.0/go.mod h1:ZVVdQEZoIme9iO1Ch2Jdy24qqXrMMOU6lpPAyBWyWuQ=
 github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5/go.mod h1:ncp9v5uamzpCO7NfCPTXjqaC+bZgJeR0sMTm6dMHP7U=
 github.com/tus/tusd v1.1.0/go.mod h1:3DWPOdeCnjBwKtv98y5dSws3itPqfce5TVa0s59LRiA=
-github.com/tus/tusd v1.5.1 h1:fDQp2cchziuAak79NppXZUf5e2LRbIwxoF5lkgKdEBM=
-github.com/tus/tusd v1.5.1/go.mod h1:ygrT4B9ZSb27dx3uTnobX5nOFDnutBL6iWKLH4+KpA0=
+github.com/tus/tusd v1.6.0 h1:IU9Z2Z5FZfHIap6NPFbPItyx/eU6aN87z4ya/mPzS4g=
+github.com/tus/tusd v1.6.0/go.mod h1:ygrT4B9ZSb27dx3uTnobX5nOFDnutBL6iWKLH4+KpA0=
 github.com/uber/jaeger-client-go v2.27.0+incompatible h1:6WVONolFJiB8Vx9bq4z9ddyV/SXSpfvvtb7Yl/TGHiE=
 github.com/uber/jaeger-client-go v2.27.0+incompatible/go.mod h1:WVhlPFC8FDjOFMMWRy2pZqQJSXxYSwNYOkTr/Z6d3Kk=
 github.com/uber/jaeger-lib v2.4.1+incompatible h1:td4jdvLcExb4cBISKIpHuGoVXh+dVKhn2Um6rjCsSsg=
