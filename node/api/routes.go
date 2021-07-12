@@ -180,10 +180,13 @@ func (api *API) buildHTTPRoutes() {
 			build.Critical("failed to create skynet TUS handler", err)
 			return
 		}
+		optionsHandler := func(w http.ResponseWriter, req *http.Request) {}
 		router.POST("/skynet/tus", RequireTUSMiddleware(tusHandler.PostFile, tusHandler))
+		router.OPTIONS("/skynet/tus", RequireTUSMiddleware(optionsHandler, tusHandler))
 		router.HEAD("/skynet/tus/:id", RequireTUSMiddleware(tusHandler.HeadFile, tusHandler))
 		router.PATCH("/skynet/tus/:id", RequireTUSMiddleware(tusHandler.PatchFile, tusHandler))
 		router.GET("/skynet/tus/:id", RequireTUSMiddleware(tusHandler.GetFile, tusHandler))
+		router.OPTIONS("/skynet/tus/:id", RequireTUSMiddleware(optionsHandler, tusHandler))
 		router.GET("/skynet/upload/tus/:id", api.skynetTUSUploadSkylinkGET)
 
 		// Directory endpoints
