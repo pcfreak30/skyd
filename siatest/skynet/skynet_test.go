@@ -79,6 +79,7 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "DownloadBaseSector", Test: testSkynetDownloadBaseSectorNoEncryption},
 		{Name: "DownloadBaseSectorEncrypted", Test: testSkynetDownloadBaseSectorEncrypted},
 		{Name: "FanoutRegression", Test: testSkynetFanoutRegression},
+		{Name: "DownloadRange", Test: testSkynetDownloadRange},
 		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
 		{Name: "MetadataMonetization", Test: testSkynetMetadataMonetizers},
 		{Name: "Monetization", Test: testSkynetMonetization},
@@ -1558,9 +1559,9 @@ func testSkynetDownloadFormats(t *testing.T, tg *siatest.TestGroup) {
 }
 
 // testSkynetDownloadRangeEncrypted verifies we can download a certain range
-// within an encrypted large skyfile. This test was added to verify whether
-// `DecryptBytesInPlace` was properly decrypting the fanout bytes for offsets
-// other than 0.
+// within an encrypted skyfile. This large file part of this test was added to
+// verify whether `DecryptBytesInPlace` was properly decrypting the fanout bytes
+// for offsets other than 0.
 func testSkynetDownloadRangeEncrypted(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
@@ -1569,21 +1570,55 @@ func testSkynetDownloadRangeEncrypted(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Run("SmallFile", func(t *testing.T) {
+		skynetDownloadRangeTest(t, tg, sk.Name, false)
+	})
+	t.Run("LargeFile", func(t *testing.T) {
+		skynetDownloadRangeTest(t, tg, sk.Name, true)
+	})
+}
+
+// testSkynetDownloadRange verifies we can download a certain range within a
+// skyfile.
+func testSkynetDownloadRange(t *testing.T, tg *siatest.TestGroup) {
+	t.Run("SmallFile", func(t *testing.T) {
+		skynetDownloadRangeTest(t, tg, "", false)
+	})
+	t.Run("LargeFile", func(t *testing.T) {
+		skynetDownloadRangeTest(t, tg, "", true)
+	})
+}
+
+// skynetDownloadRangeTest verifies different conditions of skynet downloads
+// with range requests.
+func skynetDownloadRangeTest(t *testing.T, tg *siatest.TestGroup, skykeyName string, largeFile bool) {
+	r := tg.Renters()[0]
 
 	// generate file params
 	name := t.Name() + persist.RandomSuffix()
-	size := uint64(4 * int(modules.SectorSize))
+	var size uint64
+	if largeFile {
+		size = uint64(4 * int(modules.SectorSize))
+	} else {
+		size = 100
+	}
 	data := fastrand.Bytes(int(size))
 
 	// upload a large encrypted skyfile to ensure we have a fanout
-	_, _, sshp, err := r.UploadNewEncryptedSkyfileBlocking(name, data, sk.Name, false)
+	_, _, sshp, err := r.UploadNewEncryptedSkyfileBlocking(name, data, skykeyName, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// calculate random range parameters
 	segment := uint64(crypto.SegmentSize)
-	offset := fastrand.Uint64n(size-modules.SectorSize) + 1
+	var offsetAdjustment uint64
+	if largeFile {
+		offsetAdjustment = modules.SectorSize
+	} else {
+		offsetAdjustment = 10
+	}
+	offset := fastrand.Uint64n(size-offsetAdjustment) + 1
 	length := fastrand.Uint64n(size-offset-segment) + 1
 
 	// fetch the data at given range
