@@ -95,7 +95,8 @@ type (
 		// dataPieces is the buffer that is used to place data as it comes back.
 		// There is one piece per chunk, and pieces can be nil. To know if the
 		// download is complete, the number of non-nil pieces will be counted.
-		dataPieces [][]byte
+		dataPieces         [][]byte
+		staticSkipRecovery bool
 
 		// The completed data gets sent down the response chan once the full
 		// download is done.
@@ -157,9 +158,14 @@ type (
 	// downloadResponse is sent via a channel to the caller of
 	// 'projectChunkWorkerSet.managedDownload'.
 	downloadResponse struct {
-		data             []byte
-		logicalChunkData [][]byte
-		err              error
+		data []byte
+		err  error
+
+		// NOTE: externLogicalChunkData will be set after the download
+		// is done and after that only the receiver of the response
+		// should access it. That way, we can avoid copying the memory
+		// and avoid another large allocation.
+		externLogicalChunkData [][]byte
 
 		// launchedWorkers contains a list of worker information for the workers
 		// that were launched to try and complete this download. This field can
@@ -326,16 +332,7 @@ func (pdc *projectDownloadChunk) fail(err error) {
 	pdc.downloadResponseChan <- dr
 }
 
-// finalize will take the completed pieces of the download, decode them,
-// and then send the result down the response channel. If there is an error
-// during decode, 'pdc.fail()' will be called.
-func (pdc *projectDownloadChunk) finalize() {
-	// Log info and finish span.
-	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-		span.SetTag("success", true)
-		span.Finish()
-	}
-
+func (pdc *projectDownloadChunk) recover() ([]byte, error) {
 	// Determine the amount of bytes the EC will need to skip from the recovered
 	// data when returning the data.
 	skipLength := pdc.offsetInChunk % (crypto.SegmentSize * uint64(pdc.workerSet.staticErasureCoder.MinPieces()))
@@ -353,12 +350,31 @@ func (pdc *projectDownloadChunk) finalize() {
 	if err != nil {
 		pdc.fail(errors.AddContext(err, "unable to complete erasure decode of download"))
 	}
+	return buf.Bytes(), err
+}
+
+// finalize will take the completed pieces of the download, decode them,
+// and then send the result down the response channel. If there is an error
+// during decode, 'pdc.fail()' will be called.
+func (pdc *projectDownloadChunk) finalize() {
+	// Log info and finish span.
+	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+		span.SetTag("success", true)
+		span.Finish()
+	}
+
+	// Recover the data if necessary.
+	var data []byte
+	var err error
+	if !pdc.staticSkipRecovery {
+		data, err = pdc.recover()
+	}
 
 	// Return the data to the caller.
 	dr := &downloadResponse{
-		data:             buf.Bytes(),
-		logicalChunkData: pdc.dataPieces,
-		err:              nil,
+		data:                   data,
+		externLogicalChunkData: pdc.dataPieces,
+		err:                    err,
 
 		launchedWorkers: pdc.launchedWorkers,
 	}

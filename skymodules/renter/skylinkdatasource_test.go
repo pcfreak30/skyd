@@ -24,7 +24,7 @@ type mockProjectChunkWorkerSet struct {
 }
 
 // Download implements the chunkFetcher interface.
-func (m *mockProjectChunkWorkerSet) Download(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error) {
+func (m *mockProjectChunkWorkerSet) Download(ctx context.Context, pricePerMS types.Currency, offset, length uint64, _ bool) (chan *downloadResponse, error) {
 	m.staticDownloadResponseChan <- &downloadResponse{
 		data: m.staticDownloadData[offset : offset+length],
 		err:  nil,

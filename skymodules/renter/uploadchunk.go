@@ -303,7 +303,7 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	}
 
 	// Start the download.
-	dr, err := pcws.Download(r.tg.StopCtx(), types.NewCurrency64(1), uint64(chunk.offset), downloadLength)
+	dr, err := pcws.Download(r.tg.StopCtx(), types.NewCurrency64(1), uint64(chunk.offset), downloadLength, true)
 	if err != nil {
 		return err
 	}
@@ -324,7 +324,7 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	if resp.err != nil {
 		return resp.err
 	}
-	chunk.logicalChunkData = resp.logicalChunkData
+	chunk.logicalChunkData = resp.externLogicalChunkData
 
 	// Reconstruct the pieces.
 	//
