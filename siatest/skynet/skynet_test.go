@@ -1612,21 +1612,32 @@ func skynetDownloadRangeTest(t *testing.T, tg *siatest.TestGroup, skykeyName str
 
 	// calculate random range parameters
 	segment := uint64(crypto.SegmentSize)
-	var offsetAdjustment uint64
+	var offset, length uint64
 	if largeFile {
-		offsetAdjustment = modules.SectorSize
+		offset = fastrand.Uint64n(size-modules.SectorSize) + 1
+		length = fastrand.Uint64n(size-offset-segment) + 1
 	} else {
-		offsetAdjustment = 10
+		offset = fastrand.Uint64n(size-segment) + 1
+		length = fastrand.Uint64n(size-offset) + 1
 	}
-	offset := fastrand.Uint64n(size-offsetAdjustment) + 1
-	length := fastrand.Uint64n(size-offset-segment) + 1
 
-	// fetch the data at given range
+	// fetch the data at given range using the Header range request
 	result, err := r.SkynetSkylinkRange(sshp.Skylink, offset, offset+length)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !bytes.Equal(result, data[offset:offset+length]) {
+		t.Logf("range %v-%v\n", offset, offset+length)
+		t.Log("expected:", data[offset:offset+length], len(data[offset:offset+length]))
+		t.Log("actual:", result, len(result))
+		t.Fatal("unexpected")
+	}
 
+	// fetch the data at given range using the params range request
+	result, err = r.SkynetSkylinkRangeParams(sshp.Skylink, offset, offset+length)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !bytes.Equal(result, data[offset:offset+length]) {
 		t.Logf("range %v-%v\n", offset, offset+length)
 		t.Log("expected:", data[offset:offset+length], len(data[offset:offset+length]))
