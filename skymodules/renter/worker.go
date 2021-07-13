@@ -127,6 +127,13 @@ type (
 	}
 )
 
+func (w *worker) callReadQueue(lowPrio bool) *jobReadQueue {
+	if lowPrio {
+		return w.staticJobLowPrioReadQueue
+	}
+	return w.staticJobReadQueue
+}
+
 // downloadChunks is a queue of download chunks.
 type downloadChunks struct {
 	*list.List
@@ -245,11 +252,12 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		wakeChan:          make(chan struct{}, 1),
 		staticRenter:      r,
 	}
+	jrs := &jobReadStats{}
 	w.newPriceTable()
 	w.newMaintenanceState()
 	w.initJobHasSectorQueue()
-	w.initJobReadQueue()
-	w.initJobLowPrioReadQueue()
+	w.initJobReadQueue(jrs)
+	w.initJobLowPrioReadQueue(jrs)
 	w.initJobRenewQueue()
 	w.initJobDownloadSnapshotQueue()
 	w.initJobReadRegistryQueue()

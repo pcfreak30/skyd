@@ -171,7 +171,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 
 		// Verify whether the read queue is on a cooldown, if so skip this
 		// worker. Also skip if the worker is not async ready.
-		jrq := w.staticJobReadQueue
+		jrq := w.callReadQueue(pdc.staticLowPrio)
 		if !w.managedAsyncReady() || jrq.callOnCooldown() {
 			continue
 		}
@@ -190,7 +190,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		// readDuration to the hasSectorTime to get the full complete time for
 		// the download.
 		cost := jrq.callExpectedJobCost(pdc.pieceLength)
-		readDuration := jrq.callExpectedJobTime(pdc.pieceLength)
+		readDuration := jrq.staticStats.callExpectedJobTime(pdc.pieceLength)
 		if readDuration == 0 {
 			continue
 		}
@@ -235,7 +235,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 
 			// Ignore this worker if the worker is not currently equipped to
 			// perform async work, or if the read queue is on a cooldown.
-			jrq := w.staticJobReadQueue
+			jrq := w.callReadQueue(pdc.staticLowPrio)
 			if !w.managedAsyncReady() || jrq.callOnCooldown() {
 				continue
 			}
@@ -249,7 +249,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 				elem.pieces = append(elem.pieces, uint64(i))
 			} else {
 				cost := jrq.callExpectedJobCost(pdc.pieceLength)
-				readDuration := jrq.callExpectedJobTime(pdc.pieceLength)
+				readDuration := jrq.staticStats.callExpectedJobTime(pdc.pieceLength)
 				resolvedWorkersMap[w.staticHostPubKeyStr] = &pdcInitialWorker{
 					completeTime: time.Now().Add(readDuration),
 					cost:         cost,

@@ -303,7 +303,7 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	}
 
 	// Start the download.
-	dr, err := pcws.Download(r.tg.StopCtx(), types.NewCurrency64(1), uint64(chunk.offset), downloadLength, true)
+	dr, err := pcws.Download(r.tg.StopCtx(), types.NewCurrency64(1), uint64(chunk.offset), downloadLength, true, true)
 	if err != nil {
 		return err
 	}
