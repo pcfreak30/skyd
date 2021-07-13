@@ -281,13 +281,23 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 		downloadLength = chunk.fileEntry.Size() % chunk.length
 	}
 
-	// Prepare snapshot.
-	snap, err := chunk.fileEntry.SnapshotRange(r.staticFileSystem.FileSiaPath(chunk.fileEntry), uint64(chunk.offset), downloadLength)
+	// Get roots, erasure coder and masterkey from siafile.
+	ec := chunk.fileEntry.ErasureCode()
+	mk := chunk.fileEntry.MasterKey()
+	roots := make([]crypto.Hash, 0, ec.NumPieces())
+	allPieces, err := chunk.fileEntry.Pieces(chunk.staticIndex)
 	if err != nil {
 		return err
 	}
+	for _, pieceSet := range allPieces {
+		for _, piece := range pieceSet {
+			roots = append(roots, piece.MerkleRoot)
+			break // only one root needed per pieceSet
+		}
+	}
 
-	pcws, err := r.newPCWSByRoots(r.tg.StopCtx(), nil, snap.ErasureCode(), snap.MasterKey(), chunk.staticIndex)
+	// Create the workerset.
+	pcws, err := r.newPCWSByRoots(r.tg.StopCtx(), roots, ec, mk, chunk.staticIndex)
 	if err != nil {
 		return err
 	}

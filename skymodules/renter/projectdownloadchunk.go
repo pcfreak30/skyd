@@ -356,12 +356,11 @@ func (pdc *projectDownloadChunk) finalize() {
 
 	// Return the data to the caller.
 	dr := &downloadResponse{
-		err: nil,
-
-		launchedWorkers: pdc.launchedWorkers,
-
 		data:             buf.Bytes(),
 		logicalChunkData: pdc.dataPieces,
+		err:              nil,
+
+		launchedWorkers: pdc.launchedWorkers,
 	}
 	pdc.downloadResponseChan <- dr
 }

@@ -104,7 +104,7 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 	if !bytes.Equal(downloadResponse.data, originalData[offset:offset+length]) {
 		t.Log("offset", offset)
 		t.Log("length", length)
-		t.Log("bytes downloaded", len(data))
+		t.Log("bytes downloaded", len(downloadResponse.data))
 
 		t.Log("actual:\n", downloadResponse.data)
 		t.Log("expected:\n", originalData[offset:offset+length])
