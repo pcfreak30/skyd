@@ -157,8 +157,9 @@ type (
 	// downloadResponse is sent via a channel to the caller of
 	// 'projectChunkWorkerSet.managedDownload'.
 	downloadResponse struct {
-		data []byte
-		err  error
+		data             []byte
+		logicalChunkData [][]byte
+		err              error
 
 		// launchedWorkers contains a list of worker information for the workers
 		// that were launched to try and complete this download. This field can
@@ -318,8 +319,7 @@ func (pdc *projectDownloadChunk) fail(err error) {
 
 	// Create and return a response
 	dr := &downloadResponse{
-		data: nil,
-		err:  err,
+		err: err,
 
 		launchedWorkers: pdc.launchedWorkers,
 	}
@@ -339,28 +339,29 @@ func (pdc *projectDownloadChunk) finalize() {
 	// Determine the amount of bytes the EC will need to skip from the recovered
 	// data when returning the data.
 	skipLength := pdc.offsetInChunk % (crypto.SegmentSize * uint64(pdc.workerSet.staticErasureCoder.MinPieces()))
+	recoveredBytes := uint64(pdc.lengthInChunk + skipLength)
 
 	// Create a skipwriter that ensures we're recovering at the offset
-	buf := bytes.NewBuffer(nil)
+	buf := bytes.NewBuffer(make([]byte, 0, recoveredBytes))
 	skipWriter := &skipWriter{
 		writer: buf,
 		skip:   int(skipLength),
 	}
 
 	// Recover the pieces in to a single byte slice.
-	err := pdc.workerSet.staticErasureCoder.Recover(pdc.dataPieces, pdc.lengthInChunk+skipLength, skipWriter)
+	err := pdc.workerSet.staticErasureCoder.Recover(pdc.dataPieces, recoveredBytes, skipWriter)
 	if err != nil {
 		pdc.fail(errors.AddContext(err, "unable to complete erasure decode of download"))
-		return
 	}
-	data := buf.Bytes()
 
 	// Return the data to the caller.
 	dr := &downloadResponse{
-		data: data,
-		err:  nil,
+		err: nil,
 
 		launchedWorkers: pdc.launchedWorkers,
+
+		data:             buf.Bytes(),
+		logicalChunkData: pdc.dataPieces,
 	}
 	pdc.downloadResponseChan <- dr
 }

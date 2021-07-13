@@ -15,6 +15,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // uploadChunkID is a unique identifier for each chunk in the renter.
@@ -285,52 +286,35 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	if err != nil {
 		return err
 	}
-	// Create the download. 'disableLocalFetch' is set to true here to prevent
-	// the download from trying to load the chunk from disk. This field is set
-	// because the local fetch version of the download call does not perform an
-	// integrity check.
-	buf := NewDownloadDestinationBuffer()
-	d, err := r.managedNewDownload(downloadParams{
-		destination:       buf,
-		destinationType:   "buffer",
-		disableLocalFetch: true,
-		file:              snap,
 
-		latencyTarget: 200e3, // No need to rush latency on repair downloads.
-		length:        downloadLength,
-		needsMemory:   false, // We already requested memory, the download memory fits inside of that.
-		offset:        uint64(chunk.offset),
-		overdrive:     0, // No need to rush the latency on repair downloads.
-		priority:      0, // Repair downloads are completely de-prioritized.
-
-		staticMemoryManager:    chunk.staticMemoryManager, // Same memory manager as upload chunk
-		staticSpendingCategory: categoryRepairDownload,
-	})
+	pcws, err := r.newPCWSByRoots(r.tg.StopCtx(), nil, snap.ErasureCode(), snap.MasterKey(), chunk.staticIndex)
 	if err != nil {
 		return err
 	}
+
 	// Start the download.
-	if err := d.Start(); err != nil {
+	dr, err := pcws.Download(r.tg.StopCtx(), types.NewCurrency64(1), uint64(chunk.offset), downloadLength)
+	if err != nil {
 		return err
 	}
 
-	// Register some cleanup for when the download is done.
-	d.OnComplete(func(_ error) error {
+	// Update the access time when the download is done.
+	defer func() {
 		// Update the access time when the download is done.
-		return chunk.fileEntry.SiaFile.UpdateAccessTime()
-	})
+		err = chunk.fileEntry.SiaFile.UpdateAccessTime()
+	}()
 
 	// Wait for the download to complete.
+	var resp *downloadResponse
 	select {
-	case <-d.completeChan:
+	case resp = <-dr:
 	case <-r.tg.StopChan():
 		return errors.New("repair download interrupted by stop call")
 	}
-	if d.Err() != nil {
-		buf.pieces = nil
-		return d.Err()
+	if resp.err != nil {
+		return resp.err
 	}
-	chunk.logicalChunkData = buf.pieces
+	chunk.logicalChunkData = resp.logicalChunkData
 
 	// Reconstruct the pieces.
 	//
