@@ -726,7 +726,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		isSubfile = file
 	}
 
-	// Handle a range request past in through the query params instead of
+	// Handle a range request passed in through the query params instead of
 	// the Header
 	if rangeParam {
 		streamer, err = NewLimitStreamer(streamer, streamer.Metadata(), streamer.RawMetadata(), streamer.Skylink(), streamer.Layout(), start, end-start)
