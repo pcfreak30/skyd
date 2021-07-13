@@ -253,8 +253,6 @@ func (jrs *jobReadStats) callExpectedJobTime(length uint64) time.Duration {
 // expectedJobTime returns the expected job time, based on recent performance,
 // for the given read length.
 func (jrs *jobReadStats) expectedJobTime(length uint64) time.Duration {
-	jrs.mu.Lock()
-	defer jrs.mu.Unlock()
 	if length <= 1<<16 {
 		return time.Duration(jrs.weightedJobTime64k)
 	} else if length <= 1<<20 {
