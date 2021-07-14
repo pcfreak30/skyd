@@ -73,7 +73,7 @@ func testBasic(t *testing.T, wt *workerTester) {
 	}
 
 	// create PCWS
-	pcws, err := wt.staticRenter.newPCWSByRoots(ctx, []crypto.Hash{sectorRoot}, ptec, ptck, 0)
+	pcws, err := wt.staticRenter.newPCWSByRoots(ctx, []crypto.Hash{sectorRoot}, ptec, ptck, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func testBasic(t *testing.T, wt *workerTester) {
 	pcws.mu.Lock()
 	pcws.workerStateLaunchTime = unset
 	pcws.mu.Unlock()
-	err = pcws.managedTryUpdateWorkerState()
+	err = pcws.managedTryUpdateWorkerState(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +258,7 @@ func testMultiple(t *testing.T, wt *workerTester) {
 	})
 
 	// create PCWS
-	pcws, err := wt.staticRenter.newPCWSByRoots(ctx, roots, ec, ptck, 0)
+	pcws, err := wt.staticRenter.newPCWSByRoots(ctx, roots, ec, ptck, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,14 +328,14 @@ func testNewPCWSByRoots(t *testing.T) {
 	}
 
 	// verify basic case
-	_, err = r.newPCWSByRoots(ctx, roots[:1], ptec, ptck, 0)
+	_, err = r.newPCWSByRoots(ctx, roots[:1], ptec, ptck, 0, nil)
 	if err != nil {
 		t.Fatal("unexpected")
 	}
 
 	// verify the case where we the amount of roots does not equal num pieces
 	// defined in the erasure coder
-	_, err = r.newPCWSByRoots(ctx, roots, ptec, ptck, 0)
+	_, err = r.newPCWSByRoots(ctx, roots, ptec, ptck, 0, nil)
 	if err == nil || !strings.Contains(err.Error(), "but erasure coder specifies 1 pieces") {
 		t.Fatal(err)
 	}
@@ -351,13 +351,13 @@ func testNewPCWSByRoots(t *testing.T) {
 	if len(roots[:1]) == ec.NumPieces() {
 		t.Fatal("unexpected")
 	}
-	_, err = r.newPCWSByRoots(ctx, roots[:1], ec, ptck, 0)
+	_, err = r.newPCWSByRoots(ctx, roots[:1], ec, ptck, 0, nil)
 	if err != nil {
 		t.Fatal("unexpected")
 	}
 
 	// verify passing nil for the master key returns an error
-	_, err = r.newPCWSByRoots(ctx, roots[:1], ptec, nil, 0)
+	_, err = r.newPCWSByRoots(ctx, roots[:1], ptec, nil, 0, nil)
 	if err == nil {
 		t.Fatal("unexpected")
 	}

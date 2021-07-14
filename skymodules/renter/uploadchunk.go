@@ -289,9 +289,20 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	if err != nil {
 		return err
 	}
-	for _, pieceSet := range allPieces {
+	seedWorkers := make(map[string][]uint64)
+	for pieceIndex, pieceSet := range allPieces {
+		rootFound := false
 		for _, piece := range pieceSet {
-			roots = append(roots, piece.MerkleRoot)
+			if !rootFound {
+				// Only need 1 root per piece.
+				roots = append(roots, piece.MerkleRoot)
+				rootFound = true
+			}
+			// Remember which hosts are supposed to have which
+			// pieces of the chunk already. We use that information
+			// to seed the worker set to improve the download.
+			indices := seedWorkers[piece.HostPubKey.String()]
+			seedWorkers[piece.HostPubKey.String()] = append(indices, uint64(pieceIndex))
 			break // only one root needed per pieceSet
 		}
 	}
@@ -301,7 +312,7 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	// first to avoid the has sector lookups. Not sure if it's worth it. If
 	// we don't, we might be able to get rid of the legacy download code
 	// altogether.
-	pcws, err := r.newPCWSByRoots(r.tg.StopCtx(), roots, ec, mk, chunk.staticIndex)
+	pcws, err := r.newPCWSByRoots(r.tg.StopCtx(), roots, ec, mk, chunk.staticIndex, seedWorkers)
 	if err != nil {
 		return err
 	}
