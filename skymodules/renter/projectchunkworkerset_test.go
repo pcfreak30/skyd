@@ -98,6 +98,7 @@ func testBasic(t *testing.T, wt *workerTester) {
 	resolved := ws.resolvedWorkers
 	numResolved := len(ws.resolvedWorkers)
 	numUnresolved := len(ws.unresolvedWorkers)
+	resolvedWorkers := ws.resolvedWorkers
 	ws.mu.Unlock()
 
 	if numResolved != 1 || numUnresolved != 0 {
@@ -136,6 +137,31 @@ func testBasic(t *testing.T, wt *workerTester) {
 	// expect we found sector at index 0
 	if len(resolved) != 1 || len(resolved[0].pieceIndices) != 1 {
 		t.Fatal("unexpected", len(resolved), len(resolved[0].pieceIndices))
+	}
+
+	// create PCWS but seed it with the resolved worker this time.
+	rw := resolvedWorkers[0]
+	seedWorkers := map[string][]uint64{
+		rw.worker.staticHostPubKey.String(): rw.pieceIndices,
+	}
+	pcws, err = wt.staticRenter.newPCWSByRoots(ctx, []crypto.Hash{sectorRoot}, ptec, ptck, 0, seedWorkers)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify resolved and unresolved workers right away without waiting for
+	// an update.
+	ws.mu.Lock()
+	numResolved = len(ws.resolvedWorkers)
+	numUnresolved = len(ws.unresolvedWorkers)
+	resolvedWorkers = ws.resolvedWorkers
+	ws.mu.Unlock()
+
+	if numResolved != 1 || numUnresolved != 0 {
+		t.Fatal("unexpected")
+	}
+	if len(resolved[0].pieceIndices) != 1 {
+		t.Fatal("unexpected")
 	}
 }
 
