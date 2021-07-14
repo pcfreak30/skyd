@@ -297,13 +297,17 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	}
 
 	// Create the workerset.
+	// TODO: we could try to download from our known hosts from the siafile
+	// first to avoid the has sector lookups. Not sure if it's worth it. If
+	// we don't, we might be able to get rid of the legacy download code
+	// altogether.
 	pcws, err := r.newPCWSByRoots(r.tg.StopCtx(), roots, ec, mk, chunk.staticIndex)
 	if err != nil {
 		return err
 	}
 
 	// Start the download.
-	dr, err := pcws.Download(r.tg.StopCtx(), types.NewCurrency64(1), uint64(chunk.offset), downloadLength, true, true)
+	dr, err := pcws.Download(r.tg.StopCtx(), types.NewCurrency64(1), 0, downloadLength, true, true)
 	if err != nil {
 		return err
 	}
@@ -311,7 +315,9 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	// Update the access time when the download is done.
 	defer func() {
 		// Update the access time when the download is done.
-		err = chunk.fileEntry.SiaFile.UpdateAccessTime()
+		if err := chunk.fileEntry.SiaFile.UpdateAccessTime(); err != nil {
+			r.staticLog.Println("failed to update siafile's access time", err)
+		}
 	}()
 
 	// Wait for the download to complete.
