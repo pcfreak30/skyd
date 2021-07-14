@@ -699,9 +699,15 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		path = defaultPath
 	}
 
+	// servedPath will help us determine the specific file path we are serving.
+	// This might be different from the requested path because of defaultPath
+	// or directory resolution mode "web" leading to a custom "not found" file
+	// being served. We need to know this path in order correctly to build the
+	// etag.
+	var servedPath string
 	// Serve the contents of the skyfile at path if one is set.
 	if path != "/" {
-		statusCode, metadata, responseContentType, isSubfile, newStreamer, apiErr = servePathOrNotFound(path, &metadata, &streamer, notFoundSubfilePath)
+		statusCode, servedPath, metadata, responseContentType, isSubfile, newStreamer, apiErr = servePathOrNotFound(path, &metadata, &streamer, notFoundSubfilePath)
 		if apiErr.Message != "" {
 			WriteError(w, apiErr, statusCode)
 			return
@@ -709,6 +715,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		if statusCode == http.StatusNotFound {
 			serveCustomStatusCode = true
 		}
+		path = servedPath
 		streamer = *newStreamer
 	}
 
@@ -718,7 +725,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		if metadata.DirResMode == skymodules.DirResModeWeb {
 			// Serve the local index file instead of the directory.
 			localIndexPath := skymodules.EnsureSuffix(skymodules.EnsurePrefix(path, "/"), "/") + "index.html"
-			statusCode, metadata, responseContentType, isSubfile, newStreamer, apiErr = servePathOrNotFound(localIndexPath, &metadata, &streamer, notFoundSubfilePath)
+			statusCode, servedPath, metadata, responseContentType, isSubfile, newStreamer, apiErr = servePathOrNotFound(localIndexPath, &metadata, &streamer, notFoundSubfilePath)
 			if apiErr.Message != "" {
 				WriteError(w, apiErr, statusCode)
 				return
@@ -726,6 +733,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			if statusCode == http.StatusNotFound {
 				serveCustomStatusCode = true
 			}
+			path = servedPath
 			streamer = *newStreamer
 		} else {
 			// Assume std mode.
@@ -1764,10 +1772,12 @@ func servePath(path string, meta *skymodules.SkyfileMetadata, streamer *skymodul
 // are about to serve. If the content is not found, we'll return the custom
 // "not found" content and code. It's designed specifically for use by
 // skynetStatsHandlerGET and should not be used elsewhere.
-func servePathOrNotFound(path string, meta *skymodules.SkyfileMetadata, streamer *skymodules.SkyfileStreamer, notFoundPath string) (int, skymodules.SkyfileMetadata, string, bool, *skymodules.SkyfileStreamer, Error) {
+func servePathOrNotFound(path string, meta *skymodules.SkyfileMetadata, streamer *skymodules.SkyfileStreamer, notFoundPath string) (int, string, skymodules.SkyfileMetadata, string, bool, *skymodules.SkyfileStreamer, Error) {
+	servedPath := path
 	statusCode, newMeta, contentType, isFile, newStreamerPtr, err := servePath(path, meta, streamer)
 	if statusCode == http.StatusNotFound && notFoundPath != "" {
 		// Serve the custom "not found" content.
+		servedPath = notFoundPath
 		statusCode, newMeta, contentType, isFile, newStreamerPtr, err = servePath(notFoundPath, meta, streamer)
 		// If we manage to successfully serve the custom "not found" content we
 		// want to indicate it by returning status 404. The custom "not found"
@@ -1777,7 +1787,7 @@ func servePathOrNotFound(path string, meta *skymodules.SkyfileMetadata, streamer
 		}
 	}
 	if err.Message != "" {
-		return statusCode, skymodules.SkyfileMetadata{}, "", true, nil, err
+		return statusCode, servedPath, skymodules.SkyfileMetadata{}, "", true, nil, err
 	}
-	return statusCode, newMeta, contentType, isFile, newStreamerPtr, err
+	return statusCode, servedPath, newMeta, contentType, isFile, newStreamerPtr, err
 }
