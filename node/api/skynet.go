@@ -18,6 +18,7 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -775,11 +776,12 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 	// Monetize the response if necessary by wrapping the response writer in a
 	// monetized one.
-	mrw := newMonetizedResponseWriter(w, metadata, api.wallet, settings.CurrencyConversionRates, settings.MonetizationBase)
+	_ = newMonetizedResponseWriter(w, metadata, api.wallet, settings.CurrencyConversionRates, settings.MonetizationBase)
 
-	//	http.ServeContent(mrw, req, metadata.Filename, time.Time{}, streamer)
-	io.Copy(mrw, streamer)
+	l, _ := streamer.Seek(0, io.SeekEnd)
+	b := bytes.NewReader(fastrand.Bytes(int(l)))
 
+	http.ServeContent(w, req, metadata.Filename, time.Time{}, b)
 }
 
 // skynetSkylinkPinHandlerPOST will pin a skylink to this Sia node, ensuring
