@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
@@ -299,15 +298,6 @@ func (r *Renter) managedDownload(p skymodules.RenterDownloadParameters) (_ *down
 			staticChunkSize: int64(entry.ChunkSize()),
 		}
 		destinationType = "file"
-	}
-
-	// If the destination is a httpWriter, we set the Content-Length in the
-	// header.
-	if isHTTPResp {
-		w, ok := p.Httpwriter.(http.ResponseWriter)
-		if ok {
-			w.Header().Set("Content-Length", fmt.Sprint(p.Length))
-		}
 	}
 
 	// Prepare snapshot.
