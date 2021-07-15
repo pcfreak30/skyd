@@ -643,7 +643,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// If we're running in "web" directory resolution mode we want to track the
 	// status code and file content that we need to return in case we need to
 	// serve a "file not found".
-	serveCustomStatusCode := false
+	returnCustomStatusCode := false
 	notFoundSubfilePath := ""
 	notFoundStatusCode := http.StatusNotFound
 	if metadata.DirResMode == skymodules.DirResModeWeb {
@@ -656,7 +656,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 
 	var statusCode int
-	var newStreamer *skymodules.SkyfileStreamer
+	var newStreamer skymodules.SkyfileStreamer
 	var apiErr Error
 	var isSubfile bool
 	responseContentType := metadata.ContentType()
@@ -707,16 +707,16 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	var servedPath string
 	// Serve the contents of the skyfile at path if one is set.
 	if path != "/" {
-		statusCode, servedPath, metadata, responseContentType, isSubfile, newStreamer, apiErr = servePathOrNotFound(path, &metadata, &streamer, notFoundSubfilePath)
+		statusCode, servedPath, metadata, responseContentType, isSubfile, newStreamer, apiErr = servePathOrNotFound(path, &metadata, streamer, notFoundSubfilePath)
 		if apiErr.Message != "" {
 			WriteError(w, apiErr, statusCode)
 			return
 		}
 		if statusCode == http.StatusNotFound {
-			serveCustomStatusCode = true
+			returnCustomStatusCode = true
 		}
 		path = servedPath
-		streamer = *newStreamer
+		streamer = newStreamer
 	}
 
 	// If we are serving more than one file, and the format is not
@@ -725,16 +725,16 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		if metadata.DirResMode == skymodules.DirResModeWeb {
 			// Serve the local index file instead of the directory.
 			localIndexPath := skymodules.EnsureSuffix(skymodules.EnsurePrefix(path, "/"), "/") + "index.html"
-			statusCode, servedPath, metadata, responseContentType, isSubfile, newStreamer, apiErr = servePathOrNotFound(localIndexPath, &metadata, &streamer, notFoundSubfilePath)
+			statusCode, servedPath, metadata, responseContentType, isSubfile, newStreamer, apiErr = servePathOrNotFound(localIndexPath, &metadata, streamer, notFoundSubfilePath)
 			if apiErr.Message != "" {
 				WriteError(w, apiErr, statusCode)
 				return
 			}
 			if statusCode == http.StatusNotFound {
-				serveCustomStatusCode = true
+				returnCustomStatusCode = true
 			}
 			path = servedPath
-			streamer = *newStreamer
+			streamer = newStreamer
 		} else {
 			// Assume std mode.
 			format = skymodules.SkyfileFormatZip
@@ -819,7 +819,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// Overwrite the response writer to return a custom status code instead of
 	// 200 OK.
 	csw := w
-	if serveCustomStatusCode {
+	if returnCustomStatusCode {
 		csw = newCustomStatusResponseWriter(w, notFoundStatusCode)
 	}
 
@@ -1749,7 +1749,7 @@ func (api *API) skynetSkylinkUnpinHandlerPOST(w http.ResponseWriter, req *http.R
 // servePath is a helper function that overrides the content that we are about
 // to serve. It's designed specifically for use by skynetStatsHandlerGET and
 // should not be used elsewhere.
-func servePath(path string, meta *skymodules.SkyfileMetadata, streamer *skymodules.SkyfileStreamer) (int, skymodules.SkyfileMetadata, string, bool, *skymodules.SkyfileStreamer, Error) {
+func servePath(path string, meta *skymodules.SkyfileMetadata, streamer skymodules.SkyfileStreamer) (int, skymodules.SkyfileMetadata, string, bool, skymodules.SkyfileStreamer, Error) {
 	metadataForPath, isFile, offset, size := meta.ForPath(path)
 	if len(metadataForPath.Subfiles) == 0 {
 		return http.StatusNotFound, skymodules.SkyfileMetadata{}, "", true, nil, Error{fmt.Sprintf("failed to download contents for path: %v", path)}
@@ -1761,24 +1761,24 @@ func servePath(path string, meta *skymodules.SkyfileMetadata, streamer *skymodul
 	if err != nil {
 		return http.StatusNotFound, skymodules.SkyfileMetadata{}, "", true, nil, Error{fmt.Sprintf("failed to marshal subfile metadata for path %v", path)}
 	}
-	newStreamer, err := NewLimitStreamer(*streamer, metadataForPath, rawMetadataForPath, (*streamer).Skylink(), (*streamer).Layout(), offset, size)
+	newStreamer, err := NewLimitStreamer(streamer, metadataForPath, rawMetadataForPath, streamer.Skylink(), streamer.Layout(), offset, size)
 	if err != nil {
 		return http.StatusInternalServerError, skymodules.SkyfileMetadata{}, "", true, nil, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}
 	}
-	return http.StatusOK, metadataForPath, metadataForPath.ContentType(), isFile, &newStreamer, Error{}
+	return http.StatusOK, metadataForPath, metadataForPath.ContentType(), isFile, newStreamer, Error{}
 }
 
 // servePathOrNotFound is a helper function that overrides the content that we
 // are about to serve. If the content is not found, we'll return the custom
 // "not found" content and code. It's designed specifically for use by
 // skynetStatsHandlerGET and should not be used elsewhere.
-func servePathOrNotFound(path string, meta *skymodules.SkyfileMetadata, streamer *skymodules.SkyfileStreamer, notFoundPath string) (int, string, skymodules.SkyfileMetadata, string, bool, *skymodules.SkyfileStreamer, Error) {
+func servePathOrNotFound(path string, meta *skymodules.SkyfileMetadata, streamer skymodules.SkyfileStreamer, notFoundPath string) (int, string, skymodules.SkyfileMetadata, string, bool, skymodules.SkyfileStreamer, Error) {
 	servedPath := path
-	statusCode, newMeta, contentType, isFile, newStreamerPtr, err := servePath(path, meta, streamer)
+	statusCode, newMeta, contentType, isFile, newStreamer, err := servePath(path, meta, streamer)
 	if statusCode == http.StatusNotFound && notFoundPath != "" {
 		// Serve the custom "not found" content.
 		servedPath = notFoundPath
-		statusCode, newMeta, contentType, isFile, newStreamerPtr, err = servePath(notFoundPath, meta, streamer)
+		statusCode, newMeta, contentType, isFile, newStreamer, err = servePath(notFoundPath, meta, streamer)
 		// If we manage to successfully serve the custom "not found" content we
 		// want to indicate it by returning status 404. The custom "not found"
 		// status code, if defined, will be taken care of later.
@@ -1789,5 +1789,5 @@ func servePathOrNotFound(path string, meta *skymodules.SkyfileMetadata, streamer
 	if err.Message != "" {
 		return statusCode, servedPath, skymodules.SkyfileMetadata{}, "", true, nil, err
 	}
-	return statusCode, servedPath, newMeta, contentType, isFile, newStreamerPtr, err
+	return statusCode, servedPath, newMeta, contentType, isFile, newStreamer, err
 }

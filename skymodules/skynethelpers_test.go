@@ -196,7 +196,7 @@ func testValidateSkyfileMetadata(t *testing.T) {
 	// rely on the default mode to be 'standard'.
 	invalid.DirResNotFoundCode = http.StatusOK
 	err = ValidateSkyfileMetadata(invalid)
-	if err == nil || !strings.Contains(err.Error(), ErrInvalidDirectoryResolutionSettings.Error()) {
+	if err == nil || !strings.Contains(err.Error(), ErrInvalidDirectoryResolution.Error()) {
 		t.Fatalf("unexpected outcome: %+v", err)
 	}
 
@@ -220,7 +220,7 @@ func testValidateSkyfileMetadata(t *testing.T) {
 		},
 	}
 	err = ValidateSkyfileMetadata(invalid)
-	if err == nil || !strings.Contains(err.Error(), ErrInvalidDirectoryResolutionSettings.Error()) {
+	if err == nil || !strings.Contains(err.Error(), ErrInvalidDirectoryResolution.Error()) {
 		t.Fatalf("unexpected outcome: %+v", err)
 	}
 

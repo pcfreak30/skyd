@@ -67,13 +67,13 @@ func testDirResStdModeCustomNotFound(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// Try to upload with standard mode and a custom 'not found' file that exists.
 	_, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, skymodules.DirResModeStandard, "404.html", http.StatusNotFound, true, nil, "", skykey.SkykeyID{})
-	if err == nil || !strings.Contains(err.Error(), skymodules.ErrInvalidDirectoryResolutionSettings.Error()) {
-		t.Fatalf("Expected to get ErrInvalidDirectoryResolutionSettings error, got %+v", err)
+	if err == nil || !strings.Contains(err.Error(), skymodules.ErrInvalidDirectoryResolution.Error()) {
+		t.Fatalf("Expected to get '%s' error, got %+v", skymodules.ErrInvalidDirectoryResolution, err)
 	}
 	// Try to upload with standard mode and a custom 'not found' status code.
 	_, _, _, err = r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, skymodules.DirResModeStandard, "", http.StatusOK, true, nil, "", skykey.SkykeyID{})
-	if err == nil || !strings.Contains(err.Error(), skymodules.ErrInvalidDirectoryResolutionSettings.Error()) {
-		t.Fatalf("Expected to get ErrInvalidDirectoryResolutionSettings error, got %+v", err)
+	if err == nil || !strings.Contains(err.Error(), skymodules.ErrInvalidDirectoryResolution.Error()) {
+		t.Fatalf("Expected to get '%s' error, got %+v", skymodules.ErrInvalidDirectoryResolution, err)
 	}
 }
 

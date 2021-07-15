@@ -631,3 +631,30 @@ func TestAttachRegistryEntryProof(t *testing.T) {
 		t.Fatal("proof doesn't match expectation")
 	}
 }
+
+// TestCustomStatusResponseWriter ensures customStatusResponseWriter replaces
+// http.StatusOK with the custom status code provided and leaves the other
+// status codes untouched.
+func TestCustomStatusResponseWriter(t *testing.T) {
+	tw := newTestHTTPWriter()
+	csw := newCustomStatusResponseWriter(tw, http.StatusTeapot)
+
+	tests := []struct {
+		sentStatusCode     int
+		expectedStatusCode int
+	}{
+		{sentStatusCode: http.StatusOK, expectedStatusCode: http.StatusTeapot},
+		{sentStatusCode: http.StatusNoContent, expectedStatusCode: http.StatusNoContent},
+		{sentStatusCode: http.StatusPartialContent, expectedStatusCode: http.StatusPartialContent},
+		{sentStatusCode: http.StatusBadRequest, expectedStatusCode: http.StatusBadRequest},
+		{sentStatusCode: http.StatusNotFound, expectedStatusCode: http.StatusNotFound},
+	}
+
+	for _, tt := range tests {
+		csw.WriteHeader(tt.sentStatusCode)
+
+		if tw.statusCode != tt.expectedStatusCode {
+			t.Fatalf("Expected status code %d, got %d", tt.expectedStatusCode, tw.statusCode)
+		}
+	}
+}

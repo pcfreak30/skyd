@@ -346,13 +346,15 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 			dirResNotFoundCode = http.StatusNotFound
 		}
 		if dirResNotFoundCode != http.StatusNotFound && (dirResNotFoundCode < 200 || dirResNotFoundCode > 299) {
-			return nil, nil, errors.New("invalid 'dirresnotfoundcode' value, it needs to be between 200 and 299")
+			context := fmt.Sprintf("invalid 'dirresnotfoundcode' value, it needs to be between 200 and 299. dirresnotfoundcode value %d", dirResNotFoundCode)
+			return nil, nil, errors.AddContext(skymodules.ErrInvalidDirectoryResolution, context)
 		}
 	}
 
 	// verify that we're not trying to override 404 page and code in std mode
 	if dirResMode == skymodules.DirResModeStandard && (dirResNotFound != "" || dirResNotFoundCode != http.StatusNotFound) {
-		return nil, nil, errors.AddContext(skymodules.ErrInvalidDirectoryResolution, "cannot override 'not found' content or status in 'standard' mode")
+		context := fmt.Sprintf("cannot override 'not found' content or status code in 'standard' mode. dirresnotfound value: '%s', dirresnotfoundcode value %d", dirResNotFound, dirResNotFoundCode)
+		return nil, nil, errors.AddContext(skymodules.ErrInvalidDirectoryResolution, context)
 	}
 
 	// parse 'dryrun' query parameter
