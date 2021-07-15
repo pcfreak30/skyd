@@ -782,6 +782,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	b := bytes.NewReader(fastrand.Bytes(int(l)))
 
 	http.ServeContent(w, req, metadata.Filename, time.Time{}, b)
+
+	time.Sleep(time.Minute)
 }
 
 // skynetSkylinkPinHandlerPOST will pin a skylink to this Sia node, ensuring
