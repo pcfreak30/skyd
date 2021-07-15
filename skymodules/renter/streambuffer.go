@@ -392,8 +392,11 @@ func (s *stream) Skylink() skymodules.Skylink {
 func (s *stream) Read(b []byte) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	start := time.Now()
 	fmt.Println("start read")
-	defer fmt.Println("stop read")
+	defer func() {
+		fmt.Println("stop read", time.Since(start))
+	}()
 
 	// Create a context.
 	ctx := s.staticContext

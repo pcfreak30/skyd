@@ -94,6 +94,7 @@ func (rw *monetizedResponseWriter) WriteHeader(statusCode int) {
 
 // Write writes to the underlying monetized writer.
 func (rw *monetizedResponseWriter) Write(b []byte) (int, error) {
+	fmt.Println("write", len(b))
 	return rw.staticW.Write(b)
 }
 
@@ -145,6 +146,7 @@ func (rw *monetizedWriter) Write(b []byte) (int, error) {
 	// TODO: instead of directly writing to the ratelimited writer, write to a
 	// not ratelimited buffer on disk which forwards the data to the writer.
 	// Otherwise we are starving the renter.
+	fmt.Println("  write2", len(b))
 	n, err := rw.staticW.Write(b)
 	if err != nil {
 		return n, err
