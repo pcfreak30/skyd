@@ -784,6 +784,11 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	//http.ServeContent(w, req, metadata.Filename, time.Time{}, b)
 	b.WriteTo(w)
 
+	_, ok := w.(http.Flusher)
+	if !ok {
+		println("not flushed")
+	}
+
 	time.Sleep(time.Minute)
 }
 
