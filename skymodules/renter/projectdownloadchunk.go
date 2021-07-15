@@ -334,6 +334,7 @@ func (pdc *projectDownloadChunk) fail(err error) {
 	pdc.downloadResponseChan <- dr
 }
 
+// recover recovers the data from the downloaded pieces.
 func (pdc *projectDownloadChunk) recover() ([]byte, error) {
 	// Determine the amount of bytes the EC will need to skip from the recovered
 	// data when returning the data.

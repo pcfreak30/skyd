@@ -393,12 +393,15 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	// Download the chunk data.
 	var logicalChunkData [][]byte
 	var err error
-	if !chunk.stuckRepair {
+	if !chunk.stuckRepair || r.staticDeps.Disrupt("ForceLegacyRepairDownload") {
 		// If the chunk we are repairing is not a stuck chunk, try a
 		// regular download first.
 		logicalChunkData, err = r.managedDownloadLogicalChunkDataFromSiaFile(chunk, downloadLength)
 		if err != nil {
 			r.staticLog.Println("failed to download chunk data from siafile", err)
+		}
+		if r.staticDeps.Disrupt("FailLegacyRepairDownload") {
+			err = errors.New("FailLegacyRepairDownload")
 		}
 	}
 	// Check for shutdown between downloads.
@@ -409,7 +412,7 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	}
 	// If the regular download failed or the chunk is a stuck one, try a
 	// skynet download.
-	if err != nil || chunk.stuckRepair {
+	if (err != nil || chunk.stuckRepair) && !r.staticDeps.Disrupt("ForceLegacyRepairDownload") {
 		logicalChunkData, err = r.managedDownloadLogicalChunkDataFromSkynet(chunk, downloadLength)
 		if err != nil {
 			return errors.AddContext(err, "failed to download chunk data using skynet download")
