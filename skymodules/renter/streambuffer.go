@@ -465,6 +465,7 @@ func (s *stream) Read(b []byte) (int, error) {
 
 	// Send the call to prepare the next data section.
 	s.prepareOffset()
+	println("  read", n)
 	return n, nil
 }
 

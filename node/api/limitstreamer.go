@@ -62,6 +62,7 @@ func (ls *limitStreamer) Read(p []byte) (n int, err error) {
 
 	n, err = ls.stream.Read(p)
 	ls.off += uint64(n)
+	println("limit read", n, len(p))
 	return
 }
 
