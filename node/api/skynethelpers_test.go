@@ -481,6 +481,19 @@ func testParseUploadRequestParameters(t *testing.T) {
 		t.Fatal("Unexpected")
 	}
 
+	// verify that 'dirresmode' 'web' cannot be combined with 'defaultpath' or
+	// 'disabledefaultpath'
+	req = buildRequest(url.Values{"dirresmode": []string{skymodules.DirResModeWeb}, "defaultpath": []string{"/index.html"}}, http.Header{})
+	_, params, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
+	if err == nil || !errors.Contains(err, skymodules.ErrInvalidDirectoryResolution) {
+		t.Fatalf("Expected error '%s', got %s", skymodules.ErrInvalidDirectoryResolution, err)
+	}
+	req = buildRequest(url.Values{"dirresmode": []string{skymodules.DirResModeWeb}, "disabledefaultpath": []string{"true"}}, http.Header{})
+	_, params, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
+	if err == nil || !errors.Contains(err, skymodules.ErrInvalidDirectoryResolution) {
+		t.Fatalf("Expected error '%s', got %s", skymodules.ErrInvalidDirectoryResolution, err)
+	}
+
 	// verify 'dryrun'
 	req = buildRequest(url.Values{"dryrun": trueStr}, http.Header{})
 	_, params = parseRequest(req, defaultParams)

@@ -908,6 +908,10 @@ func skynetUploadDirectory(sourcePath, destSiaPath string) {
 		fmt.Println("Illegal combination of parameters: --dirresnotfound and --dirresnotfoundcode require --dirresmode 'web'.")
 		die()
 	}
+	if skynetUploadDirResMode == skymodules.DirResModeWeb && (skynetUploadDisableDefaultPath || skynetUploadDefaultPath != "") {
+		fmt.Println("Illegal combination of parameters: --dirresmode 'web' is not compatible with --defaultpath and --disabledefaultpath.")
+		die()
+	}
 	pr, pw := io.Pipe()
 	defer pr.Close()
 	writer := multipart.NewWriter(pw)

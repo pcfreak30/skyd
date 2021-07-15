@@ -28,9 +28,9 @@ var (
 	// ErrInvalidDirectoryResolution is returned when the provided directory
 	// resolution mode is invalid.
 	ErrInvalidDirectoryResolution = errors.New("invalid directory resolution")
-	// ErrInvalidDirectoryResolutionMode is returned when the provided directory
-	// resolution settings are incompatible with the selected mode.
-	ErrInvalidDirectoryResolutionMode = errors.AddContext(ErrInvalidDirectoryResolution, "dirresnotfound and dirresnotfoundcode are only compatible with dirresmode 'web'")
+	// ErrInvalidDirectoryResolutionSettings is returned when the provided
+	// directory resolution settings are incompatible with the selected mode.
+	ErrInvalidDirectoryResolutionSettings = errors.AddContext(ErrInvalidDirectoryResolution, "dirresnotfound and dirresnotfoundcode are only compatible with dirresmode 'web'")
 )
 
 // AddMultipartFile is a helper function to add a file to multipart form-data.
@@ -443,7 +443,7 @@ func validateDefaultPath(defaultPath string, subfiles SkyfileSubfiles) (string, 
 // settings is valid and usable.
 func validateDirResMode(mode, notFound string, notFoundCode int, subfiles SkyfileSubfiles) error {
 	if mode != DirResModeWeb && (notFound != "" || notFoundCode != http.StatusNotFound) {
-		return ErrInvalidDirectoryResolutionMode
+		return ErrInvalidDirectoryResolutionSettings
 	}
 	if mode == DirResModeWeb && notFound != "" {
 		// check if we have a subfile at the given 'not found' path.

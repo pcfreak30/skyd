@@ -818,14 +818,14 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 	// Overwrite the response writer to return a custom status code instead of
 	// 200 OK.
-	drw := w
+	csw := w
 	if serveCustomStatusCode {
-		drw = newCustomStatusResponseWriter(w, notFoundStatusCode)
+		csw = newCustomStatusResponseWriter(w, notFoundStatusCode)
 	}
 
 	// Monetize the response if necessary by wrapping the response writer in a
 	// monetized one.
-	mrw := newMonetizedResponseWriter(drw, metadata, api.wallet, settings.CurrencyConversionRates, settings.MonetizationBase)
+	mrw := newMonetizedResponseWriter(csw, metadata, api.wallet, settings.CurrencyConversionRates, settings.MonetizationBase)
 
 	http.ServeContent(mrw, req, metadata.Filename, time.Time{}, streamer)
 }
