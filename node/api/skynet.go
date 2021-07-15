@@ -777,21 +777,9 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// monetized one.
 	mrw := newMonetizedResponseWriter(w, metadata, api.wallet, settings.CurrencyConversionRates, settings.MonetizationBase)
 
-	http.ServeContent(mrw, req, metadata.Filename, time.Time{}, streamer)
+	//	http.ServeContent(mrw, req, metadata.Filename, time.Time{}, streamer)
+	io.Copy(mrw, streamer)
 
-	go func() {
-		for {
-			if f, ok := w.(http.Flusher); ok {
-				println("flush")
-				f.Flush()
-			}
-			select {
-			case <-req.Context().Done():
-				return
-			default:
-			}
-		}
-	}()
 }
 
 // skynetSkylinkPinHandlerPOST will pin a skylink to this Sia node, ensuring
