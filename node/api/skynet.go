@@ -781,6 +781,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	l, _ := streamer.Seek(0, io.SeekEnd)
 	b := bytes.NewReader(fastrand.Bytes(int(l)))
 
+	w.Header().Set("Transfer-Encoding", "chunked")
 	http.ServeContent(w, req, metadata.Filename, time.Time{}, b)
 
 	_, ok := w.(http.Flusher)
