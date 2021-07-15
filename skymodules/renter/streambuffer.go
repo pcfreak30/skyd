@@ -13,6 +13,7 @@ package renter
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -391,6 +392,8 @@ func (s *stream) Skylink() skymodules.Skylink {
 func (s *stream) Read(b []byte) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	fmt.Println("start read")
+	defer fmt.Println("stop read")
 
 	// Create a context.
 	ctx := s.staticContext
@@ -612,6 +615,7 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 	} else {
 		fetchSize = dataSectionSize
 	}
+	fmt.Println("newDataSection", fetchSize, dataSize, dataSectionSize)
 
 	// Create the data section, allocating the right number of bytes for the
 	// ReadAt call to fill out.
