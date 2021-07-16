@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -222,9 +223,22 @@ func (api *API) buildHTTPRoutes() {
 
 	// Apply UserAgent middleware and return the Router
 	api.routerMu.Lock()
-	api.router = RequireUserAgent(router, requiredUserAgent)
+	api.router = TimeoutHandler(RequireUserAgent(router, requiredUserAgent), httpServerTimeout)
 	api.routerMu.Unlock()
 	return
+}
+
+// TimeoutHandler is a middleware that enforces a specific timeout on the route
+// by closing the context after the httpServerTimeout.
+func TimeoutHandler(h http.Handler, timeout time.Duration) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		// Create a new context with timeout.
+		ctx, cancel := context.WithTimeout(req.Context(), httpServerTimeout)
+		defer cancel()
+
+		// Add the new context to the request and call the handler.
+		h.ServeHTTP(w, req.WithContext(ctx))
+	})
 }
 
 // RequireUserAgent is middleware that requires all requests to set a
