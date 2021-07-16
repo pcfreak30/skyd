@@ -356,9 +356,9 @@ func (pdc *projectDownloadChunk) recover() ([]byte, error) {
 	return buf.Bytes(), err
 }
 
-// finalize will take the completed pieces of the download, decode them,
-// and then send the result down the response channel. If there is an error
-// during decode, 'pdc.fail()' will be called.
+// finalize will take the completed pieces of the download, recover them using
+// the erasure coder, and then send the result down the response channel. If
+// there is an error during decode, 'pdc.fail()' will be called.
 func (pdc *projectDownloadChunk) finalize() {
 	// Log info and finish span.
 	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
