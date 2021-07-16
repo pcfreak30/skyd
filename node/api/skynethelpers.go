@@ -125,6 +125,15 @@ func newMonetizedWriter(w io.Writer, md skymodules.SkyfileMetadata, wallet modul
 	}
 }
 
+// ReadFrom implements the io.ReaderFrom interface for the
+// monetizedResponseWriter. This allows us to overwrite the default fetch size
+// of 32kib of http.ServeContent with something more appropriate for the way we
+// fetch data from Sia.
+func (rw *monetizedResponseWriter) ReadFrom(r io.Reader) (int64, error) {
+	buf := make([]byte, renter.SkylinkDataSourceRequestSize)
+	return io.CopyBuffer(rw.staticW, r, buf)
+}
+
 // Write wraps the inner Write and adds monetization.
 func (rw *monetizedWriter) Write(b []byte) (int, error) {
 	// Handle legacy uploads with length 0 by passing it through to the inner

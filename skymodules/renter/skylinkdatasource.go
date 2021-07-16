@@ -15,9 +15,9 @@ import (
 )
 
 var (
-	// skylinkDataSourceRequestSize is the size that is suggested by the data
+	// SkylinkDataSourceRequestSize is the size that is suggested by the data
 	// source to be used when reading data from it.
-	skylinkDataSourceRequestSize = build.Select(build.Var{
+	SkylinkDataSourceRequestSize = build.Select(build.Var{
 		Dev:      uint64(1 << 18), // 256 KiB
 		Standard: uint64(1 << 20), // 1 MiB
 		Testing:  uint64(1 << 9),  // 512 B
@@ -86,7 +86,7 @@ func (sds *skylinkDataSource) RawMetadata() []byte {
 
 // RequestSize implements streamBufferDataSource
 func (sds *skylinkDataSource) RequestSize() uint64 {
-	return skylinkDataSourceRequestSize
+	return SkylinkDataSourceRequestSize
 }
 
 // Skylink implements streamBufferDataSource
