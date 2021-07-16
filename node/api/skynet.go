@@ -148,6 +148,7 @@ type (
 		MaxStoragePrice types.Currency `json:"maxstorageprice"` // Hastings per byte per block
 		NumCritAlerts   int            `json:"numcritalerts"`
 		NumFiles        uint64         `json:"numfiles"`
+		PortalMode      bool           `json:"portalmode"`
 		Repair          uint64         `json:"repair"`  // bytes
 		Storage         uint64         `json:"storage"` // bytes
 		StuckChunks     uint64         `json:"stuckchunks"`
@@ -1189,6 +1190,7 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 		ContractStorage: totalStorage,
 		NumCritAlerts:   numCritAlerts,
 		NumFiles:        rootDir.AggregateSkynetFiles,
+		PortalMode:      allowance.PortalMode(),
 		MaxStoragePrice: allowance.MaxStoragePrice,
 		Repair:          rootDir.AggregateRepairSize,
 		Storage:         rootDir.AggregateSkynetSize,
