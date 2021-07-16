@@ -779,10 +779,12 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	_ = newMonetizedResponseWriter(w, metadata, api.wallet, settings.CurrencyConversionRates, settings.MonetizationBase)
 
 	l, _ := streamer.Seek(0, io.SeekEnd)
-	b := bytes.NewReader(fastrand.Bytes(int(l)))
+	b := fastrand.Bytes(int(l))
 
 	//http.ServeContent(w, req, metadata.Filename, time.Time{}, b)
-	b.WriteTo(w)
+	w.Write(b)
+
+	fmt.Printf("Type %T\n", w)
 
 	_, ok := w.(http.Flusher)
 	if !ok {
