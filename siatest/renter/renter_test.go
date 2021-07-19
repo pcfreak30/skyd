@@ -100,9 +100,9 @@ func TestRenterTwo(t *testing.T) {
 	}
 }
 
-// TestRenterRepair executes a number of subtests using the same TestGroup to
-// save time on initialization. These tests are also executed without a renter
-// and are required to remove any renters afterwards.
+// TestRenterRemoteRepair executes a number of subtests using the same TestGroup
+// to save time on initialization. These tests are also executed without a
+// renter and are required to remove any renters afterwards.
 func TestRenterRemoteRepair(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -119,9 +119,9 @@ func TestRenterRemoteRepair(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
-		{Name: "TestRemoteRepairBasic", Test: testRemoteRepairBasic},
-		{Name: "TestRemoteRepairForceLegacyDownload", Test: testRemoteRepairForceLegacyDownload},
-		{Name: "TestRemoteRepairFailLegacyDownload", Test: testRemoteRepairFailLegacyDownload},
+		{Name: "Basic", Test: testRemoteRepairBasic},
+		{Name: "ForceLegacyDownload", Test: testRemoteRepairForceLegacyDownload},
+		{Name: "FailLegacyDownload", Test: testRemoteRepairFailLegacyDownload},
 	}
 
 	// Run tests

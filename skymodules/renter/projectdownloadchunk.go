@@ -334,8 +334,8 @@ func (pdc *projectDownloadChunk) fail(err error) {
 	pdc.downloadResponseChan <- dr
 }
 
-// recover recovers the data from the downloaded pieces.
-func (pdc *projectDownloadChunk) recover() ([]byte, error) {
+// recoverData recovers the data from the downloaded pieces.
+func (pdc *projectDownloadChunk) recoverData() ([]byte, error) {
 	// Determine the amount of bytes the EC will need to skip from the recovered
 	// data when returning the data.
 	skipLength := pdc.offsetInChunk % (crypto.SegmentSize * uint64(pdc.workerSet.staticErasureCoder.MinPieces()))
@@ -370,7 +370,7 @@ func (pdc *projectDownloadChunk) finalize() {
 	var data []byte
 	var err error
 	if !pdc.staticSkipRecovery {
-		data, err = pdc.recover()
+		data, err = pdc.recoverData()
 	}
 
 	// Return the data to the caller.

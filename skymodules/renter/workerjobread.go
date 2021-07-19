@@ -46,6 +46,8 @@ type (
 		*jobGenericQueue
 	}
 
+	// jobReadStats contains statistics about read jobs. This object is
+	// thread safe and can be shared between multiple queues.
 	jobReadStats struct {
 		// These float64s are converted time.Duration values. They are float64
 		// to get better precision on the exponential decay which gets applied

@@ -596,7 +596,9 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 // set of sector roots associated with the pieces. The hosts that correspond to
 // the roots will be determined by scanning the network with a large number of
 // HasSector queries. Once opened, the projectChunkWorkerSet can be used to
-// initiate many downloads.
+// initiate many downloads. If it is already known what pieces a worker is
+// expected to have, it can be provided as a seedWorker. A seedWorker is
+// considered to be resolved right away.
 func (r *Renter) newPCWSByRoots(ctx context.Context, roots []crypto.Hash, ec skymodules.ErasureCoder, masterKey crypto.CipherKey, chunkIndex uint64, seedWorkers map[string][]uint64) (*projectChunkWorkerSet, error) {
 	// Check that the number of roots provided is consistent with the erasure
 	// coder provided.

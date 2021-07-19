@@ -127,6 +127,8 @@ type (
 	}
 )
 
+// callReadQueue returns the appropriate read queue depending on the priority of
+// the download.
 func (w *worker) callReadQueue(lowPrio bool) *jobReadQueue {
 	if lowPrio {
 		return w.staticJobLowPrioReadQueue
@@ -252,7 +254,10 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		wakeChan:          make(chan struct{}, 1),
 		staticRenter:      r,
 	}
+	// Share the read stats between the read queues. That way a repair
+	// download will contribute to user download estimations and vice versa.
 	jrs := &jobReadStats{}
+
 	w.newPriceTable()
 	w.newMaintenanceState()
 	w.initJobHasSectorQueue()
