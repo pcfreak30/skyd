@@ -95,7 +95,7 @@ func testSkylinkDataSourceSmallFile(t *testing.T) {
 	}) {
 		t.Fatal("unexpected")
 	}
-	if sds.RequestSize() != skylinkDataSourceRequestSize {
+	if sds.RequestSize() != SkylinkDataSourceRequestSize {
 		t.Fatal("unexpected")
 	}
 
@@ -198,7 +198,7 @@ func testSkylinkDataSourceLargeFile(t *testing.T) {
 	}) {
 		t.Fatal("unexpected")
 	}
-	if sds.RequestSize() != skylinkDataSourceRequestSize {
+	if sds.RequestSize() != SkylinkDataSourceRequestSize {
 		t.Fatal("unexpected")
 	}
 
