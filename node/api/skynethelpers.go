@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -683,5 +684,18 @@ func attachRegistryEntryProof(w http.ResponseWriter, srvs []skymodules.RegistryE
 		return err
 	}
 	w.Header().Set("Proof", string(b))
+
+	w.Header().Set("Proof-Base64", base64.RawURLEncoding.EncodeToString(b))
+
+	b, _ = json.Marshal(struct {
+		Proof []RegistryHandlerGET `json:"proof"`
+	}{
+		Proof: proofChain,
+	})
+	w.Header().Set("Proof-Object", string(b))
+
+	b, _ = json.Marshal([]int{1, 2, 3})
+	w.Header().Set("Proof-Numbers", string(b))
+
 	return nil
 }
