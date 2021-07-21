@@ -5247,7 +5247,7 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// It should contain a valid proof.
 	var proof []api.RegistryHandlerGET
-	err = json.Unmarshal([]byte(h.Get("Proof")), &proof)
+	err = json.Unmarshal([]byte(h.Get("Skynet-Proof")), &proof)
 	if err != nil {
 		t.Fatal(err)
 	}
