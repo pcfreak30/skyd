@@ -547,7 +547,7 @@ func TestAttachRegistryEntryProof(t *testing.T) {
 	attachRegistryEntryProof(w, entries)
 
 	// Get the attached proof.
-	proof := header.Get("Proof")
+	proof := header.Get("Skynet-Proof")
 
 	// Should match the expected proof.
 	if proof != string(expectedProof) {

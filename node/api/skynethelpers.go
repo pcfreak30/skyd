@@ -682,6 +682,6 @@ func attachRegistryEntryProof(w http.ResponseWriter, srvs []skymodules.RegistryE
 	if err != nil {
 		return err
 	}
-	w.Header().Set("Proof", string(b))
+	w.Header().Set("Skynet-Proof", string(b))
 	return nil
 }
