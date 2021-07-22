@@ -915,6 +915,18 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 		t.Error(err)
 	}
 
+	// Enable portal mode.
+	rg, err := r.RenterGet()
+	if err != nil {
+		t.Error(err)
+	}
+	a := rg.Settings.Allowance
+	a.PaymentContractInitialFunding = types.SiacoinPrecision
+	err = r.RenterPostAllowance(a)
+	if err != nil {
+		t.Error(err)
+	}
+
 	// Sleep for a few seconds to give all of the health and repair loops time
 	// to get settled.
 	time.Sleep(time.Second * 3)
@@ -924,6 +936,28 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Check portal mode.
+	if !stats.PortalMode {
+		t.Fatal("renter should be in portal mode")
+	}
+
+	// Disable portal mode.
+	a.PaymentContractInitialFunding = types.ZeroCurrency
+	err = r.RenterPostAllowance(a)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Get the stats again.
+	stats, err = r.SkynetStatsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check portal mode.
+	if stats.PortalMode {
+		t.Fatal("renter should not be in portal mode")
+	}
+
 	// Check that there are files in the filesystem.
 	if stats.NumFiles == 0 {
 		t.Fatal("test prereq requires files to exist")
@@ -5259,7 +5293,7 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// It should contain a valid proof.
 	var proof []api.RegistryHandlerGET
-	err = json.Unmarshal([]byte(h.Get("Proof")), &proof)
+	err = json.Unmarshal([]byte(h.Get("Skynet-Proof")), &proof)
 	if err != nil {
 		t.Fatal(err)
 	}

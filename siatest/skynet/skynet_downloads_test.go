@@ -534,6 +534,39 @@ func testDownloadContentDisposition(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// upload a multi-file skyfile
+	files := []siatest.TestFile{
+		{Name: "index.html", Data: []byte("index.html_contents")},
+		{Name: "about.html", Data: []byte("about.html_contents")},
+	}
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking("DirectoryBasic", files, "", false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// no params but default path
+	_, header, err = r.SkynetSkylinkHead(skylink)
+	expected := "inline; filename=\"index.html\""
+	err = errors.Compose(err, verifyCDHeader(header, expected))
+	if err != nil {
+		t.Fatal(errors.AddContext(err, "noparams w/default path"))
+	}
+
+	// no params with path equal to default path
+	_, header, err = r.SkynetSkylinkHead(skylink + "/index.html")
+	err = errors.Compose(err, verifyCDHeader(header, expected))
+	if err != nil {
+		t.Fatal(errors.AddContext(err, "noparams w/path"))
+	}
+
+	// no params with path diff from default path
+	expected = "inline; filename=\"about.html\""
+	_, header, err = r.SkynetSkylinkHead(skylink + "/about.html")
+	err = errors.Compose(err, verifyCDHeader(header, expected))
+	if err != nil {
+		t.Fatal(errors.AddContext(err, "noparams w/path"))
+	}
 }
 
 // testETag verifies the functionality of the ETag response header
@@ -545,10 +578,12 @@ func testETag(t *testing.T, tg *siatest.TestGroup) {
 		return a == b && a != "" && a[0] == '"'
 	}
 
-	// upload a single file
-	file := make([]byte, 100)
-	fastrand.Read(file)
-	skylink, _, _, err := r.UploadNewSkyfileWithDataBlocking("testNotModified", file, false)
+	// upload a directory with an index.html file
+	files := []siatest.TestFile{
+		{Name: "index.html", Data: []byte("index.html_contents")},
+		{Name: "about.html", Data: []byte("about.html_contents")},
+	}
+	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(t.Name(), files, "", false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -571,21 +606,18 @@ func testETag(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Unexpected status code")
 	}
 
+	// verify the index.html file was returned (default path)
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	if !bytes.Equal([]byte("index.html_contents"), data) {
+		t.Fatal("Unexpected response data")
+	}
+
 	// verify ETag header is set
 	eTag := resp.Header.Get("ETag")
 	if eTag == "" {
-		t.Fatal("Unexpected ETag response header")
-	}
-
-	// verify the ETag header is different for a HEAD requests
-	status, header, err := r.SkynetSkylinkHead(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if status != http.StatusOK {
-		t.Fatal("Unexpected status code")
-	}
-	if header.Get("ETag") == eTag {
 		t.Fatal("Unexpected ETag response header")
 	}
 
@@ -604,12 +636,28 @@ func testETag(t *testing.T, tg *siatest.TestGroup) {
 	if resp.StatusCode != http.StatusNotModified {
 		t.Fatal("Unexpected status code", resp.StatusCode)
 	}
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal("Unexpected error", err)
 	}
 	if len(data) != 0 {
 		t.Fatal("Unexpected response data")
+	}
+
+	// verify status code is 304 and no data was returned if we try and download
+	// the 'index.html' file directly, which it should have defaulted to and
+	// should be the path included in the ETag
+	resp, err = uc.SkynetSkylinkGetWithETag(skylink+"/index.html", eTag)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	if resp.StatusCode != http.StatusNotModified {
+		t.Fatal("Unexpected status code", resp.StatusCode)
 	}
 
 	// verify we miss the cache if the path is altered
@@ -660,7 +708,7 @@ func testETag(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Unexpected error", err)
 	}
-	if !bytes.Equal(file, data) {
+	if !bytes.Equal([]byte("index.html_contents"), data) {
 		t.Fatal("Unexpected response data")
 	}
 
