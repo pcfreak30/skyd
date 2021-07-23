@@ -214,7 +214,10 @@ func (c *Client) getRawPartialResponse(resource string, from, to uint64) ([]byte
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to construct GET request")
 	}
-	req.Header.Add("Range", fmt.Sprintf("bytes=%d-%d", from, to-1))
+	if to > 0 && from != to {
+		to--
+	}
+	req.Header.Add("Range", fmt.Sprintf("bytes=%d-%d", from, to))
 
 	httpClient := http.Client{CheckRedirect: c.CheckRedirect}
 	// nolint:bodyclose // body is closed by drainAndClose

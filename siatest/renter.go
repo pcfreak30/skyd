@@ -283,14 +283,23 @@ func (tn *TestNode) StreamPartial(rf *RemoteFile, lf *LocalFile, from, to uint64
 	if err != nil {
 		return
 	}
-	if uint64(len(data)) != to-from {
+	expected := to - from
+	if expected == 0 {
+		expected++
+	}
+	if uint64(len(data)) != expected {
 		err = fmt.Errorf("length of downloaded data should be %v but was %v",
-			to-from+1, len(data))
+			expected, len(data))
 		return
 	}
 	if lf != nil {
 		var checksum crypto.Hash
-		checksum, err = lf.partialChecksum(from, to)
+		// Check for single byte request where to == from
+		end := to
+		if end == from {
+			end++
+		}
+		checksum, err = lf.partialChecksum(from, end)
 		if err != nil {
 			err = errors.AddContext(err, "failed to get partial checksum")
 			return

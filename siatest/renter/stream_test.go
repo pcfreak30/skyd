@@ -214,6 +214,24 @@ func testStreamLargeFile(t *testing.T, tg *siatest.TestGroup) {
 			t.Fatal(err)
 		}
 	}
+
+	// Verify some specific cases
+	rand := uint64(fastrand.Intn(fileSize))
+	var tests = []struct {
+		from uint64
+		to   uint64
+	}{
+		{0, 0},       // Requesting the first byte of a file
+		{0, 1},       // Request the first byte of a file
+		{rand, rand}, // Requesting a random single byte of the file
+	}
+	for _, test := range tests {
+		_, err = renter.StreamPartial(remoteFile, localFile, test.from, test.to)
+		if err != nil {
+			t.Fatal("Failed Test Case:", test)
+			t.Fatal(err)
+		}
+	}
 }
 
 // testStreamRepair tests if repairing a file using the streaming endpoint

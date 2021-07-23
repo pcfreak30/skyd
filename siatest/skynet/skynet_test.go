@@ -1638,7 +1638,7 @@ func skynetDownloadRangeTest(t *testing.T, tg *siatest.TestGroup, skykeyName str
 	}
 	data := fastrand.Bytes(int(size))
 
-	// upload a large encrypted skyfile to ensure we have a fanout
+	// upload a skyfile
 	_, _, sshp, err := r.UploadNewEncryptedSkyfileBlocking(name, data, skykeyName, false)
 	if err != nil {
 		t.Fatal(err)
@@ -1677,6 +1677,30 @@ func skynetDownloadRangeTest(t *testing.T, tg *siatest.TestGroup, skykeyName str
 		t.Log("expected:", data[offset:offset+length], len(data[offset:offset+length]))
 		t.Log("actual:", result, len(result))
 		t.Fatal("unexpected")
+	}
+
+	// Test some specific cases
+	// Verify some specific cases
+	rand := fastrand.Uint64n(size)
+	var tests = []struct {
+		from uint64
+		to   uint64
+	}{
+		{0, 0},       // Requesting the first byte of a file
+		{0, 1},       // Request the first byte of a file
+		{rand, rand}, // Requesting a random single byte of the file
+	}
+	for _, test := range tests {
+		_, err = r.SkynetSkylinkRange(sshp.Skylink, test.from, test.to)
+		if err != nil {
+			t.Log("Failed Test Case:", test)
+			t.Fatal(err)
+		}
+		_, err = r.SkynetSkylinkRangeParams(sshp.Skylink, test.from, test.to)
+		if err != nil {
+			t.Log("Failed Test Case:", test)
+			t.Fatal(err)
+		}
 	}
 }
 
