@@ -352,7 +352,6 @@ func parseDownloadRequestParameters(req *http.Request) (*skyfileDownloadParams, 
 		}
 
 		// Set the Range field in the Header
-		// TODO test this here and in the client Header requests for the renter testing. Confirm underflow error
 		if end > 0 && start != end {
 			end--
 		}

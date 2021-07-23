@@ -228,7 +228,7 @@ func testStreamLargeFile(t *testing.T, tg *siatest.TestGroup) {
 	for _, test := range tests {
 		_, err = renter.StreamPartial(remoteFile, localFile, test.from, test.to)
 		if err != nil {
-			t.Fatal("Failed Test Case:", test)
+			t.Log("Failed Test Case:", test)
 			t.Fatal(err)
 		}
 	}
