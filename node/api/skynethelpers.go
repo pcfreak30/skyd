@@ -29,6 +29,20 @@ import (
 	"go.sia.tech/siad/types"
 )
 
+var (
+	// errIncompleteRangeRequest is the error returned when the range
+	// request is incomplete.
+	errIncompleteRangeRequest = errors.New("the 'start' and 'end' params must be both blank or provided")
+
+	// errInvalidRangeParams is the error returned when the range params are
+	// invalid.
+	errInvalidRangeParams = errors.New("'start' param should be less than or equal to 'end' param")
+
+	// errRangeSetTwice is the error returned when the range is set twice,
+	// once in the Header and once in the query params
+	errRangeSetTwice = errors.New("range request should use either the Header or the query params but not both")
+)
+
 type (
 	// skyfileUploadParams is a helper struct that contains all of the query
 	// string parameters on download
@@ -307,6 +321,44 @@ func parseDownloadRequestParameters(req *http.Request) (*skyfileDownloadParams, 
 		if err != nil {
 			return nil, fmt.Errorf("unable to parse 'pricePerMS' parameter: %v", err)
 		}
+	}
+
+	// Parse a range request from the query form
+	startStr := queryForm.Get("start")
+	endStr := queryForm.Get("end")
+	var start, end uint64
+	rangeParam := startStr != "" && endStr != ""
+	if rangeParam {
+		// Verify we don't have a range request in both the Header and the params
+		headerRange := req.Header.Get("Range")
+		if headerRange != "" {
+			return nil, errRangeSetTwice
+		}
+		// Parse start param
+		start, err = strconv.ParseUint(startStr, 10, 64)
+		if err != nil {
+			return nil, errors.AddContext(err, "unable to parse 'start' parameter")
+		}
+		// Parse end param
+		end, err = strconv.ParseUint(endStr, 10, 64)
+		if err != nil {
+			return nil, errors.AddContext(err, "unable to parse 'end' parameter")
+		}
+		// Check that start is not greater than end. It is ok for end to
+		// equal start as that would indicate a request for a single
+		// byte.
+		if start > end {
+			return nil, errInvalidRangeParams
+		}
+
+		// Set the Range field in the Header
+		// TODO test this here and in the client Header requests for the renter testing. Confirm underflow error
+		if end > 0 {
+			end--
+		}
+		req.Header.Add("Range", fmt.Sprintf("bytes=%d-%d", start, end))
+	} else if startStr != "" || endStr != "" {
+		return nil, errIncompleteRangeRequest
 	}
 
 	return &skyfileDownloadParams{

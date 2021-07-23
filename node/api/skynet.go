@@ -491,40 +491,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	path := params.path
 	servedPath := path
 
-	// Parse a range request from the query form
-	startStr := queryForm.Get("start")
-	endStr := queryForm.Get("end")
-	var start, end uint64
-	rangeParam := startStr != "" && endStr != ""
-	if rangeParam {
-		// Verify we don't have a range request in both the Header and the params
-		headerRange := req.Header.Get("Range")
-		if headerRange != "" {
-			WriteError(w, Error{"range request should use either the Header or the query params but not both"}, http.StatusBadRequest)
-			return
-		}
-		// Parse start param
-		start, err = strconv.ParseUint(startStr, 10, 64)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'start' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		// Parse end param
-		end, err = strconv.ParseUint(endStr, 10, 64)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'end' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		// Check that start is not greater than end
-		if start > end {
-			WriteError(w, Error{"'start' param should be less than or equal to 'end' param"}, http.StatusBadRequest)
-			return
-		}
-	} else if startStr != "" || endStr != "" {
-		WriteError(w, Error{"the 'start' and 'end' params must be both blank or provided"}, http.StatusBadRequest)
-		return
-	}
-
 	// Get the renter's settings.
 	settings, err := api.renter.Settings()
 	if err != nil {
@@ -666,16 +632,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		isSubfile = isFile
 		metadata = metadataForPath
 		servedPath = path
-	}
-
-	// Handle a range request passed in through the query params instead of
-	// the Header
-	if rangeParam {
-		streamer, err = NewLimitStreamer(streamer, streamer.Metadata(), streamer.RawMetadata(), streamer.Skylink(), streamer.Layout(), start, end-start)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
-			return
-		}
 	}
 
 	// If we are serving more than one file, and the format is not
