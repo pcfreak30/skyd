@@ -580,13 +580,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			}
 			w.Header().Set("Location", location)
 			w.WriteHeader(http.StatusTemporaryRedirect)
-			println("here", defaultPath)
-			return
-		}
-		// Only serve the default path if it points to an HTML file (this is a
-		// skapp) or it's the only file in the skyfile.
-		if !isSkapp && len(metadata.Subfiles) > 1 {
-			WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s), please specify a format", defaultPath)}, http.StatusBadRequest)
 			return
 		}
 
@@ -596,7 +589,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			return
 		}
 		if !isFile {
-			println("not a file")
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, please specify a specific path or a format in order to download the content", defaultPath)}, http.StatusNotFound)
 			return
 		}

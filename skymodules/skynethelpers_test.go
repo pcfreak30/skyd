@@ -83,6 +83,13 @@ func testValidateDefaultPath(t *testing.T) {
 			err:        "no such path",
 		},
 		{
+			name:       "non html default path",
+			subfiles:   subfiles("a.txt"),
+			dpQuery:    "a.txt",
+			dpExpected: "/a.txt",
+			err:        "",
+		},
+		{
 			name:       "HTML file with extension 'htm' as default path",
 			subfiles:   subfiles("a.htm"),
 			dpQuery:    "a.htm",
@@ -108,7 +115,7 @@ func testValidateDefaultPath(t *testing.T) {
 				t.Fatal("Unexpected error", err)
 			}
 			if dp != subtest.dpExpected {
-				t.Fatal("Unexpected default path")
+				t.Fatal("Unexpected default path", dp, subtest.dpExpected)
 			}
 		})
 	}
