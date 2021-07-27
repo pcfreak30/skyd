@@ -285,6 +285,7 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 	// Try to find an exact match
 	var isFile bool
 	for _, sf := range sm.Subfiles {
+		println("filename", sf.Filename, path)
 		if EnsurePrefix(sf.Filename, "/") == path {
 			isFile = true
 			metadata.Subfiles[sf.Filename] = sf
