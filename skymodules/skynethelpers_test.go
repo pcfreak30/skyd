@@ -83,13 +83,6 @@ func testValidateDefaultPath(t *testing.T) {
 			err:        "no such path",
 		},
 		{
-			name:       "non html default path",
-			subfiles:   subfiles("a.txt"),
-			dpQuery:    "a.txt",
-			dpExpected: "",
-			err:        "the default path must point to an HTML file",
-		},
-		{
 			name:       "HTML file with extension 'htm' as default path",
 			subfiles:   subfiles("a.htm"),
 			dpQuery:    "a.htm",
