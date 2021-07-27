@@ -38,9 +38,8 @@ func (c *Contractor) managedCheckHostScore(contract skymodules.RenterContract, s
 
 	// Contract has no utility if the score is poor. Cannot be marked as bad if
 	// the contract is a payment contract.
-	deadScore := sb.Score.Cmp(types.NewCurrency64(1)) <= 0
 	badScore := !minScoreGFR.IsZero() && sb.Score.Cmp(minScoreGFR) < 0
-	if deadScore || (badScore && !paymentContract) {
+	if badScore && !paymentContract {
 		// Log if the utility has changed.
 		if u.GoodForUpload || u.GoodForRenew {
 			c.staticLog.Printf("Marking contract as having no utility because of host score: %v", contract.ID)
@@ -60,12 +59,6 @@ func (c *Contractor) managedCheckHostScore(contract skymodules.RenterContract, s
 		u.GoodForUpload = false
 		u.GoodForRenew = false
 
-		// Only force utility updates if the score is the min possible score.
-		// Otherwise defer update decision for low-score contracts to the
-		// churnLimiter.
-		if deadScore {
-			return u, necessaryUtilityUpdate
-		}
 		c.staticLog.Println("Adding contract utility update to churnLimiter queue")
 		return u, suggestedUtilityUpdate
 	}
@@ -328,9 +321,13 @@ func sufficientFundsCheck(contract skymodules.RenterContract, host skymodules.Ho
 // the contract state.
 func upForRenewalCheck(contract skymodules.RenterContract, renewWindow, blockHeight types.BlockHeight, log *persist.Logger) (skymodules.ContractUtility, bool) {
 	u := contract.Utility
-	// Contract should not be used for uploading if the time has come to
-	// renew the contract.
-	if blockHeight+renewWindow >= contract.EndHeight {
+	// Contract should not be used for uploading if it's halfway through the
+	// renew window. That way we don't lose all upload contracts as soon as
+	// we hit the renew window and give them some time to be renewed while
+	// still uploading. If uploading blocks renews for half a window,
+	// uploading will be prevented and the contract will have the remaining
+	// window to update.
+	if blockHeight+renewWindow/2 >= contract.EndHeight {
 		if u.GoodForUpload {
 			log.Println("Marking contract as not good for upload because it is time to renew the contract", contract.ID)
 		}
