@@ -242,8 +242,14 @@ func (c *Contractor) managedMarkContractUtility(contract skymodules.RenterContra
 		return skymodules.HostScoreBreakdown{}, skymodules.ContractUtility{}, false, nil
 	}
 
+	sb, err := c.staticHDB.ScoreBreakdown(host)
+	if err != nil {
+		c.staticLog.Println("Unable to get ScoreBreakdown for", host.PublicKey.String(), "got err:", err)
+		return skymodules.HostScoreBreakdown{}, skymodules.ContractUtility{}, false, nil // it may just be this host that has an issue.
+	}
+
 	// Do critical contract checks and update the utility if any checks fail.
-	u, needsUpdate = c.managedCriticalUtilityChecks(sc, host)
+	u, needsUpdate = c.managedCriticalUtilityChecks(sc, host, sb)
 	if needsUpdate {
 		err := c.managedUpdateContractUtility(sc, u)
 		if err != nil {
@@ -251,12 +257,6 @@ func (c *Contractor) managedMarkContractUtility(contract skymodules.RenterContra
 			return skymodules.HostScoreBreakdown{}, skymodules.ContractUtility{}, false, errors.AddContext(err, "unable to update utility after criticalUtilityChecks")
 		}
 		return skymodules.HostScoreBreakdown{}, skymodules.ContractUtility{}, false, nil
-	}
-
-	sb, err := c.staticHDB.ScoreBreakdown(host)
-	if err != nil {
-		c.staticLog.Println("Unable to get ScoreBreakdown for", host.PublicKey.String(), "got err:", err)
-		return skymodules.HostScoreBreakdown{}, skymodules.ContractUtility{}, false, nil // it may just be this host that has an issue.
 	}
 
 	// Check the host scorebreakdown against the minimum accepted scores.
