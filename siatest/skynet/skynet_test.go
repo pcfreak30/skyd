@@ -3786,13 +3786,12 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 		},
 		{
 			// Multi dir with index, non-html default path.
-			// Error on download: specify a format.
-			name:                 "multi_idx_non_html",
-			files:                multiHasIndexIndexJs,
-			defaultPath:          nonHTML,
-			disableDefaultPath:   false,
-			expectedContent:      nil,
-			expectedErrStrUpload: "invalid default path provided",
+			// OK
+			name:               "multi_idx_non_html",
+			files:              multiHasIndexIndexJs,
+			defaultPath:        nonHTML,
+			disableDefaultPath: false,
+			expectedContent:    fc1,
 		},
 		{
 			// Multi dir with index, bad default path.
