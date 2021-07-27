@@ -63,7 +63,7 @@ func (c *Contractor) managedCheckHostScore(contract skymodules.RenterContract, s
 		return u, suggestedUtilityUpdate
 	}
 
-	// Contract should not be used for uplodaing if the score is poor.
+	// Contract should not be used for uploading if the score is poor.
 	if !minScoreGFU.IsZero() && sb.Score.Cmp(minScoreGFU) < 0 {
 		if u.GoodForUpload {
 			c.staticLog.Printf("Marking contract as not good for upload because of a poor score: %v", contract.ID)
