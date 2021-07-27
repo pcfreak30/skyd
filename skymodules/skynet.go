@@ -266,6 +266,14 @@ type (
 		// alongside an empty string.
 		Skylink(id string) (Skylink, bool)
 	}
+
+	// RegistryEntryHealth contains information about a registry entry's
+	// health on the network.
+	RegistryEntryHealth struct {
+		RevisionNumber    uint64 `json:"revisionnumber"`
+		NumEntries        uint64 `json:"numentries"`
+		NumPrimaryEntries uint64 `json:"numprimaryentries"`
+	}
 )
 
 // ForPath returns a subset of the SkyfileMetadata that contains all of the

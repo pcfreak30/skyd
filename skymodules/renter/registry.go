@@ -365,6 +365,84 @@ func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegist
 	return err
 }
 
+// managedRegistryEntryHealth reads an entry from all hosts on the network until
+// ctx is closed. It will then find out the best entry and count how many times
+// that entry was found on the network.
+func (r *Renter) managedRegistryEntryHealth(ctx context.Context, rid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) (skymodules.RegistryEntryHealth, error) {
+	// Start tracing.
+	tracer := opentracing.GlobalTracer()
+	span := tracer.StartSpan("managedRegistryEntryHealth")
+	defer span.Finish()
+
+	// Log some info about this trace.
+	span.LogKV("RID", hex.EncodeToString(rid[:]))
+	if spk != nil && tweak != nil {
+		span.LogKV("SPK", spk.String())
+		span.LogKV("Tweak", tweak.String())
+	}
+
+	// Block until there is memory available, and then ensure the memory gets
+	// returned.
+	// Since registry entries are very small we use a fairly generous multiple.
+	if !r.staticRegistryMemoryManager.Request(ctx, readRegistryMemory, memoryPriorityHigh) {
+		return skymodules.RegistryEntryHealth{}, errors.New("timeout while waiting in job queue - server is busy")
+	}
+	defer r.staticRegistryMemoryManager.Return(readRegistryMemory)
+
+	// Specify a context for the background jobs. It will be closed as soon as
+	// threadedAddResponseSet is done.
+	backgroundCtx, backgroundCancel := context.WithCancel(r.tg.StopCtx())
+	responseSet := r.managedLaunchReadRegistryWorkers(backgroundCtx, span, rid, spk, tweak)
+
+	// If there are no workers remaining, fail early.
+	if responseSet.left == 0 {
+		backgroundCancel()
+		return skymodules.RegistryEntryHealth{}, errors.AddContext(skymodules.ErrNotEnoughWorkersInWorkerPool, "cannot perform ReadRegistry")
+	}
+
+	// Add the response set to the stats after this method is done.
+	startTime := time.Now()
+	defer func() {
+		_ = r.tg.Launch(func() {
+			r.threadedAddResponseSet(r.tg.StopCtx(), span, startTime, responseSet, r.staticLog)
+			backgroundCancel()
+		})
+	}()
+
+	// Collect as many responses as possible before the ctx is closed.
+	var srv *skymodules.RegistryEntry
+	resps := responseSet.collect(ctx)
+	for _, resp := range resps {
+		if update, _ := srv.ShouldUpdateWith(&resp.staticSignedRegistryValue.RegistryValue, types.SiaPublicKey{}); update {
+			srv = resp.staticSignedRegistryValue
+		}
+	}
+
+	// If no entry was found return all 0s.
+	if srv == nil {
+		return skymodules.RegistryEntryHealth{}, nil
+	}
+
+	// Count the number of responses that match the best one. We do so by
+	// asking for the reason why the individual entries can't update the
+	// best one. If ErrSameRevNum is returned, the entries are equal.
+	var nTotal, nPrimary uint64
+	for _, rv := range resps {
+		update, reason := srv.ShouldUpdateWith(&rv.staticSignedRegistryValue.RegistryValue, types.SiaPublicKey{})
+		if update {
+			nPrimary++
+			nTotal++
+		} else if errors.Contains(reason, modules.ErrSameRevNum) {
+			nTotal++
+		}
+	}
+	return skymodules.RegistryEntryHealth{
+		RevisionNumber:    srv.Revision,
+		NumEntries:        nTotal,
+		NumPrimaryEntries: nPrimary,
+	}, nil
+}
+
 // managedReadRegistry starts a registry lookup on all available workers. The
 // jobs have 'timeout' amount of time to finish their jobs and return a
 // response. Otherwise the response with the highest revision number will be
@@ -394,61 +472,17 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	// threadedAddResponseSet is done.
 	backgroundCtx, backgroundCancel := context.WithCancel(r.tg.StopCtx())
 
-	// Get the full list of workers and create a channel to receive all of the
-	// results from the workers. The channel is buffered with one slot per
-	// worker, so that the workers do not have to block when returning the
-	// result of the job, even if this thread is not listening.
-	workers := r.staticWorkerPool.callWorkers()
-	staticResponseChan := make(chan *jobReadRegistryResponse, len(workers))
+	responseSet := r.managedLaunchReadRegistryWorkers(backgroundCtx, span, rid, spk, tweak)
+	numWorkers := responseSet.left
 
-	// Filter out hosts that don't support the registry.
-	numRegistryWorkers := 0
-	startTime := time.Now()
-	for _, worker := range workers {
-		cache := worker.staticCache()
-		if build.VersionCmp(cache.staticHostVersion, minRegistryVersion) < 0 {
-			continue
-		}
-
-		// check for price gouging
-		//
-		// TODO: use 'checkProjectDownloadGouging' gouging for some basic
-		// protection. Should be replaced as part of the gouging overhaul.
-		pt := worker.staticPriceTable().staticPriceTable
-		err := checkProjectDownloadGouging(pt, cache.staticRenterAllowance)
-		if err != nil {
-			r.staticLog.Debugf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
-			continue
-		}
-
-		jrr := worker.newJobReadRegistryEID(backgroundCtx, span, staticResponseChan, rid, spk, tweak)
-		if !worker.staticJobReadRegistryQueue.callAdd(jrr) {
-			// This will filter out any workers that are on cooldown or
-			// otherwise can't participate in the project.
-			continue
-		}
-		workers[numRegistryWorkers] = worker
-		numRegistryWorkers++
-	}
-	workers = workers[:numRegistryWorkers]
 	// If there are no workers remaining, fail early.
-	if len(workers) == 0 {
+	if numWorkers == 0 {
 		backgroundCancel()
 		return skymodules.RegistryEntry{}, errors.AddContext(skymodules.ErrNotEnoughWorkersInWorkerPool, "cannot perform ReadRegistry")
 	}
-	numWorkers := len(workers)
-
-	// If specified, increment numWorkers. This will cause the loop to never
-	// exit without any of the context being closed since the response set won't
-	// be able to read the last response.
-	if r.staticDeps.Disrupt("ReadRegistryBlocking") {
-		numWorkers++
-	}
-
-	// Create the response set.
-	responseSet := newReadResponseSet(staticResponseChan, numWorkers)
 
 	// Add the response set to the stats after this method is done.
+	startTime := time.Now()
 	defer func() {
 		_ = r.tg.Launch(func() {
 			r.threadedAddResponseSet(r.tg.StopCtx(), span, startTime, responseSet, r.staticLog)
@@ -505,19 +539,15 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 			continue
 		}
 
-		// Remember the response with the highest revision number. We use >=
-		// here to also catch the edge case of the initial revision being 0.
-		revHigher := srv != nil && resp.staticSignedRegistryValue.RegistryValue.Revision > srv.Revision
-		revSame := srv != nil && resp.staticSignedRegistryValue.RegistryValue.Revision == srv.Revision
-		moreWork := srv != nil && resp.staticSignedRegistryValue.HasMoreWork(srv.RegistryValue)
-		if srv == nil || revHigher || (revSame && moreWork) {
+		// Remember the best response.
+		if update, _ := srv.ShouldUpdateWith(&resp.staticSignedRegistryValue.RegistryValue, types.SiaPublicKey{}); update {
 			srv = resp.staticSignedRegistryValue
 		}
 	}
 
 	// If we don't have a successful response and also not a response for every
 	// worker, we timed out.
-	if srv == nil && responses < len(workers) {
+	if srv == nil && responses < numWorkers {
 		return skymodules.RegistryEntry{}, ErrRegistryLookupTimeout
 	}
 
@@ -527,6 +557,55 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 		return skymodules.RegistryEntry{}, ErrRegistryEntryNotFound
 	}
 	return *srv, nil
+}
+
+// managedLaunchReadRegistryWorkers launches read registry jobs on all available
+// workers and returns a read response set which can be used to wait for the
+// workers' responses.
+func (r *Renter) managedLaunchReadRegistryWorkers(ctx context.Context, span opentracing.Span, rid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) *readResponseSet {
+	// Get the full list of workers and create a channel to receive all of the
+	// results from the workers. The channel is buffered with one slot per
+	// worker, so that the workers do not have to block when returning the
+	// result of the job, even if this thread is not listening.
+	workers := r.staticWorkerPool.callWorkers()
+	staticResponseChan := make(chan *jobReadRegistryResponse, len(workers))
+
+	// Filter out hosts that don't support the registry.
+	numRegistryWorkers := 0
+	for _, worker := range workers {
+		cache := worker.staticCache()
+		if build.VersionCmp(cache.staticHostVersion, minRegistryVersion) < 0 {
+			continue
+		}
+
+		// check for price gouging
+		//
+		// TODO: use 'checkProjectDownloadGouging' gouging for some basic
+		// protection. Should be replaced as part of the gouging overhaul.
+		pt := worker.staticPriceTable().staticPriceTable
+		err := checkProjectDownloadGouging(pt, cache.staticRenterAllowance)
+		if err != nil {
+			r.staticLog.Debugf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
+			continue
+		}
+
+		jrr := worker.newJobReadRegistryEID(ctx, span, staticResponseChan, rid, spk, tweak)
+		if !worker.staticJobReadRegistryQueue.callAdd(jrr) {
+			// This will filter out any workers that are on cooldown or
+			// otherwise can't participate in the project.
+			continue
+		}
+		workers[numRegistryWorkers] = worker
+		numRegistryWorkers++
+	}
+	// If specified, increment numWorkers. This will cause the loop to never
+	// exit without any of the context being closed since the response set won't
+	// be able to read the last response.
+	if r.staticDeps.Disrupt("ReadRegistryBlocking") {
+		numRegistryWorkers++
+	}
+
+	return newReadResponseSet(staticResponseChan, numRegistryWorkers)
 }
 
 // managedUpdateRegistry updates the registries on all workers with the given
