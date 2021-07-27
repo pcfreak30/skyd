@@ -107,7 +107,7 @@ func (c *Contractor) managedCheckHostScore(contract skymodules.RenterContract, s
 // !GFR and !GFU, even if the contract is already marked as such. If
 // 'needsUpdate' is set to true, other checks which may change those values will
 // be ignored and the contract will remain marked as having no utility.
-func (c *Contractor) managedCriticalUtilityChecks(sc *proto.SafeContract, host skymodules.HostDBEntry) (skymodules.ContractUtility, bool) {
+func (c *Contractor) managedCriticalUtilityChecks(sc *proto.SafeContract, host skymodules.HostDBEntry, sb skymodules.HostScoreBreakdown) (skymodules.ContractUtility, bool) {
 	contract := sc.Metadata()
 
 	c.mu.RLock()
@@ -118,8 +118,14 @@ func (c *Contractor) managedCriticalUtilityChecks(sc *proto.SafeContract, host s
 	_, renewed := c.renewedTo[contract.ID]
 	c.mu.RUnlock()
 
+	// A contract with a dead score should not be used for anything.
+	u, needsUpdate := deadScoreCheck(contract.Utility, sb)
+	if needsUpdate {
+		return u, needsUpdate
+	}
+
 	// A contract that has been renewed should be set to !GFU and !GFR.
-	u, needsUpdate := renewedCheck(contract.Utility, renewed)
+	u, needsUpdate = renewedCheck(contract.Utility, renewed)
 	if needsUpdate {
 		return u, needsUpdate
 	}
@@ -249,6 +255,17 @@ func outOfStorageCheck(contract skymodules.RenterContract, blockHeight types.Blo
 		}
 		u.GoodForUpload = false
 		u.GoodForRenew = true
+		return u, true
+	}
+	return u, false
+}
+
+// deadScoreCheck will return a contract with no utility and a required update
+// if the contract has a score <= 1.
+func deadScoreCheck(u skymodules.ContractUtility, sb skymodules.HostScoreBreakdown) (skymodules.ContractUtility, bool) {
+	if sb.Score.Cmp(types.NewCurrency64(1)) <= 0 {
+		u.GoodForUpload = false
+		u.GoodForRenew = false
 		return u, true
 	}
 	return u, false
