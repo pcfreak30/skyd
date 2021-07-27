@@ -2,12 +2,46 @@ package contractor
 
 import (
 	"io/ioutil"
+	"reflect"
 	"testing"
 
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
 )
+
+// TestDeadScoreCheck is a unit test for deadScoreCheck.
+func TestDeadScoreCheck(t *testing.T) {
+	t.Parallel()
+
+	goodUtility := skymodules.ContractUtility{
+		GoodForUpload: true,
+		GoodForRenew:  true,
+	}
+	badUtility := skymodules.ContractUtility{}
+
+	utility, update := deadScoreCheck(goodUtility, types.NewCurrency64(0))
+	if !update {
+		t.Fatal(update)
+	}
+	if !reflect.DeepEqual(utility, badUtility) {
+		t.Fatal("wrong utility")
+	}
+	utility, update = deadScoreCheck(goodUtility, types.NewCurrency64(1))
+	if !update {
+		t.Fatal(update)
+	}
+	if !reflect.DeepEqual(utility, badUtility) {
+		t.Fatal("wrong utility")
+	}
+	utility, update = deadScoreCheck(goodUtility, types.NewCurrency64(2))
+	if update {
+		t.Fatal(update)
+	}
+	if !reflect.DeepEqual(utility, goodUtility) {
+		t.Fatal("wrong utility")
+	}
+}
 
 // TestUpForRenewalCheck is a unit test for upForRenwalCheck.
 func TestUpForRenewalCheck(t *testing.T) {

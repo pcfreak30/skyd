@@ -112,7 +112,7 @@ func (c *Contractor) managedCriticalUtilityChecks(sc *proto.SafeContract, host s
 	c.mu.RUnlock()
 
 	// A contract with a dead score should not be used for anything.
-	u, needsUpdate := deadScoreCheck(contract.Utility, sb)
+	u, needsUpdate := deadScoreCheck(contract.Utility, sb.Score)
 	if needsUpdate {
 		return u, needsUpdate
 	}
@@ -255,8 +255,8 @@ func outOfStorageCheck(contract skymodules.RenterContract, blockHeight types.Blo
 
 // deadScoreCheck will return a contract with no utility and a required update
 // if the contract has a score <= 1.
-func deadScoreCheck(u skymodules.ContractUtility, sb skymodules.HostScoreBreakdown) (skymodules.ContractUtility, bool) {
-	if sb.Score.Cmp(types.NewCurrency64(1)) <= 0 {
+func deadScoreCheck(u skymodules.ContractUtility, score types.Currency) (skymodules.ContractUtility, bool) {
+	if score.Cmp(types.NewCurrency64(1)) <= 0 {
 		u.GoodForUpload = false
 		u.GoodForRenew = false
 		return u, true
