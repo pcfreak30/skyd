@@ -68,7 +68,7 @@ var (
 	// count all of the memory usage accurately.
 	userUploadMemoryDefault = build.Select(build.Var{
 		Dev:      uint64(1 << 28), // 256 MiB
-		Standard: uint64(1 << 34), // 16 GiB
+		Standard: uint64(1 << 29), // 0.5 GiB
 		Testing:  uint64(1 << 17), // 128 KiB - 4 KiB sector size, need to test memory exhaustion
 	}).(uint64)
 

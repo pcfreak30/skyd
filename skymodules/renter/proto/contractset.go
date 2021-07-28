@@ -236,7 +236,7 @@ func NewContractSet(dir string, rl *ratelimit.RateLimit, deps modules.Dependenci
 	// Before loading the contract files apply the updates which were meant to
 	// create new contracts and filter them out.
 	var remainingTxns []*writeaheadlog.Transaction
-	fmt.Println("newcontractset4", time.Since(start).Milliseconds())
+	fmt.Println("newcontractset4", time.Since(start).Milliseconds(), len(walTxns))
 	for _, txn := range walTxns {
 		// txn with insertion updates contain exactly one update and are named
 		// 'updateNameInsertContract'. If that is not the case, we ignore the
