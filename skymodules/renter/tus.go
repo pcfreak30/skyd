@@ -41,6 +41,10 @@ var (
 	}).(time.Duration)
 )
 
+// ErrTUSUploadInterrupted is returned if the upload seemingly succeeded but
+// didn't actually upload a full chunk.
+var ErrTUSUploadInterrupted = errors.New("tus upload was interrupted - pls retry")
+
 type (
 	// skynetTUSUploader implements multiple TUS interfaces for skynet uploads
 	// allowing for resumable uploads.
@@ -362,6 +366,25 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 	cr := NewFanoutChunkReader(src, ec, onlyOnePieceNeeded, fileNode.MasterKey())
 	var chunks []*unfinishedUploadChunk
 	chunks, n, err = uploader.staticRenter.callUploadStreamFromReaderWithFileNodeNoBlock(ctx, fileNode, cr, offset)
+
+	// If less than a full chunk was uploaded, we expect the file to be done. If
+	// that's not the case, the connection was closed early. That means the chunk
+	// was incorrectly padded and needs to be removed again by shrinking the siafile
+	// by one chunk before the user can retry the upload.
+	if n%int64(fileNode.ChunkSize()) != 0 && u.fi.Offset+n != u.fi.Size {
+		fmt.Println("weird upload found")
+		fmt.Println("shrink to", u.fi.Offset/int64(fileNode.ChunkSize()))
+		err = fileNode.Shrink(uint64(u.fi.Offset) / fileNode.ChunkSize())
+		if err != nil {
+			return 0, err
+		}
+		// Make sure that we return an error if none was returned by the
+		// upload. That way the client will know to retry. This usually
+		// happens if we reach a timeout in the reverse proxy.
+		if err == nil {
+			err = ErrTUSUploadInterrupted
+		}
+	}
 
 	// Increment offset and append fanout.
 	u.fi.Offset += n
