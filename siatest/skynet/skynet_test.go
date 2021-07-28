@@ -79,6 +79,7 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "DownloadBaseSector", Test: testSkynetDownloadBaseSectorNoEncryption},
 		{Name: "DownloadBaseSectorEncrypted", Test: testSkynetDownloadBaseSectorEncrypted},
 		{Name: "FanoutRegression", Test: testSkynetFanoutRegression},
+		{Name: "DownloadRange", Test: testSkynetDownloadRange},
 		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
 		{Name: "MetadataMonetization", Test: testSkynetMetadataMonetizers},
 		{Name: "Monetization", Test: testSkynetMonetization},
@@ -1592,9 +1593,9 @@ func testSkynetDownloadFormats(t *testing.T, tg *siatest.TestGroup) {
 }
 
 // testSkynetDownloadRangeEncrypted verifies we can download a certain range
-// within an encrypted large skyfile. This test was added to verify whether
-// `DecryptBytesInPlace` was properly decrypting the fanout bytes for offsets
-// other than 0.
+// within an encrypted skyfile. This large file part of this test was added to
+// verify whether `DecryptBytesInPlace` was properly decrypting the fanout bytes
+// for offsets other than 0.
 func testSkynetDownloadRangeEncrypted(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
@@ -1603,34 +1604,103 @@ func testSkynetDownloadRangeEncrypted(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Run("SmallFile", func(t *testing.T) {
+		skynetDownloadRangeTest(t, tg, sk.Name, false)
+	})
+	t.Run("LargeFile", func(t *testing.T) {
+		skynetDownloadRangeTest(t, tg, sk.Name, true)
+	})
+}
+
+// testSkynetDownloadRange verifies we can download a certain range within a
+// skyfile.
+func testSkynetDownloadRange(t *testing.T, tg *siatest.TestGroup) {
+	t.Run("SmallFile", func(t *testing.T) {
+		skynetDownloadRangeTest(t, tg, "", false)
+	})
+	t.Run("LargeFile", func(t *testing.T) {
+		skynetDownloadRangeTest(t, tg, "", true)
+	})
+}
+
+// skynetDownloadRangeTest verifies different conditions of skynet downloads
+// with range requests.
+func skynetDownloadRangeTest(t *testing.T, tg *siatest.TestGroup, skykeyName string, largeFile bool) {
+	r := tg.Renters()[0]
 
 	// generate file params
 	name := t.Name() + persist.RandomSuffix()
-	size := uint64(4 * int(modules.SectorSize))
+	var size uint64
+	if largeFile {
+		size = uint64(4 * int(modules.SectorSize))
+	} else {
+		size = 100
+	}
 	data := fastrand.Bytes(int(size))
 
-	// upload a large encrypted skyfile to ensure we have a fanout
-	_, _, sshp, err := r.UploadNewEncryptedSkyfileBlocking(name, data, sk.Name, false)
+	// upload a skyfile
+	_, _, sshp, err := r.UploadNewEncryptedSkyfileBlocking(name, data, skykeyName, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// calculate random range parameters
 	segment := uint64(crypto.SegmentSize)
-	offset := fastrand.Uint64n(size-modules.SectorSize) + 1
-	length := fastrand.Uint64n(size-offset-segment) + 1
+	var offset, length uint64
+	if largeFile {
+		offset = fastrand.Uint64n(size-modules.SectorSize) + 1
+		length = fastrand.Uint64n(size-offset-segment) + 1
+	} else {
+		offset = fastrand.Uint64n(size-segment) + 1
+		length = fastrand.Uint64n(size-offset) + 1
+	}
 
-	// fetch the data at given range
+	// fetch the data at given range using the Header range request
 	result, err := r.SkynetSkylinkRange(sshp.Skylink, offset, offset+length)
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	if !bytes.Equal(result, data[offset:offset+length]) {
 		t.Logf("range %v-%v\n", offset, offset+length)
 		t.Log("expected:", data[offset:offset+length], len(data[offset:offset+length]))
 		t.Log("actual:", result, len(result))
 		t.Fatal("unexpected")
+	}
+
+	// fetch the data at given range using the params range request
+	result, err = r.SkynetSkylinkRangeParams(sshp.Skylink, offset, offset+length)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(result, data[offset:offset+length]) {
+		t.Logf("range %v-%v\n", offset, offset+length)
+		t.Log("expected:", data[offset:offset+length], len(data[offset:offset+length]))
+		t.Log("actual:", result, len(result))
+		t.Fatal("unexpected")
+	}
+
+	// Test some specific cases
+	// Verify some specific cases
+	rand := fastrand.Uint64n(size)
+	var tests = []struct {
+		from uint64
+		to   uint64
+	}{
+		{0, 0},       // Requesting the first byte of a file
+		{0, 1},       // Request the first byte of a file
+		{rand, rand}, // Requesting a random single byte of the file
+	}
+	for _, test := range tests {
+		_, err = r.SkynetSkylinkRange(sshp.Skylink, test.from, test.to)
+		if err != nil {
+			t.Log("Failed Test Case:", test)
+			t.Fatal(err)
+		}
+		_, err = r.SkynetSkylinkRangeParams(sshp.Skylink, test.from, test.to)
+		if err != nil {
+			t.Log("Failed Test Case:", test)
+			t.Fatal(err)
+		}
 	}
 }
 
