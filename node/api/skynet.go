@@ -567,13 +567,12 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s) which refers to a non-root file, please specify a format", defaultPath)}, http.StatusBadRequest)
 			return
 		}
-		isSkapp := strings.HasSuffix(defaultPath, ".html") || strings.HasSuffix(defaultPath, ".htm")
 		// If we don't have a subPath and the skylink doesn't end with a
 		// trailing slash we need to redirect in order to add the trailing
 		// slash. This is only true for skapps - they need it in order to
 		// properly work with relative paths. We also don't need to redirect if
 		// this is a HEAD request or if it's a download as attachment.
-		if isSkapp && !params.attachment && req.Method == http.MethodGet && !strings.HasSuffix(params.skylinkStringNoQuery, "/") {
+		if !params.attachment && req.Method == http.MethodGet && !strings.HasSuffix(params.skylinkStringNoQuery, "/") {
 			location := params.skylinkStringNoQuery + "/"
 			if req.URL.RawQuery != "" {
 				location += "?" + req.URL.RawQuery
