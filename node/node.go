@@ -485,6 +485,8 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		printfRelease("(%d/%d) Loading renter...\n", i, numModules)
 
 		// HostDB
+		start := time.Now()
+		fmt.Println("hostdb", time.Since(start))
 		hdb, errChanHDB := hostdb.NewCustomHostDB(g, cs, tp, mux, persistDir, hostDBDeps)
 		if err := modules.PeekErr(errChanHDB); err != nil {
 			c <- err
@@ -493,6 +495,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		}
 		// ContractSet
 		renterRateLimit := ratelimit.NewRateLimit(0, 0, 0)
+		fmt.Println("contractset", time.Since(start))
 		contractSet, err := proto.NewContractSet(filepath.Join(persistDir, "contracts"), renterRateLimit, contractSetDeps)
 		if err != nil {
 			c <- err
@@ -500,24 +503,28 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 			return nil, c
 		}
 		// Contractor
+		fmt.Println("newfilelogger", time.Since(start))
 		logger, err := persist.NewFileLogger(filepath.Join(persistDir, "contractor.log"))
 		if err != nil {
 			c <- err
 			close(c)
 			return nil, c
 		}
+		fmt.Println("contractor", time.Since(start))
 		hc, errChanContractor := contractor.NewCustomContractor(cs, w, tp, hdb, persistDir, contractSet, logger, contractorDeps)
 		if err := modules.PeekErr(errChanContractor); err != nil {
 			c <- err
 			close(c)
 			return nil, c
 		}
+		fmt.Println("renter", time.Since(start))
 		renter, errChanRenter := renter.NewCustomRenter(g, cs, tp, hdb, w, hc, mux, persistDir, renterRateLimit, renterDeps)
 		if err := modules.PeekErr(errChanRenter); err != nil {
 			c <- err
 			close(c)
 			return nil, c
 		}
+		fmt.Println("done", time.Since(start))
 		go func() {
 			c <- errors.Compose(<-errChanHDB, <-errChanContractor, <-errChanRenter)
 			close(c)
