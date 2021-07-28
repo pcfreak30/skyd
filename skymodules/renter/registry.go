@@ -505,12 +505,12 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	// the highest rev number and return the highest one we have so far.
 	var useHighestRevCtx context.Context
 
-	var srv *skymodules.RegistryEntry
+	var best *jobReadRegistryResponse
 	responses := 0
 	for responseSet.responsesLeft() > 0 {
 		// Check cancel condition and block for more responses.
 		var resp *jobReadRegistryResponse
-		if srv != nil {
+		if best != nil && best.staticSignedRegistryValue != nil {
 			// If we have a successful response already, we wait on the highest
 			// rev ctx.
 			resp = responseSet.next(useHighestRevCtx)
@@ -540,23 +540,24 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 		}
 
 		// Remember the best response.
-		if update, _ := srv.ShouldUpdateWith(&resp.staticSignedRegistryValue.RegistryValue, types.SiaPublicKey{}); update {
-			srv = resp.staticSignedRegistryValue
+		if isBetterReadRegistryResponse(best, resp) {
+			best = resp
 		}
 	}
 
 	// If we don't have a successful response and also not a response for every
 	// worker, we timed out.
-	if srv == nil && responses < numWorkers {
+	noResponse := best == nil || best.staticSignedRegistryValue == nil
+	if noResponse && responses < numWorkers {
 		return skymodules.RegistryEntry{}, ErrRegistryLookupTimeout
 	}
 
 	// If we don't have a successful response but received a response from every
 	// worker, we were unable to look up the entry.
-	if srv == nil {
+	if noResponse {
 		return skymodules.RegistryEntry{}, ErrRegistryEntryNotFound
 	}
-	return *srv, nil
+	return *best.staticSignedRegistryValue, nil
 }
 
 // managedLaunchReadRegistryWorkers launches read registry jobs on all available
@@ -751,8 +752,9 @@ func isBetterReadRegistryResponse(resp1, resp2 *jobReadRegistryResponse) bool {
 	} else if srv1 == nil {
 		return true
 	}
-	// Compare entries.
-	shouldUpdate, updateErr := srv1.ShouldUpdateWith(&srv2.RegistryValue, resp2.staticWorker.staticHostPubKey)
+	// Compare entries. We pass the empty key here since we don't care about
+	// whether the entry is a primary or secondary one.
+	shouldUpdate, updateErr := srv1.ShouldUpdateWith(&srv2.RegistryValue, types.SiaPublicKey{})
 
 	// If the entry is not capable of updating the existing one and both entries
 	// have the same revision number, use the time.
