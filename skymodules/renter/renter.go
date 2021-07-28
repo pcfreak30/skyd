@@ -1044,6 +1044,8 @@ var _ skymodules.Renter = (*Renter)(nil)
 
 // renterBlockingStartup handles the blocking portion of NewCustomRenter.
 func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb skymodules.HostDB, w modules.Wallet, hc hostContractor, mux *siamux.SiaMux, persistDir string, rl *ratelimit.RateLimit, deps skymodules.SkydDependencies) (*Renter, error) {
+	start := time.Now()
+	fmt.Println("1", time.Since(start).Milliseconds())
 	if g == nil {
 		return nil, errNilGateway
 	}
@@ -1123,6 +1125,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
 	close(r.staticUploadHeap.pauseChan)
 
+	fmt.Println("2", time.Since(start).Milliseconds())
 	// Init the spending history.
 	sh, err := NewSpendingHistory(r.persistDir, skymodules.SkynetSpendingHistoryFilename)
 	if err != nil {
@@ -1135,6 +1138,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.statsChan = make(chan struct{})
 	close(r.statsChan)
 
+	fmt.Println("3", time.Since(start).Milliseconds())
 	// Initialize the loggers so that they are available for the components as
 	// the components start up.
 	r.staticLog, err = persist.NewFileLogger(filepath.Join(r.persistDir, logFile))
@@ -1144,6 +1148,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	if err := r.tg.AfterStop(r.staticLog.Close); err != nil {
 		return nil, err
 	}
+	fmt.Println("4", time.Since(start).Milliseconds())
 	r.staticRepairLog, err = persist.NewFileLogger(filepath.Join(r.persistDir, repairLogFile))
 	if err != nil {
 		return nil, err
@@ -1152,18 +1157,21 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		return nil, err
 	}
 
+	fmt.Println("5", time.Since(start).Milliseconds())
 	// Initialize the dirUpdateBatcher.
 	r.staticDirUpdateBatcher, err = r.newDirUpdateBatcher()
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create new health update batcher")
 	}
 
+	fmt.Println("6", time.Since(start).Milliseconds())
 	// Initialize some of the components.
 	err = r.newAccountManager()
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create account manager")
 	}
 
+	fmt.Println("7", time.Since(start).Milliseconds())
 	r.staticRegistryMemoryManager = newMemoryManager(registryMemoryDefault, registryMemoryPriorityDefault, r.tg.StopChan())
 	r.staticUserUploadMemoryManager = newMemoryManager(userUploadMemoryDefault, userUploadMemoryPriorityDefault, r.tg.StopChan())
 	r.staticUserDownloadMemoryManager = newMemoryManager(userDownloadMemoryDefault, userDownloadMemoryPriorityDefault, r.tg.StopChan())
@@ -1173,6 +1181,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.staticStuckStack = callNewStuckStack()
 
 	// Add SkynetBlocklist
+	fmt.Println("8", time.Since(start).Milliseconds())
 	sb, err := skynetblocklist.New(r.persistDir)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create new skynet blocklist")
@@ -1180,6 +1189,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.staticSkynetBlocklist = sb
 
 	// Add SkynetPortals
+	fmt.Println("9", time.Since(start).Milliseconds())
 	sp, err := skynetportals.New(r.persistDir)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create new skynet portal list")
@@ -1187,15 +1197,18 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.staticSkynetPortals = sp
 
 	// Load all saved data.
+	fmt.Println("10", time.Since(start).Milliseconds())
 	err = r.managedInitPersist()
 	if err != nil {
 		return nil, err
 	}
 
 	// After persist is initialized, create the worker pool.
+	fmt.Println("11", time.Since(start).Milliseconds())
 	r.staticWorkerPool = r.newWorkerPool()
 
 	// Set the worker pool on the contractor.
+	fmt.Println("12", time.Since(start).Milliseconds())
 	r.staticHostContractor.UpdateWorkerPool(r.staticWorkerPool)
 
 	// Create the skykey manager.
@@ -1204,6 +1217,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	if build.Release == "testing" {
 		skykeyManDir = persistDir
 	}
+	fmt.Println("13", time.Since(start).Milliseconds())
 	r.staticSkykeyManager, err = skykey.NewSkykeyManager(skykeyManDir)
 	if err != nil {
 		return nil, err
@@ -1211,6 +1225,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 	// Calculate the initial cached utilities and kick off a thread that updates
 	// the utilities regularly.
+	fmt.Println("14", time.Since(start).Milliseconds())
 	r.managedUpdateRenterContractsAndUtilities()
 	go r.threadedUpdateRenterContractsAndUtilities()
 
@@ -1218,6 +1233,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	// up-to-date with consensus.
 	if !r.staticDeps.Disrupt("DisableRepairAndHealthLoops") {
 		// Push the root directory onto the directory heap for the repair process.
+		fmt.Println("15", time.Since(start).Milliseconds())
 		err = r.managedPushUnexploredDirectory(skymodules.RootSiaPath())
 		if err != nil {
 			return nil, err
@@ -1228,6 +1244,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	// If the spending history didn't exist before, manually init it with the
 	// current spending. We don't want portals to pay a huge fee right after
 	// upgrading for pre-skynet license spendings.
+	fmt.Println("16", time.Since(start).Milliseconds())
 	_, lastSpendingTime := sh.LastSpending()
 	if lastSpendingTime.IsZero() {
 		var totalSpending types.Currency

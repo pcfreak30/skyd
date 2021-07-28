@@ -1,8 +1,10 @@
 package renter
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -127,6 +129,8 @@ func (r *Renter) managedLoadSettings() error {
 // managedInitPersist handles all of the persistence initialization, such as creating
 // the persistence directory and starting the logger.
 func (r *Renter) managedInitPersist() error {
+	start := time.Now()
+	fmt.Println("10.1", time.Since(start).Milliseconds())
 	// Create the persist and filesystem directories if they do not yet exist.
 	//
 	// Note: the os package needs to be used here instead of the renter's
@@ -145,6 +149,7 @@ func (r *Renter) managedInitPersist() error {
 		StaticLog: r.staticLog.Logger,
 		Path:      filepath.Join(r.persistDir, walFile),
 	}
+	fmt.Println("10.2", time.Since(start).Milliseconds())
 	txns, wal, err := writeaheadlog.NewWithOptions(options)
 	if err != nil {
 		return err
@@ -158,6 +163,7 @@ func (r *Renter) managedInitPersist() error {
 	if len(txns) > 0 {
 		r.staticLog.Println("Wal initialized", len(txns), "transactions to apply")
 	}
+	fmt.Println("10.3", time.Since(start).Milliseconds())
 	for _, txn := range txns {
 		applyTxn := true
 		r.staticLog.Println("applying transaction with", len(txn.Updates), "updates")
@@ -180,6 +186,7 @@ func (r *Renter) managedInitPersist() error {
 	}
 
 	// Create the filesystem.
+	fmt.Println("10.4", time.Since(start).Milliseconds())
 	fs, err := filesystem.New(fsRoot, r.staticLog, wal)
 	if err != nil {
 		return err
@@ -191,23 +198,28 @@ func (r *Renter) managedInitPersist() error {
 	r.staticFileSystem = fs
 
 	// Load the prior persistence structures.
+	fmt.Println("10.5", time.Since(start).Milliseconds())
 	if err := r.managedLoadSettings(); err != nil {
 		return errors.AddContext(err, "failed to load renter's persistence structrue")
 	}
 
 	// Create the essential dirs in the filesystem.
+	fmt.Println("10.6", time.Since(start).Milliseconds())
 	err = fs.NewSiaDir(skymodules.HomeFolder, skymodules.DefaultDirPerm)
 	if err != nil && !errors.Contains(err, filesystem.ErrExists) {
 		return err
 	}
+	fmt.Println("10.7", time.Since(start).Milliseconds())
 	err = fs.NewSiaDir(skymodules.UserFolder, skymodules.DefaultDirPerm)
 	if err != nil && !errors.Contains(err, filesystem.ErrExists) {
 		return err
 	}
+	fmt.Println("10.8", time.Since(start).Milliseconds())
 	err = fs.NewSiaDir(skymodules.BackupFolder, skymodules.DefaultDirPerm)
 	if err != nil && !errors.Contains(err, filesystem.ErrExists) {
 		return err
 	}
+	fmt.Println("10.9", time.Since(start).Milliseconds())
 	err = fs.NewSiaDir(skymodules.SkynetFolder, skymodules.DefaultDirPerm)
 	if err != nil && !errors.Contains(err, filesystem.ErrExists) {
 		return err
