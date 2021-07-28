@@ -231,6 +231,7 @@ func readDataPieces(r io.Reader, ec skymodules.ErasureCoder, pieceSize uint64) (
 	for i := range dataPieces {
 		dataPieces[i] = make([]byte, pieceSize)
 		n, err := io.ReadFull(r, dataPieces[i])
+		fmt.Println("err", n, err)
 		total += uint64(n)
 		if err != nil && !errors.Contains(err, io.EOF) && err != io.ErrUnexpectedEOF {
 			return nil, 0, errors.AddContext(err, "failed to read chunk from source reader")
