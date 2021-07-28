@@ -69,6 +69,8 @@ type (
 		pieceLength uint64
 		pieceOffset uint64
 
+		staticIsLowPrio bool
+
 		// pricePerMS is the amount of money we are willing to spend on faster
 		// workers. If a certain set of workers is 100ms faster, but that
 		// exceeds the pricePerMS we are willing to pay for it, we won't use
@@ -95,7 +97,8 @@ type (
 		// dataPieces is the buffer that is used to place data as it comes back.
 		// There is one piece per chunk, and pieces can be nil. To know if the
 		// download is complete, the number of non-nil pieces will be counted.
-		dataPieces [][]byte
+		dataPieces         [][]byte
+		staticSkipRecovery bool
 
 		// The completed data gets sent down the response chan once the full
 		// download is done.
@@ -159,6 +162,12 @@ type (
 	downloadResponse struct {
 		data []byte
 		err  error
+
+		// NOTE: externLogicalChunkData will be set after the download
+		// is done and after that only the receiver of the response
+		// should access it. That way, we can avoid copying the memory
+		// and avoid another large allocation.
+		externLogicalChunkData [][]byte
 
 		// launchedWorkers contains a list of worker information for the workers
 		// that were launched to try and complete this download. This field can
@@ -318,17 +327,38 @@ func (pdc *projectDownloadChunk) fail(err error) {
 
 	// Create and return a response
 	dr := &downloadResponse{
-		data: nil,
-		err:  err,
+		err: err,
 
 		launchedWorkers: pdc.launchedWorkers,
 	}
 	pdc.downloadResponseChan <- dr
 }
 
-// finalize will take the completed pieces of the download, decode them,
-// and then send the result down the response channel. If there is an error
-// during decode, 'pdc.fail()' will be called.
+// recoverData recovers the data from the downloaded pieces.
+func (pdc *projectDownloadChunk) recoverData() ([]byte, error) {
+	// Determine the amount of bytes the EC will need to skip from the recovered
+	// data when returning the data.
+	skipLength := pdc.offsetInChunk % (crypto.SegmentSize * uint64(pdc.workerSet.staticErasureCoder.MinPieces()))
+	recoveredBytes := uint64(pdc.lengthInChunk + skipLength)
+
+	// Create a skipwriter that ensures we're recovering at the offset
+	buf := bytes.NewBuffer(make([]byte, 0, recoveredBytes))
+	skipWriter := &skipWriter{
+		writer: buf,
+		skip:   int(skipLength),
+	}
+
+	// Recover the pieces in to a single byte slice.
+	err := pdc.workerSet.staticErasureCoder.Recover(pdc.dataPieces, recoveredBytes, skipWriter)
+	if err != nil {
+		pdc.fail(errors.AddContext(err, "unable to complete erasure decode of download"))
+	}
+	return buf.Bytes(), err
+}
+
+// finalize will take the completed pieces of the download, recover them using
+// the erasure coder, and then send the result down the response channel. If
+// there is an error during decode, 'pdc.fail()' will be called.
 func (pdc *projectDownloadChunk) finalize() {
 	// Log info and finish span.
 	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
@@ -336,29 +366,18 @@ func (pdc *projectDownloadChunk) finalize() {
 		span.Finish()
 	}
 
-	// Determine the amount of bytes the EC will need to skip from the recovered
-	// data when returning the data.
-	skipLength := pdc.offsetInChunk % (crypto.SegmentSize * uint64(pdc.workerSet.staticErasureCoder.MinPieces()))
-
-	// Create a skipwriter that ensures we're recovering at the offset
-	buf := bytes.NewBuffer(nil)
-	skipWriter := &skipWriter{
-		writer: buf,
-		skip:   int(skipLength),
+	// Recover the data if necessary.
+	var data []byte
+	var err error
+	if !pdc.staticSkipRecovery {
+		data, err = pdc.recoverData()
 	}
-
-	// Recover the pieces in to a single byte slice.
-	err := pdc.workerSet.staticErasureCoder.Recover(pdc.dataPieces, pdc.lengthInChunk+skipLength, skipWriter)
-	if err != nil {
-		pdc.fail(errors.AddContext(err, "unable to complete erasure decode of download"))
-		return
-	}
-	data := buf.Bytes()
 
 	// Return the data to the caller.
 	dr := &downloadResponse{
-		data: data,
-		err:  nil,
+		data:                   data,
+		externLogicalChunkData: pdc.dataPieces,
+		err:                    err,
 
 		launchedWorkers: pdc.launchedWorkers,
 	}
@@ -446,10 +465,11 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 	}
 
 	// Create the read sector job for the worker.
-	jrs := w.newJobReadSector(pdc.ctx, w.staticJobReadQueue, pdc.workerResponseChan, jobMetadata, sectorRoot, pdc.pieceOffset, pdc.pieceLength)
+	jrq := w.callReadQueue(pdc.staticIsLowPrio)
+	jrs := w.newJobReadSector(pdc.ctx, jrq, pdc.workerResponseChan, jobMetadata, sectorRoot, pdc.pieceOffset, pdc.pieceLength)
 
 	// Submit the job.
-	expectedCompleteTime, added := w.staticJobReadQueue.callAddWithEstimate(jrs)
+	expectedCompleteTime, added := jrq.callAddWithEstimate(jrs)
 
 	// Track the launched worker
 	if added {

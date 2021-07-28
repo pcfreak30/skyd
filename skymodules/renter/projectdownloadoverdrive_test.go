@@ -94,7 +94,7 @@ func TestProjectDownloadChunk_adjustedReadDuration(t *testing.T) {
 	jrq := worker.staticJobReadQueue
 
 	// fetch the expected job time for a 64kb download job, verify it's not 0
-	jobTime := jrq.callExpectedJobTime(1 << 16)
+	jobTime := jrq.staticStats.callExpectedJobTime(1 << 16)
 	if jobTime == time.Duration(0) {
 		t.Fatal("unexpected")
 	}
