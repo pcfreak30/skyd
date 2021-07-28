@@ -1244,6 +1244,27 @@ func (sf *SiaFile) Chunk(chunkIndex uint64) (chunk, error) {
 	return sf.chunk(int(chunkIndex))
 }
 
+// Shrink shrinks the siafile to a certain number of chunks.
+func (sf *SiaFile) Shrink(numChunks uint64) error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+
+	// Update the fileSize and number of chunks.
+	sf.numChunks = int(numChunks)
+	sf.staticMetadata.FileSize = int64(sf.staticChunkSize() * uint64(sf.numChunks))
+	mdu, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+
+	err = os.Truncate(sf.siaFilePath, sf.chunkOffset(sf.numChunks))
+	if err != nil {
+		return err
+	}
+
+	return sf.createAndApplyTransaction(mdu...)
+}
+
 // growNumChunks increases the number of chunks in the SiaFile to numChunks. If
 // the file already contains >= numChunks chunks then GrowNumChunks is a no-op.
 func (sf *SiaFile) growNumChunks(numChunks uint64) (updates []writeaheadlog.Update, err error) {

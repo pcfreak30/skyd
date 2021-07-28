@@ -362,10 +362,22 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 	cr := NewFanoutChunkReader(src, ec, onlyOnePieceNeeded, fileNode.MasterKey())
 	var chunks []*unfinishedUploadChunk
 	chunks, n, err = uploader.staticRenter.callUploadStreamFromReaderWithFileNodeNoBlock(ctx, fileNode, cr, offset)
-	fmt.Println("offset/n", u.fi.Offset, n)
 	if err != nil {
-		fmt.Println("err", err)
 		return 0, err
+	}
+
+	if n < int64(fileNode.ChunkSize()) && u.fi.Offset+n != u.fi.Size {
+		fmt.Println("weird upload found")
+		fmt.Println("n", n)
+		fmt.Println("chunksize", fileNode.ChunkSize())
+		fmt.Println("offset", u.fi.Offset)
+		fmt.Println("filesize", u.fi.Size)
+		fmt.Println("shrink to", u.fi.Offset/int64(fileNode.ChunkSize()))
+		err = fileNode.Shrink(uint64(u.fi.Offset) / fileNode.ChunkSize())
+		if err != nil {
+			fmt.Println("shrink", err)
+			return 0, err
+		}
 	}
 
 	// Increment offset and append fanout.
