@@ -364,7 +364,8 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 	chunks, n, err = uploader.staticRenter.callUploadStreamFromReaderWithFileNodeNoBlock(ctx, fileNode, cr, offset)
 	fmt.Println("offset/n", u.fi.Offset, n)
 	if err != nil {
-		return 0, nil
+		fmt.Println("err", err)
+		return 0, err
 	}
 
 	// Increment offset and append fanout.
