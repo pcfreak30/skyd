@@ -313,6 +313,26 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 	r.staticRegReadStats.AddDataPoint(d)
 }
 
+// RegistryEntryHealth returns the health of a registry entry specified by the
+// spk and tweak.
+func (r *Renter) RegistryEntryHealth(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (skymodules.RegistryEntryHealth, error) {
+	if err := r.tg.Add(); err != nil {
+		return skymodules.RegistryEntryHealth{}, err
+	}
+	defer r.tg.Done()
+	return r.managedRegistryEntryHealth(ctx, modules.DeriveRegistryEntryID(spk, tweak), &spk, &tweak)
+}
+
+// RegistryEntryHealthRID returns the health of a registry entry specified by
+// the RID.
+func (r *Renter) RegistryEntryHealthRID(ctx context.Context, rid modules.RegistryEntryID) (skymodules.RegistryEntryHealth, error) {
+	if err := r.tg.Add(); err != nil {
+		return skymodules.RegistryEntryHealth{}, err
+	}
+	defer r.tg.Done()
+	return r.managedRegistryEntryHealth(ctx, rid, nil, nil)
+}
+
 // ReadRegistry starts a registry lookup on all available workers. The jobs have
 // until ctx is closed to return a response. Otherwise the response with the
 // highest revision number will be used.
@@ -410,25 +430,26 @@ func (r *Renter) managedRegistryEntryHealth(ctx context.Context, rid modules.Reg
 	}()
 
 	// Collect as many responses as possible before the ctx is closed.
-	var srv *skymodules.RegistryEntry
+	var best *jobReadRegistryResponse
 	resps := responseSet.collect(ctx)
 	for _, resp := range resps {
-		if update, _ := srv.ShouldUpdateWith(&resp.staticSignedRegistryValue.RegistryValue, types.SiaPublicKey{}); update {
-			srv = resp.staticSignedRegistryValue
+		if isBetterReadRegistryResponse(best, resp) {
+			best = resp
 		}
 	}
 
 	// If no entry was found return all 0s.
-	if srv == nil {
+	if best == nil || best.staticSignedRegistryValue == nil {
 		return skymodules.RegistryEntryHealth{}, nil
 	}
+	srv := best.staticSignedRegistryValue
 
 	// Count the number of responses that match the best one. We do so by
 	// asking for the reason why the individual entries can't update the
 	// best one. If ErrSameRevNum is returned, the entries are equal.
 	var nTotal, nPrimary uint64
-	for _, rv := range resps {
-		update, reason := srv.ShouldUpdateWith(&rv.staticSignedRegistryValue.RegistryValue, types.SiaPublicKey{})
+	for _, resp := range resps {
+		update, reason := srv.ShouldUpdateWith(&resp.staticSignedRegistryValue.RegistryValue, resp.staticWorker.staticHostPubKey)
 		if update {
 			nPrimary++
 			nTotal++

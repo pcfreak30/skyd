@@ -1392,6 +1392,74 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 	})
 }
 
+// registryEntryHealthHandlerGET is the handler for the /skynet/registry/health
+// endpoint.
+func (api *API) registryEntryHealthHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	spkStr := req.FormValue("publickey")
+	tweakStr := req.FormValue("datakey")
+	ridStr := req.FormValue("entryid")
+
+	// Parse the timeout.
+	timeout := renter.MaxRegistryReadTimeout
+	timeoutStr := req.FormValue("timeout")
+	if timeoutStr != "" {
+		timeoutInt, err := strconv.Atoi(timeoutStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		timeout = time.Duration(timeoutInt) * time.Second
+		if timeout > renter.MaxRegistryReadTimeout || timeout == 0 {
+			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %ds", renter.MaxRegistryReadTimeout)}, http.StatusBadRequest)
+			return
+		}
+	}
+	ctx, cancel := context.WithTimeout(req.Context(), timeout)
+	defer cancel()
+
+	// If the publickey and datakey are set we use them. Otherwise we look
+	// for the entryid.
+	var reh skymodules.RegistryEntryHealth
+	var err error
+	if spkStr != "" && tweakStr != "" {
+		// Parse public key
+		var spk types.SiaPublicKey
+		err := spk.LoadString(req.FormValue("publickey"))
+		if err != nil {
+			WriteError(w, Error{"Unable to parse publickey param: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+
+		// Parse datakey.
+		var dataKey crypto.Hash
+		err = dataKey.LoadString(req.FormValue("datakey"))
+		if err != nil {
+			WriteError(w, Error{"Unable to decode dataKey param: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		reh, err = api.renter.RegistryEntryHealth(ctx, spk, dataKey)
+	} else if ridStr != "" {
+		// Parse rid.
+		var rid crypto.Hash
+		err := rid.LoadString(req.FormValue("entryid"))
+		if err != nil {
+			WriteError(w, Error{"Unable to decode entryid param: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		reh, err = api.renter.RegistryEntryHealthRID(ctx, modules.RegistryEntryID(rid))
+	} else {
+		WriteError(w, Error{"Need to specify either publickey and datakey or entryid"}, http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		handleSkynetError(w, "unable to read from the registry", err)
+		return
+	}
+
+	// Send response.
+	WriteJSON(w, reh)
+}
+
 // skylinkResolveGET handles the GET calls to /skylink/resolve/:skylink.
 func (api *API) skylinkResolveGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	// Parse Skylink
