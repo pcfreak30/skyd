@@ -12,7 +12,6 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"go.sia.tech/siad/crypto"
-	"go.sia.tech/siad/types"
 )
 
 // Upload Streaming Overview:
@@ -180,12 +179,6 @@ func (r *Renter) callUploadStreamFromReaderWithFileNodeNoBlock(ctx context.Conte
 		return nil, 0, nil
 	}
 
-	// Build a map of host public keys.
-	pks := make(map[string]types.SiaPublicKey)
-	for _, pk := range fileNode.HostPublicKeys() {
-		pks[string(pk.Key)] = pk
-	}
-
 	// Get the most recent workers.
 	hosts := r.managedRefreshHostsAndWorkers()
 
@@ -219,7 +212,7 @@ func (r *Renter) callUploadStreamFromReaderWithFileNodeNoBlock(ctx context.Conte
 
 		// Start the chunk upload.
 		offline, goodForRenew, _, _ := r.callRenterContractsAndUtilities()
-		uuc, err := r.managedBuildUnfinishedChunk(ctx, fileNode, chunkIndex, hosts, pks, memoryPriorityHigh, offline, goodForRenew, r.staticUserUploadMemoryManager)
+		uuc, err := r.managedBuildUnfinishedChunk(ctx, fileNode, chunkIndex, hosts, memoryPriorityHigh, offline, goodForRenew, r.staticUserUploadMemoryManager)
 		if err != nil {
 			return nil, n, errors.AddContext(err, "unable to fetch chunk for stream")
 		}
