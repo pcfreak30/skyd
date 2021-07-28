@@ -137,21 +137,21 @@ func testBuildETag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	eTag := buildETag(skylink, "GET", path, format)
-	if eTag != "ccc494ae022f451a74fbe6dae21a7ab07e6a14ab1d13084382f72cc6cd6bf55f" {
+	eTag := buildETag(skylink, path, format)
+	if eTag != "7b4d5f4aa61144f4ab0ca37da17238a93dc9a8d514a76d374b2557bf86c04d21" {
 		t.Fatal("unexpected output")
 	}
 
 	// adjust URL and expect different hash value
 	path = "/foo"
-	eTag2 := buildETag(skylink, "GET", path, format)
+	eTag2 := buildETag(skylink, path, format)
 	if eTag2 == "" || eTag2 == eTag {
 		t.Fatal("unexpected output")
 	}
 
 	// adjust query and expect different hash value
 	format = skymodules.SkyfileFormatZip
-	eTag3 := buildETag(skylink, "GET", path, format)
+	eTag3 := buildETag(skylink, path, format)
 	if eTag3 == "" || eTag3 == eTag2 {
 		t.Fatal("unexpected output")
 	}
@@ -161,18 +161,8 @@ func testBuildETag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	eTag4 := buildETag(skylink, "GET", path, format)
+	eTag4 := buildETag(skylink, path, format)
 	if eTag4 == "" || eTag4 == eTag3 {
-		t.Fatal("unexpected output")
-	}
-
-	// adjust method and expect different hash value
-	err = skylink.LoadString("BBCogzrAimYPG42tDOKhS3lXZD8YvlF8Q8R17afe95iV2Q")
-	if err != nil {
-		t.Fatal(err)
-	}
-	eTag5 := buildETag(skylink, "HEAD", path, format)
-	if eTag5 == "" || eTag5 == eTag4 {
 		t.Fatal("unexpected output")
 	}
 }
@@ -557,7 +547,7 @@ func TestAttachRegistryEntryProof(t *testing.T) {
 	attachRegistryEntryProof(w, entries)
 
 	// Get the attached proof.
-	proof := header.Get("Proof")
+	proof := header.Get("Skynet-Proof")
 
 	// Should match the expected proof.
 	if proof != string(expectedProof) {
