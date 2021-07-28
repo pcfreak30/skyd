@@ -378,6 +378,7 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 			fmt.Println("shrink", err)
 			return 0, err
 		}
+		return 0, errors.New("connection closed unexpectedly")
 	}
 
 	// Increment offset and append fanout.
