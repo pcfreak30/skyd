@@ -118,7 +118,7 @@ func testBasic(t *testing.T, wt *workerTester) {
 	pcws.mu.Lock()
 	pcws.workerStateLaunchTime = unset
 	pcws.mu.Unlock()
-	err = pcws.managedTryUpdateWorkerState(nil)
+	err = pcws.managedTryUpdateWorkerState()
 	if err != nil {
 		t.Fatal(err)
 	}

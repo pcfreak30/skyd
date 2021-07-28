@@ -69,7 +69,7 @@ type (
 		pieceLength uint64
 		pieceOffset uint64
 
-		staticLowPrio bool
+		staticIsLowPrio bool
 
 		// pricePerMS is the amount of money we are willing to spend on faster
 		// workers. If a certain set of workers is 100ms faster, but that
@@ -465,7 +465,7 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 	}
 
 	// Create the read sector job for the worker.
-	jrq := w.callReadQueue(pdc.staticLowPrio)
+	jrq := w.callReadQueue(pdc.staticIsLowPrio)
 	jrs := w.newJobReadSector(pdc.ctx, jrq, pdc.workerResponseChan, jobMetadata, sectorRoot, pdc.pieceOffset, pdc.pieceLength)
 
 	// Submit the job.

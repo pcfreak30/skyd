@@ -372,11 +372,12 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 // managedLaunchWorkers will spin up a bunch of jobs to determine which workers
 // have what pieces for the pcws, and then update the input worker state with
 // the results.
-func (pcws *projectChunkWorkerSet) managedLaunchWorkers(workers []*worker, ws *pcwsWorkerState) {
+func (pcws *projectChunkWorkerSet) managedLaunchWorkers(ws *pcwsWorkerState) {
 	// Launch all of the HasSector jobs for each worker. A channel is needed to
 	// receive the responses, and the channel needs to be buffered to be equal
 	// in size to the number of queries so that none of the workers sending
 	// reponses get blocked sending down the channel.
+	workers := ws.staticRenter.staticWorkerPool.callWorkers()
 	responseChan := make(chan *jobHasSectorResponse, len(workers))
 	for _, w := range workers {
 		err := pcws.managedLaunchWorker(w, responseChan, ws)
@@ -395,7 +396,7 @@ func (pcws *projectChunkWorkerSet) managedWorkerState() *pcwsWorkerState {
 
 // managedTryUpdateWorkerState will check whether the worker state needs to be
 // refreshed. If so, it will refresh the worker state.
-func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState(seedWorkers map[string][]uint64) error {
+func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 	// The worker state does not need to be refreshed if it is recent or if
 	// there is another refresh currently in progress.
 	pcws.mu.Lock()
@@ -428,28 +429,8 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState(seedWorkers map[s
 		staticRenter: pcws.staticRenter,
 	}
 
-	// Get the workers from the pool and split them up into seeded and
-	// unseeded workers. For the seeded ones we create the resolved worker
-	// state immediately. The unseeded ones are passed to
-	// managedLaunchWorkers.
-	workers := ws.staticRenter.staticWorkerPool.callWorkers()
-	var unseededWorkers []*worker
-
-	for _, w := range workers {
-		pieceIndices, seeded := seedWorkers[w.staticHostPubKey.String()]
-		if !seeded {
-			unseededWorkers = append(unseededWorkers, w)
-			continue
-		}
-		ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
-			worker:       w,
-			pieceIndices: pieceIndices,
-			err:          nil,
-		})
-	}
-
 	// Launch the thread to find the workers for this launch state.
-	pcws.managedLaunchWorkers(unseededWorkers, ws)
+	pcws.managedLaunchWorkers(ws)
 
 	// Update the pcws so that the workerState in the pcws is the newest worker
 	// state.
@@ -507,7 +488,7 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	}
 
 	// Refresh the pcws. This will only cause a refresh if one is necessary.
-	err := pcws.managedTryUpdateWorkerState(nil)
+	err := pcws.managedTryUpdateWorkerState()
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to initiate download")
 	}
@@ -559,7 +540,7 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		pieceOffset: pieceOffset,
 		pieceLength: pieceLength,
 
-		staticLowPrio: lowPrio,
+		staticIsLowPrio: lowPrio,
 
 		pricePerMS: pricePerMS,
 
@@ -626,7 +607,7 @@ func (r *Renter) newPCWSByRoots(ctx context.Context, roots []crypto.Hash, ec sky
 	}
 
 	// The worker state is blank, ensure that everything can get started.
-	err := pcws.managedTryUpdateWorkerState(seedWorkers)
+	err := pcws.managedTryUpdateWorkerState()
 	if err != nil {
 		return nil, errors.AddContext(err, "cannot create a new PCWS")
 	}

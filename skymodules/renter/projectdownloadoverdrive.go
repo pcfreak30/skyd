@@ -38,7 +38,7 @@ const (
 // take to return, taking into account the penalties for the price of the
 // download and a potential cooldown on the read queue.
 func (pdc *projectDownloadChunk) adjustedReadDuration(w *worker) time.Duration {
-	jrq := w.callReadQueue(pdc.staticLowPrio)
+	jrq := w.callReadQueue(pdc.staticIsLowPrio)
 
 	// Fetch the expected job time.
 	jobTime := jrq.staticStats.callExpectedJobTime(pdc.pieceLength)
