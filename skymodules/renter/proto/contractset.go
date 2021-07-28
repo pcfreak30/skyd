@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/ratelimit"
@@ -188,6 +189,8 @@ func (cs *ContractSet) Close() error {
 // NewContractSet returns a ContractSet storing its contracts in the specified
 // dir.
 func NewContractSet(dir string, rl *ratelimit.RateLimit, deps modules.Dependencies) (*ContractSet, error) {
+	start := time.Now()
+	fmt.Println("newcontractset1", time.Since(start).Milliseconds())
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
@@ -208,6 +211,7 @@ func NewContractSet(dir string, rl *ratelimit.RateLimit, deps modules.Dependenci
 	//
 	// COMPATv1.3.1RC2 Rename old wals to have the 'wal' extension if new file
 	// doesn't exist.
+	fmt.Println("newcontractset2", time.Since(start).Milliseconds())
 	if err := v131RC2RenameWAL(dir); err != nil {
 		return nil, err
 	}
@@ -216,6 +220,7 @@ func NewContractSet(dir string, rl *ratelimit.RateLimit, deps modules.Dependenci
 		return nil, err
 	}
 
+	fmt.Println("newcontractset3", time.Since(start).Milliseconds())
 	cs := &ContractSet{
 		contracts: make(map[types.FileContractID]*SafeContract),
 		pubKeys:   make(map[string]types.FileContractID),
@@ -231,6 +236,7 @@ func NewContractSet(dir string, rl *ratelimit.RateLimit, deps modules.Dependenci
 	// Before loading the contract files apply the updates which were meant to
 	// create new contracts and filter them out.
 	var remainingTxns []*writeaheadlog.Transaction
+	fmt.Println("newcontractset4", time.Since(start).Milliseconds())
 	for _, txn := range walTxns {
 		// txn with insertion updates contain exactly one update and are named
 		// 'updateNameInsertContract'. If that is not the case, we ignore the
@@ -251,6 +257,7 @@ func NewContractSet(dir string, rl *ratelimit.RateLimit, deps modules.Dependenci
 	walTxns = remainingTxns
 
 	// Check for legacy contracts and split them up.
+	fmt.Println("newcontractset5", time.Since(start).Milliseconds())
 	if err := cs.managedV146SplitContractHeaderAndRoots(dir); err != nil {
 		return nil, err
 	}
@@ -275,6 +282,7 @@ func NewContractSet(dir string, rl *ratelimit.RateLimit, deps modules.Dependenci
 			return nil, errors.Compose(extErr, err)
 		}
 	}
+	fmt.Println("newcontractset6", time.Since(start).Milliseconds())
 
 	return cs, nil
 }
