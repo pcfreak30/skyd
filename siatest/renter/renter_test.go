@@ -1226,7 +1226,7 @@ func testRemoteRepairFailLegacyDownload(t *testing.T, tg *siatest.TestGroup) {
 	testRemoteRepair(t, tg, rt)
 }
 
-// testRemoteRepairForceLegacyDownload executes testRemoteRepair while forcig
+// testRemoteRepairForceLegacyDownload executes testRemoteRepair while forcing
 // the renter to use the legacy download instead of the skynet download.
 func testRemoteRepairForceLegacyDownload(t *testing.T, tg *siatest.TestGroup) {
 	rt := node.RenterTemplate

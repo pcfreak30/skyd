@@ -279,24 +279,14 @@ func (r *Renter) managedDownloadLogicalChunkDataFromSkynet(chunk *unfinishedUplo
 	if err != nil {
 		return nil, err
 	}
-	seedWorkers := make(map[string][]uint64)
-	for pieceIndex, pieceSet := range allPieces {
-		rootFound := false
+	for _, pieceSet := range allPieces {
 		for _, piece := range pieceSet {
-			if !rootFound {
-				// Only need 1 root per piece.
-				roots = append(roots, piece.MerkleRoot)
-				rootFound = true
-			}
-			// Remember which hosts are supposed to have which
-			// pieces of the chunk already. We use that information
-			// to seed the worker set to improve the download.
-			indices := seedWorkers[piece.HostPubKey.String()]
-			seedWorkers[piece.HostPubKey.String()] = append(indices, uint64(pieceIndex))
-			break // only one root needed per pieceSet
+			// Only need 1 root per piece.
+			roots = append(roots, piece.MerkleRoot)
+			break
 		}
 	}
-	pcws, err := r.newPCWSByRoots(r.tg.StopCtx(), roots, ec, mk, chunk.staticIndex, seedWorkers)
+	pcws, err := r.newPCWSByRoots(r.tg.StopCtx(), roots, ec, mk, chunk.staticIndex)
 	if err != nil {
 		return nil, err
 	}

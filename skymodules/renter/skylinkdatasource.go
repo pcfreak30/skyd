@@ -241,7 +241,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create plain skykey")
 	}
-	pcws, err := r.newPCWSByRoots(ctx, []crypto.Hash{root}, ptec, tpsk, 0, nil)
+	pcws, err := r.newPCWSByRoots(ctx, []crypto.Hash{root}, ptec, tpsk, 0)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create the worker set for this skylink")
 	}
@@ -382,7 +382,7 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, skylink skymodule
 		// channels as they are ready.
 		err = r.tg.Launch(func() {
 			for i, chunk := range fanoutChunks {
-				pcws, err := r.newPCWSByRoots(dsCtx, chunk, ec, fanoutKey, uint64(i), nil)
+				pcws, err := r.newPCWSByRoots(dsCtx, chunk, ec, fanoutKey, uint64(i))
 				fanoutChunkErrs[i] = err
 				fanoutChunkFetchers[i] = pcws
 				close(fanoutChunksReady[i])
