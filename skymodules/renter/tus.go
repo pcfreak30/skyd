@@ -362,12 +362,16 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 	cr := NewFanoutChunkReader(src, ec, onlyOnePieceNeeded, fileNode.MasterKey())
 	var chunks []*unfinishedUploadChunk
 	chunks, n, err = uploader.staticRenter.callUploadStreamFromReaderWithFileNodeNoBlock(ctx, fileNode, cr, offset)
+	fmt.Println("offset/n", u.fi.Offset, n)
+	if err != nil {
+		return 0, nil
+	}
 
 	// Increment offset and append fanout.
 	u.fi.Offset += n
 	u.fanout = append(u.fanout, cr.Fanout()...)
 	u.chunks = append(u.chunks, chunks...)
-	return n, err
+	return n, nil
 }
 
 // GetInfo returns the file info.
