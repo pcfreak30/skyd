@@ -376,6 +376,7 @@ func (pdc *projectDownloadChunk) launchWorkers(maxOverdriveWorkers int) error {
 		completed, err := pdc.finished()
 		if completed {
 			pdc.finalize()
+			fmt.Println("num workers launched", len(pdc.launchedWorkers))
 			return nil
 		}
 		if err != nil {
