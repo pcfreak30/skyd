@@ -427,7 +427,6 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 
 	// Ensure that there are enough pieces that could potentially become
 	// completed to finish the download.
-	fmt.Println("hopeful", hopefulPieces)
 	if hopefulPieces < ec.MinPieces() {
 		return false, errNotEnoughPieces
 	}
@@ -470,7 +469,6 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 	jrs := w.newJobReadSector(pdc.ctx, w.staticJobReadQueue, pdc.workerResponseChan, jobMetadata, sectorRoot, pdc.pieceOffset, pdc.pieceLength)
 
 	// Submit the job.
-	fmt.Println("SUBMITTING JOB")
 	expectedCompleteTime, added := w.staticJobReadQueue.callAddWithEstimate(jrs)
 
 	// Track the launched worker
@@ -486,8 +484,6 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 			staticPDC:    pdc,
 			staticWorker: w,
 		})
-	} else {
-		fmt.Println("OMG NOT ADDED")
 	}
 
 	// Update the status of the piece that was launched. 'launched' should be

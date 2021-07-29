@@ -228,7 +228,6 @@ func (ws workerSet) chanceGreaterThanHalf(dur time.Duration) bool {
 	// if we don't have to consider any overdrive workers, the chance it's all
 	// heads is the chance that needs to be greater than half
 	if ws.numOverdriveWorkers() == 0 {
-		fmt.Println("chance all heads", chanceAllHeads)
 		return chanceAllHeads > 0.5
 	}
 
@@ -286,7 +285,7 @@ func (ws workerSet) numOverdriveWorkers() int {
 }
 
 func (ws workerSet) consistsOfUniquePieceWorkers() bool {
-	var counts map[uint64]uint64
+	counts := make(map[uint64]uint64)
 	for _, w := range ws.workers {
 		for _, p := range w.pieces() {
 			counts[p]++
@@ -380,15 +379,13 @@ func (pdc *projectDownloadChunk) launchWorkers(maxOverdriveWorkers int) error {
 			return nil
 		}
 		if err != nil {
-			fmt.Println("oh no error", err)
 			pdc.fail(err)
 			return err
 		}
 
 		select {
-		case <-time.After(5 * time.Second): // TODO make 20ms
+		case <-time.After(20 * time.Millisecond):
 		case jrr := <-pdc.workerResponseChan:
-			fmt.Println("HANDLING JOB RESPONSE")
 			pdc.handleJobReadResponse(jrr)
 		case <-pdc.ctx.Done():
 			return errors.New("timed out while trying to build initial set of workers")

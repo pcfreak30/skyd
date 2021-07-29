@@ -680,8 +680,6 @@ func testConversion(t *testing.T, tg *siatest.TestGroup, dp, pp uint64, skykeyNa
 		t.Fatal("Expected conversion from Siafile to Skyfile Post to succeed.")
 	}
 
-	fmt.Println("HALLO")
-
 	// Try to download the skylink.
 	skylink := sshp.Skylink
 	fetchedData, err := r.SkynetSkylinkGet(skylink)
