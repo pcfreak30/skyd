@@ -203,6 +203,13 @@ type cachedUtilities struct {
 	used         []types.SiaPublicKey
 }
 
+type downloadStats struct {
+	totalDownloads                uint64
+	totalWorkersLaunched          uint64
+	totalOverdriveWorkersLaunched uint64
+	mu                            sync.Mutex
+}
+
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
@@ -260,6 +267,7 @@ type Renter struct {
 	staticRegReadStats          *skymodules.DistributionTracker
 	staticRegWriteStats         *skymodules.DistributionTracker
 	staticStreamBufferStats     *skymodules.DistributionTracker
+	staticDLStats               *downloadStats
 
 	// Memory management
 	//
@@ -1108,6 +1116,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		mu:                   siasync.New(modules.SafeMutexDelay, 1),
 		staticTPool:          tpool,
 	}
+	r.staticDLStats = &downloadStats{}
+
 	r.staticRegReadStats = skymodules.NewDistributionTrackerStandard()
 	r.staticRegReadStats.AddDataPoint(readRegistryStatsSeed) // Seed the stats so that startup doesn't say 0.
 	r.staticRegWriteStats = skymodules.NewDistributionTrackerStandard()

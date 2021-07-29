@@ -375,8 +375,20 @@ func (pdc *projectDownloadChunk) launchWorkers(maxOverdriveWorkers int) error {
 
 		completed, err := pdc.finished()
 		if completed {
+			minPieces := pdc.workerSet.staticErasureCoder.MinPieces()
+			launched := uint64(len(pdc.launchedWorkers))
+			overdrive := launched - uint64(minPieces)
+
+			dls := pdc.workerState.staticRenter.staticDLStats
+			dls.mu.Lock()
+			dls.totalDownloads++
+			dls.totalWorkersLaunched += launched
+			dls.totalOverdriveWorkersLaunched += overdrive
+			odOnAvg := float64(dls.totalOverdriveWorkersLaunched) / float64(dls.totalDownloads)
+			dls.mu.Unlock()
+
 			pdc.finalize()
-			fmt.Println("num workers launched", len(pdc.launchedWorkers))
+			fmt.Println("num OD workers launched on avg", odOnAvg)
 			return nil
 		}
 		if err != nil {
@@ -455,21 +467,34 @@ OUTER:
 				return workers[i].chanceCompleteAfter(bDur) > workers[j].chanceCompleteAfter(bDur)
 			})
 
-			// create the most likely set
+			// select workers in a way there's no duplicate
+			selected := make([]downloadWorker, 0)
+			pieces := make(map[uint64]struct{})
+			for _, w := range workers {
+				// already resolved workers can
+				for _, pieceIndex := range w.pieces() {
+					_, exists := pieces[pieceIndex]
+					if !exists {
+						selected = append(selected, w)
+						pieces[pieceIndex] = struct{}{}
+					}
+				}
+			}
+
 			var mostLikelySet *workerSet
 			var remainingWorkers []downloadWorker
-			if len(workers) > workersNeeded {
+			if len(selected) > workersNeeded {
 				mostLikelySet = &workerSet{
-					workers: workers[:workersNeeded],
+					workers: selected[:workersNeeded],
 
 					staticDuration:  bDur,
 					staticLength:    length,
 					staticMinPieces: minPieces,
 				}
-				remainingWorkers = workers[workersNeeded:]
+				remainingWorkers = selected[workersNeeded:]
 			} else {
 				mostLikelySet = &workerSet{
-					workers: workers,
+					workers: selected,
 
 					staticDuration:  bDur,
 					staticLength:    length,
