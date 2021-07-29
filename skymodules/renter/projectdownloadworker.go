@@ -513,7 +513,15 @@ OUTER:
 	}
 
 	if !bestSet.consistsOfUniquePieceWorkers() {
-		build.Critical("non unique workers, we'll need to solve this")
+		fmt.Println("non unique:")
+		for i, w := range bestSet.workers {
+			msg := fmt.Sprintf("worker %v pieces: ", i+1)
+			for _, piece := range w.pieces() {
+				msg += fmt.Sprintf("%v,", piece)
+			}
+			fmt.Println(msg)
+		}
+		// build.Critical("non unique workers, we'll need to solve this")
 	}
 
 	// launch all workers that can be launched
@@ -527,6 +535,8 @@ OUTER:
 					break // only launch one piece per worker
 				}
 			}
+		} else {
+			fmt.Println("chimera worker in best set")
 		}
 	}
 	return nil
