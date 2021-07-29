@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -30,6 +31,7 @@ type uploadChunkID struct {
 type unfinishedUploadChunk struct {
 	// Information about the file. localPath may be the empty string if the file
 	// is known not to exist locally.
+	ctx       context.Context
 	id        uploadChunkID
 	fileEntry *filesystem.FileNode
 
