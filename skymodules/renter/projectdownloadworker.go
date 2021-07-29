@@ -384,12 +384,11 @@ func (pdc *projectDownloadChunk) launchWorkers(maxOverdriveWorkers int) error {
 			dls.totalDownloads++
 			if overdrive > 0 {
 				dls.totalOverdrive++
-				dls.totalWorkersLaunched += launched
 				dls.totalOverdriveWorkersLaunched += overdrive
 			}
 
 			odAvg := float64(dls.totalOverdrive) / float64(dls.totalDownloads)
-			odWorkersAvg := float64(dls.totalOverdriveWorkersLaunched) / float64(dls.totalWorkersLaunched)
+			odWorkersAvg := float64(dls.totalOverdriveWorkersLaunched) / float64(dls.totalOverdrive)
 			dls.mu.Unlock()
 
 			pdc.finalize()
