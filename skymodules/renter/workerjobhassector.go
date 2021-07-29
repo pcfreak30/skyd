@@ -7,6 +7,7 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -70,6 +71,10 @@ type (
 		// executed.
 		totalAvailable uint64
 		totalJobs      uint64
+
+		// staticDT is a distribution tracker that keeps track of the HS job
+		// duration
+		staticDT skymodules.DistributionTracker
 
 		*jobGenericQueue
 	}

@@ -557,7 +557,7 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	pdc.launchTime = time.Now()
 
 	// Launch the initial set of workers for the pdc.
-	err = pdc.launchInitialWorkers()
+	err = pdc.launchWorkers(10) // TODO
 	if err != nil {
 		return nil, errors.Compose(err, ErrRootNotFound)
 	}
@@ -565,7 +565,8 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// All initial workers have been launched. The function can return now,
 	// unblocking the caller. A background thread will be launched to collect
 	// the responses and launch overdrive workers when necessary.
-	go pdc.threadedCollectAndOverdrivePieces()
+	// go pdc.threadedCollectAndOverdrivePieces()
+
 	return pdc.downloadResponseChan, nil
 }
 

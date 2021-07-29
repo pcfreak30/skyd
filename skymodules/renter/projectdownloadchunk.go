@@ -208,6 +208,26 @@ func (pd *pieceDownload) successful() bool {
 	return pd.completed && pd.downloadErr == nil
 }
 
+func (pdc *projectDownloadChunk) updateAvailablePieces() {
+	ws := pdc.workerState
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+
+	// Add any new resolved workers to the pdc's list of available pieces.
+	for i := pdc.workersConsideredIndex; i < len(ws.resolvedWorkers); i++ {
+		// Add the returned worker to available pieces for each piece that the
+		// resolved worker has.
+		resp := ws.resolvedWorkers[i]
+		for _, pieceIndex := range resp.pieceIndices {
+			pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], &pieceDownload{
+				worker: resp.worker,
+			})
+		}
+	}
+	pdc.workersConsideredIndex = len(ws.resolvedWorkers)
+	pdc.unresolvedWorkersRemaining = len(ws.unresolvedWorkers)
+}
+
 // unresolvedWorkers will return the set of unresolved workers from the worker
 // state of the pdc. This operation will also update the set of available pieces
 // within the pdc to reflect any previously unresolved workers that are now
@@ -407,6 +427,7 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 
 	// Ensure that there are enough pieces that could potentially become
 	// completed to finish the download.
+	fmt.Println("hopeful", hopefulPieces)
 	if hopefulPieces < ec.MinPieces() {
 		return false, errNotEnoughPieces
 	}
@@ -449,6 +470,7 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 	jrs := w.newJobReadSector(pdc.ctx, w.staticJobReadQueue, pdc.workerResponseChan, jobMetadata, sectorRoot, pdc.pieceOffset, pdc.pieceLength)
 
 	// Submit the job.
+	fmt.Println("SUBMITTING JOB")
 	expectedCompleteTime, added := w.staticJobReadQueue.callAddWithEstimate(jrs)
 
 	// Track the launched worker
@@ -464,6 +486,8 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 			staticPDC:    pdc,
 			staticWorker: w,
 		})
+	} else {
+		fmt.Println("OMG NOT ADDED")
 	}
 
 	// Update the status of the piece that was launched. 'launched' should be

@@ -5,6 +5,7 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -47,6 +48,12 @@ type (
 		weightedJobTime64k float64
 		weightedJobTime1m  float64
 		weightedJobTime4m  float64
+
+		// These distribution trackers keep track of the read durations for
+		// every length category.
+		staticDT64k *skymodules.DistributionTracker
+		staticDT1m  *skymodules.DistributionTracker
+		staticDT4m  *skymodules.DistributionTracker
 
 		*jobGenericQueue
 	}
@@ -290,6 +297,22 @@ func (jq *jobReadQueue) callUpdateJobTimeMetrics(length uint64, jobTime time.Dur
 	} else {
 		jq.weightedJobTime4m = expMovingAvgHotStart(jq.weightedJobTime4m, float64(jobTime), jobReadPerformanceDecay)
 	}
+
+	// update distribution tracker
+	dt := jq.distributionTrackerForLength(length)
+	dt.AddDataPoint(jobTime)
+}
+
+// distributionTrackerForLength returns the distribution tracker that
+// corresponds to the given length.
+func (jq *jobReadQueue) distributionTrackerForLength(length uint64) *skymodules.DistributionTracker {
+	if length <= 1<<16 {
+		return jq.staticDT64k
+	} else if length <= 1<<20 {
+		return jq.staticDT1m
+	} else {
+		return jq.staticDT4m
+	}
 }
 
 // initJobReadQueue will initialize a queue for downloading sectors by
@@ -301,6 +324,10 @@ func (w *worker) initJobReadQueue() {
 	}
 	w.staticJobReadQueue = &jobReadQueue{
 		jobGenericQueue: newJobGenericQueue(w),
+
+		staticDT64k: skymodules.NewDistributionTrackerStandard(),
+		staticDT1m:  skymodules.NewDistributionTrackerStandard(),
+		staticDT4m:  skymodules.NewDistributionTrackerStandard(),
 	}
 }
 

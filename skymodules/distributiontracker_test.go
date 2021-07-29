@@ -3,6 +3,8 @@ package skymodules
 import (
 	"testing"
 	"time"
+
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestFullDistributionTracker attempts to use a distribution tracker in full,
@@ -104,6 +106,66 @@ func TestFullDistributionTracker(t *testing.T) {
 	}
 }
 
+// TestDistributionExpectedDuration will test that the distribution correctly
+// returns the expected duration based upon all data points in the distribution.
+func TestDistributionExpectedDuration(t *testing.T) {
+	t.Parallel()
+
+	d := NewDistribution(time.Minute * 100)
+	ms := time.Millisecond
+
+	// check whether we default to the worst case if we have 0 data points
+	expected := d.ExpectedDuration()
+	if expected != durationForIndex(len(d.timings)) {
+		t.Error("bad")
+	}
+
+	// add a first data point
+	duration := 8 * ms
+	d.AddDataPoint(duration)
+	expected = d.ExpectedDuration()
+	if expected != duration {
+		t.Error("bad")
+	}
+
+	// now add 1000 datapoints, between 1-50ms
+	for i := 0; i < 1000; i++ {
+		d.AddDataPoint(time.Duration(fastrand.Uint64n(50)+1) * ms)
+	}
+	expected = d.ExpectedDuration()
+	if expected < 22*ms || expected > 28*ms {
+		t.Error("bad")
+	}
+
+	// add 1000 more datapoints, between 51 and 100ms
+	for i := 0; i < 1000; i++ {
+		d.AddDataPoint(time.Duration(fastrand.Uint64n(100)+50) * ms)
+	}
+
+	// assert the expected duration increased
+	expected = d.ExpectedDuration()
+	if expected < 50*ms || expected > 75*ms {
+		t.Error("bad")
+	}
+}
+
+func TestDistributionShift(t *testing.T) {
+	t.Parallel()
+
+	d := NewDistribution(time.Minute * 100)
+	ms := time.Millisecond
+
+	index, fraction := indexForDuration(64 * ms)
+	for i := 1; i < 100; i++ {
+		d.AddDataPoint(time.Duration(i*4) * ms)
+	}
+	t.Log(index)
+	t.Log(fraction)
+
+	chance := d.ChanceAfter(50 * ms)
+	t.Log(chance)
+}
+
 // TestDistributionDecay will test that the distribution is being decayed
 // correctly when enough time has passed.
 func TestDistributionDecay(t *testing.T) {
@@ -196,7 +258,7 @@ func TestDistributionBucketing(t *testing.T) {
 	d := NewDistribution(time.Minute * 100)
 
 	// Get a distribution with no data collected.
-	if d.PStat(0.55) != distributionDuration(64+48*distributionTrackerNumIncrements) {
+	if d.PStat(0.55) != durationForIndex(64+48*distributionTrackerNumIncrements) {
 		t.Error("expecting a distribution with no data to return the max possible value")
 	}
 
@@ -222,7 +284,7 @@ func TestDistributionBucketing(t *testing.T) {
 			t.Error("bad", i, pstat, total)
 		}
 		pstat = d.PStat(0.5)
-		if pstat != distributionDuration((i+1)/2) {
+		if pstat != durationForIndex((i+1)/2) {
 			t.Error("bad", i, pstat, total)
 		}
 	}
@@ -244,7 +306,7 @@ func TestDistributionBucketing(t *testing.T) {
 			t.Error("bad", i, pstat, total)
 		}
 		pstat = d.PStat(0.5)
-		if pstat != distributionDuration((i+1)/2) {
+		if pstat != durationForIndex((i+1)/2) {
 			t.Error("bad", i, pstat, total)
 		}
 	}
@@ -266,7 +328,7 @@ func TestDistributionBucketing(t *testing.T) {
 			t.Error("bad", i, pstat, total)
 		}
 		pstat = d.PStat(0.5)
-		if pstat != distributionDuration((i+1)/2) {
+		if pstat != durationForIndex((i+1)/2) {
 			t.Error("bad", i, pstat, total)
 		}
 	}
@@ -288,7 +350,7 @@ func TestDistributionBucketing(t *testing.T) {
 			t.Error("bad", i, pstat, total)
 		}
 		pstat = d.PStat(0.5)
-		if pstat != distributionDuration((i+1)/2) {
+		if pstat != durationForIndex((i+1)/2) {
 			t.Error("bad", i, pstat, total)
 		}
 	}
@@ -310,7 +372,7 @@ func TestDistributionBucketing(t *testing.T) {
 			t.Error("bad", i, pstat, total)
 		}
 		pstat = d.PStat(0.5)
-		if pstat != distributionDuration((i+1)/2) {
+		if pstat != durationForIndex((i+1)/2) {
 			t.Error("bad", i, pstat, total)
 		}
 	}
@@ -332,7 +394,7 @@ func TestDistributionBucketing(t *testing.T) {
 			t.Error("bad", i, pstat, total)
 		}
 		pstat = d.PStat(0.5)
-		if pstat != distributionDuration((i+1)/2) {
+		if pstat != durationForIndex((i+1)/2) {
 			t.Error("bad", i, pstat, total)
 		}
 	}
@@ -354,7 +416,7 @@ func TestDistributionBucketing(t *testing.T) {
 			t.Error("bad", i, pstat, total)
 		}
 		pstat = d.PStat(0.5)
-		if pstat != distributionDuration((i+1)/2) {
+		if pstat != durationForIndex((i+1)/2) {
 			t.Error("bad", i, pstat, total)
 		}
 	}
@@ -376,7 +438,7 @@ func TestDistributionBucketing(t *testing.T) {
 			t.Error("bad", i, pstat, total)
 		}
 		pstat = d.PStat(0.5)
-		if pstat != distributionDuration((i+1)/2) {
+		if pstat != durationForIndex((i+1)/2) {
 			t.Error("bad", i, pstat, total)
 		}
 	}
@@ -394,7 +456,7 @@ func TestDistributionBucketing(t *testing.T) {
 		t.Error("bad", i, pstat, total)
 	}
 	pstat = d.PStat(0.5)
-	if pstat != distributionDuration(((64+48*distributionTrackerNumIncrements)/2)+1) {
-		t.Error("bad", pstat, distributionDuration(201))
+	if pstat != durationForIndex(((64+48*distributionTrackerNumIncrements)/2)+1) {
+		t.Error("bad", pstat, durationForIndex(201))
 	}
 }
