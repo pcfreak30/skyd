@@ -382,13 +382,18 @@ func (pdc *projectDownloadChunk) launchWorkers(maxOverdriveWorkers int) error {
 			dls := pdc.workerState.staticRenter.staticDLStats
 			dls.mu.Lock()
 			dls.totalDownloads++
-			dls.totalWorkersLaunched += launched
-			dls.totalOverdriveWorkersLaunched += overdrive
-			odOnAvg := float64(dls.totalOverdriveWorkersLaunched) / float64(dls.totalDownloads)
+			if overdrive > 0 {
+				dls.totalOverdrive++
+				dls.totalWorkersLaunched += launched
+				dls.totalOverdriveWorkersLaunched += overdrive
+			}
+
+			odAvg := float64(dls.totalOverdrive) / float64(dls.totalDownloads)
+			odWorkersAvg := float64(dls.totalOverdriveWorkersLaunched) / float64(dls.totalWorkersLaunched)
 			dls.mu.Unlock()
 
 			pdc.finalize()
-			fmt.Println("num OD workers launched on avg", odOnAvg)
+			fmt.Printf("OD avg: %v OD workers avg: %v\n", odAvg, odWorkersAvg)
 			return nil
 		}
 		if err != nil {

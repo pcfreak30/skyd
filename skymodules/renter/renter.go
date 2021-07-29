@@ -205,6 +205,7 @@ type cachedUtilities struct {
 
 type downloadStats struct {
 	totalDownloads                uint64
+	totalOverdrive                uint64
 	totalWorkersLaunched          uint64
 	totalOverdriveWorkersLaunched uint64
 	mu                            sync.Mutex
