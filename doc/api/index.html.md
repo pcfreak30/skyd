@@ -3841,6 +3841,10 @@ the download which is why it is not returned by default. Cases that require the
 layout include backing up skylinks where all the original upload information
 about a skylink is needed.
 
+**start | end** | uint64  
+The `start` and `end` params can be used for range requests when the client is
+unable to use the range field in the Header.
+
 **timeout** | int  
 If 'timeout' is set, the download will fail if the Skyfile cannot be retrieved 
 before it expires. Note that this timeout does not cover the actual download 
