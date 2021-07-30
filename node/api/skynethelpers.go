@@ -352,10 +352,7 @@ func parseDownloadRequestParameters(req *http.Request) (*skyfileDownloadParams, 
 		}
 
 		// Set the Range field in the Header
-		if end > 0 && start != end {
-			end--
-		}
-		req.Header.Add("Range", fmt.Sprintf("bytes=%d-%d", start, end))
+		AddRangeHeaderToRequest(req, start, end)
 	} else if startStr != "" || endStr != "" {
 		return nil, errIncompleteRangeRequest
 	}
