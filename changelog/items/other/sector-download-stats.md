@@ -1,1 +1,1 @@
-- Add base - and fanout sector download stats to the '/skynet/stats' endpoint
+- Add base sector and fanout sector download stats to the '/skynet/stats' endpoint
