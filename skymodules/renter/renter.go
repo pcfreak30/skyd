@@ -255,11 +255,13 @@ type Renter struct {
 	statsMu   sync.Mutex
 
 	// various performance stats
-	staticBaseSectorUploadStats *skymodules.DistributionTracker
-	staticChunkUploadStats      *skymodules.DistributionTracker
-	staticRegReadStats          *skymodules.DistributionTracker
-	staticRegWriteStats         *skymodules.DistributionTracker
-	staticStreamBufferStats     *skymodules.DistributionTracker
+	staticBaseSectorDownloadStats   *skymodules.SectorDownloadStats
+	staticBaseSectorUploadStats     *skymodules.DistributionTracker
+	staticChunkUploadStats          *skymodules.DistributionTracker
+	staticFanoutSectorDownloadStats *skymodules.SectorDownloadStats
+	staticRegReadStats              *skymodules.DistributionTracker
+	staticRegWriteStats             *skymodules.DistributionTracker
+	staticStreamBufferStats         *skymodules.DistributionTracker
 
 	// Memory management
 	//
@@ -801,11 +803,13 @@ func (r *Renter) Performance() (skymodules.RenterPerformance, error) {
 	return skymodules.RenterPerformance{
 		SystemHealthScanDuration: healthDuration,
 
-		BaseSectorUploadStats: r.staticBaseSectorUploadStats.Stats(),
-		ChunkUploadStats:      r.staticChunkUploadStats.Stats(),
-		RegistryReadStats:     r.staticRegReadStats.Stats(),
-		RegistryWriteStats:    r.staticRegWriteStats.Stats(),
-		StreamBufferReadStats: r.staticStreamBufferStats.Stats(),
+		BaseSectorDownloadStats:   r.staticBaseSectorDownloadStats,
+		BaseSectorUploadStats:     r.staticBaseSectorUploadStats.Stats(),
+		ChunkUploadStats:          r.staticChunkUploadStats.Stats(),
+		FanoutSectorDownloadStats: r.staticFanoutSectorDownloadStats,
+		RegistryReadStats:         r.staticRegReadStats.Stats(),
+		RegistryWriteStats:        r.staticRegWriteStats.Stats(),
+		StreamBufferReadStats:     r.staticStreamBufferStats.Stats(),
 	}, nil
 }
 
@@ -1074,6 +1078,9 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		// will miss work altogether.
 		newDownloads:       make(chan struct{}, 1),
 		staticDownloadHeap: &downloadHeap{},
+
+		staticBaseSectorDownloadStats:   skymodules.NewSectorDownloadStats(),
+		staticFanoutSectorDownloadStats: skymodules.NewSectorDownloadStats(),
 
 		staticUploadHeap: uploadHeap{
 			repairingChunks:   make(map[uploadChunkID]*unfinishedUploadChunk),

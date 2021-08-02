@@ -4092,6 +4092,8 @@ returns statistical information about Skynet, e.g. number of files uploaded
 ### JSON Response
 ```json
 {
+   "basesectoroverdriveavg": 1.1033519553072626,
+   "basesectoroverdrivepct": 0.4666255144032922,
    "basesectorupload15mdatapoints":12.032777431483911,
    "basesectorupload15mp99ms":16384,
    "basesectorupload15mp999ms":27648,
@@ -4100,6 +4102,8 @@ returns statistical information about Skynet, e.g. number of files uploaded
    "chunkupload15mp99ms":30720,
    "chunkupload15mp999ms":30720,
    "chunkupload15mp9999ms":43008,
+   "fanoutsectoroverdriveavg": 1.8033519553072626,
+   "fanoutsectoroverdrivepct": 0.5216255144032922,
    "registryread15mdatapoints":126.31844121965291,
    "registryread15mp99ms":132,
    "registryread15mp999ms":288,
@@ -4130,6 +4134,22 @@ returns statistical information about Skynet, e.g. number of files uploaded
    }
 }
 ```
+
+**basesectoroverdriveavg** | float  
+The amount of overdrive workers that are launched on average for base sector
+downloads, if overdrive workers are launched at all.
+
+**basesectoroverdrivepct** | float  
+The percentage of base sector downloads that require at least one overdrive
+worker in order to successfully complete the download.
+
+**fanoutsectoroverdriveavg** | float  
+The amount of overdrive workers that are launched on average for fanout sector
+downloads, if overdrive workers are launched at all.
+
+**fanoutsectoroverdrivepct** | float  
+The percentage of fanout sector downloads that require at least one overdrive
+worker in order to successfully complete the download.
 
 **uptime** | int  
 The amount of time in seconds that siad has been running.
