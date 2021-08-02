@@ -176,3 +176,150 @@ func TestUpForRenewalCheck(t *testing.T) {
 		}
 	}
 }
+
+// TestBasicUtilityChecks is a unit test for basicUtilityChecks.
+func TestBasicUtilityChecks(t *testing.T) {
+	t.Parallel()
+
+	log, _ := persist.NewLogger(ioutil.Discard)
+	c := &Contractor{staticLog: log}
+
+	goodContract := skymodules.RenterContract{
+		ID: types.FileContractID{},
+		Utility: skymodules.ContractUtility{
+			GoodForUpload: true,
+			GoodForRenew:  true,
+		},
+		Transaction: types.Transaction{
+			FileContractRevisions: []types.FileContractRevision{
+				{
+					NewFileSize: 0,
+				},
+			},
+		},
+	}
+
+	tests := []struct {
+		storagePrice    types.Currency
+		maxStoragePrice types.Currency
+		minScoreGFR     types.Currency
+		minScoreGFU     types.Currency
+		score           types.Currency
+		contractSize    uint64
+
+		expectedUtilities    skymodules.ContractUtility
+		expectedUpdateStatus utilityUpdateStatus
+	}{
+		{
+			// No update needed
+			storagePrice:    types.SiacoinPrecision,
+			maxStoragePrice: types.SiacoinPrecision,
+			minScoreGFR:     types.SiacoinPrecision,
+			minScoreGFU:     types.SiacoinPrecision,
+			score:           types.SiacoinPrecision,
+			contractSize:    1,
+
+			expectedUtilities:    goodContract.Utility,
+			expectedUpdateStatus: noUpdate,
+		},
+		{
+			// Not GFU and not GFR - payment contract
+			storagePrice:    types.SiacoinPrecision,
+			maxStoragePrice: types.SiacoinPrecision,
+			minScoreGFR:     types.SiacoinPrecision.Add64(1),
+			minScoreGFU:     types.SiacoinPrecision.Add64(1),
+			score:           types.SiacoinPrecision,
+			contractSize:    0,
+
+			expectedUtilities: skymodules.ContractUtility{
+				GoodForUpload: false,
+				GoodForRenew:  false,
+			},
+			expectedUpdateStatus: suggestedUtilityUpdate,
+		},
+		{
+			// GFU but not GFR
+			storagePrice:    types.SiacoinPrecision,
+			maxStoragePrice: types.SiacoinPrecision,
+			minScoreGFR:     types.SiacoinPrecision.Add64(1),
+			minScoreGFU:     types.SiacoinPrecision,
+			score:           types.SiacoinPrecision,
+			contractSize:    1,
+
+			expectedUtilities: skymodules.ContractUtility{
+				GoodForUpload: false,
+				GoodForRenew:  false,
+			},
+			expectedUpdateStatus: suggestedUtilityUpdate,
+		},
+		{
+			// GFR but not GFU
+			storagePrice:    types.SiacoinPrecision,
+			maxStoragePrice: types.SiacoinPrecision,
+			minScoreGFR:     types.SiacoinPrecision,
+			minScoreGFU:     types.SiacoinPrecision.Add64(1),
+			score:           types.SiacoinPrecision,
+			contractSize:    1,
+
+			expectedUtilities: skymodules.ContractUtility{
+				GoodForUpload: false,
+				GoodForRenew:  true,
+			},
+			expectedUpdateStatus: necessaryUtilityUpdate,
+		},
+		{
+			// Storage price too high
+			storagePrice:    types.SiacoinPrecision.Add64(1),
+			maxStoragePrice: types.SiacoinPrecision,
+			minScoreGFR:     types.SiacoinPrecision,
+			minScoreGFU:     types.SiacoinPrecision,
+			score:           types.SiacoinPrecision,
+			contractSize:    1,
+
+			expectedUtilities: skymodules.ContractUtility{
+				GoodForUpload: false,
+				GoodForRenew:  true,
+			},
+			expectedUpdateStatus: necessaryUtilityUpdate,
+		},
+		{
+			// GFU and not GFR but also expensive.
+			storagePrice:    types.SiacoinPrecision.Add64(1),
+			maxStoragePrice: types.SiacoinPrecision,
+			minScoreGFR:     types.SiacoinPrecision.Add64(1),
+			minScoreGFU:     types.SiacoinPrecision,
+			score:           types.SiacoinPrecision,
+			contractSize:    1,
+
+			expectedUtilities: skymodules.ContractUtility{
+				GoodForUpload: false,
+				GoodForRenew:  false,
+			},
+			expectedUpdateStatus: necessaryUtilityUpdate,
+		},
+	}
+
+	// Run tests.
+	for i, test := range tests {
+		sb := skymodules.HostScoreBreakdown{
+			Score: test.score,
+		}
+		host := skymodules.HostDBEntry{
+			HostExternalSettings: modules.HostExternalSettings{
+				StoragePrice: test.storagePrice,
+			},
+		}
+		c.allowance = skymodules.Allowance{
+			MaxStoragePrice: test.maxStoragePrice,
+		}
+		goodContract.Transaction.FileContractRevisions[0].NewFileSize = test.contractSize
+
+		u, us := c.managedBasicUtilityChecks(goodContract, host, sb, test.minScoreGFR, test.minScoreGFU)
+		if !reflect.DeepEqual(u, test.expectedUtilities) {
+			t.Fatalf("%v: wrong utilities have %v but want %v", i, u, test.expectedUtilities)
+		}
+		if !reflect.DeepEqual(us, test.expectedUpdateStatus) {
+			t.Fatalf("%v: wrong status have %v but want %v", i, us, test.expectedUpdateStatus)
+		}
+	}
+}
