@@ -38,9 +38,8 @@ func (c *Contractor) managedCheckHostScore(contract skymodules.RenterContract, s
 
 	// Contract has no utility if the score is poor. Cannot be marked as bad if
 	// the contract is a payment contract.
-	deadScore := sb.Score.Cmp(types.NewCurrency64(1)) <= 0
 	badScore := !minScoreGFR.IsZero() && sb.Score.Cmp(minScoreGFR) < 0
-	if deadScore || (badScore && !paymentContract) {
+	if badScore && !paymentContract {
 		// Log if the utility has changed.
 		if u.GoodForUpload || u.GoodForRenew {
 			c.staticLog.Printf("Marking contract as having no utility because of host score: %v", contract.ID)
@@ -60,17 +59,11 @@ func (c *Contractor) managedCheckHostScore(contract skymodules.RenterContract, s
 		u.GoodForUpload = false
 		u.GoodForRenew = false
 
-		// Only force utility updates if the score is the min possible score.
-		// Otherwise defer update decision for low-score contracts to the
-		// churnLimiter.
-		if deadScore {
-			return u, necessaryUtilityUpdate
-		}
 		c.staticLog.Println("Adding contract utility update to churnLimiter queue")
 		return u, suggestedUtilityUpdate
 	}
 
-	// Contract should not be used for uplodaing if the score is poor.
+	// Contract should not be used for uploading if the score is poor.
 	if !minScoreGFU.IsZero() && sb.Score.Cmp(minScoreGFU) < 0 {
 		if u.GoodForUpload {
 			c.staticLog.Printf("Marking contract as not good for upload because of a poor score: %v", contract.ID)
@@ -107,7 +100,7 @@ func (c *Contractor) managedCheckHostScore(contract skymodules.RenterContract, s
 // !GFR and !GFU, even if the contract is already marked as such. If
 // 'needsUpdate' is set to true, other checks which may change those values will
 // be ignored and the contract will remain marked as having no utility.
-func (c *Contractor) managedCriticalUtilityChecks(sc *proto.SafeContract, host skymodules.HostDBEntry) (skymodules.ContractUtility, bool) {
+func (c *Contractor) managedCriticalUtilityChecks(sc *proto.SafeContract, host skymodules.HostDBEntry, sb skymodules.HostScoreBreakdown) (skymodules.ContractUtility, bool) {
 	contract := sc.Metadata()
 
 	c.mu.RLock()
@@ -118,8 +111,14 @@ func (c *Contractor) managedCriticalUtilityChecks(sc *proto.SafeContract, host s
 	_, renewed := c.renewedTo[contract.ID]
 	c.mu.RUnlock()
 
+	// A contract with a dead score should not be used for anything.
+	u, needsUpdate := deadScoreCheck(contract.Utility, sb.Score)
+	if needsUpdate {
+		return u, needsUpdate
+	}
+
 	// A contract that has been renewed should be set to !GFU and !GFR.
-	u, needsUpdate := renewedCheck(contract.Utility, renewed)
+	u, needsUpdate = renewedCheck(contract.Utility, renewed)
 	if needsUpdate {
 		return u, needsUpdate
 	}
@@ -254,6 +253,17 @@ func outOfStorageCheck(contract skymodules.RenterContract, blockHeight types.Blo
 	return u, false
 }
 
+// deadScoreCheck will return a contract with no utility and a required update
+// if the contract has a score <= 1.
+func deadScoreCheck(u skymodules.ContractUtility, score types.Currency) (skymodules.ContractUtility, bool) {
+	if score.Cmp(types.NewCurrency64(1)) <= 0 {
+		u.GoodForUpload = false
+		u.GoodForRenew = false
+		return u, true
+	}
+	return u, false
+}
+
 // renewedCheck will return a contract with no utility and a required update if
 // the contract has been renewed, no changes otherwise.
 func renewedCheck(u skymodules.ContractUtility, renewed bool) (skymodules.ContractUtility, bool) {
@@ -311,9 +321,13 @@ func sufficientFundsCheck(contract skymodules.RenterContract, host skymodules.Ho
 // the contract state.
 func upForRenewalCheck(contract skymodules.RenterContract, renewWindow, blockHeight types.BlockHeight, log *persist.Logger) (skymodules.ContractUtility, bool) {
 	u := contract.Utility
-	// Contract should not be used for uploading if the time has come to
-	// renew the contract.
-	if blockHeight+renewWindow >= contract.EndHeight {
+	// Contract should not be used for uploading if it's halfway through the
+	// renew window. That way we don't lose all upload contracts as soon as
+	// we hit the renew window and give them some time to be renewed while
+	// still uploading. If uploading blocks renews for half a window,
+	// uploading will be prevented and the contract will have the remaining
+	// window to update.
+	if blockHeight+renewWindow/2 >= contract.EndHeight {
 		if u.GoodForUpload {
 			log.Println("Marking contract as not good for upload because it is time to renew the contract", contract.ID)
 		}

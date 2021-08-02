@@ -66,9 +66,17 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 		{
 			// ValidSkyfile is the happy path, ensuring that we don't get errors
 			// on valid data.
-			Name:          "ValidSkyfile",
-			Skylink:       "_A6d-2CpM2OQ-7m5NPAYW830NdzC3wGydFzzd-KnHXhwJA",
+			Name:          "ValidSkyfileWithTrailingSlash",
+			Skylink:       "_A6d-2CpM2OQ-7m5NPAYW830NdzC3wGydFzzd-KnHXhwJA/",
 			ExpectedError: "",
+		},
+		{
+			// ValidSkyfile is the happy path, ensuring that we don't get errors
+			// on valid data.
+			Name:             "ValidSkyfileNoTrailingSlash",
+			Skylink:          "_A6d-2CpM2OQ-7m5NPAYW830NdzC3wGydFzzd-KnHXhwJA",
+			ExpectedError:    "Redirect",
+			ExpectedRedirect: "_A6d-2CpM2OQ-7m5NPAYW830NdzC3wGydFzzd-KnHXhwJA/",
 		},
 		{
 			// SingleFileDefaultPath ensures that we return an error if a single

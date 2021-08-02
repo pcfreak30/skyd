@@ -10,6 +10,17 @@ import (
 )
 
 type (
+	// DependencyForceLegacyRepairDownload forces the remote repair download
+	// to use the legacy download for both stuck and not stuck repairs. If
+	// that fails, it won't fall back to the skynet download.
+	DependencyForceLegacyRepairDownload struct {
+		skymodules.SkynetDependencies
+	}
+	// DependencyFailLegacyRepairDownload forces the remote repair download
+	// to use the skynet version by failing the legacy download.
+	DependencyFailLegacyRepairDownload struct {
+		skymodules.SkynetDependencies
+	}
 	// DependencyDelayChunkDistribution delays the chunk distribution in
 	// callAddUploadChunk by 1 second and skips the actual distribution.
 	DependencyDelayChunkDistribution struct {
@@ -387,6 +398,16 @@ func (d *DependencyDisableWorker) Disrupt(s string) bool {
 // Disrupt returns true if the correct string is provided.
 func (d *DependencyReadRegistryBlocking) Disrupt(s string) bool {
 	return s == "ReadRegistryBlocking"
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyForceLegacyRepairDownload) Disrupt(s string) bool {
+	return s == "ForceLegacyRepairDownload"
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyFailLegacyRepairDownload) Disrupt(s string) bool {
+	return s == "FailLegacyRepairDownload"
 }
 
 // Disrupt returns true if the correct string is provided.

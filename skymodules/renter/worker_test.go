@@ -194,8 +194,9 @@ func TestReadOffsetCorruptedProof(t *testing.T) {
 func TestManagedAsyncReady(t *testing.T) {
 	w := new(worker)
 	w.initJobHasSectorQueue()
-	w.initJobReadQueue()
-	w.initJobLowPrioReadQueue()
+	jrs := &jobReadStats{}
+	w.initJobReadQueue(jrs)
+	w.initJobLowPrioReadQueue(jrs)
 	w.initJobReadRegistryQueue()
 	w.initJobUpdateRegistryQueue()
 
@@ -253,7 +254,7 @@ func TestJobQueueInitialEstimate(t *testing.T) {
 	if w.staticJobHasSectorQueue.callExpectedJobTime() == 0 {
 		t.Fatal("unexpected")
 	}
-	if w.staticJobReadQueue.callExpectedJobTime(fastrand.Uint64n(1<<24)) == 0 {
+	if w.staticJobReadQueue.staticStats.callExpectedJobTime(fastrand.Uint64n(1<<24)) == 0 {
 		t.Fatal("unexpected")
 	}
 }
