@@ -64,9 +64,8 @@ type (
 		defaultPath         string
 		convertPath         string
 		disableDefaultPath  bool
-		dirResMode          string
-		dirResNotFound      string
-		dirResNotFoundCode  int
+		tryFiles            []string
+		errorPages          map[int]string
 		dryRun              bool
 		filename            string
 		force               bool
@@ -408,7 +407,7 @@ func parseDownloadRequestParameters(req *http.Request) (*skyfileDownloadParams, 
 }
 
 // parseUploadHeadersAndRequestParameters is a helper function that parses all
-// of the query parameters and headers from an upload request
+// the query parameters and headers from an upload request
 func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Params) (*skyfileUploadHeaders, *skyfileUploadParams, error) {
 	var err error
 
@@ -462,46 +461,14 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		}
 	}
 
-	// parse `dirresmode` query parameter
-	dirResMode := strings.ToLower(queryForm.Get("dirresmode"))
-	if dirResMode == "" {
-		dirResMode = skymodules.DirResModeStandard
-	}
-	if dirResMode != skymodules.DirResModeStandard && dirResMode != skymodules.DirResModeWeb {
-		return nil, nil, errors.AddContext(skymodules.ErrInvalidDirectoryResolution, "invalid dirresmode value")
+	tryFiles := strings.Split(queryForm.Get("tryfiles"), ",")
+	if (defaultPath != "" || disableDefaultPath) && len(tryFiles) > 0 {
+		return nil, nil, errors.AddContext(skymodules.ErrInvalidDirectoryResolution, "defaultpath and disabledefaultpath are not compatible with tryfiles")
 	}
 
-	if (defaultPath != "" || disableDefaultPath) && dirResMode == skymodules.DirResModeWeb {
-		return nil, nil, errors.AddContext(skymodules.ErrInvalidDirectoryResolution, "defaultpath and disabledefaultpath are not compatible with 'web' mode")
-	}
-
-	// parse 'dirresnotfound' query parameter
-	dirResNotFound := queryForm.Get("dirresnotfound")
-	if dirResNotFound != "" {
-		dirResNotFound = skymodules.EnsurePrefix(dirResNotFound, "/")
-	}
-
-	// parse 'dirresnotfoundcode' query parameter
-	dirResNotFoundCode := http.StatusNotFound
-	dirResNotFoundCodeStr := queryForm.Get("dirresnotfoundcode")
-	if dirResNotFoundCodeStr != "" {
-		dirResNotFoundCode, err = strconv.Atoi(dirResNotFoundCodeStr)
-		if err != nil {
-			return nil, nil, errors.AddContext(err, "unable to parse 'dirresnotfoundcode' parameter")
-		}
-		if dirResNotFoundCode == 0 {
-			dirResNotFoundCode = http.StatusNotFound
-		}
-		if dirResNotFoundCode != http.StatusNotFound && (dirResNotFoundCode < 200 || dirResNotFoundCode > 299) {
-			context := fmt.Sprintf("invalid 'dirresnotfoundcode' value, it needs to be between 200 and 299. dirresnotfoundcode value %d", dirResNotFoundCode)
-			return nil, nil, errors.AddContext(skymodules.ErrInvalidDirectoryResolution, context)
-		}
-	}
-
-	// verify that we're not trying to override 404 page and code in std mode
-	if dirResMode == skymodules.DirResModeStandard && (dirResNotFound != "" || dirResNotFoundCode != http.StatusNotFound) {
-		context := fmt.Sprintf("cannot override 'not found' content or status code in 'standard' mode. dirresnotfound value: '%s', dirresnotfoundcode value %d", dirResNotFound, dirResNotFoundCode)
-		return nil, nil, errors.AddContext(skymodules.ErrInvalidDirectoryResolution, context)
+	errPages, err := ParseErrorPages(queryForm.Get("errorpages"))
+	if err != nil {
+		return nil, nil, errors.AddContext(err, "invalid errorpages parameter")
 	}
 
 	// parse 'dryrun' query parameter
@@ -609,12 +576,6 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		return nil, nil, errors.New("DefaultPath and DisableDefaultPath can only be set on multipart uploads")
 	}
 
-	// verify directory resolution params are not set if it's not a multipart
-	// upload
-	if !isMultipartRequest(mediaType) && dirResMode == skymodules.DirResModeWeb {
-		return nil, nil, errors.New("DirResMode 'web' can only be set on multipart uploads")
-	}
-
 	// verify convertpath and filename are not combined
 	if convertPath != "" && filename != "" {
 		return nil, nil, errors.New("cannot set both a 'convertpath' and a 'filename'")
@@ -635,10 +596,8 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		convertPath:         convertPath,
 		defaultPath:         defaultPath,
 		disableDefaultPath:  disableDefaultPath,
-		dirResMode:          dirResMode,
-		dirResNotFound:      dirResNotFound,
-		dirResNotFoundCode:  dirResNotFoundCode,
 		dryRun:              dryRun,
+		errorPages:          errPages,
 		filename:            filename,
 		force:               force,
 		mode:                mode,
@@ -647,6 +606,7 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		siaPath:             siaPath,
 		skyKeyID:            skykeyID,
 		skyKeyName:          skykeyName,
+		tryFiles:            tryFiles,
 	}
 	return headers, params, nil
 }
@@ -821,4 +781,38 @@ func attachRegistryEntryProof(w http.ResponseWriter, srvs []skymodules.RegistryE
 	}
 	w.Header().Set("Skynet-Proof", string(b))
 	return nil
+}
+
+// ParseErrorPages transforms a comma-separated list of `errorcode:errorpage`
+// pairs into a map[int]string.
+// TODO unit test
+func ParseErrorPages(s string) (map[int]string, error) {
+	errPages := map[int]string{}
+	lines := strings.Split(s, ",")
+	for _, l := range lines {
+		pair := strings.Split(l, ":")
+		if len(pair) != 2 {
+			return nil, errors.New(fmt.Sprintf("invalid errorPages value - not a list of pairs. offending pair: '%s'", pair))
+		}
+		code, err := strconv.Atoi(pair[0])
+		if err != nil {
+			return nil, errors.New(fmt.Sprintf("invalid errorPages value - error code is not a number. offending pair: '%s'", pair))
+		}
+		errPages[code] = pair[1]
+	}
+	return errPages, nil
+}
+
+// EncodeErrorPages encodes a map of errorpages into a string.
+// TODO unit test
+func EncodeErrorPages(m map[int]string) string {
+	var sb strings.Builder
+	for k, v := range m {
+		sb.WriteString(fmt.Sprintf("%d:%s,", k, v))
+	}
+	if sb.Len() == 0 {
+		return ""
+	}
+	// drop the last separation comma before returning
+	return sb.String()[:sb.Len()-1]
 }

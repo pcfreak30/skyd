@@ -336,16 +336,19 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 		}
 	}
 
-	// validate directory resolution mode
-	if metadata.DirResMode == "" {
-		metadata.DirResMode = DirResModeStandard
+	// tryfiles are incompatible with defaultpath and disabledefaultpath
+	// TODO How about errorpages?
+	if len(metadata.TryFiles) > 0 && (metadata.DefaultPath != "" || metadata.DisableDefaultPath) {
+		return errors.New("tryfiles are incompatible with defaultpath and disabledefaultpath")
 	}
-	if metadata.DirResNotFoundCode == 0 {
-		metadata.DirResNotFoundCode = http.StatusNotFound
-	}
-	err = validateDirResMode(metadata.DirResMode, metadata.DirResNotFound, metadata.DirResNotFoundCode, metadata.Subfiles)
+
+	err = validateTryFiles(metadata.TryFiles, metadata.Subfiles)
 	if err != nil {
-		return errors.AddContext(err, "metadata contains invalid directory resolution configuration")
+		return errors.AddContext(err, "metadata contains invalid tryfiles configuration")
+	}
+	err = validateErrorPages(metadata.ErrorPages, metadata.Subfiles)
+	if err != nil {
+		return errors.AddContext(err, "metadata contains invalid errorpages configuration")
 	}
 
 	// Make sure the returned metadata has valid monetization settings.
@@ -431,21 +434,41 @@ func validateDefaultPath(defaultPath string, subfiles SkyfileSubfiles) (string, 
 	return defaultPath, nil
 }
 
-// validateDirResMode ensures the given combination of directory resolution
-// settings is valid and usable.
-func validateDirResMode(mode, notFound string, notFoundCode int, subfiles SkyfileSubfiles) error {
-	if mode != DirResModeWeb && (notFound != "" || notFoundCode != http.StatusNotFound) {
-		return errors.AddContext(ErrInvalidDirectoryResolution, "dirresnotfound and dirresnotfoundcode are only compatible with dirresmode 'web'")
-	}
-	if mode == DirResModeWeb && notFound != "" {
-		// check if we have a subfile at the given 'not found' path.
-		_, found := subfiles[strings.TrimPrefix(notFound, "/")]
-		if !found {
-			return fmt.Errorf("no such path: %s", notFound)
+// validateTryFiles ensures the given tryfiles configuration is valid.
+// TODO Add a warning to the docs that points out that specifying more than one abs path tryfile is allowed but pointless.
+func validateTryFiles(tf []string, subfiles SkyfileSubfiles) error {
+	for _, fname := range tf {
+		if fname == "" {
+			return errors.New("a tryfile cannot be an empty string, it needs to be a valid file name")
+		}
+		if strings.HasPrefix(fname, "/") {
+			_, exists := subfiles[fname]
+			if !exists {
+				return errors.New("any absolute path tryfile in the list must exist")
+			}
 		}
 	}
-	if notFoundCode != http.StatusNotFound && (notFoundCode < 200 || notFoundCode > 299) {
-		return fmt.Errorf("invalid 'not found status code' value %d - value must either be 404 or between 200 and 299", notFoundCode)
+	return nil
+}
+
+// validateErrorPages ensures the given errorpsages configuration is valid.
+func validateErrorPages(ep map[int]string, subfiles SkyfileSubfiles) error {
+	for code, fname := range ep {
+		// TODO What should be the limit here? Overriding a 200 makes no sense to me but overriding a 204 might?
+		// 	the real use-case is overriding the 4xx codes, though, so we might want to set the limit there.
+		if code < 400 {
+			return errors.New("overriding status codes under 400 is not supported")
+		}
+		if fname == "" {
+			return errors.New("an errorpage cannot be an empty string, it needs to be a valid file name")
+		}
+		if !strings.HasPrefix(fname, "/") {
+			return errors.New("all errorpages need to have absolute paths")
+		}
+		_, exists := subfiles[fname]
+		if !exists {
+			return errors.New("all errorpage files must exist")
+		}
 	}
 	return nil
 }

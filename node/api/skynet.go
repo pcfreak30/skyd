@@ -878,14 +878,12 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		DefaultPath:        params.defaultPath,
 		DisableDefaultPath: params.disableDefaultPath,
 
-		// Set the directory resolution mode
-		DirResMode:         params.dirResMode,
-		DirResNotFound:     params.dirResNotFound,
-		DirResNotFoundCode: params.dirResNotFoundCode,
-
 		// Set encryption key details
 		SkykeyName: params.skyKeyName,
 		SkykeyID:   params.skyKeyID,
+
+		TryFiles:   params.tryFiles,
+		ErrorPages: params.errorPages,
 	}
 
 	// set the reader

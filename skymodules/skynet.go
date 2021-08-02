@@ -48,14 +48,6 @@ const (
 
 	// LicenseMonetization is the first skynet monetization license.
 	LicenseMonetization = "CAB-Ra8Zi6jew3w63SJUAKnsBRiZdpmQGLehLJbTd-b_Mg"
-
-	// DirResModeStandard is the name of the "std" directory resolution
-	// mode, in which directories are downloaded.
-	DirResModeStandard = "std"
-	// DirResModeWeb is the name of the "web" directory resolution mode, in
-	// which directories are not downloaded and instead of that we serve the
-	// index.html files found in them.
-	DirResModeWeb = "web"
 )
 
 var (
@@ -188,19 +180,12 @@ type (
 		// name/ID to be used for this specific upload.
 		FileSpecificSkykey skykey.Skykey
 
-		// Directory resolution mode can be either "std" or "web". This
-		// mode changes the behaviour of accessing a directory of the skyfile:
-		// "std" means the directory will be downloaded
-		// "web" means that we'll attempt to serve `index.html` from the
-		// directory and will return a 404 if it doesn't exist.
-		DirResMode string
-		// DirResNotFound defines the custom 404 error page of the skapp, if any.
-		// If left empty, we'll serve DirResNotFoundCode and no content.
-		DirResNotFound string
-		// DirResNotFoundCode defines the custom status code to be returned when
-		// a requested file is not found. Allowed values: between 200 and 299.
-		// Defaults to 404.
-		DirResNotFoundCode int
+		// TryFiles is an ordered list of files which to serve in case the
+		// requested file does not exist.
+		TryFiles []string
+
+		// ErrorPages overrides the content we serve for some error codes.
+		ErrorPages map[int]string
 	}
 
 	// SkyfileMultipartUploadParameters defines the parameters specific to
@@ -225,19 +210,12 @@ type (
 		// content will be automatically served for the skyfile.
 		DisableDefaultPath bool
 
-		// Directory resolution mode can be either "std" or "web". This
-		// mode changes the behaviour of accessing a directory of the skyfile:
-		// "std" means the directory will be downloaded
-		// "web" means that we'll attempt to serve `index.html` from the
-		// directory and will return a 404 if it doesn't exist.
-		DirResMode string
-		// DirResNotFound defines the custom 404 error page of the skapp, if any.
-		// If left empty, we'll serve DirResNotFoundCode and no content.
-		DirResNotFound string
-		// DirResNotFoundCode defines the custom status code to be returned when
-		// a requested file is not found. Allowed values: between 200 and 299.
-		// Defaults to 404.
-		DirResNotFoundCode int
+		// TryFiles specifies an ordered list of files to serve, in case the
+		// requested file does not exist.
+		TryFiles []string
+		// ErrorPages overrides the content served for the specified error
+		// codes.
+		ErrorPages map[int]string
 
 		// ContentType indicates the media of the data supplied by the reader.
 		ContentType string
@@ -270,9 +248,8 @@ type (
 		DefaultPath        string          `json:"defaultpath,omitempty"`
 		DisableDefaultPath bool            `json:"disabledefaultpath,omitempty"`
 		Monetization       *Monetization   `json:"monetization,omitempty"`
-		DirResMode         string          `json:"dirresmode,omitempty"`
-		DirResNotFound     string          `json:"dirresnotfound,omitempty"`
-		DirResNotFoundCode int             `json:"dirresnotfoundcode,omitempty"`
+		TryFiles   []string       `json:"tryfiles,omitempty"`
+		ErrorPages map[int]string `json:"errorpages,omitempty"`
 	}
 
 	// SkynetPortal contains information identifying a Skynet portal.
@@ -316,12 +293,11 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 	// All paths must be absolute.
 	path = EnsurePrefix(path, "/")
 	metadata := SkyfileMetadata{
-		Filename:           path,
-		Monetization:       sm.Monetization,
-		Subfiles:           make(SkyfileSubfiles),
-		DirResMode:         sm.DirResMode,
-		DirResNotFound:     sm.DirResNotFound,
-		DirResNotFoundCode: sm.DirResNotFoundCode,
+		Filename:     path,
+		Monetization: sm.Monetization,
+		Subfiles:     make(SkyfileSubfiles),
+		TryFiles:     sm.TryFiles,
+		ErrorPages:   sm.ErrorPages,
 	}
 
 	// Try to find an exact match

@@ -763,7 +763,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	//
 	// Define test func
 	testSmallFunc := func(files []siatest.TestFile, fileName, skykeyName string) {
-		skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(fileName, files, "", false, skymodules.DirResModeStandard, "", 404, false, nil, skykeyName, skykey.SkykeyID{})
+		skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(fileName, files, "", false, []string{"index.html"}, nil, false, nil, skykeyName, skykey.SkykeyID{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -800,10 +800,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 					Len:         uint64(len(nestedFile.Data)),
 				},
 			},
-			Length:             uint64(len(rootFile.Data) + len(nestedFile.Data)),
-			DirResMode:         skymodules.DirResModeStandard,
-			DirResNotFound:     "",
-			DirResNotFoundCode: http.StatusNotFound,
+			Length: uint64(len(rootFile.Data) + len(nestedFile.Data)),
 		}
 		if !reflect.DeepEqual(expected, fileMetadata) {
 			t.Log("Expected:", expected)
@@ -837,7 +834,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	// Define test function
 	largeTestFunc := func(files []siatest.TestFile, fileName, skykeyName string) {
 		// Upload the skyfile
-		skylink, sup, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(fileName, files, "", false, skymodules.DirResModeStandard, "", 404, false, nil, skykeyName, skykey.SkykeyID{})
+		skylink, sup, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(fileName, files, "", false, []string{"index.html"}, nil, false, nil, skykeyName, skykey.SkykeyID{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -3396,7 +3393,7 @@ func testRenameSiaPath(t *testing.T, tg *siatest.TestGroup) {
 func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
-		//{Name: "TestSkynetBasic", Test: testSkynetBasic},
+		// {Name: "TestSkynetBasic", Test: testSkynetBasic},
 		{Name: "HasIndexNoDefaultPath", Test: testHasIndexNoDefaultPath},
 		{Name: "HasIndexDisabledDefaultPath", Test: testHasIndexDisabledDefaultPath},
 		{Name: "HasIndexDifferentDefaultPath", Test: testHasIndexDifferentDefaultPath},

@@ -1033,7 +1033,7 @@ func skylinkQueryWithValues(skylink string, values url.Values) string {
 }
 
 // urlValuesFromSkyfileMultipartUploadParameters is a helper function that
-// transforms the given SkyfileMultipartUploadParameters into a url values
+// transforms the given SkyfileMultipartUploadParameters into an url values
 // object.
 func urlValuesFromSkyfileMultipartUploadParameters(sup skymodules.SkyfileMultipartUploadParameters) (url.Values, error) {
 	values := url.Values{}
@@ -1055,9 +1055,8 @@ func urlValuesFromSkyfileMultipartUploadParameters(sup skymodules.SkyfileMultipa
 	values.Set("defaultpath", sup.DefaultPath)
 	values.Set("disabledefaultpath", strconv.FormatBool(sup.DisableDefaultPath))
 
-	values.Set("dirresmode", sup.DirResMode)
-	values.Set("dirresnotfound", sup.DirResNotFound)
-	values.Set("dirresnotfoundcode", strconv.Itoa(sup.DirResNotFoundCode))
+	values.Set("tryfiles", strings.Join(sup.TryFiles, ","))
+	values.Set("errorpages", api.EncodeErrorPages(sup.ErrorPages))
 
 	return values, nil
 }

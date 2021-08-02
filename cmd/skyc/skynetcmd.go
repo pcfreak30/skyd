@@ -13,6 +13,8 @@ import (
 	"sync"
 	"text/tabwriter"
 
+	"gitlab.com/SkynetLabs/skyd/node/api"
+
 	"github.com/vbauerster/mpb/v5"
 
 	"github.com/spf13/cobra"
@@ -904,13 +906,13 @@ func skynetUploadDirectory(sourcePath, destSiaPath string) {
 		fmt.Println("Illegal combination of parameters: --defaultpath and --disabledefaultpath are mutually exclusive.")
 		die()
 	}
-	if skynetUploadDirResMode == skymodules.DirResModeStandard && (skynetUploadDirResNotFound != "" || skynetUploadDirResNotFoundCode != http.StatusNotFound) {
-		fmt.Println("Illegal combination of parameters: --dirresnotfound and --dirresnotfoundcode require --dirresmode 'web'.")
+	if skynetUploadTryFiles != "" && (skynetUploadDisableDefaultPath || skynetUploadDefaultPath != "") {
+		fmt.Println("Illegal combination of parameters: --tryfiles is not compatible with --defaultpath and --disabledefaultpath.")
 		die()
 	}
-	if skynetUploadDirResMode == skymodules.DirResModeWeb && (skynetUploadDisableDefaultPath || skynetUploadDefaultPath != "") {
-		fmt.Println("Illegal combination of parameters: --dirresmode 'web' is not compatible with --defaultpath and --disabledefaultpath.")
-		die()
+	errPages, err := api.ParseErrorPages(skynetUploadErrorPages)
+	if err != nil {
+		die(err)
 	}
 	pr, pw := io.Pipe()
 	defer pr.Close()
@@ -957,9 +959,8 @@ func skynetUploadDirectory(sourcePath, destSiaPath string) {
 		Filename:            skyfilePath.Name(),
 		DefaultPath:         skynetUploadDefaultPath,
 		DisableDefaultPath:  skynetUploadDisableDefaultPath,
-		DirResMode:          skynetUploadDirResMode,
-		DirResNotFound:      skynetUploadDirResNotFound,
-		DirResNotFoundCode:  skynetUploadDirResNotFoundCode,
+		TryFiles:            strings.Split(skynetUploadTryFiles, ","),
+		ErrorPages:          errPages,
 		ContentType:         writer.FormDataContentType(),
 	}
 	skylink, _, err := httpClient.SkynetSkyfileMultiPartPost(sup)
