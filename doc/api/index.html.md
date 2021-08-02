@@ -3398,6 +3398,11 @@ curl -A "Sia-Agent" --user "":<apipassword> --data '{"remove" : ["GAC38Gan6YHVpL
 updates the list of skylinks that should be blocked from Skynet. This endpoint
 can be used to both add and remove skylinks from the blocklist.
 
+**NOTE:** this endpoint accepts both V1 and V2 skylinks. When a V2 skylink is
+submitted, it is resolved into a V1 skylink so that the data behind the V1
+skylink is blocked. This allows for the V2 skylink to be updated to point to new
+content that isn't blocked.
+
 ### Path Parameters
 ### REQUIRED
 At least one of the following fields needs to be non empty.
@@ -3836,6 +3841,10 @@ the download which is why it is not returned by default. Cases that require the
 layout include backing up skylinks where all the original upload information
 about a skylink is needed.
 
+**start | end** | uint64  
+The `start` and `end` params can be used for range requests when the client is
+unable to use the range field in the Header.
+
 **timeout** | int  
 If 'timeout' is set, the download will fail if the Skyfile cannot be retrieved 
 before it expires. Note that this timeout does not cover the actual download 
@@ -4083,20 +4092,42 @@ returns statistical information about Skynet, e.g. number of files uploaded
 ### JSON Response
 ```json
 {
-  "uptime": 1234, // int
-  "uploadstats": {
-    "numfiles": 2,         // int
-    "totalsize": 44527895  // int
-  },
-  "versioninfo": {
-    "version":     "1.4.4-master", // string
-    "gitrevision": "cd5a83712"     // string
-  },
-  "registrystats": {
-    "readprojectp99": 5020,   // uint64
-    "readprojectp999": 5020,  // uint64
-    "readprojectp9999": 5020  // uint64
-  },
+   "basesectorupload15mdatapoints":12.032777431483911,
+   "basesectorupload15mp99ms":16384,
+   "basesectorupload15mp999ms":27648,
+   "basesectorupload15mp9999ms":27648,
+   "chunkupload15mdatapoints":64.29178098782313,
+   "chunkupload15mp99ms":30720,
+   "chunkupload15mp999ms":30720,
+   "chunkupload15mp9999ms":43008,
+   "registryread15mdatapoints":126.31844121965291,
+   "registryread15mp99ms":132,
+   "registryread15mp999ms":288,
+   "registryread15mp9999ms":288,
+   "registrywrite15mdatapoints":6.57479081135385,
+   "registrywrite15mp99ms":104,
+   "registrywrite15mp999ms":216,
+   "registrywrite15mp9999ms":416,
+   "streambufferread15mdatapoints":1221.2823097216672,
+   "streambufferread15mp99ms":5376,
+   "streambufferread15mp999ms":7936,
+   "streambufferread15mp9999ms":7936,
+   "systemhealthscandurationhours":1.1795308075927777,
+   "allowancestatus":"healthy",                         // 'low', 'high', 'healthy'
+   "contractstorage":68897587855360,
+   "maxstorageprice":"34722222222",
+   "numcritalerts":0,
+   "numfiles":403016,
+   "portalmode": true,                                  // bool
+   "repair":385217462272,
+   "storage":3635586064087,
+   "stuckchunks":29948,
+   "walletstatus":"healthy",                            // 'locked', 'low', 'high', 'healthy'
+   "uptime":92812,
+   "versioninfo":{
+      "version":"1.6.0-master",                         // string
+      "gitrevision":"✗-dd6ab5c88"                       // string
+   }
 }
 ```
 

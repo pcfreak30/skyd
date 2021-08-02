@@ -14,7 +14,7 @@ require (
 	github.com/montanaflynn/stats v0.6.3
 	github.com/opentracing/opentracing-go v1.1.0
 	github.com/spf13/cobra v1.1.3
-	github.com/tus/tusd v1.5.1
+	github.com/tus/tusd v1.6.0
 	github.com/uber/jaeger-client-go v2.27.0+incompatible
 	github.com/uber/jaeger-lib v2.4.1+incompatible
 	github.com/vbauerster/mpb/v5 v5.0.3

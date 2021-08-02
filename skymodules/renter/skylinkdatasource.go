@@ -15,9 +15,9 @@ import (
 )
 
 var (
-	// skylinkDataSourceRequestSize is the size that is suggested by the data
+	// SkylinkDataSourceRequestSize is the size that is suggested by the data
 	// source to be used when reading data from it.
-	skylinkDataSourceRequestSize = build.Select(build.Var{
+	SkylinkDataSourceRequestSize = build.Select(build.Var{
 		Dev:      uint64(1 << 18), // 256 KiB
 		Standard: uint64(1 << 20), // 1 MiB
 		Testing:  uint64(1 << 9),  // 512 B
@@ -86,7 +86,7 @@ func (sds *skylinkDataSource) RawMetadata() []byte {
 
 // RequestSize implements streamBufferDataSource
 func (sds *skylinkDataSource) RequestSize() uint64 {
-	return skylinkDataSourceRequestSize
+	return SkylinkDataSourceRequestSize
 }
 
 // Skylink implements streamBufferDataSource
@@ -173,7 +173,7 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 		}
 
 		// Schedule the download.
-		respChan, err := sds.staticChunkFetchers[chunkIndex].Download(ctx, pricePerMS, offsetInChunk, downloadSize)
+		respChan, err := sds.staticChunkFetchers[chunkIndex].Download(ctx, pricePerMS, offsetInChunk, downloadSize, false, false)
 		if err != nil {
 			responseChan <- &readResponse{
 				staticErr: errors.AddContext(err, "unable to start download"),
@@ -251,7 +251,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 	//
 	// NOTE: we pass in the provided context here, if the user imposed a timeout
 	// on the download request, this will fire if it takes too long.
-	respChan, err := pcws.managedDownload(ctx, pricePerMS, offset, length)
+	respChan, err := pcws.managedDownload(ctx, pricePerMS, offset, length, false, false)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to start download")
 	}

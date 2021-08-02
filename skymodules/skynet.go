@@ -557,12 +557,6 @@ func (sm SkyfileSubfileMetadata) IsDir() bool {
 	return false
 }
 
-// IsHTML returns whether or not this subfile is an HTML file
-func (sm SkyfileSubfileMetadata) IsHTML() bool {
-	extension := filepath.Ext(sm.Filename)
-	return extension == ".html" || extension == ".htm"
-}
-
 // Mode implements the os.FileInfo interface for SkyfileSubfileMetadata.
 func (sm SkyfileSubfileMetadata) Mode() os.FileMode {
 	return sm.FileMode

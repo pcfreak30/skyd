@@ -120,7 +120,7 @@ func (w *worker) callReadJobStatus() skymodules.WorkerReadJobsStatus {
 	}
 
 	avgJobTimeInMs := func(l uint64) uint64 {
-		if d := jrq.callExpectedJobTime(l); d > 0 {
+		if d := jrq.staticStats.callExpectedJobTime(l); d > 0 {
 			return uint64(d.Milliseconds())
 		}
 		return 0

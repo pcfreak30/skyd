@@ -418,14 +418,9 @@ func validateDefaultPath(defaultPath string, subfiles SkyfileSubfiles) (string, 
 	defaultPath = EnsurePrefix(defaultPath, "/")
 
 	// check if we have a subfile at the given default path.
-	subfile, found := subfiles[strings.TrimPrefix(defaultPath, "/")]
+	_, found := subfiles[strings.TrimPrefix(defaultPath, "/")]
 	if !found {
 		return "", fmt.Errorf("no such path: %s", defaultPath)
-	}
-
-	// ensure it's an HTML file.
-	if !subfile.IsHTML() {
-		return "", fmt.Errorf("invalid default path '%s', the default path must point to an HTML file", defaultPath)
 	}
 
 	// ensure it's at the root of the Skyfile

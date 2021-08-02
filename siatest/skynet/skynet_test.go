@@ -81,6 +81,7 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "DownloadBaseSector", Test: testSkynetDownloadBaseSectorNoEncryption},
 		{Name: "DownloadBaseSectorEncrypted", Test: testSkynetDownloadBaseSectorEncrypted},
 		{Name: "FanoutRegression", Test: testSkynetFanoutRegression},
+		{Name: "DownloadRange", Test: testSkynetDownloadRange},
 		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
 		{Name: "MetadataMonetization", Test: testSkynetMetadataMonetizers},
 		{Name: "Monetization", Test: testSkynetMonetization},
@@ -919,6 +920,18 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 		t.Error(err)
 	}
 
+	// Enable portal mode.
+	rg, err := r.RenterGet()
+	if err != nil {
+		t.Error(err)
+	}
+	a := rg.Settings.Allowance
+	a.PaymentContractInitialFunding = types.SiacoinPrecision
+	err = r.RenterPostAllowance(a)
+	if err != nil {
+		t.Error(err)
+	}
+
 	// Sleep for a few seconds to give all of the health and repair loops time
 	// to get settled.
 	time.Sleep(time.Second * 3)
@@ -928,6 +941,28 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Check portal mode.
+	if !stats.PortalMode {
+		t.Fatal("renter should be in portal mode")
+	}
+
+	// Disable portal mode.
+	a.PaymentContractInitialFunding = types.ZeroCurrency
+	err = r.RenterPostAllowance(a)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Get the stats again.
+	stats, err = r.SkynetStatsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check portal mode.
+	if stats.PortalMode {
+		t.Fatal("renter should not be in portal mode")
+	}
+
 	// Check that there are files in the filesystem.
 	if stats.NumFiles == 0 {
 		t.Fatal("test prereq requires files to exist")
@@ -1563,9 +1598,9 @@ func testSkynetDownloadFormats(t *testing.T, tg *siatest.TestGroup) {
 }
 
 // testSkynetDownloadRangeEncrypted verifies we can download a certain range
-// within an encrypted large skyfile. This test was added to verify whether
-// `DecryptBytesInPlace` was properly decrypting the fanout bytes for offsets
-// other than 0.
+// within an encrypted skyfile. This large file part of this test was added to
+// verify whether `DecryptBytesInPlace` was properly decrypting the fanout bytes
+// for offsets other than 0.
 func testSkynetDownloadRangeEncrypted(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
@@ -1574,34 +1609,103 @@ func testSkynetDownloadRangeEncrypted(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Run("SmallFile", func(t *testing.T) {
+		skynetDownloadRangeTest(t, tg, sk.Name, false)
+	})
+	t.Run("LargeFile", func(t *testing.T) {
+		skynetDownloadRangeTest(t, tg, sk.Name, true)
+	})
+}
+
+// testSkynetDownloadRange verifies we can download a certain range within a
+// skyfile.
+func testSkynetDownloadRange(t *testing.T, tg *siatest.TestGroup) {
+	t.Run("SmallFile", func(t *testing.T) {
+		skynetDownloadRangeTest(t, tg, "", false)
+	})
+	t.Run("LargeFile", func(t *testing.T) {
+		skynetDownloadRangeTest(t, tg, "", true)
+	})
+}
+
+// skynetDownloadRangeTest verifies different conditions of skynet downloads
+// with range requests.
+func skynetDownloadRangeTest(t *testing.T, tg *siatest.TestGroup, skykeyName string, largeFile bool) {
+	r := tg.Renters()[0]
 
 	// generate file params
 	name := t.Name() + persist.RandomSuffix()
-	size := uint64(4 * int(modules.SectorSize))
+	var size uint64
+	if largeFile {
+		size = uint64(4 * int(modules.SectorSize))
+	} else {
+		size = 100
+	}
 	data := fastrand.Bytes(int(size))
 
-	// upload a large encrypted skyfile to ensure we have a fanout
-	_, _, sshp, err := r.UploadNewEncryptedSkyfileBlocking(name, data, sk.Name, false)
+	// upload a skyfile
+	_, _, sshp, err := r.UploadNewEncryptedSkyfileBlocking(name, data, skykeyName, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// calculate random range parameters
 	segment := uint64(crypto.SegmentSize)
-	offset := fastrand.Uint64n(size-modules.SectorSize) + 1
-	length := fastrand.Uint64n(size-offset-segment) + 1
+	var offset, length uint64
+	if largeFile {
+		offset = fastrand.Uint64n(size-modules.SectorSize) + 1
+		length = fastrand.Uint64n(size-offset-segment) + 1
+	} else {
+		offset = fastrand.Uint64n(size-segment) + 1
+		length = fastrand.Uint64n(size-offset) + 1
+	}
 
-	// fetch the data at given range
+	// fetch the data at given range using the Header range request
 	result, err := r.SkynetSkylinkRange(sshp.Skylink, offset, offset+length)
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	if !bytes.Equal(result, data[offset:offset+length]) {
 		t.Logf("range %v-%v\n", offset, offset+length)
 		t.Log("expected:", data[offset:offset+length], len(data[offset:offset+length]))
 		t.Log("actual:", result, len(result))
 		t.Fatal("unexpected")
+	}
+
+	// fetch the data at given range using the params range request
+	result, err = r.SkynetSkylinkRangeParams(sshp.Skylink, offset, offset+length)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(result, data[offset:offset+length]) {
+		t.Logf("range %v-%v\n", offset, offset+length)
+		t.Log("expected:", data[offset:offset+length], len(data[offset:offset+length]))
+		t.Log("actual:", result, len(result))
+		t.Fatal("unexpected")
+	}
+
+	// Test some specific cases
+	// Verify some specific cases
+	rand := fastrand.Uint64n(size)
+	var tests = []struct {
+		from uint64
+		to   uint64
+	}{
+		{0, 0},       // Requesting the first byte of a file
+		{0, 1},       // Request the first byte of a file
+		{rand, rand}, // Requesting a random single byte of the file
+	}
+	for _, test := range tests {
+		_, err = r.SkynetSkylinkRange(sshp.Skylink, test.from, test.to)
+		if err != nil {
+			t.Log("Failed Test Case:", test)
+			t.Fatal(err)
+		}
+		_, err = r.SkynetSkylinkRangeParams(sshp.Skylink, test.from, test.to)
+		if err != nil {
+			t.Log("Failed Test Case:", test)
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -2274,8 +2378,11 @@ func TestSkynetBlocklist(t *testing.T) {
 	t.Run("BlocklistHash", func(t *testing.T) {
 		testSkynetBlocklistHash(t, tg, deps)
 	})
-	t.Run("BlocklistSkylink", func(t *testing.T) {
-		testSkynetBlocklistSkylink(t, tg, deps)
+	t.Run("BlocklistSkylinkV1", func(t *testing.T) {
+		testSkynetBlocklistSkylink(t, tg, deps, false)
+	})
+	t.Run("BlocklistSkylinkV2", func(t *testing.T) {
+		testSkynetBlocklistSkylink(t, tg, deps, true)
 	})
 	t.Run("BlocklistUpgrade", func(t *testing.T) {
 		testSkynetBlocklistUpgrade(t, tg)
@@ -2285,17 +2392,17 @@ func TestSkynetBlocklist(t *testing.T) {
 // testSkynetBlocklistHash tests the skynet blocklist module when submitting
 // hashes of the skylink's merkleroot
 func testSkynetBlocklistHash(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyToggleDisableDeleteBlockedFiles) {
-	testSkynetBlocklist(t, tg, deps, true)
+	testSkynetBlocklist(t, tg, deps, true, false)
 }
 
 // testSkynetBlocklistSkylink tests the skynet blocklist module when submitting
 // skylinks
-func testSkynetBlocklistSkylink(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyToggleDisableDeleteBlockedFiles) {
-	testSkynetBlocklist(t, tg, deps, false)
+func testSkynetBlocklistSkylink(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyToggleDisableDeleteBlockedFiles, isV2Skylink bool) {
+	testSkynetBlocklist(t, tg, deps, false, isV2Skylink)
 }
 
 // testSkynetBlocklist tests the skynet blocklist module
-func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyToggleDisableDeleteBlockedFiles, isHash bool) {
+func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyToggleDisableDeleteBlockedFiles, isHash, isV2Skylink bool) {
 	r := tg.Renters()[0]
 	deps.DisableDeleteBlockedFiles(true)
 
@@ -2305,6 +2412,15 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies
 	skylink, sup, sshp, err := r.UploadNewSkyfileBlocking(t.Name(), size, false)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Convert to V2 Skylink
+	if isV2Skylink {
+		skylinkV2, err := r.NewSkylinkV2FromString(skylink)
+		if err != nil {
+			t.Fatal(err)
+		}
+		skylink = skylinkV2.Skylink.String()
 	}
 
 	// Remember the siaPaths of the blocked files
@@ -2349,8 +2465,8 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies
 		t.Fatal(err)
 	}
 
-	// Confirm that the Skylink is blocked by verifying the merkleroot is in
-	// the blocklist
+	// Confirm that the Skylink is blocked by verifying the hash of the V1
+	// skylink is in the blocklist
 	sbg, err := r.SkynetBlocklistGet()
 	if err != nil {
 		t.Fatal(err)
@@ -2430,12 +2546,15 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies
 		BaseChunkRedundancy: 2,
 		Force:               true,
 	}
-	err = r.SkynetSkylinkPinPost(skylink, pinlup)
-	if err == nil {
-		t.Fatal("Expected pin to fail")
-	}
-	if !strings.Contains(err.Error(), renter.ErrSkylinkBlocked.Error()) {
-		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlocked, err)
+	// Pinning is only supported for V1 Skylink
+	if !isV2Skylink {
+		err = r.SkynetSkylinkPinPost(skylink, pinlup)
+		if err == nil {
+			t.Fatal("Expected pin to fail")
+		}
+		if !strings.Contains(err.Error(), renter.ErrSkylinkBlocked.Error()) {
+			t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlocked, err)
+		}
 	}
 
 	// Remove skylink from blocklist
@@ -2478,10 +2597,13 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies
 		t.Log(fetchedData)
 	}
 
-	// Pinning the skylink should also work now
-	err = r.SkynetSkylinkPinPost(skylink, pinlup)
-	if err != nil {
-		t.Fatal(err)
+	// Pinning is only supported for V1 Skylink
+	if !isV2Skylink {
+		// Pinning the skylink should also work now
+		err = r.SkynetSkylinkPinPost(skylink, pinlup)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// Upload a normal siafile with 1-of-N redundancy
@@ -2500,6 +2622,15 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies
 	}
 	convertSkylink := convertSSHP.Skylink
 
+	// Convert to V2 Skylink
+	if isV2Skylink {
+		skylinkV2, err := r.NewSkylinkV2FromString(convertSkylink)
+		if err != nil {
+			t.Fatal(err)
+		}
+		convertSkylink = skylinkV2.Skylink.String()
+	}
+
 	// Confirm there is a siafile and a skyfile
 	_, err = r.RenterFileGet(rf.SiaPath())
 	if err != nil {
@@ -2512,6 +2643,11 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies
 	_, err = r.RenterFileRootGet(skyfilePath)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// For V2 Skylinks reset the blocklist to account for pinning not being supported for V2 Skylinks.
+	if isV2Skylink {
+		blockedSiaPaths = []skymodules.SiaPath{}
 	}
 
 	// Make sure all blockedSiaPaths are root paths
@@ -2539,7 +2675,6 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	sbg, err = r.SkynetBlocklistGet()
 	if err != nil {
 		t.Fatal(err)
@@ -2611,7 +2746,8 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies
 	for _, siaPath := range blockedSiaPaths {
 		_, err = r.RenterFileRootGet(siaPath)
 		if err != nil {
-			t.Error(err)
+			t.Log(siaPath)
+			t.Fatal(err)
 		}
 	}
 
@@ -3725,13 +3861,12 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 		},
 		{
 			// Multi dir with index, non-html default path.
-			// Error on download: specify a format.
-			name:                 "multi_idx_non_html",
-			files:                multiHasIndexIndexJs,
-			defaultPath:          nonHTML,
-			disableDefaultPath:   false,
-			expectedContent:      nil,
-			expectedErrStrUpload: "invalid default path provided",
+			// OK
+			name:               "multi_idx_non_html",
+			files:              multiHasIndexIndexJs,
+			defaultPath:        nonHTML,
+			disableDefaultPath: false,
+			expectedContent:    fc1,
 		},
 		{
 			// Multi dir with index, bad default path.
@@ -5186,7 +5321,7 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// It should contain a valid proof.
 	var proof []api.RegistryHandlerGET
-	err = json.Unmarshal([]byte(h.Get("Proof")), &proof)
+	err = json.Unmarshal([]byte(h.Get("Skynet-Proof")), &proof)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5232,7 +5367,7 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// Download the file using that link. Should fail.
 	_, err = r.SkynetSkylinkGet(slv2.String())
-	if err == nil || !strings.Contains(err.Error(), renter.ErrRootNotFound.Error()) {
+	if err == nil || !strings.Contains(err.Error(), renter.ErrSkylinkNesting.Error()) {
 		t.Fatal("should fail to resolve v2 skylink with more than 2 layers of recursion", err)
 	}
 

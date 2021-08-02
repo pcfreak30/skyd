@@ -3,6 +3,7 @@ package api
 import (
 	"archive/tar"
 	"archive/zip"
+	"compress/gzip"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -28,7 +29,34 @@ import (
 	"go.sia.tech/siad/types"
 )
 
+var (
+	// errIncompleteRangeRequest is the error returned when the range
+	// request is incomplete.
+	errIncompleteRangeRequest = errors.New("the 'start' and 'end' params must be both blank or provided")
+
+	// errInvalidRangeParams is the error returned when the range params are
+	// invalid.
+	errInvalidRangeParams = errors.New("'start' param should be less than or equal to 'end' param")
+
+	// errRangeSetTwice is the error returned when the range is set twice,
+	// once in the Header and once in the query params
+	errRangeSetTwice = errors.New("range request should use either the Header or the query params but not both")
+)
+
 type (
+	// skyfileUploadParams is a helper struct that contains all of the query
+	// string parameters on download
+	skyfileDownloadParams struct {
+		attachment           bool
+		format               skymodules.SkyfileFormat
+		includeLayout        bool
+		path                 string
+		pricePerMS           types.Currency
+		skylink              skymodules.Skylink
+		skylinkStringNoQuery string
+		timeout              time.Duration
+	}
+
 	// skyfileUploadParams is a helper struct that contains all of the query
 	// string parameters on upload
 	skyfileUploadParams struct {
@@ -128,6 +156,15 @@ func newMonetizedWriter(w io.Writer, md skymodules.SkyfileMetadata, wallet modul
 	}
 }
 
+// ReadFrom implements the io.ReaderFrom interface for the
+// monetizedResponseWriter. This allows us to overwrite the default fetch size
+// of 32kib of http.ServeContent with something more appropriate for the way we
+// fetch data from Sia.
+func (rw *monetizedResponseWriter) ReadFrom(r io.Reader) (int64, error) {
+	buf := make([]byte, renter.SkylinkDataSourceRequestSize)
+	return io.CopyBuffer(rw.staticW, r, buf)
+}
+
 // Write wraps the inner Write and adds monetization.
 func (rw *monetizedWriter) Write(b []byte) (int, error) {
 	// Handle legacy uploads with length 0 by passing it through to the inner
@@ -199,10 +236,9 @@ func (rw *customStatusResponseWriter) Write(b []byte) (int, error) {
 }
 
 // buildETag is a helper function that returns an ETag.
-func buildETag(skylink skymodules.Skylink, method, path string, format skymodules.SkyfileFormat) string {
+func buildETag(skylink skymodules.Skylink, path string, format skymodules.SkyfileFormat) string {
 	return crypto.HashAll(
 		skylink.String(),
-		method,
 		path,
 		string(format),
 		"1", // random variable to cache bust all existing ETags (SkylinkV2 fix)
@@ -258,6 +294,117 @@ func parseTimeout(queryForm url.Values) (time.Duration, error) {
 		return 0, errors.AddContext(err, fmt.Sprintf("'timeout' parameter too high, maximum allowed timeout is %ds", MaxSkynetRequestTimeout))
 	}
 	return time.Duration(timeoutInt) * time.Second, nil
+}
+
+// parseDownloadRequestParameters is a helper function that parses all of the
+// query parameters from a download request
+func parseDownloadRequestParameters(req *http.Request) (*skyfileDownloadParams, error) {
+	// Parse the skylink from the raw URL of the request. Any special characters
+	// in the raw URL are encoded, allowing us to differentiate e.g. the '?'
+	// that begins query parameters from the encoded version '%3F'.
+	skylink, skylinkStringNoQuery, path, err := parseSkylinkURL(req.URL.String(), "/skynet/skylink/")
+	if err != nil {
+		return nil, fmt.Errorf("error parsing skylink: %v", err)
+	}
+
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		return nil, errors.New("failed to parse query params")
+	}
+
+	// Parse the 'attachment' query string parameter.
+	var attachment bool
+	attachmentStr := queryForm.Get("attachment")
+	if attachmentStr != "" {
+		attachment, err = strconv.ParseBool(attachmentStr)
+		if err != nil {
+			return nil, fmt.Errorf("unable to parse 'attachment' parameter: %v", err)
+		}
+	}
+
+	// Parse the 'format' query string parameter.
+	format := skymodules.SkyfileFormat(strings.ToLower(queryForm.Get("format")))
+	switch format {
+	case skymodules.SkyfileFormatNotSpecified:
+	case skymodules.SkyfileFormatConcat:
+	case skymodules.SkyfileFormatTar:
+	case skymodules.SkyfileFormatTarGz:
+	case skymodules.SkyfileFormatZip:
+	default:
+		return nil, errors.New("unable to parse 'format' parameter, allowed values are: 'concat', 'tar', 'targz' and 'zip'")
+	}
+
+	// Parse the `include-layout` query string parameter.
+	var includeLayout bool
+	includeLayoutStr := queryForm.Get("include-layout")
+	if includeLayoutStr != "" {
+		includeLayout, err = strconv.ParseBool(includeLayoutStr)
+		if err != nil {
+			return nil, fmt.Errorf("unable to parse 'include-layout' parameter: %v", err)
+		}
+	}
+
+	// Parse the timeout.
+	timeout, err := parseTimeout(queryForm)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse pricePerMS.
+	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMSStr := queryForm.Get("priceperms")
+	if pricePerMSStr != "" {
+		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
+		if err != nil {
+			return nil, fmt.Errorf("unable to parse 'pricePerMS' parameter: %v", err)
+		}
+	}
+
+	// Parse a range request from the query form
+	startStr := queryForm.Get("start")
+	endStr := queryForm.Get("end")
+	var start, end uint64
+	rangeParam := startStr != "" && endStr != ""
+	if rangeParam {
+		// Verify we don't have a range request in both the Header and the params
+		headerRange := req.Header.Get("Range")
+		if headerRange != "" {
+			return nil, errRangeSetTwice
+		}
+		// Parse start param
+		start, err = strconv.ParseUint(startStr, 10, 64)
+		if err != nil {
+			return nil, errors.AddContext(err, "unable to parse 'start' parameter")
+		}
+		// Parse end param
+		end, err = strconv.ParseUint(endStr, 10, 64)
+		if err != nil {
+			return nil, errors.AddContext(err, "unable to parse 'end' parameter")
+		}
+		// Check that start is not greater than end. It is ok for end to
+		// equal start as that would indicate a request for a single
+		// byte.
+		if start > end {
+			return nil, errInvalidRangeParams
+		}
+
+		// Set the Range field in the Header
+		AddRangeHeaderToRequest(req, start, end)
+	} else if startStr != "" || endStr != "" {
+		return nil, errIncompleteRangeRequest
+	}
+
+	return &skyfileDownloadParams{
+		attachment:           attachment,
+		format:               format,
+		includeLayout:        includeLayout,
+		path:                 path,
+		pricePerMS:           pricePerMS,
+		skylink:              skylink,
+		skylinkStringNoQuery: skylinkStringNoQuery,
+		timeout:              timeout,
+	}, nil
 }
 
 // parseUploadHeadersAndRequestParameters is a helper function that parses all
@@ -506,7 +653,30 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 
 // serveArchive serves skyfiles as an archive by reading them from r and writing
 // the archive to dst using the given archiveFunc.
-func serveArchive(dst io.Writer, src io.ReadSeeker, md skymodules.SkyfileMetadata, archiveFunc archiveFunc, monetize func(io.Writer) io.Writer) error {
+func serveArchive(w http.ResponseWriter, src io.ReadSeeker, format skymodules.SkyfileFormat, md skymodules.SkyfileMetadata, monetize func(io.Writer) io.Writer) (err error) {
+	// Based upon the given format, set the Content-Type header, wrap the writer
+	// and select an archive function.
+	var dst io.Writer
+	var archiveFunc archiveFunc
+	switch format {
+	case skymodules.SkyfileFormatTar:
+		archiveFunc = serveTar
+		w.Header().Set("Content-Type", "application/x-tar")
+		dst = w
+	case skymodules.SkyfileFormatTarGz:
+		archiveFunc = serveTar
+		w.Header().Set("Content-Type", "application/gzip")
+		gzw := gzip.NewWriter(w)
+		defer func() {
+			err = errors.Compose(err, gzw.Close())
+		}()
+		dst = gzw
+	case skymodules.SkyfileFormatZip:
+		archiveFunc = serveZip
+		w.Header().Set("Content-Type", "application/zip")
+		dst = w
+	}
+
 	// Get the files to archive.
 	var files []skymodules.SkyfileSubfileMetadata
 	for _, file := range md.Subfiles {
@@ -520,17 +690,20 @@ func serveArchive(dst io.Writer, src io.ReadSeeker, md skymodules.SkyfileMetadat
 	if len(files) == 0 {
 		length := md.Length
 		if md.Length == 0 {
-			// v150Compat a missing length is fine for legacy links but new
-			// links should always have the length set.
-			if build.Release == "testing" {
-				build.Critical("SkyfileMetadata is missing length")
-			}
 			// Fetch the length of the file by seeking to the end and then back
 			// to the start.
 			seekLen, err := src.Seek(0, io.SeekEnd)
 			if err != nil {
 				return errors.AddContext(err, "serveArchive: failed to seek to end of skyfile")
 			}
+
+			// v150Compat a missing length is fine for legacy links but new
+			// links should always have the length set.
+			if build.Release == "testing" && seekLen != 0 {
+				build.Critical("SkyfileMetadata is missing length")
+			}
+
+			// Seek back to the start
 			_, err = src.Seek(0, io.SeekStart)
 			if err != nil {
 				return errors.AddContext(err, "serveArchive: failed to seek to start of skyfile")
@@ -545,7 +718,8 @@ func serveArchive(dst io.Writer, src io.ReadSeeker, md skymodules.SkyfileMetadat
 			Len:      length,
 		})
 	}
-	return archiveFunc(dst, src, files, monetize)
+	err = archiveFunc(dst, src, files, monetize)
+	return err
 }
 
 // serveTar is an archiveFunc that implements serving the files from src to dst
@@ -645,6 +819,6 @@ func attachRegistryEntryProof(w http.ResponseWriter, srvs []skymodules.RegistryE
 	if err != nil {
 		return err
 	}
-	w.Header().Set("Proof", string(b))
+	w.Header().Set("Skynet-Proof", string(b))
 	return nil
 }

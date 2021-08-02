@@ -529,6 +529,7 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 	}
 
 	uuc := &unfinishedUploadChunk{
+		ctx:       ctx,
 		fileEntry: entryCopy,
 
 		id: uploadChunkID{
@@ -1298,7 +1299,7 @@ func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk) error {
 	// Grab the next chunk, loop until we have enough memory, update the amount
 	// of memory available, and then spin up a thread to asynchronously handle
 	// the rest of the chunk tasks.
-	if !uuc.staticMemoryManager.Request(context.Background(), uuc.staticMemoryNeeded, uuc.staticPriority) {
+	if !uuc.staticMemoryManager.Request(uuc.ctx, uuc.staticMemoryNeeded, uuc.staticPriority) {
 		return errors.New("couldn't request memory")
 	}
 	go r.threadedFetchAndRepairChunk(uuc)

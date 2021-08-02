@@ -251,7 +251,6 @@ func (j *jobReadRegistry) callExecute() {
 	spk, tweak := j.staticSiaPublicKey, j.staticTweak
 	if build.VersionCmp(w.staticCache().staticHostVersion, minReadRegistrySIDVersion) < 0 && (spk == nil || tweak == nil) {
 		err := errors.New("can't call lookupRegistry without pubkey/tweak on legacy hosts")
-		build.Critical(err)
 		sendResponse(nil, err)
 		j.staticQueue.callReportFailure(err)
 		span.LogKV("error", err)

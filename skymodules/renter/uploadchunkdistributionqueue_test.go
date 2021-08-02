@@ -1,16 +1,11 @@
 package renter
 
 import (
-	"fmt"
-	"io/ioutil"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"unsafe"
 
-	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
-	"go.sia.tech/siad/persist"
 )
 
 // newOverloadedWorker will return a worker that is overloaded.
@@ -139,67 +134,4 @@ func TestManagedCheckForUploadWorkers(t *testing.T) {
 	if !finalized {
 		t.Fatal("bad")
 	}
-}
-
-// TestAddUploadChunkCritial is a test that triggers the critical within
-// callAddUploadChunk.
-func TestAddUploadChunkCritical(t *testing.T) {
-	log, _ := persist.NewLogger(ioutil.Discard)
-	r := &Renter{
-		staticDeps: &dependencies.DependencyDelayChunkDistribution{},
-		staticLog:  log,
-	}
-	ucdq := newUploadChunkDistributionQueue(r)
-
-	chunk := func(priority bool, memoryNeeded uint64) *unfinishedUploadChunk {
-		return &unfinishedUploadChunk{
-			staticPriority:     priority,
-			staticMemoryNeeded: memoryNeeded,
-		}
-	}
-
-	// Push low priority chunk with 10 bytes twice. The first one will be
-	// processed right away while the second one will stay in the lane waiting
-	// for the first one to be distributed.
-	ucdq.callAddUploadChunk(chunk(false, 10))
-	ucdq.callAddUploadChunk(chunk(false, 10))
-
-	ucdq.mu.Lock()
-	if ucdq.lowPriorityLane.Len() == 0 {
-		t.Fatal("low prio lane should contain chunks", ucdq.lowPriorityLane.Len())
-	}
-	ucdq.mu.Unlock()
-
-	// Push high priority chunk with 150 bytes. This should bump a low prio
-	// chunk to the high prio lane and leave a non-zero buildup after the first
-	// low prio chunk is distributed.
-	ucdq.callAddUploadChunk(chunk(true, 150))
-
-	// Wait for the low priority lane to empty itself.
-	emptyQueue := false
-	for !emptyQueue {
-		ucdq.mu.Lock()
-		emptyQueue = ucdq.lowPriorityLane.Len() == 0
-		ucdq.mu.Unlock()
-	}
-
-	// Push another high priority chunk to trigger the critical.
-	func() {
-		defer func() {
-			if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "there should be no buildup if there is nothing in the low priority lane") {
-				t.Fatalf("expected correct critical, got %v", r)
-			}
-		}()
-		ucdq.callAddUploadChunk(chunk(true, 1))
-	}()
-
-	// Wait a second for the dependency delay. Then try again. This time without
-	// panic.
-	done := false
-	for !done {
-		ucdq.mu.Lock()
-		done = !ucdq.processThreadRunning
-		ucdq.mu.Unlock()
-	}
-	ucdq.callAddUploadChunk(chunk(true, 1))
 }
