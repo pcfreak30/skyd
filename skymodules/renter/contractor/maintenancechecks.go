@@ -152,7 +152,7 @@ func (c *Contractor) managedCriticalUtilityChecks(sc *proto.SafeContract, host s
 		return u, needsUpdate
 	}
 
-	u, needsUpdate = storageGougingCheck(allowance, host, sc.LastRevision().NewFileSize)
+	u, needsUpdate = storageGougingCheck(contract, allowance, host, sc.LastRevision().NewFileSize)
 	if needsUpdate {
 		return u, needsUpdate
 	}
@@ -294,7 +294,9 @@ func renewedCheck(u skymodules.ContractUtility, renewed bool) (skymodules.Contra
 }
 
 // storageGougingCheck makes sure the host's storage price isn't too expensive.
-func storageGougingCheck(allowance skymodules.Allowance, host skymodules.HostDBEntry, contractSize uint64) (skymodules.ContractUtility, bool) {
+func storageGougingCheck(contract skymodules.RenterContract, allowance skymodules.Allowance, host skymodules.HostDBEntry, contractSize uint64) (skymodules.ContractUtility, bool) {
+	u := contract.Utility
+
 	if !allowance.MaxStoragePrice.IsZero() && host.StoragePrice.Cmp(allowance.MaxStoragePrice) > 0 {
 		// If the contract contains data don't renew to make sure we
 		// don't pay for its storage.
@@ -304,10 +306,10 @@ func storageGougingCheck(allowance skymodules.Allowance, host skymodules.HostDBE
 				GoodForRenew:  false,
 			}, true
 		}
-		// If it's empty, we keep the contract the way it is for now.
-		// managedBasicUtilityChecks will handle setting it !gfu later.
 	}
-	return skymodules.ContractUtility{}, false
+	// If it's empty, we keep the contract the way it is for now.
+	// managedBasicUtilityChecks will handle setting it !gfu later.
+	return u, false
 }
 
 // sufficientFundsCheck checks if there are enough funds left in the contract

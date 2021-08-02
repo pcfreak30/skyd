@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
 )
@@ -40,6 +41,58 @@ func TestDeadScoreCheck(t *testing.T) {
 	}
 	if !reflect.DeepEqual(utility, goodUtility) {
 		t.Fatal("wrong utility")
+	}
+}
+
+// TestStorageGougingCheck is a unit test for storageGougingCheck.
+func TestStorageGougingCheck(t *testing.T) {
+	t.Parallel()
+
+	allowance := skymodules.DefaultAllowance
+	allowance.MaxStoragePrice = types.SiacoinPrecision
+	host := skymodules.HostDBEntry{
+		HostExternalSettings: modules.HostExternalSettings{
+			StoragePrice: allowance.MaxStoragePrice,
+		},
+	}
+	goodUtility := skymodules.ContractUtility{
+		GoodForUpload: true,
+		GoodForRenew:  true,
+	}
+	badUtility := skymodules.ContractUtility{}
+	goodContract := skymodules.RenterContract{Utility: goodUtility}
+
+	// Below max price cases first.
+	u, update := storageGougingCheck(goodContract, allowance, host, 0)
+	if update {
+		t.Fatal("wrong update", update)
+	}
+	if !reflect.DeepEqual(u, goodUtility) {
+		t.Fatal("wrong utility", u, goodUtility)
+	}
+	u, update = storageGougingCheck(goodContract, allowance, host, 1)
+	if update {
+		t.Fatal("wrong update", update)
+	}
+	if !reflect.DeepEqual(u, goodUtility) {
+		t.Fatal("wrong utility", u)
+	}
+
+	// Above max price cases.
+	host.StoragePrice = host.StoragePrice.Add64(1)
+	u, update = storageGougingCheck(goodContract, allowance, host, 0)
+	if update {
+		t.Fatal("wrong update", update)
+	}
+	if !reflect.DeepEqual(u, goodUtility) {
+		t.Fatal("wrong utility", u)
+	}
+	u, update = storageGougingCheck(goodContract, allowance, host, 1)
+	if !update {
+		t.Fatal("wrong update", update)
+	}
+	if !reflect.DeepEqual(u, badUtility) {
+		t.Fatal("wrong utility", u)
 	}
 }
 
