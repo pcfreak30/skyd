@@ -522,25 +522,6 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) int {
 	return workersLaunched
 }
 
-func (pdc *projectDownloadChunk) updateDownloadStats() {
-	var dlStats *skymodules.DownloadStats
-	switch length := pdc.pieceLength; {
-	case length <= 61e3:
-		dlStats = pdc.workerSet.staticRenter.staticDownloadStats64kb
-	case length <= 982e3:
-		dlStats = pdc.workerSet.staticRenter.staticDownloadStats1m
-	case length <= 3931e3:
-		dlStats = pdc.workerSet.staticRenter.staticDownloadStats4m
-	default:
-		dlStats = pdc.workerSet.staticRenter.staticDownloadStats10m
-	}
-
-	minPieces := pdc.workerSet.staticErasureCoder.MinPieces()
-	launched := uint64(len(pdc.launchedWorkers))
-	overdrive := launched - uint64(minPieces)
-	dlStats.Track(overdrive)
-}
-
 // launchWorkers performs the main download loop, every iteration we update the
 // pdc's available pieces, construct a new worker set and launch every worker
 // that can be launched from that set. Every iteration we check whether the
@@ -568,7 +549,6 @@ func (pdc *projectDownloadChunk) launchWorkers(rootFoundChan chan error) {
 		// check whether the download is completed
 		completed, err := pdc.finished()
 		if completed {
-			pdc.updateDownloadStats()
 			pdc.finalize()
 			return
 		}

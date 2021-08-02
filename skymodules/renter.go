@@ -109,7 +109,8 @@ type DirListFunc func(DirectoryInfo)
 type RenterPerformance struct {
 	SystemHealthScanDuration time.Duration
 
-	DownloadStats []*DownloadStats
+	BaseSectorDownloadStats   *SectorDownloadStats
+	FanoutSectorDownloadStats *SectorDownloadStats
 
 	BaseSectorUploadStats *DistributionTrackerStats
 	ChunkUploadStats      *DistributionTrackerStats
@@ -118,46 +119,61 @@ type RenterPerformance struct {
 	StreamBufferReadStats *DistributionTrackerStats
 }
 
-// DownloadStats is a helper struct that contains information about the
-// downloads and how much overdrive are launched
-type DownloadStats struct {
-	totalDownloads                uint64
-	totalOverdrive                uint64
-	totalOverdriveWorkersLaunched uint64
-	mu                            sync.Mutex
+// SectorDownloadStats is a helper struct that contains information about the
+// sector downloads, it keeps track of what percentage of downloads we overdrive
+// and how many overdrive workers get launched.
+type SectorDownloadStats struct {
+	total                    uint64
+	overdrive                uint64
+	overdriveWorkersLaunched uint64
+	mu                       sync.Mutex
 }
 
-func NewDownloadStats() *DownloadStats {
-	return &DownloadStats{}
+// NewSectorDownloadStats returns a new SectorDownloadStats object.
+func NewSectorDownloadStats() *SectorDownloadStats {
+	return &SectorDownloadStats{}
 }
 
-func (ds *DownloadStats) OverdrivePct() float64 {
+// OverdrivePct returns the frequency with which we overdrive when downloading a
+// sector. The frequency is expressed as a percentage of overall downloads. E.g.
+// an overdrive pct of 0.6 means we launch at least one overdrive worker 60% of
+// the time.
+func (ds *SectorDownloadStats) OverdrivePct() float64 {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 
-	if ds.totalDownloads == 0 {
+	if ds.total == 0 {
 		return 0
 	}
-	return float64(ds.totalOverdrive) / float64(ds.totalDownloads)
+	return float64(ds.overdrive) / float64(ds.total)
 }
 
-func (ds *DownloadStats) OverdriveAvg() float64 {
+// NumOverdriveWorkersAvg returns the amount of overdrive workers we launch in
+// case we overdrive, if we did not have to launch any overdrive workers at all,
+// the download will be excluded from this average.
+func (ds *SectorDownloadStats) NumOverdriveWorkersAvg() float64 {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 
-	if ds.totalOverdrive == 0 {
+	if ds.overdrive == 0 {
 		return 0
 	}
-	return float64(ds.totalOverdriveWorkersLaunched) / float64(ds.totalOverdrive)
+	return float64(ds.overdriveWorkersLaunched) / float64(ds.overdrive)
 }
 
-func (ds *DownloadStats) Track(overdrive uint64) {
+// AddDataPoint adds a data point to the statistics, it takes one parameter
+// called 'overdrive' which represents the amount of overdrive workers launched.
+// If 'overdrive' is zero it means that a sector download was completed without
+// launching an overdrive worker, attributing to the total amount of downloads
+// but not to the overdrive statistics.
+func (ds *SectorDownloadStats) AddDataPoint(overdrive uint64) {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
-	ds.totalDownloads++
+
+	ds.total++
 	if overdrive > 0 {
-		ds.totalOverdrive++
-		ds.totalOverdriveWorkersLaunched += overdrive
+		ds.overdrive++
+		ds.overdriveWorkersLaunched += overdrive
 	}
 }
 

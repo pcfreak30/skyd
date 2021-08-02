@@ -350,6 +350,9 @@ func (pdc *projectDownloadChunk) fail(err error) {
 // and then send the result down the response channel. If there is an error
 // during decode, 'pdc.fail()' will be called.
 func (pdc *projectDownloadChunk) finalize() {
+	// Convenience variables
+	r := pdc.workerSet.staticRenter
+
 	// Log info and finish span.
 	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
 		span.SetTag("success", true)
@@ -358,7 +361,8 @@ func (pdc *projectDownloadChunk) finalize() {
 
 	// Determine the amount of bytes the EC will need to skip from the recovered
 	// data when returning the data.
-	skipLength := pdc.offsetInChunk % (crypto.SegmentSize * uint64(pdc.workerSet.staticErasureCoder.MinPieces()))
+	ec := pdc.workerSet.staticErasureCoder
+	skipLength := pdc.offsetInChunk % (crypto.SegmentSize * uint64(ec.MinPieces()))
 
 	// Create a skipwriter that ensures we're recovering at the offset
 	buf := bytes.NewBuffer(nil)
@@ -374,6 +378,15 @@ func (pdc *projectDownloadChunk) finalize() {
 		return
 	}
 	data := buf.Bytes()
+
+	// Update the sector download statistics
+	numPieces := ec.NumPieces()
+	numOverdrive := len(pdc.launchedWorkers) - numPieces
+	if numPieces == 1 {
+		r.staticBaseSectorDownloadStats.AddDataPoint(uint64(numOverdrive))
+	} else {
+		r.staticFanoutSectorDownloadStats.AddDataPoint(uint64(numOverdrive))
+	}
 
 	// Return the data to the caller.
 	dr := &downloadResponse{

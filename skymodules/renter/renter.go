@@ -255,16 +255,13 @@ type Renter struct {
 	statsMu   sync.Mutex
 
 	// various performance stats
-	staticBaseSectorUploadStats *skymodules.DistributionTracker
-	staticChunkUploadStats      *skymodules.DistributionTracker
-	staticRegReadStats          *skymodules.DistributionTracker
-	staticRegWriteStats         *skymodules.DistributionTracker
-	staticStreamBufferStats     *skymodules.DistributionTracker
-
-	staticDownloadStats64kb *skymodules.DownloadStats
-	staticDownloadStats1m   *skymodules.DownloadStats
-	staticDownloadStats4m   *skymodules.DownloadStats
-	staticDownloadStats10m  *skymodules.DownloadStats
+	staticBaseSectorDownloadStats   *skymodules.SectorDownloadStats
+	staticBaseSectorUploadStats     *skymodules.DistributionTracker
+	staticChunkUploadStats          *skymodules.DistributionTracker
+	staticFanoutSectorDownloadStats *skymodules.SectorDownloadStats
+	staticRegReadStats              *skymodules.DistributionTracker
+	staticRegWriteStats             *skymodules.DistributionTracker
+	staticStreamBufferStats         *skymodules.DistributionTracker
 
 	// Memory management
 	//
@@ -806,18 +803,13 @@ func (r *Renter) Performance() (skymodules.RenterPerformance, error) {
 	return skymodules.RenterPerformance{
 		SystemHealthScanDuration: healthDuration,
 
-		DownloadStats: []*skymodules.DownloadStats{
-			r.staticDownloadStats64kb,
-			r.staticDownloadStats1m,
-			r.staticDownloadStats4m,
-			r.staticDownloadStats10m,
-		},
-
-		BaseSectorUploadStats: r.staticBaseSectorUploadStats.Stats(),
-		ChunkUploadStats:      r.staticChunkUploadStats.Stats(),
-		RegistryReadStats:     r.staticRegReadStats.Stats(),
-		RegistryWriteStats:    r.staticRegWriteStats.Stats(),
-		StreamBufferReadStats: r.staticStreamBufferStats.Stats(),
+		BaseSectorDownloadStats:   r.staticBaseSectorDownloadStats,
+		BaseSectorUploadStats:     r.staticBaseSectorUploadStats.Stats(),
+		ChunkUploadStats:          r.staticChunkUploadStats.Stats(),
+		FanoutSectorDownloadStats: r.staticFanoutSectorDownloadStats,
+		RegistryReadStats:         r.staticRegReadStats.Stats(),
+		RegistryWriteStats:        r.staticRegWriteStats.Stats(),
+		StreamBufferReadStats:     r.staticStreamBufferStats.Stats(),
 	}, nil
 }
 
@@ -1087,6 +1079,9 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		newDownloads:       make(chan struct{}, 1),
 		staticDownloadHeap: &downloadHeap{},
 
+		staticBaseSectorDownloadStats:   skymodules.NewSectorDownloadStats(),
+		staticFanoutSectorDownloadStats: skymodules.NewSectorDownloadStats(),
+
 		staticUploadHeap: uploadHeap{
 			repairingChunks:   make(map[uploadChunkID]*unfinishedUploadChunk),
 			stuckHeapChunks:   make(map[uploadChunkID]*unfinishedUploadChunk),
@@ -1120,11 +1115,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		mu:                   siasync.New(modules.SafeMutexDelay, 1),
 		staticTPool:          tpool,
 	}
-
-	r.staticDownloadStats64kb = skymodules.NewDownloadStats()
-	r.staticDownloadStats1m = skymodules.NewDownloadStats()
-	r.staticDownloadStats4m = skymodules.NewDownloadStats()
-	r.staticDownloadStats10m = skymodules.NewDownloadStats()
 
 	r.staticRegReadStats = skymodules.NewDistributionTrackerStandard()
 	r.staticRegReadStats.AddDataPoint(readRegistryStatsSeed) // Seed the stats so that startup doesn't say 0.

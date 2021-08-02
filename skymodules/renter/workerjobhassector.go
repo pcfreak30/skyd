@@ -377,6 +377,8 @@ func (jq *jobHasSectorQueue) callSuccessRate() float64 {
 		return jobHasSectorQueueSuccessRateSeed
 	}
 
+	// if there haven't been any jobs yet that came back indicating the host has
+	// the sector, we return a min success rate of .1%.
 	if jq.totalAvailable == 0 {
 		return jobHasSectorQueueSuccessRateMinimum
 	}
