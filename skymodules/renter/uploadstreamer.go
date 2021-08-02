@@ -238,8 +238,7 @@ func (r *Renter) callUploadStreamFromReaderWithFileNodeNoBlock(ctx context.Conte
 			if !pushed {
 				// The chunk wasn't added to the repair map meaning it must have
 				// already been in the repair map
-				_, read, err := ss.ReadChunk()
-				n += int64(read)
+				_, _, err := ss.ReadChunk()
 				if err != nil {
 					return nil, n, errors.AddContext(err, "unable to read pushed chunk")
 				}

@@ -63,6 +63,9 @@ func TestSkynetTUSUploader(t *testing.T) {
 	t.Run("UnstableConnection", func(t *testing.T) {
 		testTUSUploaderUnstableConnection(t, tg)
 	})
+	t.Run("DroppedConnection", func(t *testing.T) {
+		testTUSUploaderConnectionDropped(t, tg)
+	})
 }
 
 // testTUSUploadBasic tests uploading multiple files using the TUS protocol and
@@ -370,6 +373,80 @@ func testTUSUploaderUnstableConnection(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+
+	// Fetch skylink after upload is done.
+	skylink, err := client.SkylinkFromTUSURL(tc, uploader.Url())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download the uploaded data and compare it to the uploaded data.
+	downloadedData, err := r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(uploadedData, downloadedData) {
+		t.Fatal("data doesn't match")
+	}
+}
+
+// testTUSUploaderConnectionDropped tests dropping the connection halfway
+// through a chunk.
+func testTUSUploaderConnectionDropped(t *testing.T, tg *siatest.TestGroup) {
+	// Add a custom renter with dependency.
+	rp := node.RenterTemplate
+	deps := dependencies.NewDependencyTUSConnectionDrop()
+	rp.RenterDeps = deps
+	nodes, err := tg.AddNodes(rp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+	defer func() {
+		if err := tg.RemoveNode(r); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Get a tus client.
+	chunkSize := int64(skymodules.ChunkSize(crypto.TypePlain, uint64(skymodules.RenterDefaultDataPieces)))
+
+	// Create upload for a file that is 1.5 chunks large.
+	uploadedData := fastrand.Bytes(int(3 * chunkSize / 2))
+	tc, upload, err := r.SkynetTUSNewUploadFromBytes(uploadedData, chunkSize)
+
+	// Create uploader and upload the first chunk.
+	uploader, err := tc.CreateUpload(upload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = uploader.UploadChunck()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Trigger the failure on the dependency and try to upload the remaining
+	// data. That should fail.
+	deps.Fail()
+	err = uploader.Upload()
+	if err == nil {
+		t.Fatal("should fail")
+	}
+
+	// Pick up upload from where we left off. The offset should be at 1 chunk since
+	// we only managed to upload 1 chunk successfully.
+	uploader, err = tc.ResumeUpload(upload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if upload.Offset() != chunkSize {
+		t.Fatal("wrong offset")
+	}
+	// Upload remaining data. Should work now.
+	err = uploader.Upload()
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Fetch skylink after upload is done.
