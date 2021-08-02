@@ -367,7 +367,6 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 	cr := NewFanoutChunkReader(src, ec, onlyOnePieceNeeded, fileNode.MasterKey())
 	var chunks []*unfinishedUploadChunk
 	chunks, n, err = uploader.staticRenter.callUploadStreamFromReaderWithFileNodeNoBlock(ctx, fileNode, cr, offset)
-	fmt.Println("<-n", n, offset)
 
 	// Simulate loss of connection one byte early.
 	if u.staticUploader.staticRenter.staticDeps.Disrupt("TUSConnectionDropped") {

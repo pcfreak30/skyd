@@ -231,7 +231,7 @@ func (r *Renter) callUploadStreamFromReaderWithFileNodeNoBlock(ctx context.Conte
 		// Check if the chunk needs any work or if we can skip it.
 		if uuc.piecesCompleted < uuc.staticPiecesNeeded {
 			// Add the chunk to the upload heap's repair map.
-			pushed, err := r.managedPushChunkForRepair(uuc, chunkTypeStreamChunk)
+			existingUUC, pushed, err := r.managedPushChunkForRepair(uuc, chunkTypeStreamChunk)
 			if err != nil {
 				return nil, n, errors.AddContext(err, "unable to push chunk")
 			}
@@ -242,8 +242,13 @@ func (r *Renter) callUploadStreamFromReaderWithFileNodeNoBlock(ctx context.Conte
 				if err != nil {
 					return nil, n, errors.AddContext(err, "unable to read pushed chunk")
 				}
+				// If a uuc already existed, append that instead.
+				if existingUUC != nil {
+					chunks = append(chunks, existingUUC)
+				}
+			} else {
+				chunks = append(chunks, uuc)
 			}
-			chunks = append(chunks, uuc)
 		} else {
 			// The chunk doesn't need any work. We still need to read a chunk
 			// from the shard though. Otherwise we will upload the wrong chunk
