@@ -380,13 +380,17 @@ func (pdc *projectDownloadChunk) finalize() {
 	data := buf.Bytes()
 
 	// Update the sector download statistics
-	numPieces := ec.NumPieces()
-	numOverdrive := len(pdc.launchedWorkers) - numPieces
-	if numPieces == 1 {
-		r.staticBaseSectorDownloadStats.AddDataPoint(uint64(numOverdrive))
+	minPieces := ec.MinPieces()
+	numOverdriveWorkers := uint64(len(pdc.launchedWorkers) - minPieces)
+	if numOverdriveWorkers < 0 {
+		build.Critical("num overdrive workers should never be less than zero")
 	} else {
-		fmt.Println("overdrive workers launched", numOverdrive)
-		r.staticFanoutSectorDownloadStats.AddDataPoint(uint64(numOverdrive))
+		// track base sector and fanout sector download separately
+		if minPieces == 1 {
+			r.staticBaseSectorDownloadStats.AddDataPoint(numOverdriveWorkers)
+		} else {
+			r.staticFanoutSectorDownloadStats.AddDataPoint(numOverdriveWorkers)
+		}
 	}
 
 	// Return the data to the caller.
