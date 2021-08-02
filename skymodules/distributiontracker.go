@@ -21,6 +21,7 @@ package skymodules
 // that wouldn't be possible with generic values.
 
 import (
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -329,7 +330,7 @@ func (d *Distribution) ExpectedDuration() time.Duration {
 // MergeWith merges the given distribution according to a certain weight.
 func (d *Distribution) MergeWith(other *Distribution, weight float64) {
 	if weight <= 0 || weight > 1 {
-		build.Critical("unexpected weight")
+		build.Critical(fmt.Sprintf("unexpected weight %v", weight))
 		return
 	}
 
