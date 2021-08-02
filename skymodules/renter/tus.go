@@ -43,7 +43,7 @@ var (
 
 // ErrTUSUploadInterrupted is returned if the upload seemingly succeeded but
 // didn't actually upload a full chunk.
-var ErrTUSUploadInterrupted = errors.New("tus upload was interrupted - pls retry")
+var ErrTUSUploadInterrupted = errors.New("tus upload was interrupted - please retry")
 
 type (
 	// skynetTUSUploader implements multiple TUS interfaces for skynet uploads
