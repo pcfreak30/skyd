@@ -160,6 +160,27 @@ func (c *Contractor) managedCriticalUtilityChecks(sc *proto.SafeContract, host s
 	return contract.Utility, false
 }
 
+// managedBasicUtilityChecks handles all utility checks which don't necessarily
+// set both gfu and gfr to false.
+func (c *Contractor) managedBasicUtilityChecks(sc *proto.SafeContract, host skymodules.HostDBEntry, sb skymodules.HostScoreBreakdown, minScoreGFR, minScoreGFU types.Currency) (skymodules.ContractUtility, utilityUpdateStatus) {
+	contract := sc.Metadata()
+
+	c.mu.RLock()
+	allowance := c.allowance
+	c.mu.RUnlock()
+
+	// Check the host scorebreakdown against the minimum accepted scores.
+	u, utilityUpdateStatus := c.managedCheckHostScore(contract, sb, minScoreGFR, minScoreGFU)
+
+	// Check the storage price.
+	if !allowance.MaxStoragePrice.IsZero() && host.StoragePrice.Cmp(allowance.MaxStoragePrice) > 0 {
+		u.GoodForUpload = false
+		utilityUpdateStatus = necessaryUtilityUpdate
+	}
+
+	return u, utilityUpdateStatus
+}
+
 // managedHostInHostDBCheck checks if the host is in the hostdb and not
 // filtered.  Returns true if a check fails and the utility returned must be
 // used to update the contract state.

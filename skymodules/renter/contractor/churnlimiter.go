@@ -260,7 +260,7 @@ func (c *Contractor) managedMarkContractUtility(contract skymodules.RenterContra
 	}
 
 	// Check the host scorebreakdown against the minimum accepted scores.
-	u, utilityUpdateStatus := c.managedCheckHostScore(contract, sb, minScoreGFR, minScoreGFU)
+	u, utilityUpdateStatus := c.managedBasicUtilityChecks(sc, host, sb, minScoreGFR, minScoreGFU)
 
 	// Check the storage price.
 	if !c.allowance.MaxStoragePrice.IsZero() && host.StoragePrice.Cmp(c.allowance.MaxStoragePrice) > 0 {
