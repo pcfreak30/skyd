@@ -254,7 +254,7 @@ func (d *Distribution) ChanceAfter(dur time.Duration) float64 {
 	// Get the total data points. Return worst case if no data was collected.
 	total := d.DataPoints()
 	if total == 0 {
-		return 1 // TODO PJ: hmmm
+		return .5 // TODO PJ: hmmm
 	}
 
 	// Get the data point count up until the given index.

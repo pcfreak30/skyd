@@ -372,7 +372,11 @@ func (jq *jobHasSectorQueue) callSuccessRate() float64 {
 	if jq.totalJobs == 0 {
 		return jobHasSectorQueueSuccessRateSeed
 	}
-	return float64(jq.totalAvailable) / float64(jq.totalJobs)
+	rate := float64(jq.totalAvailable) / float64(jq.totalJobs)
+	if rate == 0 {
+		build.Critical("rounding to zero")
+	}
+	return rate
 }
 
 // callUpdateAvailabilityMetrics updates the fields on the has sector queue that
