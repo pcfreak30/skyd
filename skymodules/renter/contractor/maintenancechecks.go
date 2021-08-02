@@ -306,9 +306,8 @@ func storageGougingCheck(allowance skymodules.Allowance, host skymodules.HostDBE
 				GoodForRenew:  false,
 			}, true
 		}
-		// If it's empty, we keep the contract the way it is. The score
-		// penalty should make it very likely that we never use the
-		// contract.
+		// If it's empty, we keep the contract the way it is for now.
+		// managedBasicUtilityChecks will handle setting it !gfu later.
 	}
 	return skymodules.ContractUtility{}, false
 }
