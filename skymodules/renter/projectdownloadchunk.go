@@ -385,6 +385,7 @@ func (pdc *projectDownloadChunk) finalize() {
 	if numPieces == 1 {
 		r.staticBaseSectorDownloadStats.AddDataPoint(uint64(numOverdrive))
 	} else {
+		fmt.Println("overdrive workers launched", numOverdrive)
 		r.staticFanoutSectorDownloadStats.AddDataPoint(uint64(numOverdrive))
 	}
 

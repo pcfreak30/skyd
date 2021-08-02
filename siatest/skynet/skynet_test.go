@@ -641,9 +641,9 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 // testConvertSiaFile tests converting a siafile to a skyfile. This test checks
 // for 1-of-N redundancies and N-of-M redundancies.
 func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
-	// t.Run("1-of-N Conversion", func(t *testing.T) {
-	// 	testConversion(t, tg, 1, 2, t.Name())
-	// })
+	t.Run("1-of-N Conversion", func(t *testing.T) {
+		testConversion(t, tg, 1, 2, t.Name())
+	})
 	t.Run("N-of-M Conversion", func(t *testing.T) {
 		testConversion(t, tg, 2, 1, t.Name())
 	})

@@ -162,18 +162,16 @@ func (ds *SectorDownloadStats) NumOverdriveWorkersAvg() float64 {
 }
 
 // AddDataPoint adds a data point to the statistics, it takes one parameter
-// called 'overdrive' which represents the amount of overdrive workers launched.
-// If 'overdrive' is zero it means that a sector download was completed without
-// launching an overdrive worker, attributing to the total amount of downloads
-// but not to the overdrive statistics.
-func (ds *SectorDownloadStats) AddDataPoint(overdrive uint64) {
+// called 'numOverdriveWorkers' which represents the amount of overdrive workers
+// launched.
+func (ds *SectorDownloadStats) AddDataPoint(numOverdriveWorkers uint64) {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 
 	ds.total++
-	if overdrive > 0 {
+	if numOverdriveWorkers > 0 {
 		ds.overdrive++
-		ds.overdriveWorkersLaunched += overdrive
+		ds.overdriveWorkersLaunched += numOverdriveWorkers
 	}
 }
 

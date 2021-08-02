@@ -118,11 +118,6 @@ type (
 		FanoutSectorOverdrivePct float64 `json:"fanoutsectoroverdrivepct"`
 		FanoutSectorOverdriveAvg float64 `json:"fanoutsectoroverdriveavg"`
 
-		DownloadOverdriveAvg64kb float64 `json:"downloadoverdriveavg64kb"`
-		DownloadOverdriveAvg1m   float64 `json:"downloadoverdriveavg1m"`
-		DownloadOverdriveAvg4m   float64 `json:"downloadoverdriveavg4m"`
-		DownloadOverdriveAvg10m  float64 `json:"downloadoverdriveavg10m"`
-
 		// Chunk Upload Stats
 		ChunkUpload15mDataPoints float64 `json:"chunkupload15mdatapoints"`
 		ChunkUpload15mP99ms      float64 `json:"chunkupload15mp99ms"`
