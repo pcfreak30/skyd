@@ -389,6 +389,7 @@ func (pdc *projectDownloadChunk) finalize() {
 		if minPieces == 1 {
 			r.staticBaseSectorDownloadStats.AddDataPoint(numOverdriveWorkers)
 		} else {
+			fmt.Println("add fanout DP", numOverdriveWorkers)
 			r.staticFanoutSectorDownloadStats.AddDataPoint(numOverdriveWorkers)
 		}
 	}
