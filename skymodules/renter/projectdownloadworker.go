@@ -616,6 +616,9 @@ func (pdc *projectDownloadChunk) createWorkerSet(maxOverdriveWorkers int) (*work
 	for _, uw := range unresolvedWorkers {
 		remainder := current.addWorker(uw)
 		if remainder != nil {
+			if remainder.staticResolveChance == 0 {
+				build.Critical("it's in the remainder")
+			}
 			// add the current chimera worker to the slice and reset
 			chimeraWorkers = append(chimeraWorkers, current)
 			current = NewChimeraWorker()
