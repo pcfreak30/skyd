@@ -162,9 +162,7 @@ func (c *Contractor) managedCriticalUtilityChecks(sc *proto.SafeContract, host s
 
 // managedBasicUtilityChecks handles all utility checks which don't necessarily
 // set both gfu and gfr to false.
-func (c *Contractor) managedBasicUtilityChecks(sc *proto.SafeContract, host skymodules.HostDBEntry, sb skymodules.HostScoreBreakdown, minScoreGFR, minScoreGFU types.Currency) (skymodules.ContractUtility, utilityUpdateStatus) {
-	contract := sc.Metadata()
-
+func (c *Contractor) managedBasicUtilityChecks(contract skymodules.RenterContract, host skymodules.HostDBEntry, sb skymodules.HostScoreBreakdown, minScoreGFR, minScoreGFU types.Currency) (skymodules.ContractUtility, utilityUpdateStatus) {
 	c.mu.RLock()
 	allowance := c.allowance
 	c.mu.RUnlock()
