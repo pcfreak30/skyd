@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -108,11 +109,56 @@ type DirListFunc func(DirectoryInfo)
 type RenterPerformance struct {
 	SystemHealthScanDuration time.Duration
 
+	DownloadStats []*DownloadStats
+
 	BaseSectorUploadStats *DistributionTrackerStats
 	ChunkUploadStats      *DistributionTrackerStats
 	RegistryReadStats     *DistributionTrackerStats
 	RegistryWriteStats    *DistributionTrackerStats
 	StreamBufferReadStats *DistributionTrackerStats
+}
+
+// DownloadStats is a helper struct that contains information about the
+// downloads and how much overdrive are launched
+type DownloadStats struct {
+	totalDownloads                uint64
+	totalOverdrive                uint64
+	totalOverdriveWorkersLaunched uint64
+	mu                            sync.Mutex
+}
+
+func NewDownloadStats() *DownloadStats {
+	return &DownloadStats{}
+}
+
+func (ds *DownloadStats) OverdrivePct() float64 {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
+	if ds.totalDownloads == 0 {
+		return 0
+	}
+	return float64(ds.totalOverdrive) / float64(ds.totalDownloads)
+}
+
+func (ds *DownloadStats) OverdriveAvg() float64 {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
+	if ds.totalOverdrive == 0 {
+		return 0
+	}
+	return float64(ds.totalOverdriveWorkersLaunched) / float64(ds.totalOverdrive)
+}
+
+func (ds *DownloadStats) Track(overdrive uint64) {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+	ds.totalDownloads++
+	if overdrive > 0 {
+		ds.totalOverdrive++
+		ds.totalOverdriveWorkersLaunched += overdrive
+	}
 }
 
 // RenterStats is a struct which tracks key metrics in a single renter. This

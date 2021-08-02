@@ -61,6 +61,10 @@ const (
 	// flagged if the HasSector cost reaches 1% of the total cost of the
 	// allowance.
 	pcwsGougingFractionDenom = 25
+
+	// maxOverdriveWorkers defines the maximum amount of overdrive workers to
+	// select as part of a worker set
+	maxOverdriveWorkers = 10
 )
 
 // pcwsUnreseovledWorker tracks an unresolved worker that is associated with a
@@ -557,15 +561,17 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	pdc.launchTime = time.Now()
 
 	// Launch the initial set of workers for the pdc.
-	err = pdc.launchWorkers(10) // TODO
-	if err != nil {
-		return nil, errors.Compose(err, ErrRootNotFound)
-	}
+	rootFoundChan := make(chan error, 1)
+	go pdc.launchWorkers(rootFoundChan)
 
-	// All initial workers have been launched. The function can return now,
-	// unblocking the caller. A background thread will be launched to collect
-	// the responses and launch overdrive workers when necessary.
-	// go pdc.threadedCollectAndOverdrivePieces()
+	select {
+	case err := <-rootFoundChan:
+		if err != nil {
+			return nil, errors.Compose(err, ErrRootNotFound)
+		}
+	case <-pdc.ctx.Done():
+		return nil, errors.New("download timed out")
+	}
 
 	return pdc.downloadResponseChan, nil
 }

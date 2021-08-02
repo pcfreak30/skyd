@@ -112,6 +112,17 @@ type (
 		BaseSectorUpload15mP999ms     float64 `json:"basesectorupload15mp999ms"`
 		BaseSectorUpload15mP9999ms    float64 `json:"basesectorupload15mp9999ms"`
 
+		// Download Stats
+		DownloadOverdrivePct64kb float64 `json:"downloadoverdrivepct64kb"`
+		DownloadOverdrivePct1m   float64 `json:"downloadoverdrivepct1m"`
+		DownloadOverdrivePct4m   float64 `json:"downloadoverdrivepct4m"`
+		DownloadOverdrivePct10m  float64 `json:"downloadoverdrivepct10m"`
+
+		DownloadOverdriveAvg64kb float64 `json:"downloadoverdriveavg64kb"`
+		DownloadOverdriveAvg1m   float64 `json:"downloadoverdriveavg1m"`
+		DownloadOverdriveAvg4m   float64 `json:"downloadoverdriveavg4m"`
+		DownloadOverdriveAvg10m  float64 `json:"downloadoverdriveavg10m"`
+
 		// Chunk Upload Stats
 		ChunkUpload15mDataPoints float64 `json:"chunkupload15mdatapoints"`
 		ChunkUpload15mP99ms      float64 `json:"chunkupload15mp99ms"`
@@ -1087,6 +1098,16 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 		BaseSectorUpload15mP99ms:      float64(renterPerf.BaseSectorUploadStats.Nines[0][1]) / float64(time.Millisecond),
 		BaseSectorUpload15mP999ms:     float64(renterPerf.BaseSectorUploadStats.Nines[0][2]) / float64(time.Millisecond),
 		BaseSectorUpload15mP9999ms:    float64(renterPerf.BaseSectorUploadStats.Nines[0][3]) / float64(time.Millisecond),
+
+		DownloadOverdrivePct64kb: renterPerf.DownloadStats[0].OverdrivePct(),
+		DownloadOverdrivePct1m:   renterPerf.DownloadStats[1].OverdrivePct(),
+		DownloadOverdrivePct4m:   renterPerf.DownloadStats[2].OverdrivePct(),
+		DownloadOverdrivePct10m:  renterPerf.DownloadStats[3].OverdrivePct(),
+
+		DownloadOverdriveAvg64kb: renterPerf.DownloadStats[0].OverdriveAvg(),
+		DownloadOverdriveAvg1m:   renterPerf.DownloadStats[1].OverdriveAvg(),
+		DownloadOverdriveAvg4m:   renterPerf.DownloadStats[2].OverdriveAvg(),
+		DownloadOverdriveAvg10m:  renterPerf.DownloadStats[3].OverdriveAvg(),
 
 		ChunkUpload15mDataPoints: renterPerf.ChunkUploadStats.DataPoints[0],
 		ChunkUpload15mP99ms:      float64(renterPerf.ChunkUploadStats.Nines[0][1]) / float64(time.Millisecond),

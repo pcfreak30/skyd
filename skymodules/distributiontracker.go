@@ -328,7 +328,11 @@ func (d *Distribution) ExpectedDuration() time.Duration {
 
 // MergeWith merges the given distribution according to a certain weight.
 func (d *Distribution) MergeWith(other *Distribution, weight float64) {
-	// TODO validate weighted
+	if weight <= 0 || weight > 1 {
+		build.Critical("unexpected weight")
+		return
+	}
+
 	// TODO validate distribution have equal half life (?)
 
 	// loop over every bucket in other's distribution and calculate the pct
@@ -342,7 +346,7 @@ func (d *Distribution) MergeWith(other *Distribution, weight float64) {
 	}
 }
 
-// TODO PJ: docstring
+// NumBuckets returns the total number of buckets in the distribution
 func (d *Distribution) NumBuckets() int {
 	return len(d.timings)
 }

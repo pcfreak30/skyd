@@ -74,7 +74,7 @@ type (
 
 		// staticDT is a distribution tracker that keeps track of the HS job
 		// duration
-		staticDT skymodules.DistributionTracker
+		staticDT *skymodules.DistributionTracker
 
 		*jobGenericQueue
 	}
@@ -395,6 +395,7 @@ func (jq *jobHasSectorQueue) callUpdateJobTimeMetrics(jobTime time.Duration) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	jq.weightedJobTime = expMovingAvgHotStart(jq.weightedJobTime, float64(jobTime), jobHasSectorPerformanceDecay)
+	jq.staticDT.AddDataPoint(jobTime)
 }
 
 // expectedJobTime will return the amount of time that a job is expected to
@@ -413,6 +414,8 @@ func (w *worker) initJobHasSectorQueue() {
 
 	w.staticJobHasSectorQueue = &jobHasSectorQueue{
 		jobGenericQueue: newJobGenericQueue(w),
+
+		staticDT: skymodules.NewDistributionTrackerStandard(),
 	}
 }
 

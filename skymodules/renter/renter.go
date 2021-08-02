@@ -203,13 +203,6 @@ type cachedUtilities struct {
 	used         []types.SiaPublicKey
 }
 
-type downloadStats struct {
-	totalDownloads                uint64
-	totalOverdrive                uint64
-	totalOverdriveWorkersLaunched uint64
-	mu                            sync.Mutex
-}
-
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
@@ -267,7 +260,11 @@ type Renter struct {
 	staticRegReadStats          *skymodules.DistributionTracker
 	staticRegWriteStats         *skymodules.DistributionTracker
 	staticStreamBufferStats     *skymodules.DistributionTracker
-	staticDLStats               *downloadStats
+
+	staticDownloadStats64kb *skymodules.DownloadStats
+	staticDownloadStats1m   *skymodules.DownloadStats
+	staticDownloadStats4m   *skymodules.DownloadStats
+	staticDownloadStats10m  *skymodules.DownloadStats
 
 	// Memory management
 	//
@@ -809,6 +806,13 @@ func (r *Renter) Performance() (skymodules.RenterPerformance, error) {
 	return skymodules.RenterPerformance{
 		SystemHealthScanDuration: healthDuration,
 
+		DownloadStats: []*skymodules.DownloadStats{
+			r.staticDownloadStats64kb,
+			r.staticDownloadStats1m,
+			r.staticDownloadStats4m,
+			r.staticDownloadStats10m,
+		},
+
 		BaseSectorUploadStats: r.staticBaseSectorUploadStats.Stats(),
 		ChunkUploadStats:      r.staticChunkUploadStats.Stats(),
 		RegistryReadStats:     r.staticRegReadStats.Stats(),
@@ -1116,7 +1120,11 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		mu:                   siasync.New(modules.SafeMutexDelay, 1),
 		staticTPool:          tpool,
 	}
-	r.staticDLStats = &downloadStats{}
+
+	r.staticDownloadStats64kb = skymodules.NewDownloadStats()
+	r.staticDownloadStats1m = skymodules.NewDownloadStats()
+	r.staticDownloadStats4m = skymodules.NewDownloadStats()
+	r.staticDownloadStats10m = skymodules.NewDownloadStats()
 
 	r.staticRegReadStats = skymodules.NewDistributionTrackerStandard()
 	r.staticRegReadStats.AddDataPoint(readRegistryStatsSeed) // Seed the stats so that startup doesn't say 0.
