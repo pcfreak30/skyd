@@ -24,7 +24,11 @@ const (
 	// jobHasSectorQueueSuccessRateSeed is the success rate we return when there
 	// haven't been any jobs performed yet by the queue to avoid unexpected
 	// behaviour when using the success rate in multiplications.
-	jobHasSectorQueueSuccessRateSeed = 0.001
+	jobHasSectorQueueSuccessRateSeed = 0.01
+
+	// jobHasSectorQueueSuccessRateMinimum is the minimum success rate we return
+	// when there haven't been any successful jobs yet.
+	jobHasSectorQueueSuccessRateMinimum = 0.001
 
 	// hasSectorBatchSize is the number of has sector jobs batched together upon
 	// calling callNext.
@@ -366,17 +370,18 @@ func (jq *jobHasSectorQueue) callSuccessRate() float64 {
 	defer jq.mu.Unlock()
 
 	// if there haven't been any jobs yet, seed the success rate with a rate of
-	// .1% to avoid unexpected behaviour when multiplying by 0 in our download
+	// 1% to avoid unexpected behaviour when multiplying by 0 in our download
 	// algorithms. We can do this because we send an HS job to all hosts on
 	// every download so this should converge to the actual value super quickly.
 	if jq.totalJobs == 0 {
 		return jobHasSectorQueueSuccessRateSeed
 	}
-	rate := float64(jq.totalAvailable) / float64(jq.totalJobs)
-	if rate == 0 {
-		build.Critical("rounding to zero")
+
+	if jq.totalAvailable == 0 {
+		return jobHasSectorQueueSuccessRateMinimum
 	}
-	return rate
+
+	return float64(jq.totalAvailable) / float64(jq.totalJobs)
 }
 
 // callUpdateAvailabilityMetrics updates the fields on the has sector queue that
