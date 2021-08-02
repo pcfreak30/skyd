@@ -57,10 +57,6 @@ const (
 	// the bad points do not rack up very quickly.
 	interactionExponentiation = 10
 
-	// maxStoragePriceExceededPenalty is the score penalty a host receives
-	// for exceeding the maximum storage price set in the user's allowance.
-	maxStoragePriceExceededPenalty = 1e6
-
 	// priceExponentiationLarge is the number of times that the weight is
 	// divided by the price when the price is large relative to the allowance.
 	// The exponentiation is a lot higher because we care greatly about high
@@ -363,16 +359,6 @@ func (hdb *HostDB) priceAdjustments(entry skymodules.HostDBEntry, allowance skym
 
 	smallWeight := math.Pow(cutoff64, priceExponentiationSmall)
 	largeWeight := math.Pow(ratio, priceExponentiationLarge)
-
-	// Apply a penalty if the storage exceeds the max. We don't use
-	// math.SmallestNonzeroFloat64 because we still want to form contracts
-	// with this hosts. The maintenancechecks are responsible for making
-	// sure the contract is !gfu when empty or !gfu and !gfr if the contract
-	// isn't empty.
-	maxStoragePenalty := 1.0
-	if !allowance.MaxStoragePrice.IsZero() && entry.StoragePrice.Cmp(allowance.MaxStoragePrice) > 0 {
-		maxStoragePenalty /= maxStoragePriceExceededPenalty
-	}
 
 	return 1 / (smallWeight * largeWeight)
 }
