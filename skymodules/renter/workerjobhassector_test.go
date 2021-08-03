@@ -56,9 +56,9 @@ func TestHasSectorJobBatchCallNext(t *testing.T) {
 	}
 }
 
-// TestHasSectorJobQueueSuccessRate is a unit that verifies the HS job queue
-// correctly returns the success rate
-func TestHasSectorJobQueueSuccessRate(t *testing.T) {
+// TestHasSectorJobQueueAvailabilityRate is a unit that verifies the HS job
+// queue correctly returns the availability rate
+func TestHasSectorJobQueueAvailabilityRate(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -88,9 +88,9 @@ func TestHasSectorJobQueueSuccessRate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// assert the seed success rate on a new queue
-	successRate := w.staticJobHasSectorQueue.callSuccessRate()
-	if successRate != jobHasSectorQueueSuccessRateSeed {
+	// assert the seed availability rate on a new queue
+	availabilityRate := w.staticJobHasSectorQueue.callAvailabilityRate()
+	if availabilityRate != jobHasSectorQueueAvailabilityRateSeed {
 		t.Fatal("unexpected")
 	}
 
@@ -113,11 +113,11 @@ func TestHasSectorJobQueueSuccessRate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// check whether the success rate is correct
+	// check whether the availability rate is correct
 	if err := build.Retry(10, 10*time.Millisecond, func() error {
-		successRate := w.staticJobHasSectorQueue.callSuccessRate()
-		if successRate != .5 {
-			return fmt.Errorf("unexpected success rate %v", successRate)
+		availabilityRate := w.staticJobHasSectorQueue.callAvailabilityRate()
+		if availabilityRate != .5 {
+			return fmt.Errorf("unexpected availability rate %v", availabilityRate)
 		}
 		return nil
 	}); err != nil {
@@ -133,11 +133,11 @@ func TestHasSectorJobQueueSuccessRate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// check whether the success rate is correct
+	// check whether the availability rate is correct
 	if err := build.Retry(10, 10*time.Millisecond, func() error {
-		successRate := w.staticJobHasSectorQueue.callSuccessRate()
-		if successRate != .2 {
-			return fmt.Errorf("unexpected success rate %v", successRate)
+		availabilityRate := w.staticJobHasSectorQueue.callAvailabilityRate()
+		if availabilityRate != .2 {
+			return fmt.Errorf("unexpected availability rate %v", availabilityRate)
 		}
 		return nil
 	}); err != nil {
