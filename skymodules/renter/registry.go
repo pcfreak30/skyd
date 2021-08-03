@@ -449,6 +449,10 @@ func (r *Renter) managedRegistryEntryHealth(ctx context.Context, rid modules.Reg
 	// best one. If ErrSameRevNum is returned, the entries are equal.
 	var nTotal, nPrimary uint64
 	for _, resp := range resps {
+		if resp.staticSignedRegistryValue == nil {
+			// Ignore responses without value.
+			continue
+		}
 		update, reason := srv.ShouldUpdateWith(&resp.staticSignedRegistryValue.RegistryValue, resp.staticWorker.staticHostPubKey)
 		if update {
 			nPrimary++

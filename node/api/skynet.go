@@ -190,11 +190,12 @@ type (
 	// RegistryHandlerRequestPOST is the expected format of the json request for
 	// /skynet/registry [POST].
 	RegistryHandlerRequestPOST struct {
-		PublicKey types.SiaPublicKey `json:"publickey"`
-		DataKey   crypto.Hash        `json:"datakey"`
-		Revision  uint64             `json:"revision"`
-		Signature crypto.Signature   `json:"signature"`
-		Data      []byte             `json:"data"`
+		PublicKey types.SiaPublicKey        `json:"publickey"`
+		DataKey   crypto.Hash               `json:"datakey"`
+		Revision  uint64                    `json:"revision"`
+		Signature crypto.Signature          `json:"signature"`
+		Data      []byte                    `json:"data"`
+		Type      modules.RegistryEntryType `json:"type"`
 	}
 
 	// SkylinkResolveGET is the response returned by the /skylink/resolve
@@ -1321,6 +1322,12 @@ func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 		return
 	}
 
+	// If the type wasn't set, default to no pubkey to preserve
+	// compatibility.
+	if rhp.Type == modules.RegistryTypeInvalid {
+		rhp.Type = modules.RegistryTypeWithoutPubkey
+	}
+
 	// Check data length here to be able to offer a better and faster error
 	// message than when the hosts return it.
 	if len(rhp.Data) > modules.RegistryDataSize {
@@ -1329,7 +1336,7 @@ func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 	}
 
 	// Update the registry.
-	srv := modules.NewSignedRegistryValue(rhp.DataKey, rhp.Data, rhp.Revision, rhp.Signature, modules.RegistryTypeWithoutPubkey)
+	srv := modules.NewSignedRegistryValue(rhp.DataKey, rhp.Data, rhp.Revision, rhp.Signature, rhp.Type)
 	err = api.renter.UpdateRegistry(rhp.PublicKey, srv, renter.DefaultRegistryUpdateTimeout)
 	if err != nil {
 		WriteError(w, Error{"Unable to update the registry: " + err.Error()}, http.StatusBadRequest)

@@ -4116,6 +4116,120 @@ func TestRenewContractBadScore(t *testing.T) {
 	}
 }
 
+func TestRegistryHealth(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	testDir := skynetTestDir(t.Name())
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Renters: 1,
+		Miners:  1,
+		Hosts:   renter.MinUpdateRegistrySuccesses,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	r := tg.Renters()[0]
+
+	// Get one of the hosts' pubkey.
+	hpk, err := tg.Hosts()[0].HostPublicKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hpkh := crypto.HashObject(hpk)
+
+	// Create an entry that's a primary entry on one host but not the other.
+	sk, pk := crypto.GenerateKeyPair()
+	var dataKey crypto.Hash
+	fastrand.Read(dataKey[:])
+	spk := types.Ed25519PublicKey(pk)
+	rid := modules.DeriveRegistryEntryID(spk, dataKey)
+
+	// TODO: Change the line below to use modules.RegistryTypeWithPubkey
+	// once Sia hosts have support for setting primary entries.
+	revision := fastrand.Uint64n(1000)
+	srv := modules.NewRegistryValue(dataKey, hpkh[:], revision, modules.RegistryTypeWithoutPubkey).Sign(sk)
+
+	// Update the registry.
+	err = r.RegistryUpdateWithEntry(spk, srv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Choose one of the existing hosts to be later stopped.
+	stoppedHost := tg.Hosts()[0]
+
+	// Add a new host.
+	_, err = tg.AddNodeN(node.HostTemplate, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Stop the existing host.
+	if err := tg.StopNode(stoppedHost); err != nil {
+		t.Fatal(err)
+	}
+
+	// Update the hosts again.
+	revision++
+	srv.Revision = revision
+	srv = srv.Sign(sk)
+	err = r.RegistryUpdateWithEntry(spk, srv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Restart the stopped host.
+	if err := tg.StartNode(stoppedHost); err != nil {
+		t.Fatal(err)
+	}
+
+	// Use a retry since the node might take a while to start.
+	err = build.Retry(500, 100*time.Millisecond, func() error {
+		// Get the health both ways.
+		reh1, err := r.RegistryEntryHealth(spk, dataKey)
+		if err != nil {
+			return err
+		}
+		reh2, err := r.RegistryEntryHealthRID(rid)
+		if err != nil {
+			return err
+		}
+
+		// They should be the same.
+		if !reflect.DeepEqual(reh1, reh2) {
+			return fmt.Errorf("health responses don't match: %v %v", reh1, reh2)
+		}
+
+		// Check the health against the expectation.
+		// We expect len(hosts)-1 entries since one entry is outdated
+		// and does therefore not count towards the health.
+		expected := skymodules.RegistryEntryHealth{
+			RevisionNumber:    revision,
+			NumEntries:        uint64(len(tg.Hosts())) - 1,
+			NumPrimaryEntries: 0,
+		}
+		if !reflect.DeepEqual(reh1, expected) {
+			got := siatest.PrintJSON(reh1)
+			expected := siatest.PrintJSON(expected)
+			return fmt.Errorf("health doesn't match expected \n got: %v \n expected: %v", got, expected)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestRegistryUpdateRead tests setting a registry entry and reading in through
 // the API.
 func TestRegistryUpdateRead(t *testing.T) {
