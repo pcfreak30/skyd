@@ -409,13 +409,13 @@ func TestDistribution_ChanceAfter(t *testing.T) {
 	d := NewDistribution(time.Minute * 100)
 	ms := time.Millisecond
 
-	// verify the chance is seeded as a coinflip if we don't have any datapoints
+	// verify the chance is zero if we don't have any datapoints
 	chance := d.ChanceAfter(time.Duration(0))
-	if chance != 0.5 {
+	if chance != 0 {
 		t.Fatal("bad")
 	}
 	chance = d.ChanceAfter(time.Second)
-	if chance != 0.5 {
+	if chance != 0 {
 		t.Fatal("bad")
 	}
 

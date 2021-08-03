@@ -260,11 +260,10 @@ func (d *Distribution) ChanceAfter(dur time.Duration) float64 {
 		return 0
 	}
 
-	// Get the total data points. If no data was collected we return .5 which
-	// represents a coinflip.
+	// Get the total data points. If no data was collected we return 0.
 	total := d.DataPoints()
 	if total == 0 {
-		return .5
+		return 0
 	}
 
 	// Get the amount of data points up until the bucket index.
