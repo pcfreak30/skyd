@@ -391,8 +391,8 @@ func testTUSUploaderUnstableConnection(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testTUSUploaderConnectionDropped tests dropping the connection halfway
-// through a chunk.
+// testTUSUploaderConnectionDropped tests dropping the connection between
+// chunks.
 func testTUSUploaderConnectionDropped(t *testing.T, tg *siatest.TestGroup) {
 	// Add a custom renter with dependency.
 	rp := node.RenterTemplate

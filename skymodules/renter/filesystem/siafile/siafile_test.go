@@ -594,7 +594,7 @@ func TestShrink(t *testing.T) {
 	siaFilePath, _, source, rc, sk, _, _, fileMode := newTestFileParams(1, false)
 	numChunks := 3
 	chunkSize := skymodules.ChunkSize(crypto.TypeDefaultRenter, uint64(rc.MinPieces()))
-	fileSize := chunkSize*uint64(numChunks) - 1
+	fileSize := chunkSize*uint64(numChunks) - 1 // last chunk is partial
 	sf, _, _ := customTestFileAndWAL(siaFilePath, source, rc, sk, fileSize, numChunks, fileMode)
 
 	// Check initial file. The initial size is 3 full pages + a marshaled
