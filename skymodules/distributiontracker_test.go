@@ -545,6 +545,49 @@ func TestDistribution_ExpectedDuration(t *testing.T) {
 	}
 }
 
+// TestDistribution_MergeWith verifies the 'MergeWith' method on the
+// distribution.
+func TestDistribution_MergeWith(t *testing.T) {
+	t.Parallel()
+
+	// create a new distribution
+	d := NewDistribution(time.Minute * 100)
+	ms := time.Millisecond
+
+	// add some random data points
+	for i := 0; i < 1000; i++ {
+		d.AddDataPoint(time.Duration(fastrand.Intn(i+1)) * ms)
+	}
+
+	// get the chance at a random duration that's expected to be non zero
+	randDur := time.Duration(fastrand.Intn(500)+250) * ms
+	chance := d.ChanceAfter(randDur)
+	if chance == 0 {
+		t.Error("bad")
+	}
+
+	// create another distribution and merge it, use 1 as weight, seeing as the
+	// other distribution has no datapoints in it, the distribution won't change
+	other := NewDistribution(time.Minute * 100)
+	d.MergeWith(other, 1)
+	if d.ChanceAfter(randDur) != chance {
+		t.Fatal("unexpected")
+	}
+
+	// get the expected duration and verify it lowers after merging with a
+	// distribution that has more datapoints on the lower end
+	expectedDur := d.ExpectedDuration()
+	for i := 0; i < 1000; i++ {
+		other.AddDataPoint(time.Duration(fastrand.Intn(i/4+1)) * ms)
+	}
+	d.MergeWith(other, 1)
+	if d.ExpectedDuration() >= expectedDur {
+		t.Fatal("unexpected")
+	}
+
+	// TODO add a good test that covers the weights
+}
+
 // TestDistribution_Shift verifies the 'Shift' method on the distribution.
 func TestDistribution_Shift(t *testing.T) {
 	t.Parallel()

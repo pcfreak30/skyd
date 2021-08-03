@@ -352,6 +352,10 @@ func (d *Distribution) MergeWith(other *Distribution, weight float64) {
 	// multiplied by the given weight and add it to the corresponding bucket
 	// in dt.
 	total := other.DataPoints()
+	if total == 0 {
+		return
+	}
+
 	for bi, b := range other.timings {
 		chance := b / total
 		d.timings[bi] += chance * weight
