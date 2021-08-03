@@ -401,46 +401,58 @@ func TestDistributionBucketing(t *testing.T) {
 	}
 }
 
-// TestDistribution_ExpectedDuration will test that the distribution correctly
-// returns the expected duration based upon all data points in the distribution.
-func TestDistribution_ExpectedDuration(t *testing.T) {
+// TestDistribution_ChanceAfter will test the `ChanceAfter` method on the
+// distribution tracker.
+func TestDistribution_ChanceAfter(t *testing.T) {
 	t.Parallel()
 
 	d := NewDistribution(time.Minute * 100)
 	ms := time.Millisecond
 
-	// check whether we default to the worst case if we have 0 data points
-	expected := d.ExpectedDuration()
-	if expected != durationForIndex(len(d.timings)) {
-		t.Error("bad")
+	// verify the chance is seeded as a coinflip if we don't have any datapoints
+	chance := d.ChanceAfter(time.Duration(0))
+	if chance != 0.5 {
+		t.Fatal("bad")
+	}
+	chance = d.ChanceAfter(time.Second)
+	if chance != 0.5 {
+		t.Fatal("bad")
 	}
 
-	// add a first data point
-	duration := 8 * ms
-	d.AddDataPoint(duration)
-	expected = d.ExpectedDuration()
-	if expected != duration {
-		t.Error("bad")
+	// add some datapoints below 100ms
+	for i := 0; i < 100; i++ {
+		d.AddDataPoint(time.Duration(fastrand.Intn(100)) * ms)
 	}
 
-	// now add 1000 datapoints, between 1-50ms
-	for i := 0; i < 1000; i++ {
-		d.AddDataPoint(time.Duration(fastrand.Uint64n(50)+1) * ms)
-	}
-	expected = d.ExpectedDuration()
-	if expected < 22*ms || expected > 28*ms {
-		t.Error("bad")
+	// verify we have a 100% chance of coming in after 100ms
+	chance = d.ChanceAfter(100 * ms)
+	if chance != 1 {
+		t.Fatal("bad")
 	}
 
-	// add 1000 more datapoints, between 51 and 100ms
-	for i := 0; i < 1000; i++ {
-		d.AddDataPoint(time.Duration(fastrand.Uint64n(100)+50) * ms)
+	// verify the chance is somewhere between 0 and 1 for random durations
+	for i := 0; i < 100; i++ {
+		randomDur := time.Duration(fastrand.Intn(100)) * ms
+		chance = d.ChanceAfter(randomDur)
+		if !(chance >= 0 && chance < 1) {
+			t.Fatal("bad", chance, randomDur)
+		}
 	}
 
-	// assert the expected duration increased
-	expected = d.ExpectedDuration()
-	if expected < 50*ms || expected > 75*ms {
-		t.Error("bad")
+	// verify the chance increases if the duration increases
+	prev := float64(0)
+	for i := 0; i < 100; i += 10 {
+		chance = d.ChanceAfter(time.Duration(i) * ms)
+		if chance < prev {
+			t.Fatal("bad", chance, prev)
+		}
+		prev = chance
+	}
+
+	// verify the chance is deterministic
+	randomDur := time.Duration(fastrand.Intn(100)) * ms
+	if d.ChanceAfter(randomDur) != d.ChanceAfter(randomDur) {
+		t.Fatal("bad")
 	}
 }
 
@@ -490,11 +502,132 @@ func TestDistribution_Clone(t *testing.T) {
 	}
 }
 
+// TestDistribution_ExpectedDuration will test that the distribution correctly
+// returns the expected duration based upon all data points in the distribution.
+func TestDistribution_ExpectedDuration(t *testing.T) {
+	t.Parallel()
+
+	d := NewDistribution(time.Minute * 100)
+	ms := time.Millisecond
+
+	// check whether we default to the worst case if we have 0 data points
+	expected := d.ExpectedDuration()
+	if expected != durationForIndex(len(d.timings)) {
+		t.Error("bad")
+	}
+
+	// add a first data point
+	duration := 8 * ms
+	d.AddDataPoint(duration)
+	expected = d.ExpectedDuration()
+	if expected != duration {
+		t.Error("bad")
+	}
+
+	// now add 1000 datapoints, between 1-50ms
+	for i := 0; i < 1000; i++ {
+		d.AddDataPoint(time.Duration(fastrand.Uint64n(50)+1) * ms)
+	}
+	expected = d.ExpectedDuration()
+	if expected < 22*ms || expected > 28*ms {
+		t.Error("bad")
+	}
+
+	// add 1000 more datapoints, between 51 and 100ms
+	for i := 0; i < 1000; i++ {
+		d.AddDataPoint(time.Duration(fastrand.Uint64n(100)+50) * ms)
+	}
+
+	// assert the expected duration increased
+	expected = d.ExpectedDuration()
+	if expected < 50*ms || expected > 75*ms {
+		t.Error("bad")
+	}
+}
+
 // TestDistribution_Shift verifies the 'Shift' method on the distribution.
 func TestDistribution_Shift(t *testing.T) {
 	t.Parallel()
 
-	// TODO
+	// create a new distribution
+	d := NewDistribution(time.Minute * 100)
+	ms := time.Millisecond
+
+	// add some datapoints below 896ms (896 perfectly aligns with a bucket)
+	for i := 0; i < 1000; i++ {
+		d.AddDataPoint(time.Duration(fastrand.Uint64n(896)) * ms)
+	}
+
+	// check the chance is 1
+	chance := d.ChanceAfter(896 * ms)
+	if chance != 1 {
+		t.Fatal("bad")
+	}
+
+	// calculate the chance after 576ms, expect it to be hovering around 65%
+	chance = d.ChanceAfter(576 * ms)
+	if !(chance > .55 && chance < .75) {
+		t.Fatal("bad")
+	}
+
+	// shift the distribution by 0ms - it should have no effect
+	d.Shift(time.Duration(0))
+	chanceAfterShift := d.ChanceAfter(576 * ms)
+	if chanceAfterShift != chance {
+		t.Fatal("bad")
+	}
+
+	// shift the distribution by 576ms, this is perfectly aligned with a bucket
+	// so there'll be no fractionalised value that's being smeared over all
+	// buckets preceding it
+	d.Shift(time.Duration(576) * ms)
+	chanceAfterShift = d.ChanceAfter(576 * ms)
+	if chanceAfterShift != 0 {
+		t.Fatal("bad")
+	}
+
+	// verify the chance after 896ms is still one
+	chance = d.ChanceAfter(896 * ms)
+	if chance != 1 {
+		t.Fatal("bad")
+	}
+
+	// get a random chance value between 576 and 896ms, verify shifting the
+	// distribution below the 576ms essentially is a no-op
+	randDur := time.Duration(fastrand.Intn(896-576) + 576)
+	chance = d.ChanceAfter(randDur)
+	for i := 0; i < 550; i += 50 {
+		d.Shift(time.Duration(i) * ms)
+		if d.ChanceAfter(randDur) != chance {
+			t.Fatal("bad")
+		}
+	}
+
+	// verify initial buckets are empty
+	if d.ChanceAfter(16*ms) != 0 {
+		t.Fatal("bad")
+	}
+
+	// shift until we hit a bucket that got fractionalised and smeared across
+	// all buckets preceding it, we start at 804ms and go up with steps of 8ms
+	// to ensure we shift at a duration that induces a fractionalised shift
+	for i := 804; i < 896; i += 8 {
+		_, fraction := indexForDuration(time.Duration(i) * ms)
+		if fraction == 0 {
+			continue
+		}
+
+		d.Shift(time.Duration(i) * ms)
+		if d.ChanceAfter(16*ms) > 0 {
+			break
+		}
+	}
+
+	// verify the shift fractionalised a bucket and smeared the remainder over
+	// all buckets preceding the one at which we shifted.
+	if d.ChanceAfter(16*ms) == 0 {
+		t.Fatal("bad")
+	}
 }
 
 // TestIndexForDuration probes the `indexForDuration` helper function.

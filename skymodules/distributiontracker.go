@@ -396,11 +396,11 @@ func (d *Distribution) PStat(p float64) time.Duration {
 	return durationForIndex(index)
 }
 
-// Shift performs a 'shift' operation on the distribution in which it will
-// ignore all data points up until the given duration. If the given duration
-// does not perfectly align with the distribution's buckets, we smear the
-// fractionalised value over the buckets the bucket that corresponds with the
-// given duration.
+// Shift shifts the distribution by a certain duration. The shift operation will
+// essentially ignore all data points up until the duration with which we're
+// shifting. If that duration does not perfectly align with the distribution's
+// buckets, we smear the fractionalised value over the buckets preceding the
+// bucket that corresponds with the given duration.
 func (d *Distribution) Shift(dur time.Duration) {
 	// Check for negative inputs.
 	if dur < 0 {
