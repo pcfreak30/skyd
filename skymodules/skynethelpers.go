@@ -25,9 +25,6 @@ var (
 	// ErrInvalidDefaultPath is returned when the specified default path is not
 	// valid, e.g. the file it points to does not exist.
 	ErrInvalidDefaultPath = errors.New("invalid default path provided")
-	// ErrInvalidDirectoryResolution is returned when the provided directory
-	// resolution mode is invalid.
-	ErrInvalidDirectoryResolution = errors.New("invalid directory resolution settings")
 )
 
 // AddMultipartFile is a helper function to add a file to multipart form-data.
@@ -434,24 +431,7 @@ func validateDefaultPath(defaultPath string, subfiles SkyfileSubfiles) (string, 
 	return defaultPath, nil
 }
 
-// validateTryFiles ensures the given tryfiles configuration is valid.
-// TODO Add a warning to the docs that points out that specifying more than one abs path tryfile is allowed but pointless.
-func validateTryFiles(tf []string, subfiles SkyfileSubfiles) error {
-	for _, fname := range tf {
-		if fname == "" {
-			return errors.New("a tryfile cannot be an empty string, it needs to be a valid file name")
-		}
-		if strings.HasPrefix(fname, "/") {
-			_, exists := subfiles[fname]
-			if !exists {
-				return errors.New("any absolute path tryfile in the list must exist")
-			}
-		}
-	}
-	return nil
-}
-
-// validateErrorPages ensures the given errorpsages configuration is valid.
+// validateErrorPages ensures the given errorpages configuration is valid.
 func validateErrorPages(ep map[int]string, subfiles SkyfileSubfiles) error {
 	for code, fname := range ep {
 		// TODO What should be the limit here? Overriding a 200 makes no sense to me but overriding a 204 might?
@@ -468,6 +448,23 @@ func validateErrorPages(ep map[int]string, subfiles SkyfileSubfiles) error {
 		_, exists := subfiles[fname]
 		if !exists {
 			return errors.New("all errorpage files must exist")
+		}
+	}
+	return nil
+}
+
+// validateTryFiles ensures the given tryfiles configuration is valid.
+// TODO Add a warning to the docs that points out that specifying more than one abs path tryfile is allowed but pointless.
+func validateTryFiles(tf []string, subfiles SkyfileSubfiles) error {
+	for _, fname := range tf {
+		if fname == "" {
+			return errors.New("a tryfile cannot be an empty string, it needs to be a valid file name")
+		}
+		if strings.HasPrefix(fname, "/") {
+			_, exists := subfiles[fname]
+			if !exists {
+				return errors.New("any absolute path tryfile in the list must exist")
+			}
 		}
 	}
 	return nil

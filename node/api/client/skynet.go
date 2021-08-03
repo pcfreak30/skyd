@@ -293,9 +293,9 @@ func (c *Client) SkynetSkylinkGetWithLayout(skylink string, incLayout bool) ([]b
 func (c *Client) skynetSkylinkGetWithParameters(skylink string, params map[string]string) ([]byte, error) {
 	_, fileData, err := c.skynetSkylinkGetWithParametersRaw(skylink, params)
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "unable to fetch skylink data")
 	}
-	return fileData, errors.AddContext(err, "unable to fetch skylink data")
+	return fileData, nil
 }
 
 // skynetSkylinkGetWithParametersRaw uses the /skynet/skylink endpoint to

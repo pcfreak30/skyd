@@ -1,7 +1,6 @@
 package client
 
 import (
-	"net/http"
 	"net/url"
 	"os"
 	"testing"
@@ -49,9 +48,6 @@ func TestUrlValuesFromSkynetUploadParams(t *testing.T) {
 		Filename:            "file.txt",
 		DefaultPath:         "index.html",
 		DisableDefaultPath:  false,
-		DirResMode:          skymodules.DirResModeWeb,
-		DirResNotFound:      "/404.html",
-		DirResNotFoundCode:  http.StatusOK,
 		Monetization:        monetization,
 	}
 
@@ -109,9 +105,6 @@ func TestUrlValuesFromSkynetUploadParams(t *testing.T) {
 		Mode:                os.FileMode(0644),
 		DefaultPath:         "index.html",
 		DisableDefaultPath:  false,
-		DirResMode:          skymodules.DirResModeWeb,
-		DirResNotFound:      "/404.html",
-		DirResNotFoundCode:  http.StatusOK,
 		Monetization:        monetization,
 		SkykeyName:          "somename",
 		SkykeyID:            skyKeyID,

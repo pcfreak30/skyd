@@ -3,7 +3,6 @@ package skymodules
 import (
 	"encoding/json"
 	"math"
-	"net/http"
 	"strings"
 	"testing"
 
@@ -189,45 +188,21 @@ func testValidateSkyfileMetadata(t *testing.T) {
 		t.Fatal("unexpected outcome")
 	}
 
-	// verify invalid directory resolution mode + custom 'not found' code
-	// combination
+	// verify that tryfiles + defaultpath is an invalid combination
 	invalid = metadata
-	// we set a custom 'not found' code but do not set the mode. instead, we
-	// rely on the default mode to be 'standard'.
-	invalid.DirResNotFoundCode = http.StatusOK
+	invalid.DefaultPath = "index.html"
+	invalid.TryFiles = []string{"index.html"}
 	err = ValidateSkyfileMetadata(invalid)
-	if err == nil || !strings.Contains(err.Error(), ErrInvalidDirectoryResolution.Error()) {
+	if err == nil || !strings.Contains(err.Error(), "tryfiles are incompatible with defaultpath and disabledefaultpath") {
 		t.Fatalf("unexpected outcome: %+v", err)
 	}
 
-	// verify that we can set a custom 'not found' code in 'standard' mode, as
-	// long as it's the default 404.
+	// verify valid tryfiles and errorpages
 	valid := metadata
-	valid.DirResNotFoundCode = http.StatusNotFound
-	err = ValidateSkyfileMetadata(valid)
-	if err != nil {
-		t.Fatalf("unexpected error %+v", err)
+	valid.TryFiles = []string{"index.html"}
+	valid.ErrorPages = map[int]string{
+		404: "/404.html",
 	}
-
-	// verify invalid directory resolution mode + custom 'not found' file path
-	invalid = metadata
-	invalid.DirResNotFound = "404.html"
-	invalid.Subfiles = SkyfileSubfiles{
-		"404.html": SkyfileSubfileMetadata{
-			Filename:    "404.html",
-			ContentType: "text/html",
-			Len:         1,
-		},
-	}
-	err = ValidateSkyfileMetadata(invalid)
-	if err == nil || !strings.Contains(err.Error(), ErrInvalidDirectoryResolution.Error()) {
-		t.Fatalf("unexpected outcome: %+v", err)
-	}
-
-	// verify valid directory resolution mode + custom 'not found' file path
-	valid = metadata
-	valid.DirResMode = DirResModeWeb
-	valid.DirResNotFound = "404.html"
 	valid.Subfiles = SkyfileSubfiles{
 		"404.html": SkyfileSubfileMetadata{
 			Filename:    "404.html",
@@ -238,16 +213,6 @@ func testValidateSkyfileMetadata(t *testing.T) {
 	err = ValidateSkyfileMetadata(valid)
 	if err != nil {
 		t.Fatalf("unexpected error %+v", err)
-	}
-
-	// verify valid directory resolution mode + non-existent custom 'not found'
-	// file path
-	invalid = metadata
-	invalid.DirResMode = DirResModeWeb
-	invalid.DirResNotFound = "doesnotexist.html"
-	err = ValidateSkyfileMetadata(invalid)
-	if err == nil || !strings.Contains(err.Error(), "no such path") {
-		t.Fatalf("unexpected outcome: %+v", err)
 	}
 
 	// verify invalid length
@@ -436,5 +401,96 @@ func TestParseSkyfileMetadata(t *testing.T) {
 		if testing.Short() {
 			t.SkipNow()
 		}
+	}
+}
+
+// TestValidateErrorPages ensures that validateErrorPages functions correctly.
+func TestValidateErrorPages(t *testing.T) {
+	// test code under 400
+	ep := map[int]string{101: "101.html"}
+	err := validateErrorPages(ep, SkyfileSubfiles{})
+	if err == nil || !strings.Contains(err.Error(), "overriding status codes under 400 is not supported") {
+		t.Fatal("Unexpected error", err)
+	}
+
+	// test empty filename
+	ep = map[int]string{404: ""}
+	err = validateErrorPages(ep, SkyfileSubfiles{})
+	if err == nil || !strings.Contains(err.Error(), "an errorpage cannot be an empty string, it needs to be a valid file name") {
+		t.Fatal("Unexpected error", err)
+	}
+
+	// test relative filename
+	ep = map[int]string{404: "404.html"}
+	err = validateErrorPages(ep, SkyfileSubfiles{})
+	if err == nil || !strings.Contains(err.Error(), "all errorpages need to have absolute paths") {
+		t.Fatal("Unexpected error", err)
+	}
+
+	// test non-existent file
+	ep = map[int]string{404: "/404.html"}
+	err = validateErrorPages(ep, SkyfileSubfiles{})
+	if err == nil || !strings.Contains(err.Error(), "all errorpage files must exist") {
+		t.Fatal("Unexpected error", err)
+	}
+
+	// test a valid setup
+	ep = map[int]string{404: "/404.html"}
+	sub := SkyfileSubfiles{"/404.html": SkyfileSubfileMetadata{}}
+	err = validateErrorPages(ep, sub)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+}
+
+// TestValidateTryFiles ensures that validateTryFiles functions correctly.
+func TestValidateTryFiles(t *testing.T) {
+	// test non-existent absolute path file
+	tf := []string{"/index.html"}
+	err := validateTryFiles(tf, SkyfileSubfiles{})
+	if err == nil || !strings.Contains(err.Error(), "any absolute path tryfile in the list must exist") {
+		t.Fatal("Unexpected error", err)
+	}
+
+	// test bad filename
+	tf = []string{""}
+	err = validateTryFiles(tf, SkyfileSubfiles{})
+	if err == nil || !strings.Contains(err.Error(), "a tryfile cannot be an empty string, it needs to be a valid file name") {
+		t.Fatal("Unexpected error", err)
+	}
+
+	// test non-existent relative path
+	tf = []string{"index.html"}
+	err = validateTryFiles(tf, SkyfileSubfiles{})
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+
+	// test single existent absolute path
+	tf = []string{"/index.html"}
+	sub := SkyfileSubfiles{
+		"/index.html": SkyfileSubfileMetadata{},
+	}
+	err = validateTryFiles(tf, sub)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+
+	// test multiple absolute paths
+	// this is pointless but allowed
+	tf = []string{"/index.html", "/about.html"}
+	sub = SkyfileSubfiles{
+		"/index.html": SkyfileSubfileMetadata{},
+		"/about.html": SkyfileSubfileMetadata{},
+	}
+	err = validateTryFiles(tf, sub)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+
+	// test empty tryfiles
+	err = validateTryFiles([]string{}, SkyfileSubfiles{})
+	if err != nil {
+		t.Fatal("Unexpected error", err)
 	}
 }
