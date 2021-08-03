@@ -123,10 +123,18 @@ type RenterPerformance struct {
 // sector downloads, it keeps track of what percentage of downloads we overdrive
 // and how many overdrive workers get launched.
 type SectorDownloadStats struct {
-	total                    uint64
-	overdrive                uint64
+	// total keeps track of the total amount of downloads
+	total uint64
+
+	// overdrive keeps track of the amount of times the download requires one or
+	// more overdrive workers to be launched in order to complete
+	overdrive uint64
+
+	// overdriveWorkersLaunched keeps track of the amount of overdrive workers
+	// that were launched for a download
 	overdriveWorkersLaunched uint64
-	mu                       sync.Mutex
+
+	mu sync.Mutex
 }
 
 // NewSectorDownloadStats returns a new SectorDownloadStats object.
@@ -148,17 +156,16 @@ func (ds *SectorDownloadStats) OverdrivePct() float64 {
 	return float64(ds.overdrive) / float64(ds.total)
 }
 
-// NumOverdriveWorkersAvg returns the amount of overdrive workers we launch in
-// case we overdrive, if we did not have to launch any overdrive workers at all,
-// the download will be excluded from this average.
+// NumOverdriveWorkersAvg returns the average amount of overdrive workers we
+// launch.
 func (ds *SectorDownloadStats) NumOverdriveWorkersAvg() float64 {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 
-	if ds.overdrive == 0 {
+	if ds.total == 0 {
 		return 0
 	}
-	return float64(ds.overdriveWorkersLaunched) / float64(ds.overdrive)
+	return float64(ds.overdriveWorkersLaunched) / float64(ds.total)
 }
 
 // AddDataPoint adds a data point to the statistics, it takes one parameter
@@ -169,9 +176,9 @@ func (ds *SectorDownloadStats) AddDataPoint(numOverdriveWorkers uint64) {
 	defer ds.mu.Unlock()
 
 	ds.total++
+	ds.overdriveWorkersLaunched += numOverdriveWorkers
 	if numOverdriveWorkers > 0 {
 		ds.overdrive++
-		ds.overdriveWorkersLaunched += numOverdriveWorkers
 	}
 }
 
