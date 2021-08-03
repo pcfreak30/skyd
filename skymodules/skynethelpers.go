@@ -454,8 +454,8 @@ func validateErrorPages(ep map[int]string, subfiles SkyfileSubfiles) error {
 }
 
 // validateTryFiles ensures the given tryfiles configuration is valid.
-// TODO Add a warning to the docs that points out that specifying more than one abs path tryfile is allowed but pointless.
 func validateTryFiles(tf []string, subfiles SkyfileSubfiles) error {
+	anotherAbsPathFileExists := false
 	for _, fname := range tf {
 		if fname == "" {
 			return errors.New("a tryfile cannot be an empty string, it needs to be a valid file name")
@@ -465,6 +465,10 @@ func validateTryFiles(tf []string, subfiles SkyfileSubfiles) error {
 			if !exists {
 				return errors.New("any absolute path tryfile in the list must exist")
 			}
+			if anotherAbsPathFileExists {
+				return errors.New("only one absolute path tryfile is permitted")
+			}
+			anotherAbsPathFileExists = true
 		}
 	}
 	return nil

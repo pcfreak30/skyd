@@ -484,7 +484,7 @@ func TestValidateTryFiles(t *testing.T) {
 		"/about.html": SkyfileSubfileMetadata{},
 	}
 	err = validateTryFiles(tf, sub)
-	if err != nil {
+	if err == nil || !strings.Contains(err.Error(), "only one absolute path tryfile is permitted") {
 		t.Fatal("Unexpected error", err)
 	}
 
