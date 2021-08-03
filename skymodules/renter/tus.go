@@ -369,7 +369,7 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 	chunks, n, err = uploader.staticRenter.callUploadStreamFromReaderWithFileNodeNoBlock(ctx, fileNode, cr, offset)
 
 	// Simulate loss of connection one byte early.
-	if u.staticUploader.staticRenter.staticDeps.Disrupt("TUSConnectionDropped") {
+	if deps.Disrupt("TUSConnectionDropped") {
 		n--
 		err = nil
 	}
@@ -386,9 +386,7 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 		// Make sure that we return an error if none was returned by the
 		// upload. That way the client will know to retry. This usually
 		// happens if we reach a timeout in the reverse proxy.
-		if err == nil {
-			err = ErrTUSUploadInterrupted
-		}
+		err = errors.Compose(err, ErrTUSUploadInterrupted)
 	}
 	// In case of any error, return early.
 	if err != nil {
