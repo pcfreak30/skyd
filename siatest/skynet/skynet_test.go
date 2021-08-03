@@ -4116,6 +4116,8 @@ func TestRenewContractBadScore(t *testing.T) {
 	}
 }
 
+// TestRegistryHealth is an integration test for the /skynet/health/entry
+// endpoint.
 func TestRegistryHealth(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -4165,7 +4167,7 @@ func TestRegistryHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Choose one of the existing hosts to be later stopped.
+	// Choose one of the existing hosts to be stopped later.
 	stoppedHost := tg.Hosts()[0]
 
 	// Add a new host.

@@ -322,7 +322,7 @@ func (api *API) skynetBlocklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 		}
 		timeout = time.Duration(timeoutInt) * time.Second
 		if timeout > renter.MaxRegistryReadTimeout || timeout == 0 {
-			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %ds", renter.MaxRegistryReadTimeout)}, http.StatusBadRequest)
+			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %vs", renter.MaxRegistryReadTimeout.Seconds())}, http.StatusBadRequest)
 			return
 		}
 	}
@@ -1374,7 +1374,7 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 		}
 		timeout = time.Duration(timeoutInt) * time.Second
 		if timeout > renter.MaxRegistryReadTimeout || timeout == 0 {
-			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %ds", renter.MaxRegistryReadTimeout)}, http.StatusBadRequest)
+			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %vs", renter.MaxRegistryReadTimeout.Seconds())}, http.StatusBadRequest)
 			return
 		}
 	}
@@ -1417,7 +1417,7 @@ func (api *API) registryEntryHealthHandlerGET(w http.ResponseWriter, req *http.R
 		}
 		timeout = time.Duration(timeoutInt) * time.Second
 		if timeout > renter.MaxRegistryReadTimeout || timeout == 0 {
-			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %ds", renter.MaxRegistryReadTimeout)}, http.StatusBadRequest)
+			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %vs", renter.MaxRegistryReadTimeout.Seconds())}, http.StatusBadRequest)
 			return
 		}
 	}
@@ -1431,26 +1431,26 @@ func (api *API) registryEntryHealthHandlerGET(w http.ResponseWriter, req *http.R
 	if spkStr != "" && tweakStr != "" {
 		// Parse public key
 		var spk types.SiaPublicKey
-		err := spk.LoadString(req.FormValue("publickey"))
+		err := spk.LoadString(spkStr)
 		if err != nil {
-			WriteError(w, Error{"Unable to parse publickey param: " + err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{"Unable to parse 'publickey' param: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 
 		// Parse datakey.
 		var dataKey crypto.Hash
-		err = dataKey.LoadString(req.FormValue("datakey"))
+		err = dataKey.LoadString(tweakStr)
 		if err != nil {
-			WriteError(w, Error{"Unable to decode dataKey param: " + err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{"Unable to decode 'dataKey' param: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 		reh, err = api.renter.RegistryEntryHealth(ctx, spk, dataKey)
 	} else if ridStr != "" {
 		// Parse rid.
 		var rid crypto.Hash
-		err := rid.LoadString(req.FormValue("entryid"))
+		err := rid.LoadString(ridStr)
 		if err != nil {
-			WriteError(w, Error{"Unable to decode entryid param: " + err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{"Unable to decode 'entryid' param: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 		reh, err = api.renter.RegistryEntryHealthRID(ctx, modules.RegistryEntryID(rid))
@@ -1494,7 +1494,7 @@ func (api *API) skylinkResolveGET(w http.ResponseWriter, req *http.Request, ps h
 		}
 		timeout = time.Duration(timeoutInt) * time.Second
 		if timeout > renter.MaxRegistryReadTimeout || timeout == 0 {
-			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %ds", renter.MaxRegistryReadTimeout)}, http.StatusBadRequest)
+			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %vs", renter.MaxRegistryReadTimeout.Seconds())}, http.StatusBadRequest)
 			return
 		}
 	}
