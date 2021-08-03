@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -9,12 +10,14 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // uploadChunkID is a unique identifier for each chunk in the renter.
@@ -28,6 +31,7 @@ type uploadChunkID struct {
 type unfinishedUploadChunk struct {
 	// Information about the file. localPath may be the empty string if the file
 	// is known not to exist locally.
+	ctx       context.Context
 	id        uploadChunkID
 	fileEntry *filesystem.FileNode
 
@@ -265,30 +269,61 @@ func padAndEncryptPiece(chunkIndex, pieceIndex uint64, logicalChunkData [][]byte
 	logicalChunkData[pieceIndex] = key.EncryptBytes(logicalChunkData[pieceIndex])
 }
 
-// managedDownloadLogicalChunkData will fetch the logical chunk data by sending a
-// download to the renter's downloader, and then using the data that gets
-// returned.
-func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) error {
-	//  Determine what the download length should be. Normally it is just the
-	//  chunk size, but if this is the last chunk we need to download less
-	//  because the file is not that large.
-	//
-	// TODO: There is a disparity in the way that the upload and download code
-	// handle the last chunk, which may not be full sized.
-	downloadLength := chunk.length
-	if chunk.staticIndex == chunk.fileEntry.NumChunks()-1 && chunk.fileEntry.Size()%chunk.length != 0 {
-		downloadLength = chunk.fileEntry.Size() % chunk.length
+// managedDownloadLogicalChunkDataFromSkynet downloads the chunk data from any
+// host available on the network while seeding the download with information
+// from the siafile.
+func (r *Renter) managedDownloadLogicalChunkDataFromSkynet(chunk *unfinishedUploadChunk, downloadLength uint64) ([][]byte, error) {
+	// Get roots, erasure coder and masterkey from siafile.
+	ec := chunk.fileEntry.ErasureCode()
+	mk := chunk.fileEntry.MasterKey()
+	roots := make([]crypto.Hash, 0, ec.NumPieces())
+	allPieces, err := chunk.fileEntry.Pieces(chunk.staticIndex)
+	if err != nil {
+		return nil, err
+	}
+	for _, pieceSet := range allPieces {
+		for _, piece := range pieceSet {
+			// Only need 1 root per piece.
+			roots = append(roots, piece.MerkleRoot)
+			break
+		}
+	}
+	pcws, err := r.newPCWSByRoots(r.tg.StopCtx(), roots, ec, mk, chunk.staticIndex)
+	if err != nil {
+		return nil, err
+	}
+	// Start the download.
+	dr, err := pcws.Download(r.tg.StopCtx(), types.NewCurrency64(1), 0, downloadLength, true, true)
+	if err != nil {
+		return nil, err
 	}
 
-	// Prepare snapshot.
-	snap, err := chunk.fileEntry.SnapshotRange(r.staticFileSystem.FileSiaPath(chunk.fileEntry), uint64(chunk.offset), downloadLength)
-	if err != nil {
-		return err
+	// Wait for the download to complete.
+	var resp *downloadResponse
+	select {
+	case resp = <-dr:
+	case <-r.tg.StopChan():
+		return nil, errors.New("repair download interrupted by stop call")
 	}
+	if resp.err != nil {
+		return nil, resp.err
+	}
+
+	return resp.externLogicalChunkData, nil
+}
+
+// managedDownloadLogicalChunkDataFromSiaFile downloads the logical chunk data
+// only from hosts listed in the siafile.
+func (r *Renter) managedDownloadLogicalChunkDataFromSiaFile(chunk *unfinishedUploadChunk, downloadLength uint64) ([][]byte, error) {
 	// Create the download. 'disableLocalFetch' is set to true here to prevent
 	// the download from trying to load the chunk from disk. This field is set
 	// because the local fetch version of the download call does not perform an
 	// integrity check.
+	snap, err := chunk.fileEntry.SnapshotRange(r.staticFileSystem.FileSiaPath(chunk.fileEntry), uint64(chunk.offset), downloadLength)
+	if err != nil {
+		return nil, err
+	}
+
 	buf := NewDownloadDestinationBuffer()
 	d, err := r.managedNewDownload(downloadParams{
 		destination:       buf,
@@ -307,30 +342,77 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 		staticSpendingCategory: categoryRepairDownload,
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	// Start the download.
 	if err := d.Start(); err != nil {
-		return err
+		return nil, err
 	}
-
-	// Register some cleanup for when the download is done.
-	d.OnComplete(func(_ error) error {
-		// Update the access time when the download is done.
-		return chunk.fileEntry.SiaFile.UpdateAccessTime()
-	})
-
-	// Wait for the download to complete.
+	// Wait for download to complete.
 	select {
 	case <-d.completeChan:
 	case <-r.tg.StopChan():
-		return errors.New("repair download interrupted by stop call")
+		return nil, errors.New("repair download interrupted by stop call")
 	}
-	if d.Err() != nil {
-		buf.pieces = nil
-		return d.Err()
+	if err := d.Err(); err != nil {
+		return nil, err
 	}
-	chunk.logicalChunkData = buf.pieces
+	return buf.pieces, nil
+}
+
+// managedDownloadLogicalChunkData will fetch the logical chunk data by sending a
+// download to the renter's downloader, and then using the data that gets
+// returned.
+func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) error {
+	//  Determine what the download length should be. Normally it is just the
+	//  chunk size, but if this is the last chunk we need to download less
+	//  because the file is not that large.
+	//
+	// TODO: There is a disparity in the way that the upload and download code
+	// handle the last chunk, which may not be full sized.
+	downloadLength := chunk.length
+	if chunk.staticIndex == chunk.fileEntry.NumChunks()-1 && chunk.fileEntry.Size()%chunk.length != 0 {
+		downloadLength = chunk.fileEntry.Size() % chunk.length
+	}
+
+	// Update the access time when the download is done.
+	defer func() {
+		// Update the access time when the download is done.
+		if err := chunk.fileEntry.SiaFile.UpdateAccessTime(); err != nil {
+			r.staticLog.Println("failed to update siafile's access time", err)
+		}
+	}()
+
+	// Download the chunk data.
+	var logicalChunkData [][]byte
+	var err error
+	if !chunk.stuckRepair || r.staticDeps.Disrupt("ForceLegacyRepairDownload") {
+		// If the chunk we are repairing is not a stuck chunk, try a
+		// regular download first.
+		logicalChunkData, err = r.managedDownloadLogicalChunkDataFromSiaFile(chunk, downloadLength)
+		if err != nil {
+			r.staticLog.Println("failed to download chunk data from siafile", err)
+		}
+		if r.staticDeps.Disrupt("FailLegacyRepairDownload") {
+			err = errors.New("FailLegacyRepairDownload")
+		}
+	}
+	// Check for shutdown between downloads.
+	select {
+	case <-r.tg.StopChan():
+		return threadgroup.ErrStopped
+	default:
+	}
+	// If the regular download failed or the chunk is a stuck one, try a
+	// skynet download.
+	if (err != nil || chunk.stuckRepair) && !r.staticDeps.Disrupt("ForceLegacyRepairDownload") {
+		logicalChunkData, err = r.managedDownloadLogicalChunkDataFromSkynet(chunk, downloadLength)
+		if err != nil {
+			return errors.AddContext(err, "failed to download chunk data using skynet download")
+		}
+	}
+
+	// Set the logical data on the chunk.
+	chunk.logicalChunkData = logicalChunkData
 
 	// Reconstruct the pieces.
 	//

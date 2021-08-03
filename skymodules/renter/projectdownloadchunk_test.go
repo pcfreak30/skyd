@@ -659,8 +659,9 @@ func mockWorker(jobTime time.Duration) *worker {
 	worker := new(worker)
 	worker.newPriceTable()
 	worker.staticPriceTable().staticPriceTable = newDefaultPriceTable()
-	worker.initJobReadQueue()
-	worker.staticJobReadQueue.weightedJobTime64k = float64(jobTime)
+	worker.initJobReadQueue(&jobReadStats{
+		weightedJobTime64k: float64(jobTime),
+	})
 	return worker
 }
 

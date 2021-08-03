@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"sync"
 	"time"
 
 	"github.com/opentracing/opentracing-go"
@@ -42,6 +43,13 @@ type (
 	// worker. The queue also tracks performance metrics, which can then be used
 	// by projects to optimize job scheduling between workers.
 	jobReadQueue struct {
+		staticStats *jobReadStats
+		*jobGenericQueue
+	}
+
+	// jobReadStats contains statistics about read jobs. This object is
+	// thread safe and can be shared between multiple queues.
+	jobReadStats struct {
 		// These float64s are converted time.Duration values. They are float64
 		// to get better precision on the exponential decay which gets applied
 		// with each new data point.
@@ -56,6 +64,7 @@ type (
 		staticDT4m  *skymodules.DistributionTracker
 
 		*jobGenericQueue
+		mu sync.Mutex
 	}
 
 	// jobReadResponse contains the result of a Read query.
@@ -173,7 +182,7 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 	// result in an error. Because there was no failure, the consecutive
 	// failures stat can be reset.
 	jq := j.staticQueue.(*jobReadQueue)
-	jq.callUpdateJobTimeMetrics(j.staticLength, readJobTime)
+	jq.staticStats.callUpdateJobTimeMetrics(j.staticLength, readJobTime)
 }
 
 // callExpectedBandwidth returns the bandwidth that gets consumed by a
@@ -224,10 +233,11 @@ func (j *jobRead) managedRead(w *worker, program modules.Program, programData []
 // callAddWithEstimate will add a job to the job read queue while providing an
 // estimate for when the job is expected to return.
 func (jq *jobReadQueue) callAddWithEstimate(j *jobReadSector) (time.Time, bool) {
+	estimate := jq.staticStats.callExpectedJobTime(j.staticLength)
+
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 
-	estimate := jq.expectedJobTime(j.staticLength)
 	if !jq.add(j) {
 		return time.Time{}, false
 	}
@@ -244,21 +254,21 @@ func (jq *jobReadQueue) callAddWithEstimate(j *jobReadSector) (time.Time, bool) 
 // three categories.
 //
 // TODO: Make this smarter.
-func (jq *jobReadQueue) callExpectedJobTime(length uint64) time.Duration {
-	jq.mu.Lock()
-	defer jq.mu.Unlock()
-	return jq.expectedJobTime(length)
+func (jrs *jobReadStats) callExpectedJobTime(length uint64) time.Duration {
+	jrs.mu.Lock()
+	defer jrs.mu.Unlock()
+	return jrs.expectedJobTime(length)
 }
 
 // expectedJobTime returns the expected job time, based on recent performance,
 // for the given read length.
-func (jq *jobReadQueue) expectedJobTime(length uint64) time.Duration {
+func (jrs *jobReadStats) expectedJobTime(length uint64) time.Duration {
 	if length <= 1<<16 {
-		return time.Duration(jq.weightedJobTime64k)
+		return time.Duration(jrs.weightedJobTime64k)
 	} else if length <= 1<<20 {
-		return time.Duration(jq.weightedJobTime1m)
+		return time.Duration(jrs.weightedJobTime1m)
 	} else {
-		return time.Duration(jq.weightedJobTime4m)
+		return time.Duration(jrs.weightedJobTime4m)
 	}
 }
 
@@ -287,37 +297,37 @@ func (jq *jobReadQueue) callExpectedJobCost(length uint64) types.Currency {
 
 // callUpdateJobTimeMetrics takes a length and the duration it took to fulfil
 // that job and uses it to update the job performance metrics on the queue.
-func (jq *jobReadQueue) callUpdateJobTimeMetrics(length uint64, jobTime time.Duration) {
-	jq.mu.Lock()
-	defer jq.mu.Unlock()
+func (jrs *jobReadStats) callUpdateJobTimeMetrics(length uint64, jobTime time.Duration) {
+	jrs.mu.Lock()
+	defer jrs.mu.Unlock()
 	if length <= 1<<16 {
-		jq.weightedJobTime64k = expMovingAvgHotStart(jq.weightedJobTime64k, float64(jobTime), jobReadPerformanceDecay)
+		jrs.weightedJobTime64k = expMovingAvgHotStart(jrs.weightedJobTime64k, float64(jobTime), jobReadPerformanceDecay)
 	} else if length <= 1<<20 {
-		jq.weightedJobTime1m = expMovingAvgHotStart(jq.weightedJobTime1m, float64(jobTime), jobReadPerformanceDecay)
+		jrs.weightedJobTime1m = expMovingAvgHotStart(jrs.weightedJobTime1m, float64(jobTime), jobReadPerformanceDecay)
 	} else {
-		jq.weightedJobTime4m = expMovingAvgHotStart(jq.weightedJobTime4m, float64(jobTime), jobReadPerformanceDecay)
+		jrs.weightedJobTime4m = expMovingAvgHotStart(jrs.weightedJobTime4m, float64(jobTime), jobReadPerformanceDecay)
 	}
 
 	// update distribution tracker
-	dt := jq.distributionTrackerForLength(length)
+	dt := jrs.distributionTrackerForLength(length)
 	dt.AddDataPoint(jobTime)
 }
 
 // distributionTrackerForLength returns the distribution tracker that
 // corresponds to the given length.
-func (jq *jobReadQueue) distributionTrackerForLength(length uint64) *skymodules.DistributionTracker {
+func (jrs *jobReadStats) distributionTrackerForLength(length uint64) *skymodules.DistributionTracker {
 	if length <= 1<<16 {
-		return jq.staticDT64k
+		return jrs.staticDT64k
 	} else if length <= 1<<20 {
-		return jq.staticDT1m
+		return jrs.staticDT1m
 	} else {
-		return jq.staticDT4m
+		return jrs.staticDT4m
 	}
 }
 
 // initJobReadQueue will initialize a queue for downloading sectors by
 // their root for the worker. This is only meant to be run once at startup.
-func (w *worker) initJobReadQueue() {
+func (w *worker) initJobReadQueue(jrs *jobReadStats) {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobReadQueue != nil {
 		w.staticRenter.staticLog.Critical("incorret call on initJobReadQueue")
@@ -325,20 +335,19 @@ func (w *worker) initJobReadQueue() {
 	w.staticJobReadQueue = &jobReadQueue{
 		jobGenericQueue: newJobGenericQueue(w),
 
-		staticDT64k: skymodules.NewDistributionTrackerStandard(),
-		staticDT1m:  skymodules.NewDistributionTrackerStandard(),
-		staticDT4m:  skymodules.NewDistributionTrackerStandard(),
+		staticStats: jrs,
 	}
 }
 
 // initJobLowPrioReadQueue will initialize a queue for downloading sectors by
 // their root for the worker. This is only meant to be run once at startup.
-func (w *worker) initJobLowPrioReadQueue() {
+func (w *worker) initJobLowPrioReadQueue(jrs *jobReadStats) {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobLowPrioReadQueue != nil {
 		w.staticRenter.staticLog.Critical("incorret call on initJobReadQueue")
 	}
 	w.staticJobLowPrioReadQueue = &jobReadQueue{
 		jobGenericQueue: newJobGenericQueue(w),
+		staticStats:     jrs,
 	}
 }
