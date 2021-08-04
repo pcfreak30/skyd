@@ -1378,3 +1378,84 @@ func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, link skymodules
 	}
 	return link, srvs, nil
 }
+
+type SkylinkHealth struct {
+	BaseSector float64 `json:"basesector"`
+	Fanout     float64 `json:"fanout"`
+}
+
+func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink, ppms types.Currency) (SkylinkHealth, error) {
+	// Resolve the skylink if necessary.
+	sl, _, err := r.managedTryResolveSkylinkV2(sl, true)
+	if err != nil {
+		return SkylinkHealth{}, errors.AddContext(err, "failed to resolve skylink")
+	}
+
+	// Get the offset and fetchsize from the skylink
+	offset, fetchSize, err := sl.OffsetAndFetchSize()
+	if err != nil {
+		return SkylinkHealth{}, errors.AddContext(err, "unable to parse skylink")
+	}
+
+	// Get base sector.
+	baseSector, err := r.managedDownloadByRoot(ctx, sl.MerkleRoot(), offset, fetchSize, ppms)
+	if err != nil {
+		return SkylinkHealth{}, errors.AddContext(err, "unable to download base sector")
+	}
+
+	// Parse out the metadata of the skyfile.
+	layout, fanoutBytes, metadata, rawMetadata, baseSectorPayload, err := skymodules.ParseSkyfileMetadata(baseSector)
+	if err != nil {
+		return SkylinkHealth{}, errors.AddContext(err, "error parsing skyfile metadata")
+	}
+
+	// Prepare the list of roots to ask the hosts for.
+	roots := []crypto.Hash{sl.MerkleRoot()}
+
+	// If the file has a fanout, ask the hosts for the fanout as well.
+	if len(fanoutBytes) > 0 {
+		// Create the list of chunks from the fanout.
+		fanoutChunks, err := layout.DecodeFanoutIntoChunks(fanoutBytes)
+		if err != nil {
+			return SkylinkHealth{}, errors.AddContext(err, "error parsing skyfile fanout")
+		}
+
+		for _, chunks := range fanoutChunks {
+			roots = append(roots, chunks...)
+		}
+	}
+
+	// Get the workers.
+	workers := r.staticWorkerPool.callWorkers()
+
+	// Launch the jobs.
+	launchedWorkers := 0
+	responseChan := make(chan *jobHasSectorResponse, len(workers))
+	for _, worker := range workers {
+		// Check for gouging.
+		pt := worker.staticPriceTable().staticPriceTable
+		cache := worker.staticCache()
+		err := checkPCWSGouging(pt, cache.staticRenterAllowance, len(workers), len(roots))
+		if err != nil {
+			continue // ignore
+		}
+
+		// Add job to worker.
+		jhs := worker.newJobHasSector(ctx, responseChan, roots...)
+		if !worker.staticJobHasSectorQueue.callAdd(jhs) {
+			continue // ignore
+		}
+		launchedWorkers++
+	}
+
+LOOP:
+	for {
+		var resp *jobHasSectorResponse
+		select {
+		case <-ctx.Done():
+			break LOOP
+		case resp = <-responeChan:
+		}
+	}
+
+}
