@@ -225,6 +225,12 @@ type (
 	}
 )
 
+// NewDependencyTUSConnectionDrop creates a new DependencyTUSConnectionDrop
+// which simulates a dropped connection during a TUS upload.
+func NewDependencyTUSConnectionDrop() *DependencyInterruptOnceOnKeyword {
+	return newDependencyInterruptOnceOnKeyword("TUSConnectionDropped")
+}
+
 // NewDependencyCorruptMDMOutput returns a dependency that can be used to
 // manually corrupt the MDM output returned by hosts.
 func NewDependencyCorruptMDMOutput() *DependencyInterruptOnceOnKeyword {
