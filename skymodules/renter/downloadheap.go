@@ -92,6 +92,8 @@ func (dh *downloadHeap) managedPush(chunk *unfinishedDownloadChunk) {
 // chunk to be downloaded. 'false' will be returned if the renter shuts down
 // before memory can be acquired.
 func (r *Renter) managedAcquireMemoryForDownloadChunk(udc *unfinishedDownloadChunk) bool {
+	println("get memory for download")
+	defer println("done get memory for download")
 	// The amount of memory required is equal minimum number of pieces plus the
 	// overdrive amount.
 	//
