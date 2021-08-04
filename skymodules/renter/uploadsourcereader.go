@@ -2,6 +2,7 @@ package renter
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -77,7 +78,9 @@ func (cr *chunkReader) Peek() bool {
 // be padded.
 func (cr *chunkReader) ReadChunk() ([][]byte, uint64, error) {
 	r := io.MultiReader(bytes.NewReader(cr.peek), cr.staticReader)
+	fmt.Println("        readdatapieces")
 	dataPieces, n, err := readDataPieces(r, cr.staticEC, cr.staticPieceSize)
+	fmt.Println("        readdatapieces done")
 	if err != nil {
 		return nil, 0, errors.AddContext(err, "ReadChunk: failed to read data pieces")
 	}

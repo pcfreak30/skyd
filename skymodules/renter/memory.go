@@ -258,6 +258,7 @@ func (mm *memoryManager) Request(ctx context.Context, amount uint64, priority bo
 // Return will return memory to the manager, waking any blocking threads which
 // now have enough memory to proceed.
 func (mm *memoryManager) Return(amount uint64) {
+	println("return")
 	mm.mu.Lock()
 	defer mm.mu.Unlock()
 
