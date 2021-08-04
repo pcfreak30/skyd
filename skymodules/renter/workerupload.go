@@ -292,6 +292,7 @@ func (w *worker) managedPerformUploadChunkJob() {
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return
 	}
+	w.staticRenter.staticRepairLog.Print("done uploading")
 	w.mu.Lock()
 	w.uploadConsecutiveFailures = 0
 	w.mu.Unlock()
@@ -299,10 +300,12 @@ func (w *worker) managedPerformUploadChunkJob() {
 	// Add piece to renterFile
 	err = uc.fileEntry.AddPiece(w.staticHostPubKey, uc.staticIndex, pieceIndex, root)
 	if err != nil {
+		w.staticRenter.staticRepairLog.Print("failed to add piece", err)
 		failureErr := fmt.Errorf("Worker failed to add new piece to SiaFile: %v", err)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return
 	}
+	w.staticRenter.staticRepairLog.Print("done adding pieces")
 
 	id := w.staticRenter.mu.Lock()
 	w.staticRenter.mu.Unlock(id)
