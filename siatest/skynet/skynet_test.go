@@ -4213,12 +4213,13 @@ func TestRegistryHealth(t *testing.T) {
 		}
 
 		// Check the health against the expectation.
-		// We expect len(hosts)-1 entries since one entry is outdated
-		// and does therefore not count towards the health.
+		// We expect len(hosts)-1 best entries since one entry is
+		// outdated and does therefore not count towards the health.
 		expected := skymodules.RegistryEntryHealth{
-			RevisionNumber:    revision,
-			NumEntries:        uint64(len(tg.Hosts())) - 1,
-			NumPrimaryEntries: 0,
+			RevisionNumber:        revision,
+			NumEntries:            uint64(len(tg.Hosts())),
+			NumBestEntries:        uint64(len(tg.Hosts())) - 1,
+			NumBestPrimaryEntries: 0,
 		}
 		if !reflect.DeepEqual(reh1, expected) {
 			got := siatest.PrintJSON(reh1)

@@ -442,29 +442,31 @@ func (r *Renter) managedRegistryEntryHealth(ctx context.Context, rid modules.Reg
 	if best == nil || best.staticSignedRegistryValue == nil {
 		return skymodules.RegistryEntryHealth{}, nil
 	}
-	srv := best.staticSignedRegistryValue
+	bestSRV := best.staticSignedRegistryValue
 
 	// Count the number of responses that match the best one. We do so by
 	// asking for the reason why the individual entries can't update the
 	// best one. If ErrSameRevNum is returned, the entries are equal.
-	var nTotal, nPrimary uint64
+	var nTotal, nBestTotal, nPrimary uint64
 	for _, resp := range resps {
 		if resp.staticSignedRegistryValue == nil {
 			// Ignore responses without value.
 			continue
 		}
-		update, reason := srv.ShouldUpdateWith(&resp.staticSignedRegistryValue.RegistryValue, resp.staticWorker.staticHostPubKey)
+		nTotal++
+		update, reason := bestSRV.ShouldUpdateWith(&resp.staticSignedRegistryValue.RegistryValue, resp.staticWorker.staticHostPubKey)
 		if update {
 			nPrimary++
-			nTotal++
+			nBestTotal++
 		} else if errors.Contains(reason, modules.ErrSameRevNum) {
-			nTotal++
+			nBestTotal++
 		}
 	}
 	return skymodules.RegistryEntryHealth{
-		RevisionNumber:    srv.Revision,
-		NumEntries:        nTotal,
-		NumPrimaryEntries: nPrimary,
+		RevisionNumber:        bestSRV.Revision,
+		NumEntries:            nTotal,
+		NumBestEntries:        nBestTotal,
+		NumBestPrimaryEntries: nPrimary,
 	}, nil
 }
 
