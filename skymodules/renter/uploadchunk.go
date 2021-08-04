@@ -578,7 +578,9 @@ func (r *Renter) staticFetchLogicalDataFromReader(uc *unfinishedUploadChunk) err
 	// Grab the logical data from the reader.
 	var n uint64
 	var err error
+	println("    before readhchunk")
 	uc.logicalChunkData, n, err = uc.sourceReader.ReadChunk()
+	println("    after readhchunk")
 	if err != nil {
 		return errors.AddContext(err, "unable to read the chunk data from the source reader")
 	}
@@ -613,6 +615,7 @@ func (r *Renter) staticFetchLogicalDataFromReader(uc *unfinishedUploadChunk) err
 func (r *Renter) managedFetchLogicalChunkData(uc *unfinishedUploadChunk) error {
 	// Use a sourceReader if one is available.
 	if uc.sourceReader != nil {
+		println("fetch from source reader")
 		err := r.staticFetchLogicalDataFromReader(uc)
 		if err != nil {
 			return errors.AddContext(err, "unable to load logical data from source reader")
@@ -624,11 +627,13 @@ func (r *Renter) managedFetchLogicalChunkData(uc *unfinishedUploadChunk) error {
 	// there is no local file, fall back to doing a remote repair.
 	// disk.
 	if uc.fileEntry.LocalPath() == "" {
+		println("download")
 		return r.managedDownloadLogicalChunkData(uc)
 	}
 
 	//  Try to fetch the file from the local path and upload there.
 	err := func() error {
+		println("local")
 		osFile, err := os.Open(uc.fileEntry.LocalPath())
 		if os.IsNotExist(err) {
 			// The file doesn't exist on disk anymore, drop the local path.
