@@ -71,12 +71,16 @@ func (ss *StreamShard) ReadChunk() ([][]byte, uint64, error) {
 	if ss.closed {
 		return nil, 0, errors.New("StreamShard already closed")
 	}
+	println("      readchunk")
+	defer println("      readchunk done")
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 
 	// Read chunk.
 	var chunk [][]byte
+	println("        read")
 	chunk, ss.n, ss.err = ss.r.ReadChunk()
+	println("        read done")
 
 	// The chunk is read. Mark the shard as closed.
 	ss.closed = true

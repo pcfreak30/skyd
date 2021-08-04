@@ -379,6 +379,7 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 	// was incorrectly padded and needs to be removed again by shrinking the siafile
 	// by one chunk before the user can retry the upload.
 	if n%int64(fileNode.ChunkSize()) != 0 && u.fi.Offset+n != u.fi.Size {
+		fmt.Println("shrinking", n, fileNode.ChunkSize(), u.fi.Offset+n, u.fi.Offset, u.fi.Size)
 		shrinkErr := fileNode.Shrink(uint64(u.fi.Offset) / fileNode.ChunkSize())
 		if shrinkErr != nil {
 			return 0, shrinkErr
