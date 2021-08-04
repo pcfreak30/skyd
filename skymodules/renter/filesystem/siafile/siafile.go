@@ -30,6 +30,9 @@ var (
 	// ErrDeleted is returned when an operation failed due to the siafile being
 	// deleted already.
 	ErrDeleted = errors.New("files was deleted")
+	// errShrinkWithTooManyChunks is returned if the number of chunks passed
+	// to Shrink is >= the number of current chunks.
+	errShrinkWithTooManyChunks = errors.New("can't grow siafile using Shrink - use GrowNumChunks instead")
 )
 
 type (
@@ -1242,6 +1245,38 @@ func (sf *SiaFile) Chunk(chunkIndex uint64) (chunk, error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	return sf.chunk(int(chunkIndex))
+}
+
+// Shrink shrinks the siafile to a certain number of chunks.
+func (sf *SiaFile) Shrink(numChunks uint64) (err error) {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+
+	// Sanity check.
+	if numChunks >= uint64(sf.numChunks) {
+		return errShrinkWithTooManyChunks
+	}
+
+	// Restore metadata if necessary.
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+		}
+	}(sf.staticMetadata.backup())
+
+	// Update the fileSize and number of chunks.
+	sf.numChunks = int(numChunks)
+	sf.staticMetadata.FileSize = int64(sf.staticChunkSize() * uint64(sf.numChunks))
+	mdu, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+
+	// Truncate the file.
+	tu := writeaheadlog.TruncateUpdate(sf.siaFilePath, sf.chunkOffset(sf.numChunks))
+
+	// Apply the updates.
+	return sf.createAndApplyTransaction(append(mdu, tu)...)
 }
 
 // growNumChunks increases the number of chunks in the SiaFile to numChunks. If
