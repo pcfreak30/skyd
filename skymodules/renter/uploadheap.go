@@ -1312,6 +1312,7 @@ func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk) error {
 	// of memory available, and then spin up a thread to asynchronously handle
 	// the rest of the chunk tasks.
 	r.staticRepairLog.Print("Waiting for memory")
+	println("request", uuc.staticMemoryNeeded)
 	if !uuc.staticMemoryManager.Request(uuc.ctx, uuc.staticMemoryNeeded, uuc.staticPriority) {
 		r.staticRepairLog.Print("Failed to get memory")
 		return errors.New("couldn't request memory")

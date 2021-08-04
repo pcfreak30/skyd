@@ -479,6 +479,7 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	if err != nil {
 		// Return the erasure coding memory. This is not handled by the cleanup
 		// code.
+		println("return2", erasureCodingMemory, pieceCompletedMemory)
 		chunk.staticMemoryManager.Return(erasureCodingMemory + pieceCompletedMemory)
 
 		chunk.mu.Lock()
@@ -519,6 +520,7 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	// Return the erasure coding memory. This is not handled by the data
 	// fetching, where the erasure coding occurs.
 	chunk.staticMemoryManager.Return(erasureCodingMemory + pieceCompletedMemory)
+	println("return3", erasureCodingMemory, pieceCompletedMemory)
 	chunk.memoryReleased += erasureCodingMemory + pieceCompletedMemory
 	// Swap the physical chunk data and the logical chunk data. There is
 	// probably no point to having both, given that we perform such a clean
@@ -824,6 +826,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	// If required, return the memory to the renter.
 	if memoryReleased > 0 {
 		uc.staticMemoryManager.Return(memoryReleased)
+		println("return4", memoryReleased)
 	}
 	// Make sure file is closed for canceled chunks when all workers are done
 	if canceled && workersRemaining == 0 && !chunkComplete {

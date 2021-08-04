@@ -320,6 +320,7 @@ func (w *worker) managedPerformUploadChunkJob() {
 	uc.memoryReleased += uint64(releaseSize)
 	uc.chunkSuccessProcessTimes = append(uc.chunkSuccessProcessTimes, time.Now())
 	uc.mu.Unlock()
+	println("return1", releaseSize)
 	uc.staticMemoryManager.Return(uint64(releaseSize))
 	w.staticRenter.managedCleanUpUploadChunk(uc)
 }
