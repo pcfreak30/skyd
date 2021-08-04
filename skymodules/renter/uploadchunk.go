@@ -133,6 +133,13 @@ type unfinishedUploadChunk struct {
 	staticSpan opentracing.Span
 }
 
+// Cancel cancels the work on a chunk.
+func (uc *unfinishedUploadChunk) Cancel() {
+	uc.cancelMU.Lock()
+	uc.canceled = true
+	uc.cancelMU.Unlock()
+}
+
 // managedSetStuckAndClose sets the unfinishedUploadChunk's stuck status and
 // closes the fileEntry.
 func (uc *unfinishedUploadChunk) managedSetStuckAndClose(setStuck bool) error {
@@ -234,7 +241,9 @@ func readDataPieces(r io.Reader, ec skymodules.ErasureCoder, pieceSize uint64) (
 	var total uint64
 	for i := range dataPieces {
 		dataPieces[i] = make([]byte, pieceSize)
+		println("          read full")
 		n, err := io.ReadFull(r, dataPieces[i])
+		println("          read full done")
 		total += uint64(n)
 		if err != nil && !errors.Contains(err, io.EOF) && err != io.ErrUnexpectedEOF {
 			return nil, 0, errors.AddContext(err, "failed to read chunk from source reader")
@@ -615,7 +624,7 @@ func (r *Renter) staticFetchLogicalDataFromReader(uc *unfinishedUploadChunk) err
 func (r *Renter) managedFetchLogicalChunkData(uc *unfinishedUploadChunk) error {
 	// Use a sourceReader if one is available.
 	if uc.sourceReader != nil {
-		println("fetch from source reader")
+		println("  fetch from source reader")
 		err := r.staticFetchLogicalDataFromReader(uc)
 		if err != nil {
 			return errors.AddContext(err, "unable to load logical data from source reader")

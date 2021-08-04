@@ -389,8 +389,11 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 		// happens if we reach a timeout in the reverse proxy.
 		err = errors.Compose(err, ErrTUSUploadInterrupted)
 	}
-	// In case of any error, return early.
+	// In case of any error, return early and fail the chunks.
 	if err != nil {
+		for _, chunk := range chunks {
+			chunk.Cancel()
+		}
 		return 0, err
 	}
 
