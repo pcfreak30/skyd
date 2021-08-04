@@ -5,6 +5,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -267,6 +268,7 @@ func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode skymodu
 func (sf *SiaFile) GrowNumChunks(numChunks uint64) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	fmt.Println("grow", filepath.Base(sf.siaFilePath))
 	// Backup metadata before doing any kind of persistence.
 	defer func(backup Metadata) {
 		if err != nil {
@@ -326,6 +328,7 @@ func (sf *SiaFile) SetFileSize(fileSize uint64) (err error) {
 func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64, merkleRoot crypto.Hash) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	fmt.Println("addpiece", filepath.Base(sf.siaFilePath))
 	// If the file was deleted we can't add a new piece since it would write
 	// the file to disk again.
 	if sf.deleted {
@@ -1251,6 +1254,7 @@ func (sf *SiaFile) Chunk(chunkIndex uint64) (chunk, error) {
 func (sf *SiaFile) Shrink(numChunks uint64) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	fmt.Println("shrink", filepath.Base(sf.siaFilePath))
 
 	// Sanity check.
 	if numChunks >= uint64(sf.numChunks) {

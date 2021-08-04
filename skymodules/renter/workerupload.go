@@ -300,7 +300,7 @@ func (w *worker) managedPerformUploadChunkJob() {
 	// Add piece to renterFile
 	err = uc.fileEntry.AddPiece(w.staticHostPubKey, uc.staticIndex, pieceIndex, root)
 	if err != nil {
-		w.staticRenter.staticRepairLog.Print("failed to add piece", err)
+		w.staticRenter.staticRepairLog.Print("failed to add piece: ", err)
 		failureErr := fmt.Errorf("Worker failed to add new piece to SiaFile: %v", err)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return
