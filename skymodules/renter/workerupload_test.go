@@ -337,7 +337,6 @@ func testProcessUploadChunkNoHelpNeeded(t *testing.T, chunk func(wt *workerTeste
 	uuc.piecesRegistered = uuc.staticPiecesNeeded
 	uuc.mu.Unlock()
 	println("request", modules.SectorSize*uint64(pieces))
-	_ = uuc.staticMemoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
 	nc, pieceIndex := wt.managedProcessUploadChunk(uuc)
 	if nc != nil {
 		t.Error("next chunk should be nil")
@@ -390,7 +389,6 @@ func testProcessUploadChunkNotACandidate(t *testing.T, chunk func(wt *workerTest
 	}()
 
 	uuc := chunk(wt)
-	pieces := uuc.staticPiecesNeeded
 	wt.mu.Lock()
 	wt.unprocessedChunks.PushBack(uuc)
 	wt.unprocessedChunks.PushBack(uuc)
@@ -399,7 +397,6 @@ func testProcessUploadChunkNotACandidate(t *testing.T, chunk func(wt *workerTest
 	uuc.mu.Lock()
 	uuc.unusedHosts = make(map[string]struct{})
 	uuc.mu.Unlock()
-	_ = uuc.staticMemoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
 	nc, pieceIndex := wt.managedProcessUploadChunk(uuc)
 	if nc != nil {
 		t.Error("next chunk should be nil")
@@ -452,7 +449,6 @@ func testProcessUploadChunkCompleted(t *testing.T, chunk func(wt *workerTester) 
 	}()
 
 	uuc := chunk(wt)
-	pieces := uuc.staticPiecesNeeded
 	wt.mu.Lock()
 	wt.unprocessedChunks.PushBack(uuc)
 	wt.unprocessedChunks.PushBack(uuc)
@@ -461,7 +457,6 @@ func testProcessUploadChunkCompleted(t *testing.T, chunk func(wt *workerTester) 
 	uuc.mu.Lock()
 	uuc.piecesCompleted = uuc.staticPiecesNeeded
 	uuc.mu.Unlock()
-	_ = uuc.staticMemoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
 	nc, pieceIndex := wt.managedProcessUploadChunk(uuc)
 	if nc != nil {
 		t.Error("next chunk should be nil")
@@ -515,7 +510,6 @@ func testProcessUploadChunk_NotACandidateCooldown(t *testing.T, chunk func(wt *w
 	}()
 
 	uuc := chunk(wt)
-	pieces := uuc.staticPiecesNeeded
 	wt.mu.Lock()
 	wt.uploadRecentFailure = time.Now()
 	wt.uploadConsecutiveFailures = math.MaxInt32
@@ -526,7 +520,6 @@ func testProcessUploadChunk_NotACandidateCooldown(t *testing.T, chunk func(wt *w
 	uuc.mu.Lock()
 	uuc.unusedHosts = make(map[string]struct{})
 	uuc.mu.Unlock()
-	_ = uuc.staticMemoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
 	nc, pieceIndex := wt.managedProcessUploadChunk(uuc)
 	if nc != nil {
 		t.Error("next chunk should be nil")
@@ -579,7 +572,6 @@ func testProcessUploadChunkCompletedCooldown(t *testing.T, chunk func(wt *worker
 	}()
 
 	uuc := chunk(wt)
-	pieces := uuc.staticPiecesNeeded
 	wt.mu.Lock()
 	wt.uploadRecentFailure = time.Now()
 	wt.uploadConsecutiveFailures = math.MaxInt32
@@ -590,7 +582,6 @@ func testProcessUploadChunkCompletedCooldown(t *testing.T, chunk func(wt *worker
 	uuc.mu.Lock()
 	uuc.piecesCompleted = uuc.staticPiecesNeeded
 	uuc.mu.Unlock()
-	_ = uuc.staticMemoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
 	nc, pieceIndex := wt.managedProcessUploadChunk(uuc)
 	if nc != nil {
 		t.Error("next chunk should be nil")
@@ -643,7 +634,6 @@ func testProcessUploadChunkNotGoodForUpload(t *testing.T, chunk func(wt *workerT
 	}()
 
 	uuc := chunk(wt)
-	pieces := uuc.staticPiecesNeeded
 	wt.mu.Lock()
 	wt.unprocessedChunks.PushBack(uuc)
 	wt.unprocessedChunks.PushBack(uuc)
@@ -656,7 +646,6 @@ func testProcessUploadChunkNotGoodForUpload(t *testing.T, chunk func(wt *workerT
 		t.Fatal(err)
 	}
 	wt.managedUpdateCache()
-	_ = uuc.staticMemoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
 	nc, pieceIndex := wt.managedProcessUploadChunk(uuc)
 	if nc != nil {
 		t.Error("next chunk should be nil")
@@ -718,7 +707,6 @@ func TestProcessUploadChunk(t *testing.T) {
 			staticAvailableChan:       make(chan struct{}),
 			staticUploadCompletedChan: make(chan struct{}),
 			staticMemoryNeeded:        uint64(pieces) * modules.SectorSize,
-			staticMemoryManager:       wt.staticRenter.staticRepairMemoryManager,
 		}
 	}
 

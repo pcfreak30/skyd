@@ -557,7 +557,7 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 		staticIndex:   chunkIndex,
 		staticSiaPath: entryCopy.SiaFilePath(),
 
-		staticMemoryManager: mm,
+		fetchChan: make(chan struct{}),
 
 		// staticMemoryNeeded has to also include the logical data, and also
 		// include the overhead for encryption.
@@ -1308,13 +1308,8 @@ func (r *Renter) managedPushChunkForRepair(uuc *unfinishedUploadChunk, ct chunkT
 // from the network), erasure coding the logical data into the physical data,
 // and then finally passing the work onto the workers.
 func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk) error {
-	// Grab the next chunk, loop until we have enough memory, update the amount
-	// of memory available, and then spin up a thread to asynchronously handle
-	// the rest of the chunk tasks.
-	if !uuc.staticMemoryManager.Request(uuc.ctx, uuc.staticMemoryNeeded, uuc.staticPriority) {
-		return errors.New("couldn't request memory")
-	}
-	go r.threadedFetchAndRepairChunk(uuc)
+	// Distribute the chunk to the workers.
+	r.staticUploadChunkDistributionQueue.callAddUploadChunk(uuc)
 	return nil
 }
 

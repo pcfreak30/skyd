@@ -296,6 +296,9 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) bool
 		return false
 	}
 
+	// Fetch the chunk's logical data.
+	go r.threadedFetchAndRepairChunk(uc)
+
 	// Give the chunk to each worker, marking the number of workers that have
 	// received the chunk. Only count the worker if the worker's upload queue
 	// accepts the job.

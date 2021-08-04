@@ -251,6 +251,12 @@ func (w *worker) managedPerformUploadChunkJob() {
 	defer nextChunk.cancelWG.Done()
 	nextChunk.cancelMU.Unlock()
 
+	// Check if we already got the data for this chunk.
+	<-nextChunk.fetchChan
+	if err := nextChunk.fetchErr; err != nil {
+		return
+	}
+
 	// Check if this particular chunk is necessary. If not, return 'true'
 	// because there may be more chunks in the queue.
 	uc, pieceIndex := w.managedProcessUploadChunk(nextChunk)
@@ -310,14 +316,11 @@ func (w *worker) managedPerformUploadChunkJob() {
 	// Upload is complete. Update the state of the chunk and the renter's memory
 	// available to reflect the completed upload.
 	uc.mu.Lock()
-	releaseSize := len(uc.physicalChunkData[pieceIndex])
 	uc.piecesRegistered--
 	uc.piecesCompleted++
 	uc.physicalChunkData[pieceIndex] = nil
-	uc.memoryReleased += uint64(releaseSize)
 	uc.chunkSuccessProcessTimes = append(uc.chunkSuccessProcessTimes, time.Now())
 	uc.mu.Unlock()
-	uc.staticMemoryManager.Return(uint64(releaseSize))
 	w.staticRenter.managedCleanUpUploadChunk(uc)
 }
 

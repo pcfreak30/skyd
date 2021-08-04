@@ -40,7 +40,6 @@ type unfinishedUploadChunk struct {
 	health                 float64
 	length                 uint64
 	staticMemoryNeeded     uint64 // memory needed in bytes
-	memoryReleased         uint64 // memory that has been returned of memoryNeeded
 	staticMinimumPieces    int    // number of pieces required to recover the file.
 	offset                 int64  // Offset of the chunk within the file.
 	onDisk                 bool   // indicates if there is a local file accessible on disk
@@ -48,8 +47,6 @@ type unfinishedUploadChunk struct {
 	staticPiecesNeeded     int    // number of pieces to achieve a 100% complete upload
 	stuck                  bool   // indicates if the chunk was marked as stuck during last repair
 	stuckRepair            bool   // indicates if the chunk was identified for repair by the stuck loop
-
-	staticMemoryManager *memoryManager
 
 	// Static cached fields.
 	staticIndex    uint64
@@ -61,6 +58,9 @@ type unfinishedUploadChunk struct {
 	// stored across the network.
 	logicalChunkData  [][]byte
 	physicalChunkData [][]byte
+
+	fetchChan chan struct{}
+	fetchErr  error
 
 	// staticExpectedPieceRoots is a list of piece roots that are known for the
 	// chunk. If the roots are blank, it means there is no expectation for the
@@ -338,7 +338,6 @@ func (r *Renter) managedDownloadLogicalChunkDataFromSiaFile(chunk *unfinishedUpl
 		overdrive:     0, // No need to rush the latency on repair downloads.
 		priority:      0, // Repair downloads are completely de-prioritized.
 
-		staticMemoryManager:    chunk.staticMemoryManager, // Same memory manager as upload chunk
 		staticSpendingCategory: categoryRepairDownload,
 	})
 	if err != nil {
@@ -443,15 +442,13 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 // threadedFetchAndRepairChunk will fetch the logical data for a chunk, create
 // the physical pieces for the chunk, and then distribute them.
 func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
+	defer close(chunk.fetchChan)
 	err := r.tg.Add()
 	if err != nil {
+		chunk.fetchErr = err
 		return
 	}
 	defer r.tg.Done()
-
-	// Calculate the amount of memory needed for erasure coding. This will need
-	// to be released if there's an error before erasure coding is complete.
-	erasureCodingMemory := chunk.fileEntry.PieceSize() * uint64(chunk.fileEntry.ErasureCode().MinPieces())
 
 	// Calculate the amount of memory to release due to already completed
 	// pieces. This memory gets released during encryption, but needs to be
@@ -466,13 +463,8 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	// Fetch the logical data for the chunk.
 	err = r.managedFetchLogicalChunkData(chunk)
 	if err != nil {
-		// Return the erasure coding memory. This is not handled by the cleanup
-		// code.
-		chunk.staticMemoryManager.Return(erasureCodingMemory + pieceCompletedMemory)
-
+		chunk.fetchErr = err
 		chunk.mu.Lock()
-		// Add the amount of freed EC memory to the chunk.
-		chunk.memoryReleased += erasureCodingMemory + pieceCompletedMemory
 		// Set the remaining workers to 0 for the cleanup code to free all
 		// remaining memory.
 		chunk.workersRemaining = 0
@@ -505,10 +497,6 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 		}
 		return
 	}
-	// Return the erasure coding memory. This is not handled by the data
-	// fetching, where the erasure coding occurs.
-	chunk.staticMemoryManager.Return(erasureCodingMemory + pieceCompletedMemory)
-	chunk.memoryReleased += erasureCodingMemory + pieceCompletedMemory
 	// Swap the physical chunk data and the logical chunk data. There is
 	// probably no point to having both, given that we perform such a clean
 	// handoff here, but since the code is already written this way, it may be
@@ -520,14 +508,12 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	// do elements in our piece usage.
 	if len(chunk.physicalChunkData) < len(chunk.pieceUsage) {
 		r.staticLog.Critical("not enough physical pieces to match the upload settings of the file")
+		chunk.fetchErr = errors.New("some error")
 		return
 	}
 
 	// Update time timestamp.
 	chunk.chunkLogicalDataReceivedTime = time.Now()
-
-	// Distribute the chunk to the workers.
-	r.staticUploadChunkDistributionQueue.callAddUploadChunk(chunk)
 }
 
 // staticCheckIntegrity will run through the pieces that are presented, assumed
@@ -754,8 +740,6 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	Fail Times: %v
 	Success Times: %v`, int(time.Since(uc.chunkCreationTime)/time.Millisecond), int(time.Since(uc.chunkPoppedFromHeapTime)/time.Millisecond), int(time.Since(uc.chunkLogicalDataReceivedTime)/time.Millisecond), int(time.Since(uc.chunkDistributionTime)/time.Millisecond), int(time.Since(uc.chunkAvailableTime)/time.Millisecond), int(time.Since(uc.chunkCompleteTime)/time.Millisecond), canceled, failedTimes, successTimes)
 	}
-	uc.memoryReleased += memoryReleased
-	totalMemoryReleased := uc.memoryReleased
 	workersRemaining := uc.workersRemaining
 	repair := uc.repair || uc.stuckRepair
 	finished := chunkComplete && uc.piecesCompleted >= uc.staticPiecesNeeded && uc.staticAvailable()
@@ -805,20 +789,12 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		uc.logicalChunkData = nil
 		uc.physicalChunkData = nil
 	}
-	// If required, return the memory to the renter.
-	if memoryReleased > 0 {
-		uc.staticMemoryManager.Return(memoryReleased)
-	}
 	// Make sure file is closed for canceled chunks when all workers are done
 	if canceled && workersRemaining == 0 && !chunkComplete {
 		err := uc.fileEntry.Close()
 		if err != nil {
 			r.staticLog.Println("WARN: unable to close file entry for chunk", uc.fileEntry.SiaFilePath())
 		}
-	}
-	// Sanity check - all memory should be released if the chunk is complete.
-	if chunkComplete && totalMemoryReleased != uc.staticMemoryNeeded {
-		r.staticLog.Critical("No workers remaining, but not all memory released:", workersRemaining, uc.piecesRegistered, uc.memoryReleased, uc.staticMemoryNeeded)
 	}
 }
 
