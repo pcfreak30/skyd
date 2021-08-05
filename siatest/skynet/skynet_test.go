@@ -4230,7 +4230,6 @@ func TestRegistryHealth(t *testing.T) {
 	if err := tg.StartNode(stoppedHost); err != nil {
 		t.Fatal(err)
 	}
-	println("stopped", stoppedHost.Dir)
 
 	// Reannounce it to make sure its new ports are known.
 	err = stoppedHost.HostAnnouncePost()
@@ -4243,7 +4242,7 @@ func TestRegistryHealth(t *testing.T) {
 	}
 
 	// Use a retry since the node might take a while to start.
-	err = build.Retry(30, time.Second, func() error {
+	err = build.Retry(60, time.Second, func() error {
 		// Mine a block for the announcement.
 		err = tg.Miners()[0].MineBlock()
 		if err != nil {
