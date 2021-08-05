@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -134,7 +135,8 @@ func NewCustomServer(dir string, APIaddr string, requiredUserAgent string, requi
 	srv := &Server{
 		api: api,
 		apiServer: &http.Server{
-			Handler: api,
+			Handler:      api,
+			TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)),
 		},
 		listener:          listener,
 		requiredUserAgent: requiredUserAgent,
