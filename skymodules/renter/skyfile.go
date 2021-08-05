@@ -45,6 +45,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -1285,6 +1286,15 @@ func (r *Renter) ResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (s
 	return slResolved, srvs, nil
 }
 
+// SkylinkHealth returns the health of a skylink on the network.
+func (r *Renter) SkylinkHealth(ctx context.Context, sl skymodules.Skylink, ppms types.Currency) (skymodules.SkylinkHealth, error) {
+	if err := r.tg.Add(); err != nil {
+		return skymodules.SkylinkHealth{}, err
+	}
+	defer r.tg.Done()
+	return r.managedSkylinkHealth(ctx, sl, ppms)
+}
+
 // managedResolveSkylinkV2 resolves a V2 skylink to a V1 skylink. If the skylink
 // is not a V2 skylink, the input link is returned.
 func (r *Renter) managedResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink, blocklistCheck bool) (skylink skymodules.Skylink, _ *skymodules.RegistryEntry, err error) {
@@ -1379,34 +1389,30 @@ func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, link skymodules
 	return link, srvs, nil
 }
 
-type SkylinkHealth struct {
-	BaseSector float64 `json:"basesector"`
-	Fanout     float64 `json:"fanout"`
-}
-
-func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink, ppms types.Currency) (SkylinkHealth, error) {
+// managedSkylinkHealth returns the health of a skylink on the network.
+func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink, ppms types.Currency) (skymodules.SkylinkHealth, error) {
 	// Resolve the skylink if necessary.
-	sl, _, err := r.managedTryResolveSkylinkV2(sl, true)
+	sl, _, err := r.managedTryResolveSkylinkV2(ctx, sl, true)
 	if err != nil {
-		return SkylinkHealth{}, errors.AddContext(err, "failed to resolve skylink")
+		return skymodules.SkylinkHealth{}, errors.AddContext(err, "failed to resolve skylink")
 	}
 
 	// Get the offset and fetchsize from the skylink
 	offset, fetchSize, err := sl.OffsetAndFetchSize()
 	if err != nil {
-		return SkylinkHealth{}, errors.AddContext(err, "unable to parse skylink")
+		return skymodules.SkylinkHealth{}, errors.AddContext(err, "unable to parse skylink")
 	}
 
 	// Get base sector.
 	baseSector, err := r.managedDownloadByRoot(ctx, sl.MerkleRoot(), offset, fetchSize, ppms)
 	if err != nil {
-		return SkylinkHealth{}, errors.AddContext(err, "unable to download base sector")
+		return skymodules.SkylinkHealth{}, errors.AddContext(err, "unable to download base sector")
 	}
 
 	// Parse out the metadata of the skyfile.
-	layout, fanoutBytes, metadata, rawMetadata, baseSectorPayload, err := skymodules.ParseSkyfileMetadata(baseSector)
+	layout, fanoutBytes, _, _, _, err := skymodules.ParseSkyfileMetadata(baseSector)
 	if err != nil {
-		return SkylinkHealth{}, errors.AddContext(err, "error parsing skyfile metadata")
+		return skymodules.SkylinkHealth{}, errors.AddContext(err, "error parsing skyfile metadata")
 	}
 
 	// Prepare the list of roots to ask the hosts for.
@@ -1417,7 +1423,7 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 		// Create the list of chunks from the fanout.
 		fanoutChunks, err := layout.DecodeFanoutIntoChunks(fanoutBytes)
 		if err != nil {
-			return SkylinkHealth{}, errors.AddContext(err, "error parsing skyfile fanout")
+			return skymodules.SkylinkHealth{}, errors.AddContext(err, "error parsing skyfile fanout")
 		}
 
 		for _, chunks := range fanoutChunks {
@@ -1448,14 +1454,57 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 		launchedWorkers++
 	}
 
+	rootTotals := make([]uint64, len(roots))
 LOOP:
 	for {
 		var resp *jobHasSectorResponse
 		select {
 		case <-ctx.Done():
 			break LOOP
-		case resp = <-responeChan:
+		case resp = <-responseChan:
+		}
+
+		if resp.staticErr != nil {
+			continue
+		}
+		// Add the result to the totals.
+		for i, available := range resp.staticAvailables {
+			if available {
+				rootTotals[i]++
+			}
 		}
 	}
 
+	// First index is the base sector.
+	baseSectorRedundancy, rootTotals := rootTotals[0], rootTotals[1:]
+
+	// Sanity check. The remaining roots should be a multiple of numPieces.
+	minPieces := int(layout.FanoutDataPieces)
+	numPieces := minPieces + int(layout.FanoutParityPieces)
+	if len(rootTotals)%numPieces != 0 {
+		err := errors.New("remaining roots are not a multiple of numPieces")
+		build.Critical(err)
+		return skymodules.SkylinkHealth{}, err
+	}
+
+	var chunkTotals []uint64
+	var worstHealth float64
+	for len(rootTotals) > 0 {
+		chunkTotals, rootTotals = rootTotals[:numPieces], rootTotals[numPieces:]
+
+		var goodPieces uint64
+		for _, total := range chunkTotals {
+			if total > 0 {
+				goodPieces++
+			}
+		}
+		chunkHealth := siafile.CalculateHealth(int(goodPieces), minPieces, numPieces)
+		if chunkHealth > worstHealth {
+			worstHealth = chunkHealth
+		}
+	}
+	return skymodules.SkylinkHealth{
+		BaseSectorRedundancy: baseSectorRedundancy,
+		FanoutHealth:         1 - worstHealth,
+	}, nil
 }
