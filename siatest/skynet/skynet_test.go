@@ -4156,6 +4156,31 @@ func TestRegistryHealth(t *testing.T) {
 	spk := types.Ed25519PublicKey(pk)
 	rid := modules.DeriveRegistryEntryID(spk, dataKey)
 
+	// Helper function to check the health.
+	assertHealth := func(expected skymodules.RegistryEntryHealth) error {
+		// Get the health both ways.
+		reh1, err := r.RegistryEntryHealth(spk, dataKey)
+		if err != nil {
+			return err
+		}
+		reh2, err := r.RegistryEntryHealthRID(rid)
+		if err != nil {
+			return err
+		}
+
+		// They should be the same.
+		if !reflect.DeepEqual(reh1, reh2) {
+			return fmt.Errorf("health responses don't match: %v %v", reh1, reh2)
+		}
+
+		if !reflect.DeepEqual(reh1, expected) {
+			got := siatest.PrintJSON(reh1)
+			expected := siatest.PrintJSON(expected)
+			return fmt.Errorf("health doesn't match expected \n got: %v \n expected: %v", got, expected)
+		}
+		return nil
+	}
+
 	// TODO: Change the line below to use modules.RegistryTypeWithPubkey
 	// once Sia hosts have support for setting primary entries.
 	revision := fastrand.Uint64n(1000)
@@ -4163,6 +4188,17 @@ func TestRegistryHealth(t *testing.T) {
 
 	// Update the registry.
 	err = r.RegistryUpdateWithEntry(spk, srv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check the health.
+	err = assertHealth(skymodules.RegistryEntryHealth{
+		NumBestEntries:        3,
+		NumEntries:            3,
+		NumBestPrimaryEntries: 0,
+		RevisionNumber:        srv.Revision,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4194,39 +4230,39 @@ func TestRegistryHealth(t *testing.T) {
 	if err := tg.StartNode(stoppedHost); err != nil {
 		t.Fatal(err)
 	}
+	println("stopped", stoppedHost.Dir)
+
+	// Reannounce it to make sure its new ports are known.
+	err = stoppedHost.HostAnnouncePost()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = tg.Miners()[0].MineBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Use a retry since the node might take a while to start.
-	err = build.Retry(500, 100*time.Millisecond, func() error {
-		// Get the health both ways.
-		reh1, err := r.RegistryEntryHealth(spk, dataKey)
+	err = build.Retry(30, time.Second, func() error {
+		// Mine a block for the announcement.
+		err = tg.Miners()[0].MineBlock()
 		if err != nil {
-			return err
+			t.Fatal(err)
 		}
-		reh2, err := r.RegistryEntryHealthRID(rid)
+		// Force a refresh of the worker pool for testing.
+		_, err = r.RenterWorkersGet()
 		if err != nil {
-			return err
+			t.Fatal(err)
 		}
-
-		// They should be the same.
-		if !reflect.DeepEqual(reh1, reh2) {
-			return fmt.Errorf("health responses don't match: %v %v", reh1, reh2)
-		}
-
 		// Check the health against the expectation.
 		// We expect len(hosts)-1 best entries since one entry is
 		// outdated and does therefore not count towards the health.
-		expected := skymodules.RegistryEntryHealth{
+		return assertHealth(skymodules.RegistryEntryHealth{
 			RevisionNumber:        revision,
 			NumEntries:            uint64(len(tg.Hosts())),
 			NumBestEntries:        uint64(len(tg.Hosts())) - 1,
 			NumBestPrimaryEntries: 0,
-		}
-		if !reflect.DeepEqual(reh1, expected) {
-			got := siatest.PrintJSON(reh1)
-			expected := siatest.PrintJSON(expected)
-			return fmt.Errorf("health doesn't match expected \n got: %v \n expected: %v", got, expected)
-		}
-		return nil
+		})
 	})
 	if err != nil {
 		t.Fatal(err)
