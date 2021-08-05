@@ -1409,6 +1409,15 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 		return skymodules.SkylinkHealth{}, errors.AddContext(err, "unable to download base sector")
 	}
 
+	// Check if the base sector is encrypted, and attempt to decrypt it.
+	encrypted := skymodules.IsEncryptedBaseSector(baseSector)
+	if encrypted {
+		_, err = r.managedDecryptBaseSector(baseSector)
+		if err != nil {
+			return skymodules.SkylinkHealth{}, errors.AddContext(err, "failed to decrypt base sector")
+		}
+	}
+
 	// Parse out the metadata of the skyfile.
 	layout, fanoutBytes, _, _, _, err := skymodules.ParseSkyfileMetadata(baseSector)
 	if err != nil {
@@ -1419,16 +1428,25 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 	roots := []crypto.Hash{sl.MerkleRoot()}
 
 	// If the file has a fanout, ask the hosts for the fanout as well.
+	rootIndexToChunkIndex := make(map[int]int)
+	numChunks := 0
 	if len(fanoutBytes) > 0 {
-		// Create the list of chunks from the fanout.
+		// Create the list of chunks from the fanout. Since we want to
+		// give an overview of the health of the file on the network, we
+		// don't compress the fanout.
 		fanoutChunks, err := layout.DecodeFanoutIntoChunks(fanoutBytes)
 		if err != nil {
 			return skymodules.SkylinkHealth{}, errors.AddContext(err, "error parsing skyfile fanout")
 		}
 
-		for _, chunks := range fanoutChunks {
-			roots = append(roots, chunks...)
+		for chunkIndex, chunk := range fanoutChunks {
+			for _, root := range chunk {
+				// -1 to exclude the base sector
+				rootIndexToChunkIndex[len(roots)-1] = chunkIndex
+				roots = append(roots, root)
+			}
 		}
+		numChunks = len(fanoutChunks)
 	}
 
 	// Get the workers.
@@ -1478,33 +1496,38 @@ LOOP:
 	// First index is the base sector.
 	baseSectorRedundancy, rootTotals := rootTotals[0], rootTotals[1:]
 
-	// Sanity check. The remaining roots should be a multiple of numPieces.
-	minPieces := int(layout.FanoutDataPieces)
-	numPieces := minPieces + int(layout.FanoutParityPieces)
-	if len(rootTotals)%numPieces != 0 {
-		err := errors.New("remaining roots are not a multiple of numPieces")
-		build.Critical(err)
-		return skymodules.SkylinkHealth{}, err
-	}
-
-	var chunkTotals []uint64
-	var worstHealth float64
-	for len(rootTotals) > 0 {
-		chunkTotals, rootTotals = rootTotals[:numPieces], rootTotals[numPieces:]
-
-		var goodPieces uint64
-		for _, total := range chunkTotals {
-			if total > 0 {
-				goodPieces++
+	// Create a slice of good pieces for each chunk. A chunk has a good
+	// piece if a root belonging to the chunk exists >0 times on the
+	// network.
+	chunkGoodPieces := make([]int, numChunks)
+	onlyOnePiecePerChunk := layout.FanoutDataPieces == 1 && layout.CipherType == crypto.TypePlain
+	numPieces := int(layout.FanoutDataPieces + layout.FanoutParityPieces)
+	for i := 0; i < len(rootTotals); i++ {
+		chunkIndex := rootIndexToChunkIndex[i]
+		if onlyOnePiecePerChunk {
+			// Special Case: If we only need one piece per chunk, we
+			// count all occurrences of that piece up until
+			// numPieces.
+			chunkGoodPieces[chunkIndex] += int(rootTotals[i])
+			if chunkGoodPieces[chunkIndex] > numPieces {
+				chunkGoodPieces[chunkIndex] = numPieces
 			}
+		} else if rootTotals[i] > 0 {
+			// Otherwise every piece only counts as 1 good piece.
+			chunkGoodPieces[chunkIndex]++
 		}
-		chunkHealth := siafile.CalculateHealth(int(goodPieces), minPieces, numPieces)
+	}
+	// Compute the health of all chunks and remember the worst one. That's
+	// the overall fanout health.
+	var worstHealth float64
+	for _, goodPieces := range chunkGoodPieces {
+		chunkHealth := siafile.CalculateHealth(int(goodPieces), int(layout.FanoutDataPieces), int(layout.FanoutDataPieces+layout.FanoutParityPieces))
 		if chunkHealth > worstHealth {
 			worstHealth = chunkHealth
 		}
 	}
 	return skymodules.SkylinkHealth{
 		BaseSectorRedundancy: baseSectorRedundancy,
-		FanoutHealth:         1 - worstHealth,
+		FanoutHealth:         1.00 - worstHealth,
 	}, nil
 }

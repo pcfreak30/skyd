@@ -1448,11 +1448,11 @@ type SkyfileStreamer interface {
 type SkylinkHealth struct {
 	// BaseSectorRedundancy is the number of base sector pieces on the
 	// network.
-	BaseSectorRedundancy uint64 `json:"basesector"`
+	BaseSectorRedundancy uint64 `json:"basesectorredundancy"`
 
 	// FanoutHealth is the worst health of any of the fanout's chunks on the
 	// network.
-	FanoutHealth float64 `json:"fanout"`
+	FanoutHealth float64 `json:"fanouthealth"`
 }
 
 // RenterDownloadParameters defines the parameters passed to the Renter's

@@ -5446,3 +5446,120 @@ func TestAddResponseSetIgnoreEntriesWithoutRevision(t *testing.T) {
 	}
 	t.Log("p99")
 }
+
+// TestSkynetSkylinkHealth tests the /skynet/health/skylink endpoint.
+func TestSkynetSkylinkHealth(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Define the parameters.
+	groupParams := siatest.GroupParams{
+		Hosts:   modules.RenterDefaultDataPieces + modules.RenterDefaultParityPieces,
+		Miners:  1,
+		Renters: 1,
+	}
+	groupDir := skynetTestDir(t.Name())
+
+	// Create a testgroup.
+	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
+	if err != nil {
+		t.Fatal(errors.AddContext(err, "failed to create group"))
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Upload a file with multiple chunks.
+	r := tg.Renters()[0]
+	size := modules.SectorSize * 3
+	skylink, _, _, err := r.UploadNewSkyfileBlocking(t.Name(), size, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the health.
+	var sl skymodules.Skylink
+	if err := sl.LoadString(skylink); err != nil {
+		t.Fatal(err)
+	}
+	sh, err := r.SkylinkHealthGET(sl)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The redundancy of the base sector should be 2 and the fanout should
+	// be
+	if sh.BaseSectorRedundancy != 2 {
+		t.Fatal("wrong base sector redundancy")
+	}
+	if sh.FanoutHealth != 1.0 {
+		t.Fatal("fanout not healthy")
+	}
+
+	// Upload another file but encrypted. This makes sure we test encrypted
+	// skylinks as well as fanouts that can't be compressed.
+	_, err = r.SkykeyCreateKeyPost("key", skykey.TypePrivateID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	skylink2, _, _, err := r.UploadSkyfileBlockingCustom(t.Name()+"2", fastrand.Bytes(int(size)), "key", 5, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the health.
+	var sl2 skymodules.Skylink
+	if err := sl2.LoadString(skylink2); err != nil {
+		t.Fatal(err)
+	}
+	sh, err = r.SkylinkHealthGET(sl2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The redundancy of the base sector should be 2 and the fanout should
+	// be
+	if sh.BaseSectorRedundancy != 5 {
+		t.Fatal("wrong base sector redundancy")
+	}
+	if sh.FanoutHealth != 1.0 {
+		t.Fatal("fanout not healthy")
+	}
+
+	// Take a host offline.
+	err = tg.RemoveNode(tg.Hosts()[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check health again.
+	sh, err = r.SkylinkHealthGET(sl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The first file should either have a base sector redundancy of 1 or 2
+	// depending on whether the host we took offline had a piece.  1 of the
+	// fanout pieces is missing so the health is 75%.
+	if sh.BaseSectorRedundancy != 1 && sh.BaseSectorRedundancy != 2 {
+		t.Fatal("wrong base sector redundancy")
+	}
+	if sh.FanoutHealth != 0.75 {
+		t.Fatal("fanout not healthy")
+	}
+	sh, err = r.SkylinkHealthGET(sl2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The second file should either have a base sector redundancy of 4.  1
+	// of the fanout pieces is missing so the health is 75%.
+	if sh.BaseSectorRedundancy != 4 {
+		t.Fatal("wrong base sector redundancy")
+	}
+	if sh.FanoutHealth != 0.75 {
+		t.Fatal("fanout not healthy")
+	}
+}
