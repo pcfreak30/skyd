@@ -5472,32 +5472,44 @@ func TestSkynetSkylinkHealth(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
+	r := tg.Renters()[0]
+
+	// helper function for asserting health
+	assertHealth := func(skylink string, baseSectorRedundancy uint64, fanoutHealth float64) error {
+		// Get the health.
+		var sl skymodules.Skylink
+		if err := sl.LoadString(skylink); err != nil {
+			t.Fatal(err)
+		}
+		sh, err := r.SkylinkHealthGET(sl)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// The redundancy of the base sector should be 2 and the fanout should
+		// be
+		if sh.BaseSectorRedundancy != baseSectorRedundancy {
+			return fmt.Errorf("wrong base sector redundancy %v != %v", sh.BaseSectorRedundancy, 2)
+		}
+		if sh.FanoutHealth != fanoutHealth {
+			return fmt.Errorf("fanout not healthy %v != %v", sh.FanoutHealth, 1)
+		}
+		return nil
+	}
 
 	// Upload a file with multiple chunks.
-	r := tg.Renters()[0]
 	size := modules.SectorSize * 3
 	skylink, _, _, err := r.UploadNewSkyfileBlocking(t.Name(), size, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Get the health.
-	var sl skymodules.Skylink
-	if err := sl.LoadString(skylink); err != nil {
-		t.Fatal(err)
-	}
-	sh, err := r.SkylinkHealthGET(sl)
+	// Assert its health.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		return assertHealth(skylink, 2, 1.0)
+	})
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	// The redundancy of the base sector should be 2 and the fanout should
-	// be
-	if sh.BaseSectorRedundancy != 2 {
-		t.Fatal("wrong base sector redundancy")
-	}
-	if sh.FanoutHealth != 1.0 {
-		t.Fatal("fanout not healthy")
 	}
 
 	// Upload another file but encrypted. This makes sure we test encrypted
@@ -5511,23 +5523,10 @@ func TestSkynetSkylinkHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Get the health.
-	var sl2 skymodules.Skylink
-	if err := sl2.LoadString(skylink2); err != nil {
-		t.Fatal(err)
-	}
-	sh, err = r.SkylinkHealthGET(sl2)
+	// Assert its health.
+	err = assertHealth(skylink2, 5, 1.0)
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	// The redundancy of the base sector should be 2 and the fanout should
-	// be
-	if sh.BaseSectorRedundancy != 5 {
-		t.Fatal("wrong base sector redundancy")
-	}
-	if sh.FanoutHealth != 1.0 {
-		t.Fatal("fanout not healthy")
 	}
 
 	// Take a host offline.
@@ -5537,29 +5536,18 @@ func TestSkynetSkylinkHealth(t *testing.T) {
 	}
 
 	// Check health again.
-	sh, err = r.SkylinkHealthGET(sl)
-	if err != nil {
-		t.Fatal(err)
-	}
 	// The first file should either have a base sector redundancy of 1 or 2
-	// depending on whether the host we took offline had a piece.  1 of the
+	// depending on whether the host we took offline had a piece. 1 of the
 	// fanout pieces is missing so the health is 75%.
-	if sh.BaseSectorRedundancy != 1 && sh.BaseSectorRedundancy != 2 {
-		t.Fatal("wrong base sector redundancy")
+	err1 := assertHealth(skylink, 1, 0.75)
+	err2 := assertHealth(skylink, 2, 0.75)
+	if err1 != nil && err2 != nil {
+		t.Fatal(errors.Compose(err1, err2))
 	}
-	if sh.FanoutHealth != 0.75 {
-		t.Fatal("fanout not healthy")
-	}
-	sh, err = r.SkylinkHealthGET(sl2)
+	// The second file should have a base sector redundancy of 4. 1 of the
+	// fanout pieces is missing so the health is 75%.
+	err = assertHealth(skylink2, 4, 0.75)
 	if err != nil {
 		t.Fatal(err)
-	}
-	// The second file should either have a base sector redundancy of 4.  1
-	// of the fanout pieces is missing so the health is 75%.
-	if sh.BaseSectorRedundancy != 4 {
-		t.Fatal("wrong base sector redundancy")
-	}
-	if sh.FanoutHealth != 0.75 {
-		t.Fatal("fanout not healthy")
 	}
 }
