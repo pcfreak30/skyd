@@ -248,8 +248,8 @@ type (
 		DefaultPath        string          `json:"defaultpath,omitempty"`
 		DisableDefaultPath bool            `json:"disabledefaultpath,omitempty"`
 		Monetization       *Monetization   `json:"monetization,omitempty"`
-		TryFiles   []string       `json:"tryfiles,omitempty"`
-		ErrorPages map[int]string `json:"errorpages,omitempty"`
+		TryFiles           []string        `json:"tryfiles,omitempty"`
+		ErrorPages         map[int]string  `json:"errorpages,omitempty"`
 	}
 
 	// SkynetPortal contains information identifying a Skynet portal.

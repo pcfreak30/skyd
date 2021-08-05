@@ -359,7 +359,6 @@ func testTryFiles_TableTests(t *testing.T, tg *siatest.TestGroup) {
 				ct := http.DetectContentType(content)
 				if ct != "application/x-gzip" && ct != "application/zip" {
 					t.Fatalf("Expected zipped content, got %s", string(content))
-
 				}
 			} else if tt.expectedErrStrDownload == "" && !bytes.Equal(content, tt.expectedContent) {
 				t.Fatalf("Test name: %s. Content mismatch! Expected %d bytes, got %d bytes.", tt.name, len(tt.expectedContent), len(content))

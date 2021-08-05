@@ -422,69 +422,40 @@ func testParseUploadRequestParameters(t *testing.T) {
 		t.Fatal("Unexpected")
 	}
 
-	// verify 'dirresmode'
-	req = buildRequest(url.Values{"dirresmode": []string{skymodules.DirResModeStandard}}, http.Header{})
+	// verify tryfiles
+	req = buildRequest(url.Values{"tryfiles": []string{}}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
-	if params.dirResMode != skymodules.DirResModeStandard {
+	if len(params.tryFiles) > 0 {
 		t.Fatal("Unexpected")
 	}
-	req = buildRequest(url.Values{"dirresmode": []string{skymodules.DirResModeWeb}}, http.Header{})
+	req = buildRequest(url.Values{"tryfiles": []string{"index.html"}}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
-	if params.dirResMode != skymodules.DirResModeWeb {
-		t.Fatal("Unexpected")
-	}
-	req = buildRequest(url.Values{"dirresmode": []string{""}}, http.Header{})
-	_, params = parseRequest(req, defaultParams)
-	if params.dirResMode != skymodules.DirResModeStandard {
-		t.Fatal("Unexpected")
-	}
-	req = buildRequest(url.Values{"dirresmode": []string{"anything_else"}}, http.Header{})
-	_, params, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
-	if err == nil {
+	if len(params.tryFiles) == 1 && params.tryFiles[0] == "index.html" {
 		t.Fatal("Unexpected")
 	}
 
-	// verify 'dirresnotfound'
-	req = buildRequest(url.Values{"dirresmode": []string{skymodules.DirResModeWeb}, "dirresnotfound": []string{"404.html"}}, http.Header{})
+	// verify errorpages
+	req = buildRequest(url.Values{"errorpages": []string{}}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
-	// we also expect the leading slash to be auto-added:
-	if params.dirResNotFound != "/404.html" {
+	if len(params.errorPages) > 0 {
 		t.Fatal("Unexpected")
 	}
-	req = buildRequest(url.Values{"dirresnotfound": []string{""}}, http.Header{})
-	_, params = parseRequest(req, defaultParams)
-	if params.dirResNotFound != "" {
-		t.Fatal("Unexpected")
-	}
-	req = buildRequest(url.Values{"dirresmode": []string{skymodules.DirResModeStandard}, "dirresnotfound": []string{"404.html"}}, http.Header{})
-	_, params, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
-	if err == nil {
+	req = buildRequest(url.Values{"errorpages": []string{"{\"404\":\"notfound.html\"}"}}, http.Header{})
+	if params.errorPages[404] != "notfound.html" {
 		t.Fatal("Unexpected")
 	}
 
-	// verify 'dirresnotfoundcode'
-	req = buildRequest(url.Values{"dirresmode": []string{skymodules.DirResModeWeb}, "dirresnotfoundcode": []string{"200"}}, http.Header{})
-	_, params = parseRequest(req, defaultParams)
-	if params.dirResNotFoundCode != http.StatusOK {
-		t.Fatal("Unexpected")
-	}
-	req = buildRequest(url.Values{"dirresmode": []string{skymodules.DirResModeStandard}, "dirresnotfoundcode": []string{"200"}}, http.Header{})
-	_, params, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
-	if err == nil {
-		t.Fatal("Unexpected")
-	}
-
-	// verify that 'dirresmode' 'web' cannot be combined with 'defaultpath' or
+	// verify that 'tryfiles' 'web' cannot be combined with 'defaultpath' or
 	// 'disabledefaultpath'
-	req = buildRequest(url.Values{"dirresmode": []string{skymodules.DirResModeWeb}, "defaultpath": []string{"/index.html"}}, http.Header{})
+	req = buildRequest(url.Values{"tryfiles": []string{"index.html"}, "defaultpath": []string{"index.html"}}, http.Header{})
 	_, params, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
-	if err == nil || !errors.Contains(err, skymodules.ErrInvalidDirectoryResolution) {
-		t.Fatalf("Expected error '%s', got %s", skymodules.ErrInvalidDirectoryResolution, err)
+	if err == nil {
+		t.Fatal("Unexpected")
 	}
-	req = buildRequest(url.Values{"dirresmode": []string{skymodules.DirResModeWeb}, "disabledefaultpath": []string{"true"}}, http.Header{})
+	req = buildRequest(url.Values{"tryfiles": []string{"index.html"}, "disabledefaultpath": trueStr}, http.Header{})
 	_, params, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
-	if err == nil || !errors.Contains(err, skymodules.ErrInvalidDirectoryResolution) {
-		t.Fatalf("Expected error '%s', got %s", skymodules.ErrInvalidDirectoryResolution, err)
+	if err == nil {
+		t.Fatal("Unexpected")
 	}
 
 	// verify 'dryrun'

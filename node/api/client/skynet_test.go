@@ -64,9 +64,8 @@ func TestUrlValuesFromSkynetUploadParams(t *testing.T) {
 		"filename",
 		"defaultpath",
 		"disabledefaultpath",
-		"dirresmode",
-		"dirresnotfound",
-		"dirresnotfoundcode",
+		"tryfiles",
+		"errorpages",
 		"monetization",
 	}) {
 		t.Fatal("unexpected")
@@ -125,9 +124,8 @@ func TestUrlValuesFromSkynetUploadParams(t *testing.T) {
 		"mode",
 		"defaultpath",
 		"disabledefaultpath",
-		"dirresmode",
-		"dirresnotfound",
-		"dirresnotfoundcode",
+		"tryfiles",
+		"errorpages",
 		"monetization",
 		"skykeyname",
 		"skykeyid",

@@ -463,7 +463,7 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 
 	tryFiles := strings.Split(queryForm.Get("tryfiles"), ",")
 	if (defaultPath != "" || disableDefaultPath) && len(tryFiles) > 0 {
-		return nil, nil, errors.AddContext(skymodules.ErrInvalidDirectoryResolution, "defaultpath and disabledefaultpath are not compatible with tryfiles")
+		return nil, nil, errors.New("defaultpath and disabledefaultpath are not compatible with tryfiles")
 	}
 
 	errPages, err := ParseErrorPages(queryForm.Get("errorpages"))
@@ -787,32 +787,26 @@ func attachRegistryEntryProof(w http.ResponseWriter, srvs []skymodules.RegistryE
 // pairs into a map[int]string.
 // TODO unit test
 func ParseErrorPages(s string) (map[int]string, error) {
-	errPages := map[int]string{}
-	lines := strings.Split(s, ",")
-	for _, l := range lines {
-		pair := strings.Split(l, ":")
-		if len(pair) != 2 {
-			return nil, errors.New(fmt.Sprintf("invalid errorPages value - not a list of pairs. offending pair: '%s'", pair))
-		}
-		code, err := strconv.Atoi(pair[0])
-		if err != nil {
-			return nil, errors.New(fmt.Sprintf("invalid errorPages value - error code is not a number. offending pair: '%s'", pair))
-		}
-		errPages[code] = pair[1]
+	if len(s) == 0 {
+		return map[int]string{}, nil
 	}
-	return errPages, nil
+	errPages := &map[int]string{}
+	err := json.Unmarshal([]byte(s), errPages)
+	if err != nil {
+		return nil, errors.AddContext(err, "invalid errorpages value")
+	}
+	return *errPages, nil
 }
 
 // EncodeErrorPages encodes a map of errorpages into a string.
 // TODO unit test
-func EncodeErrorPages(m map[int]string) string {
-	var sb strings.Builder
-	for k, v := range m {
-		sb.WriteString(fmt.Sprintf("%d:%s,", k, v))
+func EncodeErrorPages(m map[int]string) (string, error) {
+	if m == nil {
+		return "{}", nil
 	}
-	if sb.Len() == 0 {
-		return ""
+	b, err := json.Marshal(m)
+	if err != nil {
+		return "{}", err
 	}
-	// drop the last separation comma before returning
-	return sb.String()[:sb.Len()-1]
+	return string(b), nil
 }

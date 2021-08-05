@@ -391,7 +391,7 @@ func initCmds() *cobra.Command {
 	skynetUploadCmd.Flags().BoolVarP(&skynetUploadSeparately, "separately", "", false, "Upload each file separately, generating individual skylinks")
 	skynetUploadCmd.Flags().StringVar(&skynetUploadDefaultPath, "defaultpath", "", "Specify the file to serve when no specific file is specified.")
 	skynetUploadCmd.Flags().BoolVarP(&skynetUploadDisableDefaultPath, "disabledefaultpath", "", false, "This skyfile will not have a default path. The only way to use it is to download it. Mutually exclusive with --defaultpath")
-	skynetUploadCmd.Flags().StringVar(&skynetUploadErrorPages, "errorpages", "", "Specify a comma-separated list of `errorcode:filename` pairs which overrides the content served with the given error code. ")
+	skynetUploadCmd.Flags().StringVar(&skynetUploadErrorPages, "errorpages", "{}", "Specify a comma-separated list of `errorcode:filename` pairs which overrides the content served with the given error code. ")
 	skynetUploadCmd.Flags().BoolVarP(&skynetUploadSilent, "silent", "", false, "Don't report progress while uploading")
 	skynetUploadCmd.Flags().StringVar(&skynetUploadTryFiles, "tryfiles", "", "Specify an ordered, comma-separated list of files to be served if the requested file is not found.")
 	skynetUploadCmd.Flags().StringVar(&skykeyID, "skykeyid", "", "Specify the skykey to be used by its key identifier.")

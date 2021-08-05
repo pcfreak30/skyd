@@ -211,9 +211,6 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 			}},
 		DefaultPath:        "",
 		DisableDefaultPath: false,
-		DirResMode:         skymodules.DirResModeStandard,
-		DirResNotFound:     "",
-		DirResNotFoundCode: http.StatusNotFound,
 	}
 
 	_, md, err := r.SkynetMetadataGet(skylink)
@@ -267,9 +264,6 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 			}},
 		DefaultPath:        "/about.html",
 		DisableDefaultPath: false,
-		DirResMode:         skymodules.DirResModeStandard,
-		DirResNotFound:     "",
-		DirResNotFoundCode: http.StatusNotFound,
 	}
 
 	testName = "BasicDirAboutDefaultEmpty"
@@ -314,9 +308,6 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 		},
 		DefaultPath:        "",
 		DisableDefaultPath: true,
-		DirResMode:         skymodules.DirResModeStandard,
-		DirResNotFound:     "",
-		DirResNotFoundCode: http.StatusNotFound,
 	}
 
 	// verify downloads
@@ -389,9 +380,6 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 		},
 		DefaultPath:        "",
 		DisableDefaultPath: false,
-		DirResMode:         skymodules.DirResModeStandard,
-		DirResNotFound:     "",
-		DirResNotFoundCode: http.StatusNotFound,
 	}
 
 	testName := "NestedDirIndexDefaultPathIndex"

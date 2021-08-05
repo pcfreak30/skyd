@@ -763,7 +763,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	//
 	// Define test func
 	testSmallFunc := func(files []siatest.TestFile, fileName, skykeyName string) {
-		skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(fileName, files, "", false, []string{"index.html"}, nil, false, nil, skykeyName, skykey.SkykeyID{})
+		skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(fileName, files, "", false, []string{}, nil, false, nil, skykeyName, skykey.SkykeyID{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -804,7 +804,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 		}
 		if !reflect.DeepEqual(expected, fileMetadata) {
 			t.Log("Expected:", expected)
-			t.Log("Actual:", fileMetadata)
+			t.Log("Actual:  ", fileMetadata)
 			t.Fatal("Metadata mismatch")
 		}
 
@@ -826,7 +826,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	testSmallFunc(files, fileName, "")
 
 	// Test Encryption
-	fileName = "TestFolderUpload_Encrtyped"
+	fileName = "TestFolderUpload_Encrypted"
 	testSmallFunc(files, fileName, sk.Name)
 
 	// LARGE SUBFILES
@@ -4456,7 +4456,7 @@ func TestSkynetCleanupOnError(t *testing.T) {
 	// Upload a small file
 	_, small, _, err := r.UploadNewSkyfileBlocking("smallfile", 100, false)
 	if !uploadFailed(err) {
-		t.Fatal("unexpected")
+		t.Fatal("unexpected error on uploading a small file", err)
 	}
 	smallPath, err := skymodules.SkynetFolder.Join(small.SiaPath.String())
 	if err != nil {
@@ -4464,21 +4464,21 @@ func TestSkynetCleanupOnError(t *testing.T) {
 	}
 	_, err = r.RenterFileRootGet(smallPath)
 	if !skyfileDeleted(smallPath) {
-		t.Fatal("unexpected")
+		t.Fatal("unexpected error on getting root for a small file", err)
 	}
 
 	// Upload a large file
 	ss := modules.SectorSize
 	_, large, _, err := r.UploadNewSkyfileBlocking("largefile", ss*2, false)
 	if !uploadFailed(err) {
-		t.Fatal("unexpected")
+		t.Fatal("unexpected error on uploading a large file", err)
 	}
 	largePath, err := skymodules.SkynetFolder.Join(large.SiaPath.String())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !skyfileDeleted(largePath) {
-		t.Fatal("unexpected")
+		t.Fatal("unexpected error on deleting a large file", err)
 	}
 
 	largePathExtended, err := largePath.AddSuffixStr(skymodules.ExtendedSuffix)
@@ -4486,7 +4486,7 @@ func TestSkynetCleanupOnError(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !skyfileDeleted(largePathExtended) {
-		t.Fatal("unexpected")
+		t.Fatal("unexpected error on deleting a large file extended", err)
 	}
 
 	// Disable the dependency and verify the files are not removed
@@ -4495,22 +4495,22 @@ func TestSkynetCleanupOnError(t *testing.T) {
 	// Re-upload the small file and re-test
 	_, small, _, err = r.UploadNewSkyfileBlocking("smallfile", 100, true)
 	if uploadFailed(err) {
-		t.Fatal("unexpected")
+		t.Fatal("unexpected error on reuploading a small file", err)
 	}
 	if skyfileDeleted(smallPath) {
-		t.Fatal("unexpected")
+		t.Fatal("unexpected error on deleting a reuploaded small file", err)
 	}
 
 	// Re-upload the large file and re-test
 	_, large, _, err = r.UploadNewSkyfileBlocking("largefile", ss*2, true)
 	if uploadFailed(err) {
-		t.Fatal("unexpected")
+		t.Fatal("unexpected error on reuploading a large file", err)
 	}
 	if skyfileDeleted(largePath) {
-		t.Fatal("unexpected")
+		t.Fatal("unexpected error on deleting a reuploaded large file", err)
 	}
 	if skyfileDeleted(largePathExtended) {
-		t.Fatal("unexpected")
+		t.Fatal("unexpected error on deleting reuploaded larde file extended", err)
 	}
 }
 
