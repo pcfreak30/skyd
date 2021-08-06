@@ -387,6 +387,13 @@ func (tn *TestNode) StartNode() error {
 	if !tn.params.CreateWallet && tn.params.Wallet == nil {
 		return nil
 	}
+	// After a restart we need to reannounce the host to make sure the other
+	// peers know about the changed siamux and host ports.
+	if !tn.params.SkipHostAnnouncement && (tn.params.CreateHost || tn.params.Host != nil) {
+		if err := tn.HostAnnouncePost(); err != nil {
+			return err
+		}
+	}
 	return tn.WalletUnlockPost(tn.primarySeed)
 }
 
