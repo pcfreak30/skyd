@@ -1400,7 +1400,7 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 	// Get the offset and fetchsize from the skylink
 	offset, fetchSize, err := sl.OffsetAndFetchSize()
 	if err != nil {
-		return skymodules.SkylinkHealth{}, errors.AddContext(err, "unable to parse skylink")
+		return skymodules.SkylinkHealth{}, errors.AddContext(err, "unable to parse offset and fetchsize from skylink")
 	}
 
 	// Get base sector.
@@ -1527,7 +1527,7 @@ LOOP:
 		}
 	}
 	return skymodules.SkylinkHealth{
-		BaseSectorRedundancy: baseSectorRedundancy,
-		FanoutHealth:         1.00 - worstHealth,
+		BaseSectorRedundancy:   baseSectorRedundancy,
+		FanoutHealthPercentage: skymodules.HealthPercentage(worstHealth),
 	}, nil
 }

@@ -5485,14 +5485,11 @@ func TestSkynetSkylinkHealth(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-
-		// The redundancy of the base sector should be 2 and the fanout should
-		// be
 		if sh.BaseSectorRedundancy != baseSectorRedundancy {
-			return fmt.Errorf("wrong base sector redundancy %v != %v", sh.BaseSectorRedundancy, 2)
+			return fmt.Errorf("wrong base sector redundancy %v != %v", sh.BaseSectorRedundancy, baseSectorRedundancy)
 		}
-		if sh.FanoutHealth != fanoutHealth {
-			return fmt.Errorf("fanout not healthy %v != %v", sh.FanoutHealth, 1)
+		if sh.FanoutHealthPercentage != fanoutHealth {
+			return fmt.Errorf("fanout not healthy %v != %v", sh.FanoutHealthPercentage, fanoutHealth)
 		}
 		return nil
 	}
@@ -5506,7 +5503,7 @@ func TestSkynetSkylinkHealth(t *testing.T) {
 
 	// Assert its health.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		return assertHealth(skylink, 2, 1.0)
+		return assertHealth(skylink, siatest.DefaulTestingBaseChunkRedundancy, 1.0)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -5518,13 +5515,14 @@ func TestSkynetSkylinkHealth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	skylink2, _, _, err := r.UploadSkyfileBlockingCustom(t.Name()+"2", fastrand.Bytes(int(size)), "key", 5, false, nil)
+	skylink2BaseSectorRedundancy := uint64(5)
+	skylink2, _, _, err := r.UploadSkyfileBlockingCustom(t.Name()+"2", fastrand.Bytes(int(size)), "key", uint8(skylink2BaseSectorRedundancy), false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Assert its health.
-	err = assertHealth(skylink2, 5, 1.0)
+	err = assertHealth(skylink2, skylink2BaseSectorRedundancy, 1.0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5539,14 +5537,14 @@ func TestSkynetSkylinkHealth(t *testing.T) {
 	// The first file should either have a base sector redundancy of 1 or 2
 	// depending on whether the host we took offline had a piece. 1 of the
 	// fanout pieces is missing so the health is 75%.
-	err1 := assertHealth(skylink, 1, 0.75)
-	err2 := assertHealth(skylink, 2, 0.75)
+	err1 := assertHealth(skylink, siatest.DefaulTestingBaseChunkRedundancy-1, 0.75)
+	err2 := assertHealth(skylink, siatest.DefaulTestingBaseChunkRedundancy, 0.75)
 	if err1 != nil && err2 != nil {
 		t.Fatal(errors.Compose(err1, err2))
 	}
 	// The second file should have a base sector redundancy of 4. 1 of the
 	// fanout pieces is missing so the health is 75%.
-	err = assertHealth(skylink2, 4, 0.75)
+	err = assertHealth(skylink2, skylink2BaseSectorRedundancy-1, 0.75)
 	if err != nil {
 		t.Fatal(err)
 	}
