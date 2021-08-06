@@ -444,7 +444,7 @@ func validateErrorPages(ep map[int]string, subfiles SkyfileSubfiles) error {
 		if !strings.HasPrefix(fname, "/") {
 			return errors.New("all errorpages need to have absolute paths")
 		}
-		_, exists := subfiles[fname]
+		_, exists := subfiles[strings.TrimPrefix(fname, "/")]
 		if !exists {
 			return errors.New("all errorpage files must exist")
 		}

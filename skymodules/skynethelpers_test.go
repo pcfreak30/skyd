@@ -190,6 +190,9 @@ func testValidateSkyfileMetadata(t *testing.T) {
 
 	// verify that tryfiles + defaultpath is an invalid combination
 	invalid = metadata
+	metadata.Subfiles["index.html"] = SkyfileSubfileMetadata{
+		Filename: "index.html",
+	}
 	invalid.DefaultPath = "index.html"
 	invalid.TryFiles = []string{"index.html"}
 	err = ValidateSkyfileMetadata(invalid)
