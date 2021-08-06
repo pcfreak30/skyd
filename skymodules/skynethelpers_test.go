@@ -439,7 +439,7 @@ func TestValidateErrorPages(t *testing.T) {
 
 	// test a valid setup
 	ep = map[int]string{404: "/404.html"}
-	sub := SkyfileSubfiles{"/404.html": SkyfileSubfileMetadata{}}
+	sub := SkyfileSubfiles{"404.html": SkyfileSubfileMetadata{}}
 	err = validateErrorPages(ep, sub)
 	if err != nil {
 		t.Fatal("Unexpected error", err)

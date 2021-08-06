@@ -64,8 +64,6 @@ func TestUrlValuesFromSkynetUploadParams(t *testing.T) {
 		"filename",
 		"defaultpath",
 		"disabledefaultpath",
-		"tryfiles",
-		"errorpages",
 		"monetization",
 	}) {
 		t.Fatal("unexpected")
