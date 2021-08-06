@@ -1,7 +1,6 @@
 package siatest
 
 import (
-	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -172,6 +171,21 @@ func newCleanNode(nodeParams node.NodeParams, asyncSync bool) (*TestNode, error)
 	}
 	if err = tn.initRootDirs(); err != nil {
 		return nil, errors.AddContext(err, "failed to create root directories")
+	}
+
+	// Remember the RPC address.
+	tn.params.RPCAddress = string(tn.GatewayAddress())
+
+	// Check if the node is a host. If it is, we remember its siamux
+	// address.
+	if nodeParams.CreateHost || nodeParams.Host != nil {
+		hg, err := tn.HostGet()
+		if err != nil {
+			return nil, err
+		}
+		es := hg.ExternalSettings
+		tn.params.HostAddress = string(es.NetAddress)
+		tn.params.SiaMuxTCPAddress = es.SiaMuxAddress()
 	}
 
 	// If there is no wallet we are done.
@@ -378,16 +392,6 @@ func (tn *TestNode) SiaPath(path string) skymodules.SiaPath {
 
 // StartNode starts a TestNode from an active group
 func (tn *TestNode) StartNode() error {
-	// Use the same
-	if tn.params.CreateHost || tn.params.Host != nil {
-		es := tn.params.Host.ExternalSettings()
-		tn.params.HostAddress = string(es.NetAddress)
-		tn.params.SiaMuxTCPAddress = es.SiaMuxAddress()
-		fmt.Println("hostaddress", tn.params.HostAddress)
-		fmt.Println("siamux", tn.params.HostAddress)
-	}
-	tn.params.RPCAddress = string(tn.GatewayAddress())
-
 	// Create server
 	s, err := server.New(tn.Client.Address, tn.UserAgent, tn.Password, tn.params, time.Now())
 	if err != nil {
