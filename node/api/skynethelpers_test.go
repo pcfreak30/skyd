@@ -430,7 +430,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 	}
 	req = buildRequest(url.Values{"tryfiles": []string{"index.html"}}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
-	if len(params.tryFiles) == 1 && params.tryFiles[0] == "index.html" {
+	if len(params.tryFiles) != 1 || params.tryFiles[0] != "index.html" {
 		t.Fatal("Unexpected")
 	}
 

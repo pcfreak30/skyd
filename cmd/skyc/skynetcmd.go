@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -910,6 +911,12 @@ func skynetUploadDirectory(sourcePath, destSiaPath string) {
 		fmt.Println("Illegal combination of parameters: --tryfiles is not compatible with --defaultpath and --disabledefaultpath.")
 		die()
 	}
+	var tryfiles []string
+	err = json.Unmarshal([]byte(skynetUploadTryFiles), &tryfiles)
+	if err != nil {
+		fmt.Println("Failed to parse tryfiles.")
+		die(err)
+	}
 	errPages, err := api.ParseErrorPages(skynetUploadErrorPages)
 	if err != nil {
 		die(err)
@@ -959,7 +966,7 @@ func skynetUploadDirectory(sourcePath, destSiaPath string) {
 		Filename:            skyfilePath.Name(),
 		DefaultPath:         skynetUploadDefaultPath,
 		DisableDefaultPath:  skynetUploadDisableDefaultPath,
-		TryFiles:            strings.Split(skynetUploadTryFiles, ","),
+		TryFiles:            tryfiles,
 		ErrorPages:          errPages,
 		ContentType:         writer.FormDataContentType(),
 	}

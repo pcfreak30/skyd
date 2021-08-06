@@ -211,6 +211,7 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 			}},
 		DefaultPath:        "",
 		DisableDefaultPath: false,
+		TryFiles:           []string{"index.html"},
 	}
 
 	_, md, err := r.SkynetMetadataGet(skylink)
@@ -380,6 +381,7 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 		},
 		DefaultPath:        "",
 		DisableDefaultPath: false,
+		TryFiles:           []string{"index.html"},
 	}
 
 	testName := "NestedDirIndexDefaultPathIndex"
@@ -896,10 +898,8 @@ func verifyDownloadRaw(t *testing.T, r *siatest.TestNode, skylink string, expect
 	}
 	if !bytes.Equal(data, expectedData) {
 		t.Log("Test:", testName)
-		t.Log("expected data: ")
-		siatest.PrintJSON(expectedData)
-		t.Log("actual   data: ")
-		siatest.PrintJSON(data)
+		t.Log("expected data: ", siatest.PrintJSON(expectedData))
+		t.Log("actual   data: ", siatest.PrintJSON(data))
 		return errors.New("Unexpected data")
 	}
 	return nil

@@ -461,7 +461,11 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		}
 	}
 
-	tryFiles := strings.Split(queryForm.Get("tryfiles"), ",")
+	tryFiles, err := ParseTryFiles(queryForm.Get("tryfiles"))
+	if err != nil {
+		return nil, nil, errors.AddContext(err, "unable to parse 'tryfiles' parameter")
+	}
+
 	if (defaultPath != "" || disableDefaultPath) && len(tryFiles) > 0 {
 		return nil, nil, errors.New("defaultpath and disabledefaultpath are not compatible with tryfiles")
 	}
@@ -783,8 +787,7 @@ func attachRegistryEntryProof(w http.ResponseWriter, srvs []skymodules.RegistryE
 	return nil
 }
 
-// ParseErrorPages transforms a comma-separated list of `errorcode:errorpage`
-// pairs into a map[int]string.
+// ParseErrorPages unmarshals an errorpages string into an map[int]string.
 // TODO unit test
 func ParseErrorPages(s string) (map[int]string, error) {
 	if len(s) == 0 {
@@ -798,15 +801,16 @@ func ParseErrorPages(s string) (map[int]string, error) {
 	return *errPages, nil
 }
 
-// EncodeErrorPages encodes a map of errorpages into a string.
+// ParseTryFiles unmarshals a tryfiles string.
 // TODO unit test
-func EncodeErrorPages(m map[int]string) (string, error) {
-	if m == nil {
-		return "{}", nil
+func ParseTryFiles(s string) ([]string, error) {
+	if len(s) == 0 {
+		return []string{}, nil
 	}
-	b, err := json.Marshal(m)
+	var tf []string
+	err := json.Unmarshal([]byte(s), &tf)
 	if err != nil {
-		return "{}", err
+		return nil, errors.AddContext(err, "invalid tryfiles value")
 	}
-	return string(b), nil
+	return tf, nil
 }

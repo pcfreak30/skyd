@@ -516,7 +516,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		WriteError(w, Error{"unable to attach proof: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
-
 	// Validate Metadata
 	metadata := streamer.Metadata()
 	// TODO This is probably an overkill, right?
@@ -535,7 +534,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// with incorrect metadata, which is possible seeing as it may have been
 	// uploaded by a private portal.
 	if format == skymodules.SkyfileFormatNotSpecified {
-
 		if metadata.DefaultPath != "" && metadata.DisableDefaultPath {
 			WriteError(w, Error{"invalid defaultpath state - both defaultpath and disabledefaultpath are set, please specify a format"}, http.StatusBadRequest)
 			return
@@ -544,11 +542,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{"invalid metadata - tryfiles set together with defaultpath or disabledefaultpath, please specify a format"}, http.StatusBadRequest)
 			return
 		}
-		if path == "/" && strings.Count(metadata.DefaultPath, "/") > 1 && len(metadata.Subfiles) > 1 {
-			WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s) which refers to a non-root file, please specify a format", metadata.DefaultPath)}, http.StatusBadRequest)
-			return
-		}
-
 		defaultPath := metadata.DefaultPath
 		if defaultPath == "" && !metadata.DisableDefaultPath {
 			if len(metadata.Subfiles) == 1 {
@@ -568,7 +561,10 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 				}
 			}
 		}
-
+		if path == "/" && strings.Count(metadata.DefaultPath, "/") > 1 && len(metadata.Subfiles) > 1 {
+			WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s) which refers to a non-root file, please specify a format", metadata.DefaultPath)}, http.StatusBadRequest)
+			return
+		}
 		// If we don't have a subPath and the skylink doesn't end with a
 		// trailing slash we need to redirect in order to add the trailing
 		// slash. This is only true for skapps - they need it in order to
@@ -583,37 +579,42 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			w.WriteHeader(http.StatusTemporaryRedirect)
 			return
 		}
-
+		// If there's a single subfile in the skyfile we want to serve it.
+		if path == "/" && len(metadata.Subfiles) == 1 {
+			for filename := range metadata.Subfiles {
+				path = skymodules.EnsurePrefix(filename, "/")
+				break
+			}
+		}
 		// If we need to serve a path, different from the requested one, we'll
 		// decide that now.
 		if len(metadata.TryFiles) > 0 {
 			// TODO Move this to a helper.
 			files := metadata.Subfiles
-			file := strings.TrimSuffix(skymodules.EnsurePrefix(path, "/"), "/")
+			file := strings.Trim(path, "/")
 			if !subfilesContains(files, file) {
 				// We'll check all tryfiles from last to first.
 				for i := len(metadata.TryFiles) - 1; i >= 0; i-- {
 					tf := metadata.TryFiles[i]
 					// If we encounter an absolute-path tryfile, and it exists,
 					// we stop searching.
-					if strings.HasPrefix(tf, "/") && subfilesContains(files, tf) {
+					if strings.HasPrefix(tf, "/") && subfilesContains(files, strings.Trim(tf, "/")) {
 						path = tf
 						break
 					}
 					// Assume the request is for a directory and check if a
 					// tryfile matches.
-					potentialFilename := file + skymodules.EnsurePrefix(tf, "/")
+					potentialFilename := strings.Trim(strings.TrimSuffix(file, "/")+skymodules.EnsurePrefix(tf, "/"), "/")
 					if subfilesContains(files, potentialFilename) {
-						path = potentialFilename
+						path = skymodules.EnsurePrefix(potentialFilename, "/")
 						break
 					}
 				}
 			}
 		} else if defaultPath != "" && path == "/" {
-
-			_, exists := metadata.Subfiles[DefaultSkynetDefaultPath]
+			_, exists := metadata.Subfiles[strings.TrimPrefix(defaultPath, "/")]
 			if exists {
-				path = skymodules.EnsurePrefix(DefaultSkynetDefaultPath, "/")
+				path = skymodules.EnsurePrefix(defaultPath, "/")
 			}
 		}
 	}
@@ -621,7 +622,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// TODO Make sure we set tryfiles to "index.html" when not set (on upload).
 
 	var isSubfile bool
-
 	// Serve the contents of the skyfile at path if one is set
 	if path != "/" {
 		metadataForPath, isFile, offset, size := metadata.ForPath(path)

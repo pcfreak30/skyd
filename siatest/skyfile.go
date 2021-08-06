@@ -189,7 +189,11 @@ func (tn *TestNode) UploadNewSkyfileBlocking(filename string, filesize uint64, f
 // skylink, the parameters used for the upload and potentially an error.
 // The `files` argument is a map of filepath->fileContent.
 func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files []TestFile, defaultPath string, disableDefaultPath bool, force bool) (skylink string, sup skymodules.SkyfileMultipartUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
-	return tn.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, defaultPath, disableDefaultPath, []string{"index.html"}, nil, force, nil, "", skykey.SkykeyID{})
+	var tf []string
+	if defaultPath == "" && disableDefaultPath == false {
+		tf = []string{"index.html"}
+	}
+	return tn.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, defaultPath, disableDefaultPath, tf, nil, force, nil, "", skykey.SkykeyID{})
 }
 
 // UploadNewMultipartSkyfileMonetizedBlocking uploads a multipart skyfile that
@@ -198,7 +202,11 @@ func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files []T
 // skylink, the parameters used for the upload and potentially an error. The
 // `files` argument is a map of filepath->fileContent.
 func (tn *TestNode) UploadNewMultipartSkyfileMonetizedBlocking(filename string, files []TestFile, defaultPath string, disableDefaultPath bool, force bool, monetization *skymodules.Monetization) (skylink string, sup skymodules.SkyfileMultipartUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
-	return tn.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, defaultPath, disableDefaultPath, []string{"index.html"}, nil, force, monetization, "", skykey.SkykeyID{})
+	var tf []string
+	if defaultPath == "" && disableDefaultPath == false {
+		tf = []string{"index.html"}
+	}
+	return tn.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, defaultPath, disableDefaultPath, tf, nil, force, monetization, "", skykey.SkykeyID{})
 }
 
 // UploadNewMultipartSkyfileEncryptedBlocking uploads a multipart skyfile that

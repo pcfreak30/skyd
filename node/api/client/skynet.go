@@ -1055,12 +1055,20 @@ func urlValuesFromSkyfileMultipartUploadParameters(sup skymodules.SkyfileMultipa
 	values.Set("defaultpath", sup.DefaultPath)
 	values.Set("disabledefaultpath", strconv.FormatBool(sup.DisableDefaultPath))
 
-	values.Set("tryfiles", strings.Join(sup.TryFiles, ","))
-	ep, err := api.EncodeErrorPages(sup.ErrorPages)
-	if err!=nil{
-		return nil, errors.AddContext(err, "failed to encode errorpages")
+	if len(sup.TryFiles) > 0 {
+		b, err := json.Marshal(sup.TryFiles)
+		if err != nil {
+			return url.Values{}, err
+		}
+		values.Set("tryfiles", string(b))
 	}
-	values.Set("errorpages", ep)
+	if len(sup.ErrorPages) > 0 {
+		b, err := json.Marshal(sup.ErrorPages)
+		if err != nil {
+			return url.Values{}, err
+		}
+		values.Set("errorpages", string(b))
+	}
 
 	return values, nil
 }
