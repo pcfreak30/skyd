@@ -893,7 +893,9 @@ func (sf *SiaFile) setAllStuck(stuck bool) (err error) {
 
 	// If the file is unfinished then do not set the chunks as stuck
 	if !sf.staticMetadata.Finished && stuck {
-		return errors.AddContext(ErrUnfinished, "cannot set an unfinished file as stuck")
+		err = errors.AddContext(ErrUnfinished, "cannot set an unfinished file as stuck")
+		build.Critical(err)
+		return err
 	}
 
 	// Backup metadata before doing any kind of persistence.
@@ -1382,6 +1384,28 @@ func (sf *SiaFile) removeLastChunk() (err error) {
 	return sf.createAndApplyTransaction(update)
 }
 
+// SetFinished sets the file's Finished field in the metadata
+func (sf *SiaFile) SetFinished(health float64) (err error) {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	// Backup metadata before doing any kind of persistence.
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+		}
+	}(sf.staticMetadata.backup())
+
+	// Update the metadata
+	sf.setFinished(health)
+
+	// Save the metadata updates
+	updates, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(updates...)
+}
+
 // setFinished sets the file's Finished field in the metadata
 func (sf *SiaFile) setFinished(health float64) {
 	// Once a file is finished if cannot be unfinished.
@@ -1400,7 +1424,9 @@ func (sf *SiaFile) setStuck(index uint64, stuck bool) (err error) {
 	}
 	// A file can only be marked as stuck if the file has previously finished
 	if !sf.staticMetadata.Finished && stuck {
-		return errors.AddContext(ErrUnfinished, "cannot set an unfinished file as stuck")
+		err = errors.AddContext(ErrUnfinished, "cannot set an unfinished file as stuck")
+		build.Critical(err)
+		return err
 	}
 
 	//  Get chunk.

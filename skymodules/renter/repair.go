@@ -227,14 +227,15 @@ func (r *Renter) managedStuckDirectory() (skymodules.SiaPath, error) {
 			}
 
 			// Skip directories with no stuck chunks and no unfinished files
-
 			subTotal := directories[i].AggregateNumStuckChunks + directories[i].AggregateNumUnfinishedFiles
 			if subTotal == 0 {
 				continue
 			}
 
+			// Decrement rand and update siaPath
 			rand = rand - int(subTotal)
 			siaPath = directories[i].SiaPath
+
 			// If rand is less than 0 break out of the loop and continue into
 			// that directory
 			if rand < 0 {
@@ -366,8 +367,8 @@ func (r *Renter) managedSubDirectories(siaPath skymodules.SiaPath) ([]skymodules
 
 // threadedStuckFileLoop works through the renter directory and finds the stuck
 // and unfinished chunks and tries to repair them. The reason stuck and
-// unfinished chunks are handled by a separate loop is to not negatively the
-// repair of good chunks with chunks that may or may not have a successful
+// unfinished chunks are handled by a separate loop is to not negatively impact
+// the repair of good chunks with chunks that may or may not have a successful
 // repair.
 func (r *Renter) threadedStuckFileLoop() {
 	err := r.tg.Add()
