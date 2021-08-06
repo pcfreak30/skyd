@@ -1,8 +1,10 @@
 package renter
 
 import (
+	"sync"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -28,6 +30,11 @@ type (
 		staticLength       uint64
 		staticResponseChan chan *jobReadResponse
 
+		// staticSpan is used for tracing. Note that this can be nil, and
+		// therefore should always be checked. Not all read jobs require
+		// tracing. By allowing it to be nil we avoid the extra overhead.
+		staticSpan opentracing.Span
+
 		*jobGeneric
 	}
 
@@ -35,6 +42,13 @@ type (
 	// worker. The queue also tracks performance metrics, which can then be used
 	// by projects to optimize job scheduling between workers.
 	jobReadQueue struct {
+		staticStats *jobReadStats
+		*jobGenericQueue
+	}
+
+	// jobReadStats contains statistics about read jobs. This object is
+	// thread safe and can be shared between multiple queues.
+	jobReadStats struct {
 		// These float64s are converted time.Duration values. They are float64
 		// to get better precision on the exponential decay which gets applied
 		// with each new data point.
@@ -42,7 +56,7 @@ type (
 		weightedJobTime1m  float64
 		weightedJobTime4m  float64
 
-		*jobGenericQueue
+		mu sync.Mutex
 	}
 
 	// jobReadResponse contains the result of a Read query.
@@ -86,6 +100,13 @@ func (j *jobRead) staticJobReadMetadata() jobReadMetadata {
 
 // callDiscard will discard a job, forwarding the error to the caller.
 func (j *jobRead) callDiscard(err error) {
+	// Log info and finish span.
+	if j.staticSpan != nil {
+		j.staticSpan.LogKV("callDiscard", err)
+		j.staticSpan.SetTag("success", false)
+		j.staticSpan.Finish()
+	}
+
 	w := j.staticQueue.staticWorker()
 	errLaunch := w.staticRenter.tg.Launch(func() {
 		response := &jobReadResponse{
@@ -107,6 +128,16 @@ func (j *jobRead) callDiscard(err error) {
 // after execution. It updates the performance metrics, records whether the
 // execution was successful and returns the response.
 func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTime time.Duration) {
+	// Log result and finish
+	if j.staticSpan != nil {
+		j.staticSpan.LogKV(
+			"err", readErr,
+			"duration", readJobTime,
+		)
+		j.staticSpan.SetTag("success", readErr == nil)
+		j.staticSpan.Finish()
+	}
+
 	// Send the response in a goroutine so that the worker resources can be
 	// released faster. Need to check if the job was canceled so that the
 	// goroutine will exit.
@@ -143,7 +174,7 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 	// result in an error. Because there was no failure, the consecutive
 	// failures stat can be reset.
 	jq := j.staticQueue.(*jobReadQueue)
-	jq.callUpdateJobTimeMetrics(j.staticLength, readJobTime)
+	jq.staticStats.callUpdateJobTimeMetrics(j.staticLength, readJobTime)
 }
 
 // callExpectedBandwidth returns the bandwidth that gets consumed by a
@@ -194,10 +225,11 @@ func (j *jobRead) managedRead(w *worker, program modules.Program, programData []
 // callAddWithEstimate will add a job to the job read queue while providing an
 // estimate for when the job is expected to return.
 func (jq *jobReadQueue) callAddWithEstimate(j *jobReadSector) (time.Time, bool) {
+	estimate := jq.staticStats.callExpectedJobTime(j.staticLength)
+
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 
-	estimate := jq.expectedJobTime(j.staticLength)
 	if !jq.add(j) {
 		return time.Time{}, false
 	}
@@ -214,21 +246,21 @@ func (jq *jobReadQueue) callAddWithEstimate(j *jobReadSector) (time.Time, bool) 
 // three categories.
 //
 // TODO: Make this smarter.
-func (jq *jobReadQueue) callExpectedJobTime(length uint64) time.Duration {
-	jq.mu.Lock()
-	defer jq.mu.Unlock()
-	return jq.expectedJobTime(length)
+func (jrs *jobReadStats) callExpectedJobTime(length uint64) time.Duration {
+	jrs.mu.Lock()
+	defer jrs.mu.Unlock()
+	return jrs.expectedJobTime(length)
 }
 
 // expectedJobTime returns the expected job time, based on recent performance,
 // for the given read length.
-func (jq *jobReadQueue) expectedJobTime(length uint64) time.Duration {
+func (jrs *jobReadStats) expectedJobTime(length uint64) time.Duration {
 	if length <= 1<<16 {
-		return time.Duration(jq.weightedJobTime64k)
+		return time.Duration(jrs.weightedJobTime64k)
 	} else if length <= 1<<20 {
-		return time.Duration(jq.weightedJobTime1m)
+		return time.Duration(jrs.weightedJobTime1m)
 	} else {
-		return time.Duration(jq.weightedJobTime4m)
+		return time.Duration(jrs.weightedJobTime4m)
 	}
 }
 
@@ -257,38 +289,40 @@ func (jq *jobReadQueue) callExpectedJobCost(length uint64) types.Currency {
 
 // callUpdateJobTimeMetrics takes a length and the duration it took to fulfil
 // that job and uses it to update the job performance metrics on the queue.
-func (jq *jobReadQueue) callUpdateJobTimeMetrics(length uint64, jobTime time.Duration) {
-	jq.mu.Lock()
-	defer jq.mu.Unlock()
+func (jrs *jobReadStats) callUpdateJobTimeMetrics(length uint64, jobTime time.Duration) {
+	jrs.mu.Lock()
+	defer jrs.mu.Unlock()
 	if length <= 1<<16 {
-		jq.weightedJobTime64k = expMovingAvgHotStart(jq.weightedJobTime64k, float64(jobTime), jobReadPerformanceDecay)
+		jrs.weightedJobTime64k = expMovingAvgHotStart(jrs.weightedJobTime64k, float64(jobTime), jobReadPerformanceDecay)
 	} else if length <= 1<<20 {
-		jq.weightedJobTime1m = expMovingAvgHotStart(jq.weightedJobTime1m, float64(jobTime), jobReadPerformanceDecay)
+		jrs.weightedJobTime1m = expMovingAvgHotStart(jrs.weightedJobTime1m, float64(jobTime), jobReadPerformanceDecay)
 	} else {
-		jq.weightedJobTime4m = expMovingAvgHotStart(jq.weightedJobTime4m, float64(jobTime), jobReadPerformanceDecay)
+		jrs.weightedJobTime4m = expMovingAvgHotStart(jrs.weightedJobTime4m, float64(jobTime), jobReadPerformanceDecay)
 	}
 }
 
 // initJobReadQueue will initialize a queue for downloading sectors by
 // their root for the worker. This is only meant to be run once at startup.
-func (w *worker) initJobReadQueue() {
+func (w *worker) initJobReadQueue(jrs *jobReadStats) {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobReadQueue != nil {
 		w.staticRenter.staticLog.Critical("incorret call on initJobReadQueue")
 	}
 	w.staticJobReadQueue = &jobReadQueue{
 		jobGenericQueue: newJobGenericQueue(w),
+		staticStats:     jrs,
 	}
 }
 
 // initJobLowPrioReadQueue will initialize a queue for downloading sectors by
 // their root for the worker. This is only meant to be run once at startup.
-func (w *worker) initJobLowPrioReadQueue() {
+func (w *worker) initJobLowPrioReadQueue(jrs *jobReadStats) {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobLowPrioReadQueue != nil {
 		w.staticRenter.staticLog.Critical("incorret call on initJobReadQueue")
 	}
 	w.staticJobLowPrioReadQueue = &jobReadQueue{
 		jobGenericQueue: newJobGenericQueue(w),
+		staticStats:     jrs,
 	}
 }

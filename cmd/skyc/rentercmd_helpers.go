@@ -348,7 +348,7 @@ var atomicTotalGetDirs uint64
 
 // getDir returns the directory info for the directory at siaPath and its
 // subdirs, querying the root directory.
-func getDir(siaPath skymodules.SiaPath, root, recursive bool) (dirs []directoryInfo) {
+func getDir(siaPath skymodules.SiaPath, root, recursive, verbose bool) (dirs []directoryInfo) {
 	// Query the directory
 	var rd api.RenterDirectory
 	var err error
@@ -362,9 +362,11 @@ func getDir(siaPath skymodules.SiaPath, root, recursive bool) (dirs []directoryI
 	}
 
 	// Defer print status update
-	defer func() {
-		fmt.Printf("\r%v directories queried", atomic.AddUint64(&atomicTotalGetDirs, 1))
-	}()
+	if verbose {
+		defer func() {
+			fmt.Printf("\r%v directories queried", atomic.AddUint64(&atomicTotalGetDirs, 1))
+		}()
+	}
 
 	// Split the directory and sub directory information
 	dir := rd.Directories[0]
@@ -398,7 +400,7 @@ func getDir(siaPath skymodules.SiaPath, root, recursive bool) (dirs []directoryI
 	// Define getDirWorker function
 	getDirWorkerFunc := func(root, recursive bool) {
 		for siaPath := range siaPathChan {
-			subdirs := getDir(siaPath, root, recursive)
+			subdirs := getDir(siaPath, root, recursive, verbose)
 			dirsMu.Lock()
 			dirs = append(dirs, subdirs...)
 			dirsMu.Unlock()
@@ -426,9 +428,9 @@ func getDir(siaPath skymodules.SiaPath, root, recursive bool) (dirs []directoryI
 }
 
 // getDirSorted calls getDir and then sorts the response by siapath
-func getDirSorted(siaPath skymodules.SiaPath, root, recursive bool) []directoryInfo {
+func getDirSorted(siaPath skymodules.SiaPath, root, recursive, verbose bool) []directoryInfo {
 	// Get Dirs
-	dirs := getDir(siaPath, root, recursive)
+	dirs := getDir(siaPath, root, recursive, verbose)
 
 	// Sort the directories and the files.
 	sort.Sort(byDirectoryInfo(dirs))

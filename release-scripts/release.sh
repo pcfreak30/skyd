@@ -10,19 +10,24 @@ if [[ -z $version ]]; then
 fi
 
 # setup build-time vars
-ldflags="-s -w -X 'gitlab.com/NebulousLabs/Sia/build.GitRevision=`git rev-parse --short HEAD`' -X 'gitlab.com/NebulousLabs/Sia/build.BuildTime=`git show -s --format=%ci HEAD`' -X 'gitlab.com/NebulousLabs/Sia/build.ReleaseTag=${rc}'"
+ldflags="-s -w \
+-X 'gitlab.com/SkynetLabs/skyd/build.NodeVersion=${version:1}' \
+-X 'gitlab.com/SkynetLabs/skyd/build.BinaryName=skyd' \
+-X 'gitlab.com/SkynetLabs/skyd/build.GitRevision=`git rev-parse --short HEAD`' \
+-X 'gitlab.com/SkynetLabs/skyd/build.BuildTime=`git show -s --format=%ci HEAD`' \
+-X 'gitlab.com/SkynetLabs/skyd/build.ReleaseTag=${rc}'"
 
 function build {
   os=$1
   arch=$2
 
-	echo Building ${os}...
+	echo Building ${os} ${arch}...
 	# create workspace
-	folder=release/Sia-$version-$os-$arch
+	folder=release/skyd-$version-$os-$arch
 	rm -rf $folder
 	mkdir -p $folder
 	# compile and hash binaries
-	for pkg in siac siad; do
+	for pkg in skyc skyd; do
 		bin=$pkg
 		if [ "$os" == "windows" ]; then
 			bin=${pkg}.exe
@@ -30,11 +35,11 @@ function build {
 		GOOS=${os} GOARCH=${arch} go build -a -tags 'netgo' -trimpath -ldflags="$ldflags" -o $folder/$bin ./cmd/$pkg
 		(
 			cd release/
-			sha256sum Sia-$version-$os-$arch/$bin >> Sia-$version-SHA256SUMS.txt
+			sha256sum skyd-$version-$os-$arch/$bin >> skyd-$version-SHA256SUMS.txt
 		)
   done
 
-	cp -r doc LICENSE README.md $folder
+	cp -r doc LICENSE.md README.md $folder
 }
 
 # Build amd64 binaries.

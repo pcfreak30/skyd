@@ -13,7 +13,6 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
 )
@@ -109,7 +108,7 @@ var (
 	// request to finish.
 	minRegistryReadTimeout = build.Select(build.Var{
 		Dev:      200 * time.Millisecond,
-		Standard: 800 * time.Millisecond,
+		Standard: 300 * time.Millisecond,
 		Testing:  20 * time.Millisecond,
 	}).(time.Duration)
 )
@@ -196,40 +195,18 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 		if resp.staticSignedRegistryValue != nil {
 			goodResps = append(goodResps, resp)
 		}
-		// If there is no best yet, always set it.
-		if best == nil {
-			best = resp
-			continue
-		}
-		// If there is no rv yet, always set it.
-		bestRV := best.staticSignedRegistryValue
-		respRV := resp.staticSignedRegistryValue
-		if bestRV == nil && respRV != nil {
-			best = resp
-			continue
-		}
-		// If there is an rv but the new response doesn't have one, ignore it.
-		if bestRV != nil && respRV == nil {
-			continue
-		}
-		// The one with the higher revision gets priority if both have an rv.
-		if bestRV != nil && respRV != nil && respRV.Revision != bestRV.Revision {
-			if respRV.Revision > bestRV.Revision {
-				best = resp
-			}
-			continue
-		}
-		// Otherwise the faster one wins.
-		if resp.staticCompleteTime.Before(best.staticCompleteTime) {
+		// If the new response is better, remember it.
+		if isBetterReadRegistryResponse(best, resp) {
 			best = resp
 			continue
 		}
 	}
 
 	// No successful responses. We can't update the stats.
-	if best == nil {
+	if best == nil || best.staticSignedRegistryValue == nil {
 		return
 	}
+	span.LogKV("revision", best.staticSignedRegistryValue.Revision)
 
 	// Drop any responses from goodResps that were slower or equal to best.
 	for i := 0; i < len(goodResps); i++ {
@@ -254,15 +231,11 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 	// Determine the secondBest response by asking all workers with valid responses
 	// again, one-by-one. The secondBest is the first that returns a revision >= the
 	// best one.
-	var secondBest *modules.SignedRegistryValue
+	var secondBest *skymodules.RegistryEntry
 	var d2 time.Duration
 	for _, resp := range goodResps {
-		// Nothing to do if the best response doesn't have a revision.
-		if best.staticSignedRegistryValue == nil {
-			break
-		}
 		// Otherwise look up the same entry.
-		var srv *modules.SignedRegistryValue
+		var srv *skymodules.RegistryEntry
 		var err error
 		if resp.staticSPK == nil || resp.staticTweak == nil {
 			srv, err = resp.staticWorker.ReadRegistryEID(secondBestCtx, span, resp.staticEID)
@@ -311,10 +284,14 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 	}
 
 	// If we found a secondBest, use that instead.
+	span.LogKV("best", d.Milliseconds())
 	if secondBest != nil {
+		span.SetTag("secondbest", true)
+		span.LogKV("secondbest", d2.Milliseconds())
 		l.Printf("threadedAddResponseSet: replaced best with secondBest duration %v -> %v (revs: %v -> %v)", d, d2, best.staticSignedRegistryValue.Revision, secondBest.Revision)
 		d = d2
 	} else {
+		span.SetTag("secondbest", false)
 		l.Printf("threadedAddResponseSet: using best duration %v (secondBest: %v, nil: %v)", d, d2, secondBest == nil)
 	}
 
@@ -327,13 +304,19 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 
 	// The error is ignored since it only returns an error if the measurement is
 	// outside of the 5 minute bounds the stats were created with.
+	span.LogKV("datapoint", d.Milliseconds())
+	if d.Milliseconds() > 2000 {
+		span.SetTag("speed", "vslow")
+	} else if d.Milliseconds() > 200 {
+		span.SetTag("speed", "slow")
+	}
 	r.staticRegReadStats.AddDataPoint(d)
 }
 
 // ReadRegistry starts a registry lookup on all available workers. The jobs have
 // until ctx is closed to return a response. Otherwise the response with the
 // highest revision number will be used.
-func (r *Renter) ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, error) {
+func (r *Renter) ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (skymodules.RegistryEntry, error) {
 	start := time.Now()
 	srv, err := r.managedReadRegistry(ctx, modules.DeriveRegistryEntryID(spk, tweak), &spk, &tweak)
 	if errors.Contains(err, ErrRegistryLookupTimeout) {
@@ -345,7 +328,7 @@ func (r *Renter) ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak
 // ReadRegistryRID starts a registry lookup on all available workers. The jobs
 // have until ctx is closed to return a response. Otherwise the response with
 // the highest revision number will be used.
-func (r *Renter) ReadRegistryRID(ctx context.Context, rid modules.RegistryEntryID) (modules.SignedRegistryValue, error) {
+func (r *Renter) ReadRegistryRID(ctx context.Context, rid modules.RegistryEntryID) (skymodules.RegistryEntry, error) {
 	start := time.Now()
 	srv, err := r.managedReadRegistry(ctx, rid, nil, nil)
 	if errors.Contains(err, ErrRegistryLookupTimeout) {
@@ -386,7 +369,7 @@ func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegist
 // jobs have 'timeout' amount of time to finish their jobs and return a
 // response. Otherwise the response with the highest revision number will be
 // used.
-func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) (modules.SignedRegistryValue, error) {
+func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) (skymodules.RegistryEntry, error) {
 	// Start tracing.
 	tracer := opentracing.GlobalTracer()
 	span := tracer.StartSpan("managedReadRegistry")
@@ -403,7 +386,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	// returned.
 	// Since registry entries are very small we use a fairly generous multiple.
 	if !r.staticRegistryMemoryManager.Request(ctx, readRegistryMemory, memoryPriorityHigh) {
-		return modules.SignedRegistryValue{}, errors.New("timeout while waiting in job queue - server is busy")
+		return skymodules.RegistryEntry{}, errors.New("timeout while waiting in job queue - server is busy")
 	}
 	defer r.staticRegistryMemoryManager.Return(readRegistryMemory)
 
@@ -451,7 +434,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	// If there are no workers remaining, fail early.
 	if len(workers) == 0 {
 		backgroundCancel()
-		return modules.SignedRegistryValue{}, errors.AddContext(skymodules.ErrNotEnoughWorkersInWorkerPool, "cannot perform ReadRegistry")
+		return skymodules.RegistryEntry{}, errors.AddContext(skymodules.ErrNotEnoughWorkersInWorkerPool, "cannot perform ReadRegistry")
 	}
 	numWorkers := len(workers)
 
@@ -488,7 +471,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	// the highest rev number and return the highest one we have so far.
 	var useHighestRevCtx context.Context
 
-	var srv *modules.SignedRegistryValue
+	var srv *skymodules.RegistryEntry
 	responses := 0
 	for responseSet.responsesLeft() > 0 {
 		// Check cancel condition and block for more responses.
@@ -535,13 +518,13 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	// If we don't have a successful response and also not a response for every
 	// worker, we timed out.
 	if srv == nil && responses < len(workers) {
-		return modules.SignedRegistryValue{}, ErrRegistryLookupTimeout
+		return skymodules.RegistryEntry{}, ErrRegistryLookupTimeout
 	}
 
 	// If we don't have a successful response but received a response from every
 	// worker, we were unable to look up the entry.
 	if srv == nil {
-		return modules.SignedRegistryValue{}, ErrRegistryEntryNotFound
+		return skymodules.RegistryEntry{}, ErrRegistryEntryNotFound
 	}
 	return *srv, nil
 }
@@ -568,6 +551,7 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	// result of the job, even if this thread is not listening.
 	workers := r.staticWorkerPool.callWorkers()
 	staticResponseChan := make(chan *jobUpdateRegistryResponse, len(workers))
+	span.LogKV("workers", len(workers))
 
 	// Create a context to continue updating registry values in the background.
 	updateTimeoutCtx, updateTimeoutCancel := context.WithTimeout(r.tg.StopCtx(), updateRegistryBackgroundTimeout)
@@ -594,13 +578,8 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 		}
 
 		// check for price gouging
-		// TODO: use upload gouging for some basic protection. Should be
-		// replaced as part of the gouging overhaul.
-		host, ok, err := r.staticHostDB.Host(worker.staticHostPubKey)
-		if !ok || err != nil {
-			continue
-		}
-		err = checkUploadGouging(cache.staticRenterAllowance, host.HostExternalSettings)
+		pt := worker.staticPriceTable().staticPriceTable
+		err = checkUploadGougingPT(pt, cache.staticRenterAllowance)
 		if err != nil {
 			r.staticLog.Debugf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
 			continue
@@ -625,8 +604,6 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	workersLeft := len(workers)
 	responses := 0
 	successfulResponses := 0
-	highestInvalidRevNum := uint64(0)
-	invalidRevNum := false
 
 	var respErrs error
 	for successfulResponses < MinUpdateRegistrySuccesses && workersLeft+successfulResponses >= MinUpdateRegistrySuccesses {
@@ -647,13 +624,12 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 
 		// Ignore error responses except for invalid revision errors.
 		if resp.staticErr != nil {
-			// If we receive ErrLowerRevNum or ErrSameRevNum, remember the revision number
-			// that was presented as proof. In the end we return the highest one to be able
-			// to determine the next revision number that is save to use.
-			if (errors.Contains(resp.staticErr, registry.ErrLowerRevNum) || errors.Contains(resp.staticErr, registry.ErrSameRevNum)) &&
-				resp.srv.Revision > highestInvalidRevNum {
-				highestInvalidRevNum = resp.srv.Revision
-				invalidRevNum = true
+			// If we receive an error indicating that a better entry exists on
+			// the network we immediately return an error. That's because our
+			// update won't be able to change the consensus of the network on
+			// the latest entry.
+			if modules.IsRegistryEntryExistErr(resp.staticErr) {
+				return resp.staticErr
 			}
 			respErrs = errors.Compose(respErrs, resp.staticErr)
 			continue
@@ -663,25 +639,48 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 		successfulResponses++
 	}
 
-	// Check for an invalid revision error and return the right error according
-	// to the highest invalid revision we remembered.
-	if invalidRevNum {
-		if highestInvalidRevNum == srv.Revision {
-			err = registry.ErrSameRevNum
-		} else {
-			err = registry.ErrLowerRevNum
-		}
-	}
-
 	// Check if we ran out of workers.
 	if successfulResponses == 0 {
-		r.staticLog.Print("RegistryUpdate failed with 0 successful responses: ", err)
+		r.staticLog.Print("RegistryUpdate failed with 0 successful responses: ", respErrs)
 		return errors.Compose(err, ErrRegistryUpdateNoSuccessfulUpdates)
 	}
 	if successfulResponses < MinUpdateRegistrySuccesses {
-		r.staticLog.Printf("RegistryUpdate failed with %v < %v successful responses: %v", successfulResponses, MinUpdateRegistrySuccesses, err)
+		r.staticLog.Printf("RegistryUpdate failed with %v < %v successful responses: %v", successfulResponses, MinUpdateRegistrySuccesses, respErrs)
 		return errors.Compose(err, ErrRegistryUpdateInsufficientRedundancy)
 	}
 	r.staticRegWriteStats.AddDataPoint(time.Since(start))
 	return nil
+}
+
+// isBetterReadRegistryResponse returns true if resp2 is a better response than
+// resp1 and false otherwise. Better means that the response either has a higher
+// revision number, more work or was faster.
+func isBetterReadRegistryResponse(resp1, resp2 *jobReadRegistryResponse) bool {
+	// Check for nil response.
+	if resp2 == nil {
+		// A nil entry never replaces an existing entry.
+		return false
+	} else if resp1 == nil {
+		// A non-nil entry always replaces a nil entry.
+		return true
+	}
+	// Same but with the entries.
+	srv1 := resp1.staticSignedRegistryValue
+	srv2 := resp2.staticSignedRegistryValue
+	if srv2 == nil {
+		return false
+	} else if srv1 == nil {
+		return true
+	}
+	// Compare entries.
+	shouldUpdate, updateErr := srv1.ShouldUpdateWith(&srv2.RegistryValue, resp2.staticWorker.staticHostPubKey)
+
+	// If the entry is not capable of updating the existing one and both entries
+	// have the same revision number, use the time.
+	if !shouldUpdate && errors.Contains(updateErr, modules.ErrSameRevNum) {
+		return resp2.staticCompleteTime.Before(resp1.staticCompleteTime)
+	}
+
+	// Otherwise we return the result
+	return shouldUpdate
 }

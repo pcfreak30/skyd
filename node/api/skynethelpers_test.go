@@ -2,17 +2,23 @@ package api
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/julienschmidt/httprouter"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -23,11 +29,12 @@ import (
 type testHTTPWriter struct {
 	statusCode int
 	write      []byte
+	header     http.Header
 }
 
 // Header implements http.ResponseWriter.
 func (tw *testHTTPWriter) Header() http.Header {
-	return http.Header{}
+	return tw.header
 }
 
 // Write implements http.ResponseWriter.
@@ -41,9 +48,16 @@ func (tw *testHTTPWriter) WriteHeader(statusCode int) {
 	tw.statusCode = statusCode
 }
 
+// newTestHTTPWriter creates a new testHTTPWriter.
+func newTestHTTPWriter() *testHTTPWriter {
+	return &testHTTPWriter{
+		header: make(http.Header),
+	}
+}
+
 // TestHandleSkynetError is a unit test for handleSkynetError.
 func TestHandleSkynetError(t *testing.T) {
-	tw := &testHTTPWriter{}
+	tw := newTestHTTPWriter()
 
 	tests := []struct {
 		err        error
@@ -64,6 +78,14 @@ func TestHandleSkynetError(t *testing.T) {
 		{
 			err:        renter.ErrRegistryLookupTimeout,
 			statusCode: http.StatusNotFound,
+		},
+		{
+			err:        skymodules.ErrMalformedSkylink,
+			statusCode: http.StatusBadRequest,
+		},
+		{
+			err:        renter.ErrInvalidSkylinkVersion,
+			statusCode: http.StatusBadRequest,
 		},
 		{
 			err:        errors.New("other"),
@@ -102,6 +124,7 @@ func TestSkynetHelpers(t *testing.T) {
 	t.Run("BuildETag", testBuildETag)
 	t.Run("ParseSkylinkURL", testParseSkylinkURL)
 	t.Run("ParseUploadRequestParameters", testParseUploadRequestParameters)
+	t.Run("ParseDownloadRequestParameters", testParseDownloadRequestParameters)
 }
 
 // testBuildETag verifies the functionality of the buildETag helper function
@@ -117,21 +140,21 @@ func testBuildETag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	eTag := buildETag(skylink, "GET", path, format)
-	if eTag != "a58dd03937cacfeaa6974c8d12c1758bc05d8a49777eda3be52a9ba701364804" {
+	eTag := buildETag(skylink, path, format)
+	if eTag != "7b4d5f4aa61144f4ab0ca37da17238a93dc9a8d514a76d374b2557bf86c04d21" {
 		t.Fatal("unexpected output")
 	}
 
 	// adjust URL and expect different hash value
 	path = "/foo"
-	eTag2 := buildETag(skylink, "GET", path, format)
+	eTag2 := buildETag(skylink, path, format)
 	if eTag2 == "" || eTag2 == eTag {
 		t.Fatal("unexpected output")
 	}
 
 	// adjust query and expect different hash value
 	format = skymodules.SkyfileFormatZip
-	eTag3 := buildETag(skylink, "GET", path, format)
+	eTag3 := buildETag(skylink, path, format)
 	if eTag3 == "" || eTag3 == eTag2 {
 		t.Fatal("unexpected output")
 	}
@@ -141,18 +164,8 @@ func testBuildETag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	eTag4 := buildETag(skylink, "GET", path, format)
+	eTag4 := buildETag(skylink, path, format)
 	if eTag4 == "" || eTag4 == eTag3 {
-		t.Fatal("unexpected output")
-	}
-
-	// adjust method and expect different hash value
-	err = skylink.LoadString("BBCogzrAimYPG42tDOKhS3lXZD8YvlF8Q8R17afe95iV2Q")
-	if err != nil {
-		t.Fatal(err)
-	}
-	eTag5 := buildETag(skylink, "HEAD", path, format)
-	if eTag5 == "" || eTag5 == eTag4 {
 		t.Fatal("unexpected output")
 	}
 }
@@ -496,5 +509,261 @@ func testParseUploadRequestParameters(t *testing.T) {
 	_, _, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
 	if err == nil {
 		t.Fatal("Unexpected")
+	}
+}
+
+// testParseDownloadRequestParameters verifies the functionality of
+// 'parseDownloadRequestParameters'.
+func testParseDownloadRequestParameters(t *testing.T) {
+	t.Parallel()
+
+	// Load Skylink
+	skylinkStr := "AABEKWZ_wc2R9qlhYkzbG8mImFVi08kBu1nsvvwPLBtpEg"
+	var skylink skymodules.Skylink
+	err := skylink.LoadString(skylinkStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// buildRequest is a helper function that creates a request object
+	buildRequest := func(values url.Values, headers http.Header) (*http.Request, error) {
+		req, err := http.NewRequest("GET", fmt.Sprintf("/skynet/skylink/%s?%s", skylink.String(), values.Encode()), nil)
+		if err != nil {
+			return nil, errors.AddContext(err, "Could not create request")
+		}
+
+		for k, v := range headers {
+			for _, vv := range v {
+				req.Header.Add(k, vv)
+			}
+		}
+		return req, nil
+	}
+	// baseParams returns the minimum params for the base case
+	baseParams := func() *skyfileDownloadParams {
+		return &skyfileDownloadParams{
+			path:                 "/",
+			pricePerMS:           DefaultSkynetPricePerMS,
+			skylink:              skylink,
+			skylinkStringNoQuery: skylinkStr,
+			timeout:              DefaultSkynetRequestTimeout,
+		}
+	}
+
+	// Test base case of just skylink
+	req, err := buildRequest(url.Values{}, http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sdp, err := parseDownloadRequestParameters(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := baseParams()
+	if !reflect.DeepEqual(sdp, expected) {
+		t.Log("skyfileDownloadParams", sdp)
+		t.Log("expected", expected)
+		t.Fatal("unexpected")
+	}
+
+	// Test attachment
+	trueStr := []string{fmt.Sprintf("%t", true)}
+	req, err = buildRequest(url.Values{"attachment": trueStr}, http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sdp, err = parseDownloadRequestParameters(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected = baseParams()
+	expected.attachment = true
+	if !reflect.DeepEqual(sdp, expected) {
+		t.Log("skyfileDownloadParams", sdp)
+		t.Log("expected", expected)
+		t.Fatal("unexpected")
+	}
+
+	// Test Format
+	formatTest := func(format skymodules.SkyfileFormat) error {
+		req, err := buildRequest(url.Values{"format": []string{string(format)}}, http.Header{})
+		if err != nil {
+			return err
+		}
+		sdp, err = parseDownloadRequestParameters(req)
+		if err != nil {
+			return err
+		}
+		expected = baseParams()
+		expected.format = format
+		if !reflect.DeepEqual(sdp, expected) {
+			t.Log("skyfileDownloadParams", sdp)
+			t.Log("expected", expected)
+			return errors.New("download params unexpected")
+		}
+		return nil
+	}
+	formats := []skymodules.SkyfileFormat{skymodules.SkyfileFormatNotSpecified, skymodules.SkyfileFormatConcat, skymodules.SkyfileFormatTar, skymodules.SkyfileFormatTarGz, skymodules.SkyfileFormatZip}
+	for _, format := range formats {
+		err = formatTest(format)
+		if err != nil {
+			t.Fatalf("error with format %v:%v", string(format), err)
+		}
+	}
+
+	// Test include layout
+	req, err = buildRequest(url.Values{"include-layout": trueStr}, http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sdp, err = parseDownloadRequestParameters(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected = baseParams()
+	expected.includeLayout = true
+	if !reflect.DeepEqual(sdp, expected) {
+		t.Log("skyfileDownloadParams", sdp)
+		t.Log("expected", expected)
+		t.Fatal("unexpected")
+	}
+
+	// Test timeout
+	var timeoutInt int = 100
+	timeout := time.Duration(timeoutInt) * time.Second
+	timeoutStr := []string{fmt.Sprintf("%d", timeoutInt)}
+	req, err = buildRequest(url.Values{"timeout": timeoutStr}, http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sdp, err = parseDownloadRequestParameters(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected = baseParams()
+	expected.timeout = timeout
+	if !reflect.DeepEqual(sdp, expected) {
+		t.Log("skyfileDownloadParams", sdp)
+		t.Log("expected", expected)
+		t.Fatal("unexpected")
+	}
+
+	// Test pricePerMS
+	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMSStr := "1000"
+	_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, err = buildRequest(url.Values{"priceperms": []string{pricePerMSStr}}, http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sdp, err = parseDownloadRequestParameters(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected = baseParams()
+	expected.pricePerMS = pricePerMS
+	if !reflect.DeepEqual(sdp, expected) {
+		t.Log("skyfileDownloadParams", sdp)
+		t.Log("expected", expected)
+		t.Fatal("unexpected")
+	}
+
+	// Test range params
+	var rangeTests = []struct {
+		start     string
+		end       string
+		setHeader bool
+		err       error
+	}{
+		// Happy Cases
+		{"0", "0", false, nil}, // start = end, no header set
+		{"1", "1", false, nil}, // start = end, non zero, no header set
+		{"1", "5", false, nil}, // start < end,  no header set
+
+		// Error Cases
+		{"0", "0", true, errRangeSetTwice},          // start = end, header set
+		{"1", "1", true, errRangeSetTwice},          // start = end, non zero, header set
+		{"1", "5", true, errRangeSetTwice},          // start < end,  header set
+		{"1", "0", false, errInvalidRangeParams},    // start > end, no header set
+		{"1", "0", true, errRangeSetTwice},          // start > end, header set
+		{"", "0", false, errIncompleteRangeRequest}, // start not set, header not set
+		{"", "0", true, errIncompleteRangeRequest},  // start not set, header set
+		{"0", "", false, errIncompleteRangeRequest}, // end not set, header not set
+		{"0", "", true, errIncompleteRangeRequest},  // end not set, header set
+	}
+	for _, rt := range rangeTests {
+		// Set url values
+		values := url.Values{
+			"start": []string{rt.start},
+			"end":   []string{rt.end},
+		}
+
+		// Check if Header should be set
+		var headers http.Header
+		if rt.setHeader {
+			rangeStr := fmt.Sprintf("bytes=%s-%s", rt.start, rt.end)
+			headers = http.Header{"Range": []string{rangeStr}}
+		}
+
+		req, err = buildRequest(values, headers)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sdp, err = parseDownloadRequestParameters(req)
+		if err != rt.err {
+			t.Log("Test Case: ", rt)
+			t.Fatalf("Expected error '%v' but got '%v'", rt.err, err)
+		}
+	}
+}
+
+// TestAttachRegistryEntryProof is a unit test for attachRegistryEntryProof.
+func TestAttachRegistryEntryProof(t *testing.T) {
+	var h1 crypto.Hash
+	fastrand.Read(h1[:])
+	var h2 crypto.Hash
+	fastrand.Read(h2[:])
+	entries := []skymodules.RegistryEntry{
+		{
+			SignedRegistryValue: modules.NewSignedRegistryValue(h1, fastrand.Bytes(10), fastrand.Uint64n(100), crypto.Signature{}, modules.RegistryTypeWithoutPubkey),
+		},
+		{
+			SignedRegistryValue: modules.NewSignedRegistryValue(h2, fastrand.Bytes(10), fastrand.Uint64n(100), crypto.Signature{}, modules.RegistryTypeWithoutPubkey),
+		},
+	}
+
+	// Create the proof manually.
+	proofChain := make([]RegistryHandlerGET, 0, len(entries))
+	for _, srv := range entries {
+		proofChain = append(proofChain, RegistryHandlerGET{
+			Data:      hex.EncodeToString(srv.Data),
+			DataKey:   srv.Tweak,
+			Revision:  srv.Revision,
+			PublicKey: srv.PubKey,
+			Signature: hex.EncodeToString(srv.Signature[:]),
+			Type:      srv.Type,
+		})
+	}
+	expectedProof, err := json.Marshal(proofChain)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Attach the proof
+	w := newTestHTTPWriter()
+	header := w.Header()
+	attachRegistryEntryProof(w, entries)
+
+	// Get the attached proof.
+	proof := header.Get("Skynet-Proof")
+
+	// Should match the expected proof.
+	if proof != string(expectedProof) {
+		t.Log(proof)
+		t.Log(string(expectedProof))
+		t.Fatal("proof doesn't match expectation")
 	}
 }

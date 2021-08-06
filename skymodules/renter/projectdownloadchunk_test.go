@@ -80,6 +80,8 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 
 		downloadResponseChan: responseChan,
 		workerSet:            pcws,
+
+		ctx: context.Background(),
 	}
 
 	pdc.launchedWorkers = append(pdc.launchedWorkers, &launchedWorkerInfo{
@@ -379,6 +381,7 @@ func TestProjectDownloadChunk_launchWorker(t *testing.T) {
 
 	// mock a pdc, ensure available pieces is not nil
 	pdc := new(projectDownloadChunk)
+	pdc.ctx = context.Background()
 	pdc.workerSet = pcws
 	pdc.pieceLength = 1 << 16 // 64kb
 	pdc.availablePieces = make([][]*pieceDownload, ec.NumPieces())
@@ -656,8 +659,9 @@ func mockWorker(jobTime time.Duration) *worker {
 	worker := new(worker)
 	worker.newPriceTable()
 	worker.staticPriceTable().staticPriceTable = newDefaultPriceTable()
-	worker.initJobReadQueue()
-	worker.staticJobReadQueue.weightedJobTime64k = float64(jobTime)
+	worker.initJobReadQueue(&jobReadStats{
+		weightedJobTime64k: float64(jobTime),
+	})
 	return worker
 }
 

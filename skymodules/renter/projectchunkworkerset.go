@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -175,12 +176,12 @@ type projectChunkWorkerSet struct {
 // chunkFetcher is an interface that exposes a download function, the PCWS
 // implements this interface.
 type chunkFetcher interface {
-	Download(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error)
+	Download(ctx context.Context, pricePerMS types.Currency, offset, length uint64, skipRecovery, lowPrio bool) (chan *downloadResponse, error)
 }
 
 // Download will download a range from a chunk.
-func (pcws *projectChunkWorkerSet) Download(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error) {
-	return pcws.managedDownload(ctx, pricePerMS, offset, length)
+func (pcws *projectChunkWorkerSet) Download(ctx context.Context, pricePerMS types.Currency, offset, length uint64, skipRecovery, lowPrio bool) (chan *downloadResponse, error) {
+	return pcws.managedDownload(ctx, pricePerMS, offset, length, skipRecovery, lowPrio)
 }
 
 // checkPCWSGouging verifies the cost of grabbing the HasSector information from
@@ -464,7 +465,7 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 // expected to trim 100 milliseconds off of the download time, the download code
 // will select those workers only if the additional expense of using those
 // workers is less than 100 * pricePerMS.
-func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error) {
+func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePerMS types.Currency, offset, length uint64, skipRecovery, lowPrio bool) (chan *downloadResponse, error) {
 	// Potentially force a timeout via a disrupt for testing.
 	if pcws.staticRenter.staticDeps.Disrupt("timeoutProjectDownloadByRoot") {
 		return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
@@ -528,6 +529,9 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// extra goroutines to be spawned.
 	workerResponseChan := make(chan *jobReadResponse, ec.NumPieces()*5)
 
+	// Start a span for the PDC.
+	_, ctx = opentracing.StartSpanFromContext(ctx, "managedDownload")
+
 	// Build the full pdc.
 	pdc := &projectDownloadChunk{
 		offsetInChunk: offset,
@@ -536,10 +540,14 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		pieceOffset: pieceOffset,
 		pieceLength: pieceLength,
 
+		staticIsLowPrio: lowPrio,
+
 		pricePerMS: pricePerMS,
 
 		availablePieces: make([][]*pieceDownload, ec.NumPieces()),
 		dataPieces:      make([][]byte, ec.NumPieces()),
+
+		staticSkipRecovery: skipRecovery,
 
 		ctx:                  ctx,
 		workerResponseChan:   workerResponseChan,
@@ -569,7 +577,9 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 // set of sector roots associated with the pieces. The hosts that correspond to
 // the roots will be determined by scanning the network with a large number of
 // HasSector queries. Once opened, the projectChunkWorkerSet can be used to
-// initiate many downloads.
+// initiate many downloads. If it is already known what pieces a worker is
+// expected to have, it can be provided as a seedWorker. A seedWorker is
+// considered to be resolved right away.
 func (r *Renter) newPCWSByRoots(ctx context.Context, roots []crypto.Hash, ec skymodules.ErasureCoder, masterKey crypto.CipherKey, chunkIndex uint64) (*projectChunkWorkerSet, error) {
 	// Check that the number of roots provided is consistent with the erasure
 	// coder provided.

@@ -2671,15 +2671,15 @@ func TestFreshSettingsForRenew(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	blocksToMine := endHeight - cg.Height - renewWindow + 1
+	blocksToMine := endHeight - cg.Height - renewWindow/2 + 1
 	err = mineAndSync(int(blocksToMine))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Even though we are in the renew period we should not be renewing the
-	// contract due to the host settings.  The contract should be !GFU because
-	// of the renew window so we should only see 1 passive contract.
+	// contract due to the host settings. The contract should be !GFU
+	// because of the renew window so we should only see 1 passive contract.
 	err = checkContracts(0, 1, 0, 0)
 	if err != nil {
 		r.PrintDebugInfo(t, true, true, true)

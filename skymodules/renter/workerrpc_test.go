@@ -173,9 +173,16 @@ func testExecuteProgramUsedBandwidthReadSector(t *testing.T, wt *workerTester) {
 	p, data := pb.Program()
 	cost, _, _ := pb.Cost(true)
 
+	// create job metadata
+	jobMetadata := jobReadMetadata{
+		staticWorker:           w,
+		staticSectorRoot:       sectorRoot,
+		staticSpendingCategory: categoryDownload,
+	}
+
 	// create read sector job
 	readSectorRespChan := make(chan *jobReadResponse)
-	jrs := w.newJobReadSector(context.Background(), w.staticJobReadQueue, readSectorRespChan, categoryDownload, sectorRoot, 0, modules.SectorSize)
+	jrs := w.newJobReadSector(context.Background(), w.staticJobReadQueue, readSectorRespChan, jobMetadata, sectorRoot, 0, modules.SectorSize)
 
 	ulBandwidth, dlBandwidth := jrs.callExpectedBandwidth()
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)

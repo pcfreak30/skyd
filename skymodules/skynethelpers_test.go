@@ -86,8 +86,8 @@ func testValidateDefaultPath(t *testing.T) {
 			name:       "non html default path",
 			subfiles:   subfiles("a.txt"),
 			dpQuery:    "a.txt",
-			dpExpected: "",
-			err:        "the default path must point to an HTML file",
+			dpExpected: "/a.txt",
+			err:        "",
 		},
 		{
 			name:       "HTML file with extension 'htm' as default path",
@@ -115,7 +115,7 @@ func testValidateDefaultPath(t *testing.T) {
 				t.Fatal("Unexpected error", err)
 			}
 			if dp != subtest.dpExpected {
-				t.Fatal("Unexpected default path")
+				t.Fatal("Unexpected default path", dp, subtest.dpExpected)
 			}
 		})
 	}
@@ -236,8 +236,8 @@ func testValidateSkyfileMetadata(t *testing.T) {
 		t.Fatal("unexpected outcome")
 	}
 
-	// verify legacy file the first one is valid since it only has a single
-	// subfile and the second one isn't.
+	// verify legacy file. It is valid since it only has a single
+	// subfile and a zero length.
 	valid := metadata
 	valid.Subfiles = SkyfileSubfiles{
 		"validkey": SkyfileSubfileMetadata{
@@ -248,6 +248,21 @@ func testValidateSkyfileMetadata(t *testing.T) {
 	valid.Length = 0
 	err = ValidateSkyfileMetadata(valid)
 	if err != nil {
+		t.Fatal("unexpected outcome")
+	}
+
+	// verify legacy file. It is invalid since it only has a single subfile
+	// and a non-zero length.
+	invalid = metadata
+	valid.Subfiles = SkyfileSubfiles{
+		"validkey": SkyfileSubfileMetadata{
+			Filename: "validkey",
+			Len:      10,
+		},
+	}
+	valid.Length = 1
+	err = ValidateSkyfileMetadata(valid)
+	if err == nil || !strings.Contains(err.Error(), "invalid length set on metadata - length: 1, totalLength: 10, subfiles: 1, monetized: false") {
 		t.Fatal("unexpected outcome")
 	}
 }

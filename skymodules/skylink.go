@@ -44,6 +44,10 @@ var (
 	// ErrSkylinkIncorrectSize is returned when a string could not be decoded
 	// into a Skylink due to it having an incorrect size.
 	ErrSkylinkIncorrectSize = errors.New("skylink has incorrect size")
+
+	// ErrMalformedSkylink is returned when a v2 skylink contains malformed
+	// data, causing parsing the v1 skylink to fail.
+	ErrMalformedSkylink = errors.New("failed to parse skylink - data is malformed")
 )
 
 type (
@@ -189,8 +193,19 @@ func (sl Skylink) IsSkylinkV1() bool {
 	return isSkylinkV1(sl.bitfield)
 }
 
+// IsSkylinkV2 returns a boolean indicating if the Skylink is a V1 skylink
+func (sl Skylink) IsSkylinkV2() bool {
+	return isSkylinkV2(sl.bitfield)
+}
+
 // LoadString converts from a string and loads the result into sl.
-func (sl *Skylink) LoadString(s string) error {
+func (sl *Skylink) LoadString(s string) (err error) {
+	// Add context to the error if necessary.
+	defer func() {
+		if err != nil && !errors.Contains(err, ErrMalformedSkylink) {
+			err = errors.Compose(ErrMalformedSkylink, err)
+		}
+	}()
 	// Trim any parameters that may exist after a question mark. Eventually, it
 	// will be possible to parse these separately as additional/optional
 	// arguments, for now anything after a question mark is just ignored.
@@ -370,7 +385,13 @@ func (sl Skylink) Version() uint16 {
 }
 
 // LoadBytes loads the given raw data onto the skylink.
-func (sl *Skylink) LoadBytes(data []byte) error {
+func (sl *Skylink) LoadBytes(data []byte) (err error) {
+	// Add context to the error if necessary.
+	defer func() {
+		if err != nil {
+			err = errors.Compose(ErrMalformedSkylink, err)
+		}
+	}()
 	// Sanity check the size of the given data
 	if len(data) != rawSkylinkSize {
 		build.Critical("raw skylink data has the incorrect size")
@@ -381,7 +402,6 @@ func (sl *Skylink) LoadBytes(data []byte) error {
 	// Skylink so that the Skylink remains unchanged if there is any error
 	// parsing the string.
 	bitfield := binary.LittleEndian.Uint16(data)
-	var err error
 	if isSkylinkV1(bitfield) {
 		_, _, err = validateAndParseV1Bitfield(bitfield)
 	} else if isSkylinkV2(bitfield) {

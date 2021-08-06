@@ -223,11 +223,17 @@ func TestSkylink(t *testing.T) {
 	if !errors.Contains(err, ErrSkylinkIncorrectSize) {
 		t.Error("expecting 'ErrSkylinkIncorrectSize' when loading string that is too small")
 	}
+	if !errors.Contains(err, ErrMalformedSkylink) {
+		t.Fatal(err)
+	}
 	// Try loading a siafile that's just arbitrary/meaningless data.
 	arb = arb + "a"
 	err = sl.LoadString(arb)
 	if err == nil {
 		t.Error("arbitrary string should not decode")
+	}
+	if !errors.Contains(err, ErrMalformedSkylink) {
+		t.Fatal(err)
 	}
 	// Try loading a siafile that's too large.
 	long := arb + "a"
@@ -235,11 +241,17 @@ func TestSkylink(t *testing.T) {
 	if err == nil {
 		t.Error("expecting error when loading string that is too large")
 	}
+	if !errors.Contains(err, ErrMalformedSkylink) {
+		t.Fatal(err)
+	}
 	// Try loading a blank siafile.
 	blank := ""
 	err = sl.LoadString(blank)
 	if !errors.Contains(err, ErrSkylinkIncorrectSize) {
 		t.Error("expecting 'ErrSkylinkIncorrectSize' when loading a blank string")
+	}
+	if !errors.Contains(err, ErrMalformedSkylink) {
+		t.Fatal(err)
 	}
 
 	// Try giving a skylink extra params and loading that.

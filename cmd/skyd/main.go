@@ -201,10 +201,10 @@ func main() {
 	root.Flags().StringVarP(&globalConfig.Siad.RPCaddr, "rpc-addr", "", ":9981", "which port the gateway listens on")
 	root.Flags().StringVarP(&globalConfig.Siad.SiaMuxTCPAddr, "siamux-addr", "", ":9983", "which port the SiaMux listens on")
 	root.Flags().StringVarP(&globalConfig.Siad.SiaMuxWSAddr, "siamux-addr-ws", "", ":9984", "which port the SiaMux websocket listens on")
-	root.Flags().StringVarP(&globalConfig.Siad.Modules, "modules", "M", "gctwrhfa", "enabled modules, see 'siad modules' for more info")
+	root.Flags().StringVarP(&globalConfig.Siad.Modules, "modules", "M", "gctwrha", "enabled modules, see 'skyd modules' for more info")
 	root.Flags().BoolVarP(&globalConfig.Siad.AuthenticateAPI, "authenticate-api", "", true, "enable API password protection")
 	root.Flags().BoolVarP(&globalConfig.Siad.TempPassword, "temp-password", "", false, "enter a temporary API password during startup")
-	root.Flags().BoolVarP(&globalConfig.Siad.AllowAPIBind, "disable-api-security", "", false, "allow siad to listen on a non-localhost address (DANGEROUS)")
+	root.Flags().BoolVarP(&globalConfig.Siad.AllowAPIBind, "disable-api-security", "", false, "allow skyd to listen on a non-localhost address (DANGEROUS)")
 
 	// If globalConfig.Siad.SiaDir is not set, use the environment variable provided.
 	if globalConfig.Siad.SiaDir == "" {

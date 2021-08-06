@@ -63,31 +63,52 @@ func TestSkynetDownloads(t *testing.T) {
 func testDownloadSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	// upload a single file using a stream
-	testName := "SingleFileRegular"
-	size := fastrand.Uint64n(100) + 100
-	data := fastrand.Bytes(int(size))
-	skylink, _, _, err := r.UploadNewSkyfileWithDataBlocking("SingleFileRegular", data, false)
-	if err != nil {
-		t.Fatal(err)
+	// Define the test
+	downloadtest := func(testName string, size uint64) error {
+		// upload a single file using a stream
+		data := fastrand.Bytes(int(size))
+		skylink, _, _, err := r.UploadNewSkyfileWithDataBlocking(testName, data, false)
+		if err != nil {
+			return err
+		}
+
+		// verify downloads
+		//
+		// note: these switch from un-cached to cached downloads partway through. By
+		// passing verification on all pieces of the test, we are confirming that
+		// the caching is correct.
+		err = verifyDownloadRaw(t, r, skylink, data, testName)
+		if err != nil {
+			return errors.AddContext(err, "raw download failed")
+		}
+		err = verifyDownloadDirectory(t, r, skylink, data, testName)
+		if err != nil {
+			return errors.AddContext(err, "directory download failed")
+		}
+		err = verifyDownloadAsArchive(t, r, skylink, fileMap{testName: data}, testName)
+		if err != nil {
+			return errors.AddContext(err, "archive download failed")
+		}
+		return nil
 	}
 
-	// verify downloads
-	//
-	// note: these switch from un-cached to cached downloads partway through. By
-	// passing verification on all pieces of the test, we are confirming that
-	// the caching is correct.
-	err = verifyDownloadRaw(t, r, skylink, data, testName)
-	if err != nil {
-		t.Fatal(err)
+	// Define test cases
+	var tests = []struct {
+		name string
+		size uint64
+	}{
+		{"SingleFileRegular_Small", fastrand.Uint64n(100) + 100},
+		{"SingleFileRegular_Large", modules.SectorSize + 100},
+		{"SingleFileRegular_Zero", 0},
 	}
-	err = verifyDownloadDirectory(t, r, skylink, data, testName)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = verifyDownloadAsArchive(t, r, skylink, fileMap{"SingleFileRegular": data}, testName)
-	if err != nil {
-		t.Fatal(err)
+
+	// Run tests
+	for _, test := range tests {
+		err := downloadtest(test.name, test.size)
+		if err != nil {
+			t.Log("Test:", test.name)
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -95,23 +116,41 @@ func testDownloadSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 // uploaded using a multipart upload.
 func testDownloadSingleFileMultiPart(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
-
-	// TEST: non-html default path - expect the file's content dut to the single
-	// file exception from the HTML-only default path restriction.
 	testName := "SingleFileMultiPart"
-	data := []byte("contents_file1.png")
-	files := []siatest.TestFile{{Name: "file1.png", Data: data}}
-	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking("SingleFileMultiPartPNG", files, "", false, false)
+
+	// Define Download Test
+	downloadTest := func(fileName string, files []siatest.TestFile) error {
+		// Upload File
+		skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(fileName, files, "", false, false)
+		if err != nil {
+			return errors.AddContext(err, "unable to upload file")
+		}
+
+		// verify downloads
+		err = verifyDownloadRaw(t, r, skylink, files[0].Data, testName)
+		if err != nil {
+			return errors.AddContext(err, "raw download failed")
+		}
+		err = verifyDownloadAsArchive(t, r, skylink, fileMapFromFiles(files), testName)
+		if err != nil {
+			return errors.AddContext(err, "archive download failed")
+		}
+		return nil
+	}
+
+	// Test Zero Byte File
+	data := []byte{}
+	files := []siatest.TestFile{{Name: "zero.png", Data: data}}
+	err := downloadTest("SingleFileMultiPartPNG_Zero", files)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// verify downloads
-	err = verifyDownloadRaw(t, r, skylink, data, testName)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = verifyDownloadAsArchive(t, r, skylink, fileMapFromFiles(files), testName)
+	// TEST: non-html default path - expect the file's content due to the single
+	// file exception from the HTML-only default path restriction.
+	data = []byte("contents_file1.png")
+	files = []siatest.TestFile{{Name: "file1.png", Data: data}}
+	err = downloadTest("SingleFileMultiPartPNG", files)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,17 +158,7 @@ func testDownloadSingleFileMultiPart(t *testing.T, tg *siatest.TestGroup) {
 	// TEST: html default path - expect success
 	data = []byte("contents_file1.html")
 	files = []siatest.TestFile{{Name: "file1.html", Data: data}}
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking("SingleFileMultiPartHTML", files, "", false, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// verify downloads
-	err = verifyDownloadRaw(t, r, skylink, data, testName)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = verifyDownloadAsArchive(t, r, skylink, fileMapFromFiles(files), testName)
+	err = downloadTest("SingleFileMultiPartHTML", files)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -505,6 +534,39 @@ func testDownloadContentDisposition(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// upload a multi-file skyfile
+	files := []siatest.TestFile{
+		{Name: "index.html", Data: []byte("index.html_contents")},
+		{Name: "about.html", Data: []byte("about.html_contents")},
+	}
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking("DirectoryBasic", files, "", false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// no params but default path
+	_, header, err = r.SkynetSkylinkHead(skylink)
+	expected := "inline; filename=\"index.html\""
+	err = errors.Compose(err, verifyCDHeader(header, expected))
+	if err != nil {
+		t.Fatal(errors.AddContext(err, "noparams w/default path"))
+	}
+
+	// no params with path equal to default path
+	_, header, err = r.SkynetSkylinkHead(skylink + "/index.html")
+	err = errors.Compose(err, verifyCDHeader(header, expected))
+	if err != nil {
+		t.Fatal(errors.AddContext(err, "noparams w/path"))
+	}
+
+	// no params with path diff from default path
+	expected = "inline; filename=\"about.html\""
+	_, header, err = r.SkynetSkylinkHead(skylink + "/about.html")
+	err = errors.Compose(err, verifyCDHeader(header, expected))
+	if err != nil {
+		t.Fatal(errors.AddContext(err, "noparams w/path"))
+	}
 }
 
 // testETag verifies the functionality of the ETag response header
@@ -516,10 +578,12 @@ func testETag(t *testing.T, tg *siatest.TestGroup) {
 		return a == b && a != "" && a[0] == '"'
 	}
 
-	// upload a single file
-	file := make([]byte, 100)
-	fastrand.Read(file)
-	skylink, _, _, err := r.UploadNewSkyfileWithDataBlocking("testNotModified", file, false)
+	// upload a directory with an index.html file
+	files := []siatest.TestFile{
+		{Name: "index.html", Data: []byte("index.html_contents")},
+		{Name: "about.html", Data: []byte("about.html_contents")},
+	}
+	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(t.Name(), files, "", false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -542,21 +606,18 @@ func testETag(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Unexpected status code")
 	}
 
+	// verify the index.html file was returned (default path)
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	if !bytes.Equal([]byte("index.html_contents"), data) {
+		t.Fatal("Unexpected response data")
+	}
+
 	// verify ETag header is set
 	eTag := resp.Header.Get("ETag")
 	if eTag == "" {
-		t.Fatal("Unexpected ETag response header")
-	}
-
-	// verify the ETag header is different for a HEAD requests
-	status, header, err := r.SkynetSkylinkHead(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if status != http.StatusOK {
-		t.Fatal("Unexpected status code")
-	}
-	if header.Get("ETag") == eTag {
 		t.Fatal("Unexpected ETag response header")
 	}
 
@@ -575,12 +636,28 @@ func testETag(t *testing.T, tg *siatest.TestGroup) {
 	if resp.StatusCode != http.StatusNotModified {
 		t.Fatal("Unexpected status code", resp.StatusCode)
 	}
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal("Unexpected error", err)
 	}
 	if len(data) != 0 {
 		t.Fatal("Unexpected response data")
+	}
+
+	// verify status code is 304 and no data was returned if we try and download
+	// the 'index.html' file directly, which it should have defaulted to and
+	// should be the path included in the ETag
+	resp, err = uc.SkynetSkylinkGetWithETag(skylink+"/index.html", eTag)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	if resp.StatusCode != http.StatusNotModified {
+		t.Fatal("Unexpected status code", resp.StatusCode)
 	}
 
 	// verify we miss the cache if the path is altered
@@ -631,8 +708,42 @@ func testETag(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Unexpected error", err)
 	}
-	if !bytes.Equal(file, data) {
+	if !bytes.Equal([]byte("index.html_contents"), data) {
 		t.Fatal("Unexpected response data")
+	}
+
+	// turn the skylink into a V2 skylink and verify we get the same ETag
+	var skylinkV1 skymodules.Skylink
+	err = skylinkV1.LoadString(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	skylinkV2, err := r.NewSkylinkV2(skylinkV1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// download the skylink using the V2 skylink
+	resp, err = uc.SkynetSkylinkGetWithETag(skylinkV2.String(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatal("Unexpected status code")
+	}
+
+	// verify ETag header is set
+	eTagForV2Skylink := resp.Header.Get("ETag")
+	if eTagForV2Skylink == "" {
+		t.Fatal("Unexpected ETag response header")
+	}
+	if eTagForV2Skylink != eTag {
+		t.Fatal("Unexpected ETag")
 	}
 }
 
@@ -835,7 +946,7 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 		t.Log("Test:", testName)
 		t.Log("expected:", expectedFiles)
 		t.Log("actual  :", files)
-		return errors.New("Unexpected files")
+		return errors.New("Unexpected files for zip")
 	}
 	ct := header.Get("Content-type")
 	if ct != "application/zip" {
@@ -859,7 +970,7 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 		t.Log("Test:", testName)
 		t.Log("expected:", expectedFiles)
 		t.Log("actual  :", files)
-		return errors.New("Unexpected files")
+		return errors.New("Unexpected files for tar")
 	}
 	ct = header.Get("Content-type")
 	if ct != "application/x-tar" {
@@ -884,9 +995,10 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 		return err
 	}
 	if !reflect.DeepEqual(files, expectedFiles) {
+		t.Log("Test:", testName)
 		t.Log("expected:", expectedFiles)
 		t.Log("actual  :", files)
-		return errors.New("Unexpected files")
+		return errors.New("Unexpected files for tar gz")
 	}
 	ct = header.Get("Content-type")
 	if ct != "application/gzip" {

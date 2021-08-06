@@ -24,7 +24,7 @@ type mockProjectChunkWorkerSet struct {
 }
 
 // Download implements the chunkFetcher interface.
-func (m *mockProjectChunkWorkerSet) Download(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error) {
+func (m *mockProjectChunkWorkerSet) Download(ctx context.Context, pricePerMS types.Currency, offset, length uint64, _, _ bool) (chan *downloadResponse, error) {
 	m.staticDownloadResponseChan <- &downloadResponse{
 		data: m.staticDownloadData[offset : offset+length],
 		err:  nil,
@@ -95,7 +95,7 @@ func testSkylinkDataSourceSmallFile(t *testing.T) {
 	}) {
 		t.Fatal("unexpected")
 	}
-	if sds.RequestSize() != skylinkDataSourceRequestSize {
+	if sds.RequestSize() != SkylinkDataSourceRequestSize {
 		t.Fatal("unexpected")
 	}
 
@@ -198,7 +198,7 @@ func testSkylinkDataSourceLargeFile(t *testing.T) {
 	}) {
 		t.Fatal("unexpected")
 	}
-	if sds.RequestSize() != skylinkDataSourceRequestSize {
+	if sds.RequestSize() != SkylinkDataSourceRequestSize {
 		t.Fatal("unexpected")
 	}
 

@@ -3258,6 +3258,8 @@ The protocol is implemented on the following endpoints:
 
 For detailed information about the protocol check out the [specification](https://tus.io/protocols/resumable-upload.html).
 
+### Chunk Size
+
 For uploads to work with Skyd, you need to make sure that the chunk size of
 your TUS client is configured correctly. Otherwise, the upload will return an
 error which contains the expected chunk size. Right now the chunk size is
@@ -3270,9 +3272,19 @@ When using the defaults, the overhead is 0 and the dataPieces are 10. That's
 because all files uploaded using this protocol are automatically considered
 large uploads.
 
+### Skylink
+
 The Skylink for a TUS upload can be found at the following endpoint once the
 upload finished successfully.  It will be returned both as a JSON object in
 the response body as well as the http response header `"Skynet-Skylink"`.
+
+### Max Upload Size
+
+To limit the upload size of a file globally, set the `TUS_MAXSIZE` environment
+variable to the maximum number of bytes any user can upload. In addition to that
+global limit, the `SkynetMaxUploadSize` http header needs to be set on TUS
+requests for creating a new upload. This is the local limit for the specific
+upload. For security, both the global and local limit need to be set. 
 
 ## /skynet/upload/tus/:id [GET]
 > curl example  
@@ -3385,6 +3397,11 @@ curl -A "Sia-Agent" --user "":<apipassword> --data '{"remove" : ["GAC38Gan6YHVpL
 
 updates the list of skylinks that should be blocked from Skynet. This endpoint
 can be used to both add and remove skylinks from the blocklist.
+
+**NOTE:** this endpoint accepts both V1 and V2 skylinks. When a V2 skylink is
+submitted, it is resolved into a V1 skylink so that the data behind the V1
+skylink is blocked. This allows for the V2 skylink to be updated to point to new
+content that isn't blocked.
 
 ### Path Parameters
 ### REQUIRED
@@ -3600,6 +3617,37 @@ value of 5 minutes. The minimum is 1 second.
 }
 ```
 
+## /skynet/resolve/:skylink [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/skynet/resolve/AQBUUNFGvF261JuvCZjEBQILdfB1UqVmaWuLS8MKPv82Yw"
+```
+
+This curl command performs a GET request that resolves a version 2 skylink to a version 1 skylink.
+
+### Path Parameters
+### REQUIRED
+**skylink** | string  
+The version 2 skylink that should be resolved.
+
+### Query String Parameters
+### OPTIONAL
+**timeout** | uint64  
+The timeout in seconds. Specifies how long it takes the request to time out
+in case no registry entry can be found. The default is the maximum allowed
+value of 5 minutes. The minimum is 1 second.
+
+### Response
+> JSON Response Example
+
+```go
+{
+  "skylink": "EAAm6tEKCIostb5TT8o-lkawuWhICWqegs-Ar_kFdr1vBg", // string
+}
+```
+
+
 ## /skynet/restore [POST]
 > curl example  
 
@@ -3792,6 +3840,10 @@ If 'include-layout' is set to true, the API will return the layout in the
 the download which is why it is not returned by default. Cases that require the
 layout include backing up skylinks where all the original upload information
 about a skylink is needed.
+
+**start | end** | uint64  
+The `start` and `end` params can be used for range requests when the client is
+unable to use the range field in the Header.
 
 **timeout** | int  
 If 'timeout' is set, the download will fail if the Skyfile cannot be retrieved 
@@ -4040,20 +4092,42 @@ returns statistical information about Skynet, e.g. number of files uploaded
 ### JSON Response
 ```json
 {
-  "uptime": 1234, // int
-  "uploadstats": {
-    "numfiles": 2,         // int
-    "totalsize": 44527895  // int
-  },
-  "versioninfo": {
-    "version":     "1.4.4-master", // string
-    "gitrevision": "cd5a83712"     // string
-  },
-  "registrystats": {
-    "readprojectp99": 5020,   // uint64
-    "readprojectp999": 5020,  // uint64
-    "readprojectp9999": 5020  // uint64
-  },
+   "basesectorupload15mdatapoints":12.032777431483911,
+   "basesectorupload15mp99ms":16384,
+   "basesectorupload15mp999ms":27648,
+   "basesectorupload15mp9999ms":27648,
+   "chunkupload15mdatapoints":64.29178098782313,
+   "chunkupload15mp99ms":30720,
+   "chunkupload15mp999ms":30720,
+   "chunkupload15mp9999ms":43008,
+   "registryread15mdatapoints":126.31844121965291,
+   "registryread15mp99ms":132,
+   "registryread15mp999ms":288,
+   "registryread15mp9999ms":288,
+   "registrywrite15mdatapoints":6.57479081135385,
+   "registrywrite15mp99ms":104,
+   "registrywrite15mp999ms":216,
+   "registrywrite15mp9999ms":416,
+   "streambufferread15mdatapoints":1221.2823097216672,
+   "streambufferread15mp99ms":5376,
+   "streambufferread15mp999ms":7936,
+   "streambufferread15mp9999ms":7936,
+   "systemhealthscandurationhours":1.1795308075927777,
+   "allowancestatus":"healthy",                         // 'low', 'high', 'healthy'
+   "contractstorage":68897587855360,
+   "maxstorageprice":"34722222222",
+   "numcritalerts":0,
+   "numfiles":403016,
+   "portalmode": true,                                  // bool
+   "repair":385217462272,
+   "storage":3635586064087,
+   "stuckchunks":29948,
+   "walletstatus":"healthy",                            // 'locked', 'low', 'high', 'healthy'
+   "uptime":92812,
+   "versioninfo":{
+      "version":"1.6.0-master",                         // string
+      "gitrevision":"✗-dd6ab5c88"                       // string
+   }
 }
 ```
 

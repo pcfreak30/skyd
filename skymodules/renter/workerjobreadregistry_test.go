@@ -46,7 +46,7 @@ func TestReadRegistryJob(t *testing.T) {
 	}
 
 	// The entries should match.
-	if !reflect.DeepEqual(*lookedUpRV, rv) {
+	if !reflect.DeepEqual(lookedUpRV.SignedRegistryValue, rv) {
 		t.Log(lookedUpRV)
 		t.Log(rv)
 		t.Fatal("entries don't match")
@@ -59,7 +59,7 @@ func TestReadRegistryJob(t *testing.T) {
 	}
 
 	// The entries should match.
-	if !reflect.DeepEqual(*lookedUpRV, rv) {
+	if !reflect.DeepEqual(lookedUpRV.SignedRegistryValue, rv) {
 		t.Log(lookedUpRV)
 		t.Log(rv)
 		t.Fatal("entries don't match")
@@ -110,7 +110,7 @@ func TestReadRegistryJobManual(t *testing.T) {
 	lookedUpRV := resp.staticSignedRegistryValue
 
 	// The entries should match.
-	if !reflect.DeepEqual(*lookedUpRV, rv) {
+	if !reflect.DeepEqual(lookedUpRV.SignedRegistryValue, rv) {
 		t.Log(lookedUpRV)
 		t.Log(rv)
 		t.Fatal("entries don't match")
@@ -142,7 +142,7 @@ func TestReadRegistryJobManual(t *testing.T) {
 	lookedUpRV = resp.staticSignedRegistryValue
 
 	// The entries should match.
-	if !reflect.DeepEqual(*lookedUpRV, rv) {
+	if !reflect.DeepEqual(lookedUpRV.SignedRegistryValue, rv) {
 		t.Log(lookedUpRV)
 		t.Log(rv)
 		t.Fatal("entries don't match")
@@ -207,13 +207,13 @@ func TestReadRegistryInvalidCached(t *testing.T) {
 	// Read the value. This should result in an error due to the host providing a
 	// lower revision number than expected.
 	_, err = wt.ReadRegistry(context.Background(), testSpan(), spk, rv.Tweak)
-	if !errors.Contains(err, errHostLowerRevisionThanCache) {
+	if !errors.Contains(err, errHostCheating) {
 		t.Fatal(err)
 	}
 
 	// Make sure there is a recent error and cooldown.
 	wt.staticJobReadRegistryQueue.mu.Lock()
-	if !errors.Contains(wt.staticJobReadRegistryQueue.recentErr, errHostLowerRevisionThanCache) {
+	if !errors.Contains(wt.staticJobReadRegistryQueue.recentErr, errHostCheating) {
 		t.Fatal("wrong recent error", wt.staticJobReadRegistryQueue.recentErr)
 	}
 	if wt.staticJobReadRegistryQueue.cooldownUntil == (time.Time{}) {
@@ -254,7 +254,7 @@ func TestReadRegistryCachedUpdated(t *testing.T) {
 
 	// Make sure the value is in the cache.
 	rev, cached := wt.staticRegistryCache.Get(sid)
-	if !cached || rev != rv.Revision {
+	if !cached || !reflect.DeepEqual(rev, rv.RegistryValue) {
 		t.Fatal("invalid cached value")
 	}
 
@@ -270,13 +270,13 @@ func TestReadRegistryCachedUpdated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(rv, *readRV) {
+	if !reflect.DeepEqual(rv, readRV.SignedRegistryValue) {
 		t.Fatal("read value doesn't match set value")
 	}
 
 	// Revision should be cached again.
 	rev, cached = wt.staticRegistryCache.Get(sid)
-	if !cached || rev != rv.Revision {
+	if !cached || !reflect.DeepEqual(rev, rv.RegistryValue) {
 		t.Fatal("invalid cached value")
 	}
 
@@ -291,14 +291,14 @@ func TestReadRegistryCachedUpdated(t *testing.T) {
 
 	// Make sure the value is in the cache.
 	rev, cached = wt.staticRegistryCache.Get(sid)
-	if !cached || rev != rv2.Revision {
+	if !cached || !reflect.DeepEqual(rev, rv2.RegistryValue) {
 		t.Fatal("invalid cached value")
 	}
 
 	// Set the cache to the earlier revision of rv.
 	wt.staticRegistryCache.Set(sid, rv, true)
 	rev, cached = wt.staticRegistryCache.Get(sid)
-	if !cached || rev != rv.Revision {
+	if !cached || !reflect.DeepEqual(rev, rv.RegistryValue) {
 		t.Fatal("invalid cached value")
 	}
 
@@ -307,13 +307,13 @@ func TestReadRegistryCachedUpdated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(rv2, *readRV) {
+	if !reflect.DeepEqual(rv2, readRV.SignedRegistryValue) {
 		t.Fatal("read value doesn't match set value")
 	}
 
 	// Revision from rv2 should be cached again.
 	rev, cached = wt.staticRegistryCache.Get(sid)
-	if !cached || rev != rv2.Revision {
+	if !cached || !reflect.DeepEqual(rev, rv2.RegistryValue) {
 		t.Fatal("invalid cached value")
 	}
 }

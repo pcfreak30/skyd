@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -40,6 +41,10 @@ var (
 	}).(time.Duration)
 )
 
+// ErrTUSUploadInterrupted is returned if the upload seemingly succeeded but
+// didn't actually upload a full chunk.
+var ErrTUSUploadInterrupted = errors.New("tus upload was interrupted - please retry")
+
 type (
 	// skynetTUSUploader implements multiple TUS interfaces for skynet uploads
 	// allowing for resumable uploads.
@@ -65,6 +70,7 @@ type (
 		fanout   []byte
 		fileNode *filesystem.FileNode
 		staticUP skymodules.FileUploadParams
+		chunks   []*unfinishedUploadChunk
 
 		// small upload related fields.
 		isSmall bool
@@ -104,14 +110,21 @@ func (stu *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileIn
 
 	// Get a siapath.
 	sp := skymodules.RandomSkynetFilePath()
-	upload.fi.MetaData["SiaPath"] = sp.String()
+
+	// Get the filename from either the metadata or path.
+	fileName := sp.Name()
+	fileNameMD, fileNameFound := upload.fi.MetaData["filename"]
+	if fileNameFound {
+		fileName = fileNameMD
+	}
+	fileType := upload.fi.MetaData["filetype"]
 
 	// Create the skyfile upload params.
 	// TODO: use info.metadata to create skyfileuploadparameters different from
 	// the default.
 	upload.staticSUP = skymodules.SkyfileUploadParameters{
 		SiaPath:             sp,
-		Filename:            sp.Name(),
+		Filename:            fileName,
 		BaseChunkRedundancy: SkyfileDefaultBaseChunkRedundancy,
 	}
 	sup := upload.staticSUP
@@ -121,6 +134,13 @@ func (stu *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileIn
 		Filename:     sup.Filename,
 		Mode:         sup.Mode,
 		Monetization: sup.Monetization,
+		Subfiles: skymodules.SkyfileSubfiles{
+			sup.Filename: skymodules.SkyfileSubfileMetadata{
+				Filename:    fileName,
+				ContentType: fileType,
+				Offset:      0,
+			},
+		},
 	}
 
 	// Create the FileUploadParams
@@ -226,6 +246,9 @@ func (u *skynetTUSUpload) tryUploadSmallFile(reader io.Reader) ([]byte, bool, er
 	// prepare the metadata.
 	sm := u.sm
 	sm.Length = uint64(numBytes)
+	ssm := sm.Subfiles[sm.Filename]
+	ssm.Len = sm.Length
+	sm.Subfiles[sm.Filename] = ssm
 
 	// check whether it's valid
 	err = skymodules.ValidateSkyfileMetadata(sm)
@@ -257,6 +280,26 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	uploader := u.staticUploader
+
+	// Quickly scan past chunks for errors and remove the ones that are done
+	// already.
+	i := 0
+	for _, chunk := range u.chunks {
+		select {
+		case <-chunk.staticAvailableChan:
+			chunk.mu.Lock()
+			err = chunk.err
+			chunk.mu.Unlock()
+			if err != nil {
+				return
+			}
+		default:
+			// keep the chunks that are not yet done.
+			u.chunks[i] = chunk
+			i++
+		}
+	}
+	u.chunks = u.chunks[:i]
 
 	// Update the lastWrite time if more than 0 bytes were written.
 	defer func() {
@@ -301,6 +344,7 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 	// uploading a padded chunk, we can't upload more chunks. That's why the
 	// client needs to make sure that the chunkSize they use is aligned with the
 	// chunkSize of the skyfile's fanout.
+	deps := u.staticUploader.staticRenter.staticDeps
 	if offset%int64(fileNode.ChunkSize()) != 0 {
 		err := fmt.Errorf("offset is not chunk aligned - make sure chunkSize is set to a multiple of %v for these upload params", fileNode.ChunkSize())
 		if build.Release == "testing" {
@@ -311,7 +355,7 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 	}
 
 	// Simulate unstable connection.
-	if u.staticUploader.staticRenter.staticDeps.Disrupt("TUSUnstable") {
+	if deps.Disrupt("TUSUnstable") {
 		// 50% chance that write fails
 		if fastrand.Intn(2) == 0 {
 			return 0, errors.New("TUSUnstable")
@@ -321,11 +365,38 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 	// Upload.
 	onlyOnePieceNeeded := ec.MinPieces() == 1 && fileNode.MasterKey().Type() == crypto.TypePlain
 	cr := NewFanoutChunkReader(src, ec, onlyOnePieceNeeded, fileNode.MasterKey())
-	n, err = uploader.staticRenter.callUploadStreamFromReaderWithFileNode(fileNode, cr, offset)
+	var chunks []*unfinishedUploadChunk
+	chunks, n, err = uploader.staticRenter.callUploadStreamFromReaderWithFileNodeNoBlock(ctx, fileNode, cr, offset)
+
+	// Simulate loss of connection one byte early.
+	if deps.Disrupt("TUSConnectionDropped") {
+		n--
+		err = nil
+	}
+
+	// If less than a full chunk was uploaded, we expect the file to be done. If
+	// that's not the case, the connection was closed early. That means the chunk
+	// was incorrectly padded and needs to be removed again by shrinking the siafile
+	// by one chunk before the user can retry the upload.
+	if n%int64(fileNode.ChunkSize()) != 0 && u.fi.Offset+n != u.fi.Size {
+		shrinkErr := fileNode.Shrink(uint64(u.fi.Offset) / fileNode.ChunkSize())
+		if shrinkErr != nil {
+			return 0, shrinkErr
+		}
+		// Make sure that we return an error if none was returned by the
+		// upload. That way the client will know to retry. This usually
+		// happens if we reach a timeout in the reverse proxy.
+		err = errors.Compose(err, ErrTUSUploadInterrupted)
+	}
+	// In case of any error, return early.
+	if err != nil {
+		return 0, err
+	}
 
 	// Increment offset and append fanout.
 	u.fi.Offset += n
 	u.fanout = append(u.fanout, cr.Fanout()...)
+	u.chunks = append(u.chunks, chunks...)
 	return n, err
 }
 
@@ -352,6 +423,9 @@ func (u *skynetTUSUpload) finishUploadLarge(ctx context.Context) (skylink skymod
 	sup := u.staticSUP
 	sm := u.sm
 	sm.Length = uint64(u.fi.Size)
+	ssm := sm.Subfiles[sm.Filename]
+	ssm.Len = sm.Length
+	sm.Subfiles[sm.Filename] = ssm
 	err = skymodules.ValidateSkyfileMetadata(sm)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "metadata is invalid")
@@ -362,11 +436,11 @@ func (u *skynetTUSUpload) finishUploadLarge(ctx context.Context) (skylink skymod
 
 	// Convert the new siafile we just uploaded into a skyfile using the
 	// convert function.
-	return r.managedCreateSkylinkFromFileNode(sup, sm, u.fileNode, fanout)
+	return r.managedCreateSkylinkFromFileNode(ctx, sup, sm, u.fileNode, fanout)
 }
 
 // finishUploadSmall handles finishing up a small upload.
-func (u *skynetTUSUpload) finishUploadSmall(_ context.Context) (skylink skymodules.Skylink, err error) {
+func (u *skynetTUSUpload) finishUploadSmall(ctx context.Context) (skylink skymodules.Skylink, err error) {
 	r := u.staticUploader.staticRenter
 	sup := u.staticSUP
 	// edge case 0 byte file
@@ -376,7 +450,7 @@ func (u *skynetTUSUpload) finishUploadSmall(_ context.Context) (skylink skymodul
 			return
 		}
 	}
-	return r.managedUploadSkyfileSmallFile(sup, u.smBytes, u.buf)
+	return r.managedUploadSkyfileSmallFile(ctx, sup, u.smBytes, u.buf)
 }
 
 // FinishUpload is called when the upload is done.
@@ -387,7 +461,40 @@ func (u *skynetTUSUpload) FinishUpload(ctx context.Context) (err error) {
 	}()
 
 	u.mu.Lock()
+	chunks := u.chunks
+
+	// Update the last write before starting to wait for the chunks to avoid
+	// having the chunk pruned. This mostly happens in testing but won't
+	// hurt now that we no longer wait for every chunk to become available
+	// right away.
+	u.lastWrite = time.Now()
+	u.mu.Unlock()
+
+	// Wait for potentially unfinished chunks to finish.
+	for _, chunk := range chunks {
+		select {
+		case <-ctx.Done():
+			err = errors.New("upload timed out")
+		case <-chunk.staticAvailableChan:
+			// Update the last write time every time a chunk becomes
+			// available for some extra time before pruning.
+			u.mu.Lock()
+			u.lastWrite = time.Now()
+			u.mu.Unlock()
+			chunk.mu.Lock()
+			err = chunk.err
+			chunk.mu.Unlock()
+		}
+		if err != nil {
+			return err
+		}
+	}
+
+	u.mu.Lock()
 	defer u.mu.Unlock()
+
+	// Clear the chunks.
+	u.chunks = nil
 
 	var skylink skymodules.Skylink
 	if u.isSmall || u.fi.Size == 0 {
@@ -435,4 +542,33 @@ func (r *Renter) threadedPruneTUSUploads() {
 		}
 		r.staticSkynetTUSUploader.PruneUploads()
 	}
+}
+
+// TUSPreUploadCreateCallback is called before creating an upload. It is used to
+// dynamically check the maximum size of the user's upload according to a set
+// header field.
+func TUSPreUploadCreateCallback(hook handler.HookEvent) error {
+	// Sanity check that the size is not deferred.
+	if hook.Upload.SizeIsDeferred {
+		err := errors.New("uploads with deferred size are not supported")
+		return handler.NewHTTPError(err, http.StatusBadRequest)
+	}
+	// Get user's max upload size from request.
+	maxSizeStr := hook.HTTPRequest.Header.Get("SkynetMaxUploadSize")
+	if maxSizeStr == "" {
+		err := errors.New("SkynetMaxUploadSize header is missing")
+		return handler.NewHTTPError(err, http.StatusBadRequest)
+	}
+	var maxSize int64
+	_, err := fmt.Sscan(maxSizeStr, &maxSize)
+	if err != nil {
+		err = errors.AddContext(err, "failed to parse SkynetMaxUploadSize")
+		return handler.NewHTTPError(err, http.StatusBadRequest)
+	}
+	// Check upload size against max size.
+	if hook.Upload.Size > maxSize {
+		err = fmt.Errorf("upload exceeds maximum size: %v > %v", hook.Upload.Size, maxSize)
+		return handler.NewHTTPError(err, http.StatusRequestEntityTooLarge)
+	}
+	return nil
 }

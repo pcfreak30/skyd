@@ -11,8 +11,10 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/persist"
+	"go.sia.tech/siad/types"
 )
 
 // TestReadResponseSet is a unit test for the readResponseSet.
@@ -175,6 +177,8 @@ func TestThreadedAddResponseSetRetry(t *testing.T) {
 	srvHigher := srvLower
 	srvHigher.Revision++
 	srvHigher = srvHigher.Sign(sk)
+	entryLower := skymodules.NewRegistryEntry(spk, srvLower)
+	entryHigher := skymodules.NewRegistryEntry(spk, srvHigher)
 
 	// Get workers for the corresponding hosts.
 	w1, err1 := rt.renter.staticWorkerPool.callWorker(hosts[0].PublicKey())
@@ -230,7 +234,7 @@ func TestThreadedAddResponseSetRetry(t *testing.T) {
 				staticSPK:                 &spk,
 				staticTweak:               &srvHigher.Tweak,
 				staticCompleteTime:        startTime.Add(2 * time.Second),
-				staticSignedRegistryValue: &srvHigher,
+				staticSignedRegistryValue: &entryHigher,
 				staticWorker:              w1,
 			},
 			// Faster response.
@@ -238,7 +242,7 @@ func TestThreadedAddResponseSetRetry(t *testing.T) {
 				staticSPK:                 &spk,
 				staticTweak:               &srvLower.Tweak,
 				staticCompleteTime:        startTime.Add(time.Second),
-				staticSignedRegistryValue: &srvLower,
+				staticSignedRegistryValue: &entryLower,
 				staticWorker:              w2,
 			},
 			// Super fast response but won't know the entry later.
@@ -246,7 +250,7 @@ func TestThreadedAddResponseSetRetry(t *testing.T) {
 				staticSPK:                 &spk,
 				staticTweak:               &srvLower.Tweak,
 				staticCompleteTime:        startTime.Add(time.Millisecond),
-				staticSignedRegistryValue: &srvLower,
+				staticSignedRegistryValue: &entryLower,
 				staticWorker:              w3,
 			},
 			// Super fast response but will be offline later.
@@ -254,7 +258,7 @@ func TestThreadedAddResponseSetRetry(t *testing.T) {
 				staticSPK:                 &spk,
 				staticTweak:               &srvLower.Tweak,
 				staticCompleteTime:        startTime.Add(time.Millisecond),
-				staticSignedRegistryValue: &srvLower,
+				staticSignedRegistryValue: &entryLower,
 				staticWorker:              w4,
 			},
 		},
@@ -292,5 +296,122 @@ func TestThreadedAddResponseSetRetry(t *testing.T) {
 	if strings.Count(logs, "threadedAddResponseSet: worker that successfully retrieved a non-nil registry value returned nil") != 1 {
 		t.Log("logs", logs)
 		t.Fatal("didn't log second line")
+	}
+}
+
+// TestIsBetterReadRegistryResponse is a unit test for isBetterReadRegistryResponse.
+func TestIsBetterReadRegistryResponse(t *testing.T) {
+	t.Parallel()
+
+	registryEntry := func(revision uint64, tweak crypto.Hash) *skymodules.RegistryEntry {
+		v := modules.SignedRegistryValue{
+			RegistryValue: modules.NewRegistryValue(tweak, nil, revision, modules.RegistryTypeWithoutPubkey),
+		}
+		srv := skymodules.NewRegistryEntry(types.SiaPublicKey{}, v)
+		return &srv
+	}
+
+	tests := []struct {
+		existing *jobReadRegistryResponse
+		new      *jobReadRegistryResponse
+		result   bool
+	}{
+		{
+			existing: nil,
+			new:      &jobReadRegistryResponse{},
+			result:   true,
+		},
+		{
+			existing: &jobReadRegistryResponse{},
+			new:      nil,
+			result:   false,
+		},
+		{
+			existing: nil,
+			new:      nil,
+			result:   false,
+		},
+		{
+			existing: &jobReadRegistryResponse{
+				staticSignedRegistryValue: nil,
+			},
+			new: &jobReadRegistryResponse{
+				staticSignedRegistryValue: &skymodules.RegistryEntry{},
+			},
+			result: true,
+		},
+		{
+			existing: &jobReadRegistryResponse{
+				staticSignedRegistryValue: &skymodules.RegistryEntry{},
+			},
+			new: &jobReadRegistryResponse{
+				staticSignedRegistryValue: nil,
+			},
+			result: false,
+		},
+		{
+			existing: &jobReadRegistryResponse{
+				staticSignedRegistryValue: nil,
+			},
+			new: &jobReadRegistryResponse{
+				staticSignedRegistryValue: nil,
+			},
+			result: false,
+		},
+		{
+			existing: &jobReadRegistryResponse{
+				staticSignedRegistryValue: registryEntry(0, crypto.Hash{}),
+			},
+			new: &jobReadRegistryResponse{
+				staticSignedRegistryValue: registryEntry(1, crypto.Hash{}),
+			},
+			result: true,
+		},
+		{
+			existing: &jobReadRegistryResponse{
+				staticSignedRegistryValue: registryEntry(1, crypto.Hash{}),
+			},
+			new: &jobReadRegistryResponse{
+				staticSignedRegistryValue: registryEntry(0, crypto.Hash{}),
+			},
+			result: false,
+		},
+		{
+			existing: &jobReadRegistryResponse{
+				staticSignedRegistryValue: registryEntry(0, crypto.Hash{1, 2, 3}),
+			},
+			new: &jobReadRegistryResponse{
+				staticSignedRegistryValue: registryEntry(0, crypto.Hash{3, 2, 1}),
+			},
+			result: true,
+		},
+		{
+			existing: &jobReadRegistryResponse{
+				staticSignedRegistryValue: registryEntry(0, crypto.Hash{3, 2, 1}),
+			},
+			new: &jobReadRegistryResponse{
+				staticSignedRegistryValue: registryEntry(0, crypto.Hash{1, 2, 3}),
+			},
+			result: false,
+		},
+		{
+			existing: &jobReadRegistryResponse{
+				staticSignedRegistryValue: registryEntry(1, crypto.Hash{}),
+			},
+			new: &jobReadRegistryResponse{
+				staticSignedRegistryValue: registryEntry(1, crypto.Hash{}),
+			},
+			result: false,
+		},
+	}
+
+	for i, test := range tests {
+		if test.new != nil {
+			test.new.staticWorker = &worker{}
+		}
+		result := isBetterReadRegistryResponse(test.existing, test.new)
+		if result != test.result {
+			t.Errorf("%v: wrong result expected %v but was %v", i, test.result, result)
+		}
 	}
 }

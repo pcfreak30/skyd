@@ -122,6 +122,140 @@ func TestCheckUploadGouging(t *testing.T) {
 	}
 }
 
+// TestCheckUploadGougingPT checks that the upload price gouging checker is
+// correctly detecting price gouging from a host.
+func TestCheckUploadGougingPT(t *testing.T) {
+	oneCurrency := types.NewCurrency64(1)
+
+	// minAllowance contains only the fields necessary to test the price gouging
+	// function. The min allowance doesn't include any of the max prices,
+	// because the function will ignore them if they are not set.
+	minAllowance := skymodules.Allowance{
+		// Funds is set such that the tests come out to an easy, round number.
+		// One siacoin is multiplied by the number of elements that are checked
+		// for gouging, and then divided by the gounging denominator.
+		Funds:  types.SiacoinPrecision.Mul64(4).Div64(uploadGougingFractionDenom).Sub(oneCurrency),
+		Period: 1, // 1 block.
+
+		ExpectedStorage: modules.SectorSize, // 1 append
+
+		MaxRPCPrice:          types.SiacoinPrecision,
+		MaxSectorAccessPrice: types.SiacoinPrecision,
+		MaxStoragePrice:      types.SiacoinPrecision,
+	}
+	defaultPT := newDefaultPriceTable()
+
+	// Compute the right funds for the minAllowance given the price table.
+	tb := modules.NewProgramBuilder(&defaultPT, minAllowance.Period)
+	err := tb.AddAppendInstruction(make([]byte, modules.SectorSize), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cost, _, _ := tb.Cost(true)
+	bandwidthCost := modules.MDMBandwidthCost(defaultPT, modules.SectorSize+2920, 2920)
+	cost = cost.Add(bandwidthCost)
+
+	fullCostPerByte := cost.Div64(modules.SectorSize)
+	allowanceStorageCost := fullCostPerByte.Mul64(minAllowance.ExpectedStorage)
+	minAllowance.Funds = allowanceStorageCost.Div64(uploadGougingFractionDenom)
+
+	// Check the minAllowance and defaultPT. Should work.
+	err = checkUploadGougingPT(defaultPT, minAllowance)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Increase each setting in the price table by a delta to cause
+	// the gouging check to fail. The delta is set to gouging denominator to
+	// avoid integer rounding errors.
+	delta := uint64(uploadGougingFractionDenom)
+	failPT := defaultPT
+	failPT.InitBaseCost = failPT.InitBaseCost.Add64(delta)
+	err = checkUploadGougingPT(failPT, minAllowance)
+	if err == nil {
+		t.Fatal("should fail")
+	}
+	failPT = defaultPT
+	failPT.WriteBaseCost = failPT.WriteBaseCost.Add64(delta)
+	err = checkUploadGougingPT(failPT, minAllowance)
+	if err == nil {
+		t.Fatal("should fail")
+	}
+	failPT = defaultPT
+	failPT.WriteStoreCost = failPT.WriteStoreCost.Add64(delta)
+	err = checkUploadGougingPT(failPT, minAllowance)
+	if err == nil {
+		t.Fatal("should fail")
+	}
+	failPT = defaultPT
+	failPT.UploadBandwidthCost = failPT.UploadBandwidthCost.Add64(delta)
+	err = checkUploadGougingPT(failPT, minAllowance)
+	if err == nil {
+		t.Fatal("should fail")
+	}
+	failPT = defaultPT
+	failPT.DownloadBandwidthCost = failPT.DownloadBandwidthCost.Add64(delta)
+	err = checkUploadGougingPT(failPT, minAllowance)
+	if err == nil {
+		t.Fatal("should fail")
+	}
+
+	// minPT is set to exactly the limits in the allowance set by the user.
+	// Increasing any of the fields will result in gouging failures.
+	minPT := modules.RPCPriceTable{
+		MemoryTimeCost:        oneCurrency,
+		WriteLengthCost:       oneCurrency,
+		InitBaseCost:          minAllowance.MaxRPCPrice,
+		WriteBaseCost:         minAllowance.MaxSectorAccessPrice,
+		WriteStoreCost:        minAllowance.MaxStoragePrice,
+		UploadBandwidthCost:   minAllowance.MaxUploadBandwidthPrice,
+		DownloadBandwidthCost: minAllowance.MaxDownloadBandwidthPrice,
+	}
+
+	failPT = minPT
+	failPT.MemoryTimeCost = failPT.MemoryTimeCost.Add64(1)
+	err = checkUploadGougingPT(failPT, minAllowance)
+	if err == nil {
+		t.Fatal("should fail")
+	}
+	failPT = minPT
+	failPT.WriteLengthCost = failPT.WriteLengthCost.Add64(1)
+	err = checkUploadGougingPT(failPT, minAllowance)
+	if err == nil {
+		t.Fatal("should fail")
+	}
+	failPT = minPT
+	failPT.InitBaseCost = failPT.InitBaseCost.Add64(1)
+	err = checkUploadGougingPT(failPT, minAllowance)
+	if err == nil {
+		t.Fatal("should fail")
+	}
+	failPT = minPT
+	failPT.WriteBaseCost = failPT.WriteBaseCost.Add64(1)
+	err = checkUploadGougingPT(failPT, minAllowance)
+	if err == nil {
+		t.Fatal("should fail")
+	}
+	failPT = minPT
+	failPT.WriteStoreCost = failPT.WriteStoreCost.Add64(1)
+	err = checkUploadGougingPT(failPT, minAllowance)
+	if err == nil {
+		t.Fatal("should fail")
+	}
+	failPT = minPT
+	failPT.UploadBandwidthCost = failPT.UploadBandwidthCost.Add64(1)
+	err = checkUploadGougingPT(failPT, minAllowance)
+	if err == nil {
+		t.Fatal("should fail")
+	}
+	failPT = minPT
+	failPT.DownloadBandwidthCost = failPT.DownloadBandwidthCost.Add64(1)
+	err = checkUploadGougingPT(failPT, minAllowance)
+	if err == nil {
+		t.Fatal("should fail")
+	}
+}
+
 // testProcessUploadChunkBasic tests processing a valid, needed chunk.
 func testProcessUploadChunkBasic(t *testing.T, chunk func(wt *workerTester) *unfinishedUploadChunk) {
 	t.Parallel()

@@ -1,12 +1,15 @@
 package renter
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
 )
 
 const (
@@ -175,5 +178,70 @@ func testSkylinkBasic(t *testing.T) {
 	err = verifyState(skylink2)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestBlocklistHash probes the BlocklistHash method of the renter.
+func TestBlocklistHash(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create workertester
+	wt, err := newWorkerTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err = wt.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Grab renter
+	r := wt.rt.renter
+
+	// Generate V1 Skylink
+	var mr crypto.Hash
+	fastrand.Read(mr[:])
+	skylinkV1, err := skymodules.NewSkylinkV1(mr, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check hash returned from V1 Skylinks
+	hash, err := r.managedBlocklistHash(context.Background(), skylinkV1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := crypto.HashObject(skylinkV1.MerkleRoot())
+	if hash != expected {
+		t.Fatal("hashes not equal", hash, expected)
+	}
+
+	// Create a V2 link based on the the V1 link
+	//
+	// Update the registry with that link.
+	srv, spk, sk := randomRegistryValue()
+	srv.Data = skylinkV1.Bytes()
+	srv.Revision++
+	srv = srv.Sign(sk)
+	err = wt.UpdateRegistry(context.Background(), spk, srv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the v2 skylink.
+	skylinkV2 := skymodules.NewSkylinkV2(spk, srv.Tweak)
+
+	// Check V2 link created from V1 link to verify that it also returns the same hash
+	hash, err = r.managedBlocklistHash(context.Background(), skylinkV2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hash != expected {
+		t.Fatal("hashes not equal", hash, expected)
 	}
 }

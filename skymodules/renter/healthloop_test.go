@@ -187,3 +187,197 @@ func TestDirFinderSleepDuration(t *testing.T) {
 	}
 	dirFinder.leastRecentCheck = time.Now()
 }
+
+/* TODO: bring back in some form
+// TestOldestHealthCheckTime probes managedOldestHealthCheckTime to verify that
+// the directory with the oldest LastHealthCheckTime is returned
+func TestOldestHealthCheckTime(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create test renter
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Create a test directory with sub folders
+	//
+	// root/ 1
+	// root/SubDir1/
+	// root/SubDir1/SubDir1/
+	// root/SubDir1/SubDir2/
+	// root/SubDir2/
+	// root/SubDir3/
+	directories := []string{
+		"root",
+		"root/SubDir1",
+		"root/SubDir1/SubDir1",
+		"root/SubDir1/SubDir2",
+		"root/SubDir2",
+		"root/SubDir3",
+	}
+
+	// Create directory tree with consistent metadata
+	now := time.Now()
+	nowMD := siadir.Metadata{
+		Health:                       1,
+		StuckHealth:                  0,
+		AggregateLastHealthCheckTime: now,
+		LastHealthCheckTime:          now,
+	}
+	for _, dir := range directories {
+		// Create Directory
+		dirSiaPath := newSiaPath(dir)
+		if err := rt.renter.CreateDir(dirSiaPath, skymodules.DefaultDirPerm); err != nil {
+			t.Fatal(err)
+		}
+		err = rt.openAndUpdateDir(dirSiaPath, nowMD)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Put two files in the directory
+		for i := 0; i < 2; i++ {
+			fileSiaPath, err := dirSiaPath.Join(persist.RandomSuffix())
+			if err != nil {
+				t.Fatal(err)
+			}
+			sf, err := rt.renter.createRenterTestFile(fileSiaPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sf.SetLastHealthCheckTime()
+			err = errors.Compose(sf.SaveMetadata(), sf.Close())
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	// Update all common directories to same health check time.
+	err1 := rt.openAndUpdateDir(skymodules.RootSiaPath(), nowMD)
+	err2 := rt.openAndUpdateDir(skymodules.BackupFolder, nowMD)
+	err3 := rt.openAndUpdateDir(skymodules.HomeFolder, nowMD)
+	err4 := rt.openAndUpdateDir(skymodules.SkynetFolder, nowMD)
+	err5 := rt.openAndUpdateDir(skymodules.UserFolder, nowMD)
+	err6 := rt.openAndUpdateDir(skymodules.VarFolder, nowMD)
+	err = errors.Compose(err1, err2, err3, err4, err5, err6)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set the LastHealthCheckTime of SubDir1/SubDir2 to be the oldest
+	oldestCheckTime := now.AddDate(0, 0, -1)
+	oldestHealthCheckUpdate := siadir.Metadata{
+		Health:                       1,
+		StuckHealth:                  0,
+		AggregateLastHealthCheckTime: oldestCheckTime,
+		LastHealthCheckTime:          oldestCheckTime,
+	}
+	subDir1_2 := newSiaPath("root/SubDir1/SubDir2")
+	if err := rt.openAndUpdateDir(subDir1_2, oldestHealthCheckUpdate); err != nil {
+		t.Fatal(err)
+	}
+
+	// Bubble the health of SubDir1 so that the oldest LastHealthCheckTime of
+	// SubDir1/SubDir2 gets bubbled up
+	subDir1 := newSiaPath("root/SubDir1")
+	if err := rt.bubbleBlocking(subDir1); err != nil {
+		t.Fatal(err)
+	}
+	err = build.Retry(60, time.Second, func() error {
+		// Find the oldest directory, even though SubDir1/SubDir2 is the oldest,
+		// SubDir1 should be returned since it is the lowest level directory tree
+		// containing the Oldest LastHealthCheckTime
+		dir, lastCheck, err := rt.renter.managedOldestHealthCheckTime()
+		if err != nil {
+			return err
+		}
+		if !dir.Equals(subDir1) {
+			return fmt.Errorf("Expected to find %v but found %v", subDir1.String(), dir.String())
+		}
+		if !lastCheck.Equal(oldestCheckTime) {
+			return fmt.Errorf("Expected to find time of %v but found %v", oldestCheckTime, lastCheck)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Now add more files to SubDir1, this will force the return of SubDir1_2
+	// since the subtree including SubDir1 now has too many files
+	for i := uint64(0); i < healthLoopNumBatchFiles; i++ {
+		fileSiaPath, err := subDir1.Join(persist.RandomSuffix())
+		if err != nil {
+			t.Fatal(err)
+		}
+		sf, err := rt.renter.createRenterTestFile(fileSiaPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sf.SetLastHealthCheckTime()
+		err = errors.Compose(sf.SaveMetadata(), sf.Close())
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := rt.bubbleBlocking(subDir1); err != nil {
+		t.Fatal(err)
+	}
+	err = build.Retry(60, time.Second, func() error {
+		// Find the oldest directory, should be SubDir1_2 now
+		dir, lastCheck, err := rt.renter.managedOldestHealthCheckTime()
+		if err != nil {
+			return err
+		}
+		if !dir.Equals(subDir1_2) {
+			return fmt.Errorf("Expected to find %v but found %v", subDir1_2.String(), dir.String())
+		}
+		if !lastCheck.Equal(oldestCheckTime) {
+			return fmt.Errorf("Expected to find time of %v but found %v", oldestCheckTime, lastCheck)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Now update the root directory to have an older AggregateLastHealthCheckTime
+	// than the sub directory but a more recent LastHealthCheckTime. This will
+	// simulate a shutdown before all the pending bubbles could finish.
+	entry, err := rt.renter.staticFileSystem.OpenSiaDir(skymodules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootTime := now.AddDate(0, 0, -3)
+	err = entry.UpdateLastHealthCheckTime(rootTime, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = entry.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A call to managedOldestHealthCheckTime should still return the same
+	// subDir1_2
+	dir, lastCheck, err := rt.renter.managedOldestHealthCheckTime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !dir.Equals(subDir1_2) {
+		t.Error(fmt.Errorf("Expected to find %v but found %v", subDir1_2.String(), dir.String()))
+	}
+	if !lastCheck.Equal(oldestCheckTime) {
+		t.Error(fmt.Errorf("Expected to find time of %v but found %v", oldestCheckTime, lastCheck))
+	}
+}
+*/

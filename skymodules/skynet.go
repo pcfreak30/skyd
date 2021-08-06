@@ -179,9 +179,6 @@ type (
 		// a Skykey will be derived from the Master Skykey found under that
 		// name/ID to be used for this specific upload.
 		FileSpecificSkykey skykey.Skykey
-
-		// Batch determines whether the upload should be batched with other uploads.
-		Batch bool
 	}
 
 	// SkyfileMultipartUploadParameters defines the parameters specific to
@@ -518,12 +515,6 @@ func (sm SkyfileSubfileMetadata) IsDir() bool {
 	return false
 }
 
-// IsHTML returns whether or not this subfile is an HTML file
-func (sm SkyfileSubfileMetadata) IsHTML() bool {
-	extension := filepath.Ext(sm.Filename)
-	return extension == ".html" || extension == ".htm"
-}
-
 // Mode implements the os.FileInfo interface for SkyfileSubfileMetadata.
 func (sm SkyfileSubfileMetadata) Mode() os.FileMode {
 	return sm.FileMode
@@ -701,4 +692,24 @@ func computeMonetizationPayout(amt, base types.Currency, rand io.Reader) (types.
 		return base, nil
 	}
 	return types.ZeroCurrency, nil
+}
+
+// RegistryEntry is a complete registry entry including the pubkey needed to
+// verify it.
+type RegistryEntry struct {
+	modules.SignedRegistryValue
+	PubKey types.SiaPublicKey
+}
+
+// Verify verifies the entry.
+func (re RegistryEntry) Verify() error {
+	return re.SignedRegistryValue.Verify(re.PubKey.ToPublicKey())
+}
+
+// NewRegistryEntry creates a new RegistryEntry.
+func NewRegistryEntry(spk types.SiaPublicKey, srv modules.SignedRegistryValue) RegistryEntry {
+	return RegistryEntry{
+		SignedRegistryValue: srv,
+		PubKey:              spk,
+	}
 }

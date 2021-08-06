@@ -486,7 +486,7 @@ func rentercmd() {
 // renterlostcmd is the handler for displaying the renter's lost files.
 func renterlostcmd() {
 	// Grab the root directory information
-	dirs := getDir(skymodules.RootSiaPath(), true, false)
+	dirs := getDir(skymodules.RootSiaPath(), true, false, verbose)
 	// Print the Aggregate Lost files
 	fmt.Println(dirs[0].dir.AggregateNumLostFiles, "lost files found.")
 }
@@ -495,7 +495,7 @@ func renterlostcmd() {
 // summary for uploaded files.
 func renterhealthsummarycmd() {
 	// Print out file health summary for the renter
-	dirs := getDir(skymodules.RootSiaPath(), true, true)
+	dirs := getDir(skymodules.RootSiaPath(), true, true, verbose)
 	renterFileHealthSummary(dirs)
 }
 
@@ -1728,7 +1728,7 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	}
 
 	// Get dirs with their corresponding files. They will be sorted by siapath.
-	dirs := getDirSorted(sp, renterListRoot, renterListRecursive)
+	dirs := getDirSorted(sp, renterListRoot, renterListRecursive, verbose)
 
 	// Get the total number of listings (subdirs and files).
 	root := dirs[0] // Root directory we are querying.
@@ -1874,7 +1874,7 @@ func rentersetlocalpathcmd(siapath, newlocalpath string) {
 // unstuckall`. Sets all files to unstuck.
 func renterfilesunstuckcmd() {
 	// Get all dirs and their files recursively.
-	dirs := getDir(skymodules.RootSiaPath(), true, true)
+	dirs := getDir(skymodules.RootSiaPath(), true, true, verbose)
 
 	// Count all files.
 	totalFiles := 0
