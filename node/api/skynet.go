@@ -518,12 +518,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 	// Validate Metadata
 	metadata := streamer.Metadata()
-	// TODO This is probably an overkill, right?
-	// err = skymodules.ValidateSkyfileMetadata(metadata)
-	// if err != nil {
-	// 	WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-	// 	return
-	// }
 	if metadata.DefaultPath != "" && len(metadata.Subfiles) == 0 {
 		WriteError(w, Error{"defaultpath is not allowed on single files, please specify a format if you want to download this skyfile regardless"}, http.StatusBadRequest)
 		return
@@ -589,28 +583,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		// If we need to serve a path, different from the requested one, we'll
 		// decide that now.
 		if len(metadata.TryFiles) > 0 {
-			// TODO Move this to a helper.
-			files := metadata.Subfiles
-			file := strings.Trim(path, "/")
-			if !subfilesContains(files, file) {
-				// We'll check all tryfiles from last to first.
-				for i := len(metadata.TryFiles) - 1; i >= 0; i-- {
-					tf := metadata.TryFiles[i]
-					// If we encounter an absolute-path tryfile, and it exists,
-					// we stop searching.
-					if strings.HasPrefix(tf, "/") && subfilesContains(files, strings.Trim(tf, "/")) {
-						path = tf
-						break
-					}
-					// Assume the request is for a directory and check if a
-					// tryfile matches.
-					potentialFilename := strings.Trim(strings.TrimSuffix(file, "/")+skymodules.EnsurePrefix(tf, "/"), "/")
-					if subfilesContains(files, potentialFilename) {
-						path = skymodules.EnsurePrefix(potentialFilename, "/")
-						break
-					}
-				}
-			}
+			path, _ = determinePathBasedOnTryfiles(path, metadata)
 		} else if defaultPath != "" && path == "/" {
 			_, exists := metadata.Subfiles[strings.TrimPrefix(defaultPath, "/")]
 			if exists {
@@ -618,8 +591,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			}
 		}
 	}
-
-	// TODO Make sure we set tryfiles to "index.html" when not set (on upload).
 
 	var isSubfile bool
 	// Serve the contents of the skyfile at path if one is set
@@ -1633,7 +1604,40 @@ func (api *API) skynetSkylinkUnpinHandlerPOST(w http.ResponseWriter, req *http.R
 	WriteSuccess(w)
 }
 
+// subfilesContains is small helper that check if the given set of subfiles
+// contains a file with the given name.
 func subfilesContains(sub skymodules.SkyfileSubfiles, filename string) bool {
+	if sub == nil {
+		return false
+	}
 	_, exists := sub[filename]
 	return exists
+}
+
+// determinePathBasedOnTryfiles determines if we should serve a different path
+// based on the given metadata. It also returns a boolean which tells us whether
+// the returned path is different from the provided path.Î
+func determinePathBasedOnTryfiles(path string, metadata skymodules.SkyfileMetadata) (string, bool) {
+	if metadata.Subfiles == nil {
+		return path, false
+	}
+	file := strings.Trim(path, "/")
+	if !subfilesContains(metadata.Subfiles, file) {
+		// We'll check all tryfiles from last to first.
+		for i := len(metadata.TryFiles) - 1; i >= 0; i-- {
+			tf := metadata.TryFiles[i]
+			// If we encounter an absolute-path tryfile, and it exists,
+			// we stop searching.
+			if strings.HasPrefix(tf, "/") && subfilesContains(metadata.Subfiles, strings.Trim(tf, "/")) {
+				return tf, true
+			}
+			// Assume the request is for a directory and check if a
+			// tryfile matches.
+			potentialFilename := strings.Trim(strings.TrimSuffix(file, "/")+skymodules.EnsurePrefix(tf, "/"), "/")
+			if subfilesContains(metadata.Subfiles, potentialFilename) {
+				return skymodules.EnsurePrefix(potentialFilename, "/"), true
+			}
+		}
+	}
+	return path, false
 }

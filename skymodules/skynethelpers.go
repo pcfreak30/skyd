@@ -334,7 +334,6 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 	}
 
 	// tryfiles are incompatible with defaultpath and disabledefaultpath
-	// TODO How about errorpages?
 	if len(metadata.TryFiles) > 0 && (metadata.DefaultPath != "" || metadata.DisableDefaultPath) {
 		return errors.New("tryfiles are incompatible with defaultpath and disabledefaultpath")
 	}

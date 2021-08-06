@@ -830,3 +830,101 @@ func TestCustomStatusResponseWriter(t *testing.T) {
 		}
 	}
 }
+
+// TestParseErrorPages ensures that we properly handle all string inputs.
+func TestParseErrorPages(t *testing.T) {
+	tests := []struct {
+		in  string
+		out map[int]string
+		err string
+	}{
+		{
+			in:  "",
+			out: map[int]string{},
+			err: "",
+		},
+		{
+			in:  "{\"404\":\"notfound.html\"}",
+			out: map[int]string{404: "notfound.html"},
+			err: "",
+		},
+		{
+			in: "{\"404\":\"notfound.html\",\"403\":\"bla.html\"}",
+			out: map[int]string{
+				404: "notfound.html",
+				403: "bla.html",
+			},
+			err: "",
+		},
+		{
+			in:  "this is not a JSON",
+			out: nil,
+			err: "invalid errorpages value",
+		},
+	}
+
+	for _, tt := range tests {
+		out, err := ParseErrorPages(tt.in)
+		if err != nil && tt.err == "" {
+			t.Fatal("Unexpected error", err)
+		}
+		if tt.err != "" && (err == nil || !strings.Contains(err.Error(), tt.err)) {
+			t.Fatalf("Expected error '%s', got '%s'\n", tt.err, err.Error())
+		}
+		if !reflect.DeepEqual(out, tt.out) {
+			t.Logf("Expected: %+v\n", tt.out)
+			t.Logf("Actual  : %+v\n", out)
+			t.Fatal("Unexpected output.")
+		}
+	}
+}
+
+// TestParseTryFiles ensures that we properly handle all string inputs.
+func TestParseTryFiles(t *testing.T) {
+	tests := []struct {
+		in  string
+		out []string
+		err string
+	}{
+		{
+			in:  "",
+			out: []string{},
+			err: "",
+		},
+		{
+			in:  "[]",
+			out: []string{},
+			err: "",
+		},
+		{
+			in:  "[\"index.html\"]",
+			out: []string{"index.html"},
+			err: "",
+		},
+		{
+			in:  "[\"index.html\",\"bla.info\"]",
+			out: []string{"index.html", "bla.info"},
+			err: "",
+		},
+		{
+			in:  "this is not a JSON",
+			out: nil,
+			err: "invalid tryfiles value",
+		},
+	}
+
+	for _, tt := range tests {
+		out, err := ParseTryFiles(tt.in)
+		if err != nil && tt.err == "" {
+			t.Fatal("Unexpected error", err)
+		}
+		if tt.err != "" && (err == nil || !strings.Contains(err.Error(), tt.err)) {
+			t.Fatalf("Expected error '%s', got '%s'\n", tt.err, err.Error())
+		}
+		if !reflect.DeepEqual(out, tt.out) {
+			t.Logf("Expected: %+v\n", tt.out)
+			t.Logf("Actual  : %+v\n", out)
+			t.Fatal("Unexpected output.")
+		}
+	}
+}

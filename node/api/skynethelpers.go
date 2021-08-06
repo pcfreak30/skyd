@@ -461,9 +461,15 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		}
 	}
 
+	// parse 'tryfiles' query parameter
 	tryFiles, err := ParseTryFiles(queryForm.Get("tryfiles"))
 	if err != nil {
 		return nil, nil, errors.AddContext(err, "unable to parse 'tryfiles' parameter")
+	}
+	// if we don't have any tryfiles defined, and we don't have a defaultpath or
+	// disabledefaultpath, we want to default to tryfiles with index.html
+	if len(tryFiles) == 0 && defaultPath == "" && disableDefaultPath == false {
+		tryFiles = []string{"index.html"}
 	}
 
 	if (defaultPath != "" || disableDefaultPath) && len(tryFiles) > 0 {
@@ -788,7 +794,6 @@ func attachRegistryEntryProof(w http.ResponseWriter, srvs []skymodules.RegistryE
 }
 
 // ParseErrorPages unmarshals an errorpages string into an map[int]string.
-// TODO unit test
 func ParseErrorPages(s string) (map[int]string, error) {
 	if len(s) == 0 {
 		return map[int]string{}, nil
