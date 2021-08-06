@@ -454,12 +454,12 @@ func (r *Renter) managedRegistryEntryHealth(ctx context.Context, rid modules.Reg
 			continue
 		}
 		nTotal++
-		update, reason := bestSRV.ShouldUpdateWith(&resp.staticSignedRegistryValue.RegistryValue, resp.staticWorker.staticHostPubKey)
-		if update {
-			nPrimary++
+		_, reason := bestSRV.ShouldUpdateWith(&resp.staticSignedRegistryValue.RegistryValue, types.SiaPublicKey{})
+		if resp == best || errors.Contains(reason, modules.ErrSameRevNum) {
 			nBestTotal++
-		} else if errors.Contains(reason, modules.ErrSameRevNum) {
-			nBestTotal++
+			if resp.staticSignedRegistryValue.IsPrimaryEntry(resp.staticWorker.staticHostPubKey) {
+				nPrimary++
+			}
 		}
 	}
 	return skymodules.RegistryEntryHealth{

@@ -4142,8 +4142,11 @@ func TestRegistryHealth(t *testing.T) {
 	}()
 	r := tg.Renters()[0]
 
-	// Get one of the hosts' pubkey.
-	hpk, err := tg.Hosts()[0].HostPublicKey()
+	// Get one of the hosts' pubkey and choose one of the existing hosts to
+	// be stopped later. They can't be the same host.
+	allHosts := tg.Hosts()
+	stoppedHost := allHosts[0]
+	hpk, err := allHosts[1].HostPublicKey()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4181,10 +4184,10 @@ func TestRegistryHealth(t *testing.T) {
 		return nil
 	}
 
-	// TODO: Change the line below to use modules.RegistryTypeWithPubkey
-	// once Sia hosts have support for setting primary entries.
+	// Update the registry with an entry that's a primary entry on one host but not
+	// on the others.
 	revision := fastrand.Uint64n(1000)
-	srv := modules.NewRegistryValue(dataKey, hpkh[:], revision, modules.RegistryTypeWithoutPubkey).Sign(sk)
+	srv := modules.NewRegistryValue(dataKey, hpkh[:], revision, modules.RegistryTypeWithPubkey).Sign(sk)
 
 	// Update the registry.
 	err = r.RegistryUpdateWithEntry(spk, srv)
@@ -4196,15 +4199,12 @@ func TestRegistryHealth(t *testing.T) {
 	err = assertHealth(skymodules.RegistryEntryHealth{
 		NumBestEntries:        3,
 		NumEntries:            3,
-		NumBestPrimaryEntries: 0,
+		NumBestPrimaryEntries: 1,
 		RevisionNumber:        srv.Revision,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Choose one of the existing hosts to be stopped later.
-	stoppedHost := tg.Hosts()[0]
 
 	// Add a new host.
 	_, err = tg.AddNodeN(node.HostTemplate, 1)
@@ -4260,7 +4260,7 @@ func TestRegistryHealth(t *testing.T) {
 			RevisionNumber:        revision,
 			NumEntries:            uint64(len(tg.Hosts())),
 			NumBestEntries:        uint64(len(tg.Hosts())) - 1,
-			NumBestPrimaryEntries: 0,
+			NumBestPrimaryEntries: 1,
 		})
 	})
 	if err != nil {

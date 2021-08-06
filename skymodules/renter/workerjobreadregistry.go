@@ -74,7 +74,7 @@ type (
 
 // parseSignedRegistryValueResponse is a helper function to parse a response
 // containing a signed registry value.
-func parseSignedRegistryValueResponse(resp []byte, needPKAndTweak bool) (spk types.SiaPublicKey, tweak crypto.Hash, data []byte, rev uint64, sig crypto.Signature, err error) {
+func parseSignedRegistryValueResponse(resp []byte, needPKAndTweak bool, version modules.ReadRegistryVersion) (spk types.SiaPublicKey, tweak crypto.Hash, data []byte, rev uint64, sig crypto.Signature, rrv modules.RegistryEntryType, err error) {
 	dec := encoding.NewDecoder(bytes.NewReader(resp), encoding.DefaultAllocLimit)
 	if needPKAndTweak {
 		err = dec.DecodeAll(&spk, &tweak, &sig, &rev)
@@ -85,6 +85,17 @@ func parseSignedRegistryValueResponse(resp []byte, needPKAndTweak bool) (spk typ
 		return
 	}
 	data, err = ioutil.ReadAll(dec)
+
+	// Last byte might be the entry type.
+	rrv = modules.RegistryTypeWithoutPubkey
+	if version == modules.ReadRegistryVersionWithType {
+		if len(data) < 1 {
+			err = errors.New("parsing the registry value failed - not enough data to contain entry type")
+			return
+		}
+		rrv = modules.RegistryEntryType(data[len(data)-1])
+		data = data[:len(data)-1]
+	}
 	return
 }
 
@@ -97,14 +108,19 @@ func lookupRegistry(w *worker, sid modules.RegistryEntryID, spk *types.SiaPublic
 
 	var refund types.Currency
 	var err error
+	version := modules.ReadRegistryVersionNoType
 	if build.VersionCmp(w.staticCache().staticHostVersion, minRegistryVersion) < 0 {
 		err = errors.New("lookupRegistry called on host with version < minRegistryVersion")
 		build.Critical(err)
 		return nil, err
 	} else if build.VersionCmp(w.staticCache().staticHostVersion, minReadRegistrySIDVersion) < 0 {
 		refund, err = pb.V156AddReadRegistryInstruction(*spk, *tweak)
-	} else {
+	} else if build.VersionCmp(w.staticCache().staticHostVersion, "1.5.5") < 0 {
+		// TODO: change version
 		refund, err = pb.V156AddReadRegistryEIDInstruction(sid, needPKAndTweak)
+	} else {
+		version = modules.ReadRegistryVersionWithType
+		refund, err = pb.AddReadRegistryEIDInstruction(sid, needPKAndTweak, version)
 	}
 	if err != nil {
 		return nil, errors.AddContext(err, "Unable to add read registry instruction")
@@ -142,7 +158,7 @@ func lookupRegistry(w *worker, sid modules.RegistryEntryID, spk *types.SiaPublic
 	}
 
 	// Parse response.
-	spkHost, tweakHost, data, revision, sig, err := parseSignedRegistryValueResponse(resp.Output, needPKAndTweak)
+	spkHost, tweakHost, data, revision, sig, entryType, err := parseSignedRegistryValueResponse(resp.Output, needPKAndTweak, version)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to parse signed revision response")
 	}
@@ -156,7 +172,7 @@ func lookupRegistry(w *worker, sid modules.RegistryEntryID, spk *types.SiaPublic
 		spk = &spkHost
 		tweak = &tweakHost
 	}
-	rv := modules.NewSignedRegistryValue(*tweak, data, revision, sig, modules.RegistryTypeWithoutPubkey)
+	rv := modules.NewSignedRegistryValue(*tweak, data, revision, sig, entryType)
 	entry := skymodules.NewRegistryEntry(*spk, rv)
 
 	// Verify signature.
