@@ -1,6 +1,7 @@
 package siatest
 
 import (
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -377,8 +378,18 @@ func (tn *TestNode) SiaPath(path string) skymodules.SiaPath {
 
 // StartNode starts a TestNode from an active group
 func (tn *TestNode) StartNode() error {
+	// Use the same
+	if tn.params.CreateHost || tn.params.Host != nil {
+		es := tn.params.Host.ExternalSettings()
+		tn.params.HostAddress = string(es.NetAddress)
+		tn.params.SiaMuxTCPAddress = es.SiaMuxAddress()
+		fmt.Println("hostaddress", tn.params.HostAddress)
+		fmt.Println("siamux", tn.params.HostAddress)
+	}
+	tn.params.RPCAddress = string(tn.GatewayAddress())
+
 	// Create server
-	s, err := server.New(":0", tn.UserAgent, tn.Password, tn.params, time.Now())
+	s, err := server.New(tn.Client.Address, tn.UserAgent, tn.Password, tn.params, time.Now())
 	if err != nil {
 		return err
 	}
@@ -386,13 +397,6 @@ func (tn *TestNode) StartNode() error {
 	tn.Client.Address = s.APIAddress()
 	if !tn.params.CreateWallet && tn.params.Wallet == nil {
 		return nil
-	}
-	// After a restart we need to reannounce the host to make sure the other
-	// peers know about the changed siamux and host ports.
-	if !tn.params.SkipHostAnnouncement && (tn.params.CreateHost || tn.params.Host != nil) {
-		if err := tn.HostAnnouncePost(); err != nil {
-			return err
-		}
 	}
 	return tn.WalletUnlockPost(tn.primarySeed)
 }
