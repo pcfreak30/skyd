@@ -45,6 +45,11 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// create renter
+	renter := new(Renter)
+	renter.staticBaseSectorDownloadStats = skymodules.NewSectorDownloadStats()
+	renter.staticFanoutSectorDownloadStats = skymodules.NewSectorDownloadStats()
+
 	// create PCWS manually
 	pcws := &projectChunkWorkerSet{
 		staticChunkIndex:   0,
@@ -53,7 +58,7 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 		staticPieceRoots:   []crypto.Hash{sectorRoot},
 
 		staticCtx:    context.Background(),
-		staticRenter: new(Renter),
+		staticRenter: renter,
 	}
 
 	// download a random amount of data at random offset
@@ -141,6 +146,11 @@ func TestProjectDownloadChunk_finished(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// create renter
+	renter := new(Renter)
+	renter.staticBaseSectorDownloadStats = skymodules.NewSectorDownloadStats()
+	renter.staticFanoutSectorDownloadStats = skymodules.NewSectorDownloadStats()
+
 	// create PCWS manually
 	pcws := &projectChunkWorkerSet{
 		staticChunkIndex:   0,
@@ -149,7 +159,7 @@ func TestProjectDownloadChunk_finished(t *testing.T) {
 		staticPieceRoots:   []crypto.Hash{},
 
 		staticCtx:    context.Background(),
-		staticRenter: new(Renter),
+		staticRenter: renter,
 	}
 
 	// create PDC manually - only the essentials
