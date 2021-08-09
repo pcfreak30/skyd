@@ -1281,6 +1281,14 @@ type Renter interface {
 	// used.
 	ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (RegistryEntry, error)
 
+	// RegistryEntryHealth returns the health of a registry entry specified by
+	// either the spk and tweak or the rid.
+	RegistryEntryHealth(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (RegistryEntryHealth, error)
+
+	// RegistryEntryHealth returns the health of a registry entry specified by
+	// either the spk and tweak or the rid.
+	RegistryEntryHealthRID(ctx context.Context, rid modules.RegistryEntryID) (RegistryEntryHealth, error)
+
 	// ReadRegistryRID starts a registry lookup on all available workers.
 	// The jobs have time to finish their jobs and return a response until
 	// the context is closed. Otherwise the response with the highest
