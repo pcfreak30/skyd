@@ -564,18 +564,8 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	fastrand.Read(pdc.uid[:])
 	pdc.launchTime = time.Now()
 
-	// Launch the initial set of workers for the pdc.
-	rootFoundChan := make(chan error, 1)
-	go pdc.launchWorkers(rootFoundChan)
-
-	select {
-	case err := <-rootFoundChan:
-		if err != nil {
-			return nil, errors.Compose(err, ErrRootNotFound)
-		}
-	case <-pdc.ctx.Done():
-		return nil, errors.New("download timed out")
-	}
+	// Launch the workers in a separate go routine
+	go pdc.launchWorkers()
 
 	return pdc.downloadResponseChan, nil
 }

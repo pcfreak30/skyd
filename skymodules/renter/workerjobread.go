@@ -96,6 +96,15 @@ type (
 	}
 )
 
+// NewJobReadStats returns an initialized jobReadStats object.
+func NewJobReadStats() *jobReadStats {
+	return &jobReadStats{
+		staticDT64k: skymodules.NewDistributionTrackerStandard(),
+		staticDT1m:  skymodules.NewDistributionTrackerStandard(),
+		staticDT4m:  skymodules.NewDistributionTrackerStandard(),
+	}
+}
+
 // staticJobReadMetadata returns the read job's metadata.
 func (j *jobRead) staticJobReadMetadata() jobReadMetadata {
 	var metadata jobReadMetadata

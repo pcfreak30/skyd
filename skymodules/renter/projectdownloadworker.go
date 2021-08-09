@@ -3,7 +3,6 @@ package renter
 import (
 	"fmt"
 	"sort"
-	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -377,7 +376,7 @@ func (ws workerSet) numOverdriveWorkers() int {
 }
 
 // workers returns the resolved and unresolved workers as separate slices
-func (pdc *projectDownloadChunk) workers(onlyUseful bool) (resolved, unresolved []*individualWorker) {
+func (pdc *projectDownloadChunk) workers() (resolved, unresolved []*individualWorker) {
 	ws := pdc.workerState
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
@@ -386,41 +385,15 @@ func (pdc *projectDownloadChunk) workers(onlyUseful bool) (resolved, unresolved 
 	minPieces := pdc.workerSet.staticErasureCoder.MinPieces()
 	length := pdc.pieceLength
 
-	// isUseful is a helper function that decides whether the given worker is
-	// useful for downloading
-	isUseful := func(w *worker) bool {
-		// workers on cooldown or that are non async ready are not useful
-		if w.managedOnMaintenanceCooldown() || !w.managedAsyncReady() {
-			return false
-		}
-
-		// workers with a read queue on cooldown
-		hsq := w.staticJobHasSectorQueue
-		rjq := w.staticJobReadQueue
-		if hsq.onCooldown() || rjq.onCooldown() {
-			return false
-		}
-
-		// workers that are price gouging are not useful
-		pt := w.staticPriceTable().staticPriceTable
-		allowance := w.staticCache().staticRenterAllowance
-		if err := checkProjectDownloadGouging(pt, allowance); err != nil {
-			return false
-		}
-
-		return true
-	}
-
 	for _, rw := range ws.resolvedWorkers {
 		// exclude workers that can't download any pieces or that are not useful
-		if onlyUseful {
-			if len(rw.pieceIndices) == 0 || !isUseful(rw.worker) {
-				continue
-			}
+		if len(rw.pieceIndices) == 0 || !isGoodForDownload(rw.worker) {
+			continue
 		}
 
 		w := rw.worker
-		rdt := w.staticJobReadQueue.distributionTrackerForLength(length)
+		stats := w.staticJobReadQueue.staticStats
+		rdt := stats.distributionTrackerForLength(length)
 		resolved = append(resolved, &individualWorker{
 			staticLaunchedAt:       pdc.launchedAt(w),
 			staticPieceIndices:     rw.pieceIndices,
@@ -432,10 +405,11 @@ func (pdc *projectDownloadChunk) workers(onlyUseful bool) (resolved, unresolved 
 
 	for _, uw := range ws.unresolvedWorkers {
 		w := uw.staticWorker
-		rdt := w.staticJobReadQueue.distributionTrackerForLength(length)
+		stats := w.staticJobReadQueue.staticStats
+		rdt := stats.distributionTrackerForLength(length)
 
 		// exclude workers that are not useful
-		if onlyUseful && !isUseful(w) {
+		if !isGoodForDownload(w) {
 			continue
 		}
 
@@ -490,14 +464,13 @@ func (pdc *projectDownloadChunk) workerIsDownloading(w *worker) bool {
 }
 
 // launchWorkerSet will try to launch every wo
-func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) int {
+func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) {
 	// TODO: validate worker set (unique pieces)
 
 	// convenience variables
 	minPieces := pdc.workerSet.staticErasureCoder.MinPieces()
 
 	// range over all workers in the set and launch if possible
-	workersLaunched := 0
 	for _, w := range ws.workers {
 		worker := w.worker()
 		if worker == nil {
@@ -514,36 +487,31 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) int {
 			isOverdrive := len(pdc.launchedWorkers) >= minPieces
 			_, launched := pdc.launchWorker(worker, pieceIndex, isOverdrive)
 			if launched {
-				workersLaunched++
+				break // only launch one piece per worker
 			}
-			break // only launch one piece per worker
 		}
 	}
-	return workersLaunched
+	return
 }
 
 // launchWorkers performs the main download loop, every iteration we update the
 // pdc's available pieces, construct a new worker set and launch every worker
 // that can be launched from that set. Every iteration we check whether the
 // download was finished.
-func (pdc *projectDownloadChunk) launchWorkers(rootFoundChan chan error) {
-	var once sync.Once
+func (pdc *projectDownloadChunk) launchWorkers() {
 	for {
-		// TODO: should we handle this more cleanly
+		// update the available pieces list
 		pdc.updateAvailablePieces()
 
 		// create a worker set and launch it
 		workerSet, err := pdc.createWorkerSet(maxOverdriveWorkers)
 		if err != nil {
-			rootFoundChan <- err
+			pdc.fail(err)
 			return
 		}
 
 		if workerSet != nil {
-			numLaunched := pdc.launchWorkerSet(workerSet)
-			if numLaunched > 0 {
-				once.Do(func() { close(rootFoundChan) })
-			}
+			pdc.launchWorkerSet(workerSet)
 		}
 
 		// check whether the download is completed
@@ -576,11 +544,11 @@ func (pdc *projectDownloadChunk) createWorkerSet(maxOverdriveWorkers int) (*work
 	minPieces := pdc.workerSet.staticErasureCoder.MinPieces()
 
 	// fetch all workers
-	resolvedWorkers, unresolvedWorkers := pdc.workers(true)
+	resolvedWorkers, unresolvedWorkers := pdc.workers()
 
 	// verify we have enough workers to complete the download
 	if len(resolvedWorkers)+len(unresolvedWorkers) < minPieces {
-		return nil, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v", len(resolvedWorkers)+len(unresolvedWorkers), minPieces))
+		return nil, errors.Compose(ErrRootNotFound, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v", len(resolvedWorkers)+len(unresolvedWorkers), minPieces)))
 	}
 
 	// sort unresolved workers by expected resolve time
@@ -711,4 +679,31 @@ OUTER:
 	}
 
 	return bestSet, nil
+}
+
+// isGoodForDownload is a helper function that returns true if and only if the
+// worker meets a certain set of criteria that make it useful for downloads.
+// It's only useful if it is not on any type of cooldown, if it's async ready
+// and if it's not price gouging.
+func isGoodForDownload(w *worker) bool {
+	// workers on cooldown or that are non async ready are not useful
+	if w.managedOnMaintenanceCooldown() || !w.managedAsyncReady() {
+		return false
+	}
+
+	// workers with a read queue on cooldown
+	hsq := w.staticJobHasSectorQueue
+	rjq := w.staticJobReadQueue
+	if hsq.onCooldown() || rjq.onCooldown() {
+		return false
+	}
+
+	// workers that are price gouging are not useful
+	pt := w.staticPriceTable().staticPriceTable
+	allowance := w.staticCache().staticRenterAllowance
+	if err := checkProjectDownloadGouging(pt, allowance); err != nil {
+		return false
+	}
+
+	return true
 }

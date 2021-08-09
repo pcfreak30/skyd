@@ -256,7 +256,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	}
 	// Share the read stats between the read queues. That way a repair
 	// download will contribute to user download estimations and vice versa.
-	jrs := &jobReadStats{}
+	jrs := NewJobReadStats()
 
 	w.newPriceTable()
 	w.newMaintenanceState()

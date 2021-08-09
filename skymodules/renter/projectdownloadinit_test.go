@@ -78,9 +78,10 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 			staticExpiryTime: time.Now().Add(time.Minute),
 		}
 		w.staticSetPriceTable(pt)
-		w.initJobReadQueue(&jobReadStats{
-			weightedJobTime64k: float64(expectedJobTime),
-		})
+
+		jrs := NewJobReadStats()
+		jrs.weightedJobTime64k = float64(expectedJobTime)
+		w.initJobReadQueue(jrs)
 		return w
 	}
 

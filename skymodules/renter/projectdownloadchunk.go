@@ -217,6 +217,9 @@ func (pd *pieceDownload) successful() bool {
 	return pd.completed && pd.downloadErr == nil
 }
 
+// updateAvailablePieces updates the available pieces with new pieces coming
+// from freshly resolved workers. Essentially this is pulling new information
+// from the overarching PCWS worker state.
 func (pdc *projectDownloadChunk) updateAvailablePieces() {
 	ws := pdc.workerState
 	ws.mu.Lock()
@@ -285,10 +288,9 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 	metadata := jrr.staticMetadata
 	worker := metadata.staticWorker
 	pieceIndex := metadata.staticPieceRootIndex
-	launchedWorker := pdc.launchedWorkers[metadata.staticLaunchedWorkerIndex]
 
-	// Update the launched worker information, we keep track of these metrics
-	// debugging purposes.
+	// Update the launched worker information
+	launchedWorker := pdc.launchedWorkers[metadata.staticLaunchedWorkerIndex]
 	launchedWorker.completeTime = time.Now()
 	launchedWorker.jobDuration = jrr.staticJobTime
 	launchedWorker.jobErr = jrr.staticErr

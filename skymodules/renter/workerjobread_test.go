@@ -27,7 +27,7 @@ func TestJobExpectedJobTime(t *testing.T) {
 	}
 
 	w := new(worker)
-	w.initJobReadQueue(&jobReadStats{})
+	w.initJobReadQueue(NewJobReadStats())
 	jrq := w.staticJobReadQueue
 	for _, readLength := range []uint64{1 << 16, 1 << 20, 1 << 24} {
 		// update metrics couple of times, due to the decay the estimate might
