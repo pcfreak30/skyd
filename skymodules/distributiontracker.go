@@ -23,6 +23,7 @@ package skymodules
 import (
 	"fmt"
 	"math"
+	"reflect"
 	"sync"
 	"time"
 
@@ -291,6 +292,14 @@ func (d *Distribution) Clone() *Distribution {
 	for i, b := range d.timings {
 		c.timings[i] = b
 	}
+
+	// sanity check using reflect package, only executed in testing
+	if build.Release == "testing" {
+		if !reflect.DeepEqual(d, c) {
+			build.Critical("cloned distribution not equal")
+		}
+	}
+
 	return c
 }
 
