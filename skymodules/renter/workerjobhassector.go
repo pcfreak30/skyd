@@ -20,10 +20,10 @@ const (
 	// weighted average.
 	jobHasSectorPerformanceDecay = 0.9
 
-	// jobHasSectorQueueAvailabilityRateSeed is the rate we return when there
-	// haven't been any jobs performed yet by the queue to avoid unexpected
-	// behaviour when using it in multiplications.
-	jobHasSectorQueueAvailabilityRateSeed = 0.01
+	// jobHasSectorQueueMinAvailabilityRate is the minimum availability rate we
+	// return when there haven't been any jobs performed yet by the queue where
+	// the sector was availabile.
+	jobHasSectorQueueMinAvailabilityRate = 0.001
 
 	// hasSectorBatchSize is the number of has sector jobs batched together upon
 	// calling callNext.
@@ -360,13 +360,11 @@ func (jq *jobHasSectorQueue) callAvailabilityRate() float64 {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 
-	// if there haven't been any jobs yet, seed the availability rate with a
-	// rate of 1% to avoid unexpected behaviour when multiplying by 0 in our
-	// download algorithms. We can do this because we send an HS job to all
-	// hosts on every download so this should converge to the actual value super
-	// quickly.
-	if jq.totalJobs == 0 {
-		return jobHasSectorQueueAvailabilityRateSeed
+	// if there haven't been any jobs yet where the sector was available on the
+	// host, we return a minimum rate of .1% to avoid multiplication by zero in
+	// our download code algorithms.
+	if jq.totalAvailable == 0 || jq.totalJobs == 0 {
+		return jobHasSectorQueueMinAvailabilityRate
 	}
 
 	return float64(jq.totalAvailable) / float64(jq.totalJobs)

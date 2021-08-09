@@ -88,9 +88,9 @@ func TestHasSectorJobQueueAvailabilityRate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// assert the seed availability rate on a new queue
+	// assert the min availability rate on a new queue
 	availabilityRate := w.staticJobHasSectorQueue.callAvailabilityRate()
-	if availabilityRate != jobHasSectorQueueAvailabilityRateSeed {
+	if availabilityRate != jobHasSectorQueueMinAvailabilityRate {
 		t.Fatal("unexpected")
 	}
 
@@ -110,14 +110,14 @@ func TestHasSectorJobQueueAvailabilityRate(t *testing.T) {
 	jhs := w.newJobHasSector(context.Background(), responseChan, roots...)
 	added := w.staticJobHasSectorQueue.callAdd(jhs)
 	if !added {
-		t.Fatal(err)
+		t.Fatal("unexpected")
 	}
 
 	// check whether the availability rate is correct
 	if err := build.Retry(10, 10*time.Millisecond, func() error {
 		availabilityRate := w.staticJobHasSectorQueue.callAvailabilityRate()
 		if availabilityRate != .5 {
-			return fmt.Errorf("unexpected availability rate %v", availabilityRate)
+			return fmt.Errorf("unexpected availability rate %v != .5", availabilityRate)
 		}
 		return nil
 	}); err != nil {
@@ -130,14 +130,14 @@ func TestHasSectorJobQueueAvailabilityRate(t *testing.T) {
 	jhs = w.newJobHasSector(context.Background(), responseChan, roots...)
 	added = w.staticJobHasSectorQueue.callAdd(jhs)
 	if !added {
-		t.Fatal(err)
+		t.Fatal("unexpected")
 	}
 
 	// check whether the availability rate is correct
 	if err := build.Retry(10, 10*time.Millisecond, func() error {
 		availabilityRate := w.staticJobHasSectorQueue.callAvailabilityRate()
 		if availabilityRate != .2 {
-			return fmt.Errorf("unexpected availability rate %v", availabilityRate)
+			return fmt.Errorf("unexpected availability rate %v != .2", availabilityRate)
 		}
 		return nil
 	}); err != nil {
