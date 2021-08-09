@@ -2,8 +2,13 @@ package renter
 
 import (
 	"context"
+	"fmt"
 	"testing"
+	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/SkynetLabs/skyd/build"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -38,8 +43,8 @@ func TestHasSectorJobBatchCallNext(t *testing.T) {
 	next2 := queue.callNext()
 	next3 := queue.callNext()
 
-	// the first should contain hasSectorBatchSize jobs, the second one 1 job and the
-	// third one should be nil.
+	// the first should contain hasSectorBatchSize jobs, the second one 1 job
+	// and the third one should be nil.
 	if l := len(next1.(*jobHasSectorBatch).staticJobs); l != int(hasSectorBatchSize) {
 		t.Fatal("wrong size", l, hasSectorBatchSize)
 	}
@@ -48,6 +53,95 @@ func TestHasSectorJobBatchCallNext(t *testing.T) {
 	}
 	if next3 != nil {
 		t.Fatal("should be nil")
+	}
+}
+
+// TestHasSectorJobQueueAvailabilityRate is a unit that verifies the HS job
+// queue correctly returns the availability rate
+func TestHasSectorJobQueueAvailabilityRate(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a new worker tester
+	wt, err := newWorkerTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := wt.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	w := wt.worker
+
+	// wait until the worker is done with its maintenance tasks - this basically
+	// ensures we have a working worker, with valid PT and funded EA
+	if err := build.Retry(100, 100*time.Millisecond, func() error {
+		if !w.managedMaintenanceSucceeded() {
+			return errors.New("worker not ready with maintenance")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// assert the min availability rate on a new queue
+	availabilityRate := w.staticJobHasSectorQueue.callAvailabilityRate()
+	if availabilityRate != jobHasSectorQueueMinAvailabilityRate {
+		t.Fatal("unexpected")
+	}
+
+	// create a two roots, add one to the host
+	randomData := fastrand.Bytes(int(modules.SectorSize))
+	randomRoot := crypto.MerkleRoot(randomData)
+	sectorData := fastrand.Bytes(int(modules.SectorSize))
+	sectorRoot := crypto.MerkleRoot(sectorData)
+	err = wt.host.AddSector(sectorRoot, sectorData)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// add a job where the host is supposed to find one root out of two
+	roots := []crypto.Hash{sectorRoot, randomRoot}
+	responseChan := make(chan *jobHasSectorResponse, 1)
+	jhs := w.newJobHasSector(context.Background(), responseChan, roots...)
+	added := w.staticJobHasSectorQueue.callAdd(jhs)
+	if !added {
+		t.Fatal("unexpected")
+	}
+
+	// check whether the availability rate is correct
+	if err := build.Retry(10, 10*time.Millisecond, func() error {
+		availabilityRate := w.staticJobHasSectorQueue.callAvailabilityRate()
+		if availabilityRate != .5 {
+			return fmt.Errorf("unexpected availability rate %v != .5", availabilityRate)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// add a job where the host won't find any root
+	roots = []crypto.Hash{randomRoot, randomRoot, randomRoot}
+	responseChan = make(chan *jobHasSectorResponse, 1)
+	jhs = w.newJobHasSector(context.Background(), responseChan, roots...)
+	added = w.staticJobHasSectorQueue.callAdd(jhs)
+	if !added {
+		t.Fatal("unexpected")
+	}
+
+	// check whether the availability rate is correct
+	if err := build.Retry(10, 10*time.Millisecond, func() error {
+		availabilityRate := w.staticJobHasSectorQueue.callAvailabilityRate()
+		if availabilityRate != .2 {
+			return fmt.Errorf("unexpected availability rate %v != .2", availabilityRate)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 

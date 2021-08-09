@@ -20,6 +20,11 @@ const (
 	// weighted average.
 	jobHasSectorPerformanceDecay = 0.9
 
+	// jobHasSectorQueueMinAvailabilityRate is the minimum availability rate we
+	// return when there haven't been any jobs performed yet by the queue where
+	// the sector was availabile.
+	jobHasSectorQueueMinAvailabilityRate = 0.001
+
 	// hasSectorBatchSize is the number of has sector jobs batched together upon
 	// calling callNext.
 	// This number is the result of empirical testing which determined that 13
@@ -57,6 +62,14 @@ type (
 		// These variables contain an exponential weighted average of the
 		// worker's recent performance for jobHasSectorQueue.
 		weightedJobTime float64
+
+		// totalAvailable counts the amount of jobs where the sector was
+		// available on the host.
+		//
+		// totalJobs counts the total amount of jobs that were successfully
+		// executed.
+		totalAvailable uint64
+		totalJobs      uint64
 
 		*jobGenericQueue
 	}
@@ -228,9 +241,11 @@ func (j jobHasSectorBatch) callExecute() {
 		}
 		hsj.staticQueue.callReportSuccess()
 
-		// Job was a success, update the performance stats on the queue.
+		// Job was a success, update the performance and availability stats on
+		// the queue.
 		jq := hsj.staticQueue.(*jobHasSectorQueue)
 		jq.callUpdateJobTimeMetrics(jobTime)
+		jq.callUpdateAvailabilityMetrics(availables[i])
 		if err2 != nil {
 			w.staticRenter.staticLog.Println("callExecute: launch failed", err)
 		}
@@ -337,6 +352,36 @@ func (jq *jobHasSectorQueue) callExpectedJobTime() time.Duration {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	return jq.expectedJobTime()
+}
+
+// callAvailabilityRate returns the percentage of jobs that came back having the
+// sector for this queue's worker.
+func (jq *jobHasSectorQueue) callAvailabilityRate() float64 {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+
+	// if there haven't been any jobs yet where the sector was available on the
+	// host, we return a minimum rate of .1% to avoid multiplication by zero in
+	// our download code algorithms.
+	if jq.totalAvailable == 0 || jq.totalJobs == 0 {
+		return jobHasSectorQueueMinAvailabilityRate
+	}
+
+	return float64(jq.totalAvailable) / float64(jq.totalJobs)
+}
+
+// callUpdateAvailabilityMetrics updates the fields on the has sector queue that
+// keep track of how many jobs were executed successfully, and how many jobs had
+// the sector be available.
+func (jq *jobHasSectorQueue) callUpdateAvailabilityMetrics(availables []bool) {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	jq.totalJobs += uint64(len(availables))
+	for _, available := range availables {
+		if available {
+			jq.totalAvailable++
+		}
+	}
 }
 
 // callUpdateJobTimeMetrics takes a duration it took to fulfil that job and uses
