@@ -80,19 +80,19 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}()
 
 	// create a new stream
-	logKV("createStream_call")
+	logKV("call", "staticNewStream")
 	stream, err := w.staticNewStream()
 	if err != nil {
 		err = errors.AddContext(err, "Unable to create a new stream")
 		return
 	}
-	logKV("createStream_finish")
+	logKV("finish", "staticNewStream")
 	defer func() {
-		logKV("closeStream_call")
+		logKV("call", "stream.Close")
 		if err := stream.Close(); err != nil {
 			w.staticRenter.staticLog.Println("ERROR: failed to close stream", err)
 		}
-		logKV("closeStream_finish")
+		logKV("finish", "stream.Close")
 	}()
 
 	// set the limit return var.
@@ -139,40 +139,42 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}
 
 	// write contents of the buffer to the stream
-	logKV("writeStream_call")
+	logKV("call", "stream.Write")
 	_, err = stream.Write(buffer.Bytes())
 	if err != nil {
 		return
 	}
-	logKV("writeStream_finish")
+	logKV("finish", "stream.Write")
 
 	// read the cancellation token.
-	logKV("readStream_call")
+	logKV("call", "stream.Write")
 	var ct modules.MDMCancellationToken
 	err = modules.RPCRead(stream, &ct)
 	if err != nil {
 		return
 	}
-	logKV("readStream_finish")
+	logKV("finish", "stream.Read")
 
 	// read the responses.
 	responses = make([]programResponse, 0, len(epr.Program))
 	for i := 0; i < len(epr.Program); i++ {
 		var response programResponse
-		logKV("readStream_call")
+		logKV("call", "stream.Read")
 		err = modules.RPCRead(stream, &response)
 		if err != nil {
 			return
 		}
-		logKV("readStream_finish")
+		logKV("finish", "stream.Read")
 
 		// Read the output data.
+		logKV("call", "io.ReadFull(stream)")
 		outputLen := response.OutputLength
 		response.Output = make([]byte, outputLen)
 		_, err = io.ReadFull(stream, response.Output)
 		if err != nil {
 			return
 		}
+		logKV("finish", "io.ReadFull(stream)")
 
 		refund = refund.Add(response.FailureRefund)
 
