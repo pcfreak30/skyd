@@ -93,7 +93,7 @@ var (
 	skynetUploadRoot               bool   // Use root as the base instead of the Skynet folder.
 	skynetUploadSeparately         bool   // When uploading all files from a directory, upload each file separately, generating individual skylinks.
 	skynetUploadSilent             bool   // Don't report progress while uploading
-	skynetUploadTryFiles           string // A JSON array of fallback files, in case the requested file is not available.
+	skynetUploadTryFiles           string // A comma-separated list of fallback files, in case the requested file is not available.
 	skynetPortalPublic             bool   // Specify if a portal is public or not
 
 	// Utils Flags

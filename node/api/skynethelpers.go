@@ -819,3 +819,31 @@ func ParseTryFiles(s string) ([]string, error) {
 	}
 	return tf, nil
 }
+
+// determinePathBasedOnTryfiles determines if we should serve a different path
+// based on the given metadata. It also returns a boolean which tells us whether
+// the returned path is different from the provided path.
+// TODO Unit tests.
+func determinePathBasedOnTryfiles(path string, subfiles skymodules.SkyfileSubfiles, tryfiles []string) (string, bool) {
+	if subfiles == nil {
+		return path, false
+	}
+	file := strings.Trim(path, "/")
+	if _, exists := subfiles[file]; !exists {
+		for _, tf := range tryfiles {
+			// If we encounter an absolute-path tryfile, and it exists, we stop
+			// searching.
+			_, exists = subfiles[strings.Trim(tf, "/")]
+			if strings.HasPrefix(tf, "/") && exists {
+				return tf, true
+			}
+			// Assume the request is for a directory and check if a
+			// tryfile matches.
+			potentialFilename := strings.Trim(strings.TrimSuffix(file, "/")+skymodules.EnsurePrefix(tf, "/"), "/")
+			if _, exists = subfiles[potentialFilename]; exists {
+				return skymodules.EnsurePrefix(potentialFilename, "/"), true
+			}
+		}
+	}
+	return path, false
+}

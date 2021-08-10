@@ -447,7 +447,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 		t.Fatal("Unexpected error", err)
 	}
 	if !reflect.DeepEqual(params.tryFiles, []string{"index.html"}) {
-		t.Fatal("Unexpected")
+		t.Fatalf("Expected '%s', got '%s'\n", []string{"index.html"}, params.tryFiles)
 	}
 	req = buildRequest(url.Values{"tryfiles": []string{"[\"index.html\"]"}}, http.Header{})
 	_, params, err = parseRequest(req, defaultParams)
@@ -455,7 +455,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 		t.Fatal("Unexpected error", err)
 	}
 	if len(params.tryFiles) != 1 || params.tryFiles[0] != "index.html" {
-		t.Fatal("Unexpected")
+		t.Fatalf("Expected '%s', got '%s'\n", []string{"index.html"}, params.tryFiles)
 	}
 
 	// verify errorpages
@@ -465,29 +465,29 @@ func testParseUploadRequestParameters(t *testing.T) {
 		t.Fatal("Unexpected error", err)
 	}
 	if len(params.errorPages) > 0 {
-		t.Fatal("Unexpected")
+		t.Fatal("Expected length of error pages to be zero, got", len(params.errorPages))
 	}
 	req = buildRequest(url.Values{"errorpages": []string{"{\"404\":\"notfound.html\"}"}}, http.Header{})
 	_, params, err = parseRequest(req, defaultParams)
 	if params.errorPages[404] != "notfound.html" {
-		t.Fatal("Unexpected")
+		t.Fatalf("Unexpected 404 errorpage - expected 'notfound.html', got %s\n", params.errorPages[404])
 	}
 
 	// verify that 'tryfiles' 'web' cannot be combined with 'defaultpath' or
 	// 'disabledefaultpath'
-	req = buildRequest(url.Values{"tryfiles": []string{"index.html"}, "defaultpath": []string{"index.html"}}, http.Header{})
+	req = buildRequest(url.Values{"tryfiles": []string{"[\"index.html\"]"}, "defaultpath": []string{"index.html"}}, http.Header{"Content-type": []string{"text/html"}})
 	_, params, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
-	if err == nil {
-		t.Fatal("Unexpected")
+	if err == nil || !strings.Contains(err.Error(), "defaultpath and disabledefaultpath are not compatible with tryfiles") {
+		t.Fatal("Unexpected", err)
 	}
-	req = buildRequest(url.Values{"tryfiles": []string{"index.html"}, "disabledefaultpath": trueStr}, http.Header{})
+	req = buildRequest(url.Values{"tryfiles": []string{"[\"index.html\"]"}, "disabledefaultpath": trueStr}, http.Header{"Content-type": []string{"text/html"}})
 	_, params, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
-	if err == nil {
-		t.Fatal("Unexpected")
+	if err == nil || !strings.Contains(err.Error(), "defaultpath and disabledefaultpath are not compatible with tryfiles") {
+		t.Fatal("Unexpected", err)
 	}
 
 	// verify 'dryrun'
-	req = buildRequest(url.Values{"dryrun": trueStr}, http.Header{})
+	req = buildRequest(url.Values{"dryrun": trueStr}, http.Header{"Content-type": []string{"text/html"}})
 	_, params, err = parseRequest(req, defaultParams)
 	if err != nil {
 		t.Fatal("Unexpected error", err)
@@ -497,7 +497,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 	}
 
 	// verify 'filename'
-	req = buildRequest(url.Values{"filename": []string{"foo.txt"}}, http.Header{})
+	req = buildRequest(url.Values{"filename": []string{"foo.txt"}}, http.Header{"Content-type": []string{"text/html"}})
 	_, params, err = parseRequest(req, defaultParams)
 	if err != nil {
 		t.Fatal("Unexpected error", err)
@@ -507,7 +507,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 	}
 
 	// verify 'force'
-	req = buildRequest(url.Values{"force": trueStr}, http.Header{})
+	req = buildRequest(url.Values{"force": trueStr}, http.Header{"Content-type": []string{"text/html"}})
 	_, params, err = parseRequest(req, defaultParams)
 	if err != nil {
 		t.Fatal("Unexpected error", err)
@@ -517,14 +517,14 @@ func testParseUploadRequestParameters(t *testing.T) {
 	}
 
 	// verify 'force' - combo with 'dryrun
-	req = buildRequest(url.Values{"force": trueStr, "dryrun": trueStr}, http.Header{})
+	req = buildRequest(url.Values{"force": trueStr, "dryrun": trueStr}, http.Header{"Content-type": []string{"text/html"}})
 	_, _, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
 	if err == nil {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'mode'
-	req = buildRequest(url.Values{"mode": []string{fmt.Sprintf("%o", os.FileMode(0644))}}, http.Header{})
+	req = buildRequest(url.Values{"mode": []string{fmt.Sprintf("%o", os.FileMode(0644))}}, http.Header{"Content-type": []string{"text/html"}})
 	_, params, err = parseRequest(req, defaultParams)
 	if err != nil {
 		t.Fatal("Unexpected error", err)
@@ -534,7 +534,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 	}
 
 	// verify 'root'
-	req = buildRequest(url.Values{"root": trueStr}, http.Header{})
+	req = buildRequest(url.Values{"root": trueStr}, http.Header{"Content-type": []string{"text/html"}})
 	_, params, err = parseRequest(req, defaultParams)
 	if err != nil {
 		t.Fatal("Unexpected error", err)
@@ -544,7 +544,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 	}
 
 	// verify 'siapath' (no root)
-	req = buildRequest(url.Values{}, http.Header{})
+	req = buildRequest(url.Values{}, http.Header{"Content-type": []string{"text/html"}})
 	_, params, err = parseRequest(req, defaultParams)
 	if err != nil {
 		t.Fatal("Unexpected error", err)
@@ -555,7 +555,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 	}
 
 	// verify 'siapath' (at root)
-	req = buildRequest(url.Values{"root": trueStr}, http.Header{})
+	req = buildRequest(url.Values{"root": trueStr}, http.Header{"Content-type": []string{"text/html"}})
 	_, params, err = parseRequest(req, defaultParams)
 	if err != nil {
 		t.Fatal("Unexpected error", err)
@@ -576,7 +576,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 	keyIdStr := key.ID().ToString()
 
 	// verify 'skykeyname'
-	req = buildRequest(url.Values{"skykeyname": []string{key.Name}}, http.Header{})
+	req = buildRequest(url.Values{"skykeyname": []string{key.Name}}, http.Header{"Content-type": []string{"text/html"}})
 	_, params, err = parseRequest(req, defaultParams)
 	if err != nil {
 		t.Fatal("Unexpected error", err)
@@ -586,7 +586,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 	}
 
 	// verify 'skykeyid'
-	req = buildRequest(url.Values{"skykeyid": []string{keyIdStr}}, http.Header{})
+	req = buildRequest(url.Values{"skykeyid": []string{keyIdStr}}, http.Header{"Content-type": []string{"text/html"}})
 	_, params, err = parseRequest(req, defaultParams)
 	if err != nil {
 		t.Fatal("Unexpected error", err)
@@ -596,7 +596,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 	}
 
 	// verify 'skykeyid' - combo with 'skykeyname'
-	req = buildRequest(url.Values{"skykeyname": []string{key.Name}, "skykeyid": []string{key.ID().ToString()}}, http.Header{})
+	req = buildRequest(url.Values{"skykeyname": []string{key.Name}, "skykeyid": []string{key.ID().ToString()}}, http.Header{"Content-type": []string{"text/html"}})
 	_, _, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
 	if err == nil {
 		t.Fatal("Unexpected")
@@ -642,7 +642,7 @@ func testParseDownloadRequestParameters(t *testing.T) {
 	}
 
 	// Test base case of just skylink
-	req, err := buildRequest(url.Values{}, http.Header{})
+	req, err := buildRequest(url.Values{}, http.Header{"Content-type": []string{"text/html"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -659,7 +659,7 @@ func testParseDownloadRequestParameters(t *testing.T) {
 
 	// Test attachment
 	trueStr := []string{fmt.Sprintf("%t", true)}
-	req, err = buildRequest(url.Values{"attachment": trueStr}, http.Header{})
+	req, err = buildRequest(url.Values{"attachment": trueStr}, http.Header{"Content-type": []string{"text/html"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -677,7 +677,7 @@ func testParseDownloadRequestParameters(t *testing.T) {
 
 	// Test Format
 	formatTest := func(format skymodules.SkyfileFormat) error {
-		req, err := buildRequest(url.Values{"format": []string{string(format)}}, http.Header{})
+		req, err := buildRequest(url.Values{"format": []string{string(format)}}, http.Header{"Content-type": []string{"text/html"}})
 		if err != nil {
 			return err
 		}
@@ -703,7 +703,7 @@ func testParseDownloadRequestParameters(t *testing.T) {
 	}
 
 	// Test include layout
-	req, err = buildRequest(url.Values{"include-layout": trueStr}, http.Header{})
+	req, err = buildRequest(url.Values{"include-layout": trueStr}, http.Header{"Content-type": []string{"text/html"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -723,7 +723,7 @@ func testParseDownloadRequestParameters(t *testing.T) {
 	var timeoutInt int = 100
 	timeout := time.Duration(timeoutInt) * time.Second
 	timeoutStr := []string{fmt.Sprintf("%d", timeoutInt)}
-	req, err = buildRequest(url.Values{"timeout": timeoutStr}, http.Header{})
+	req, err = buildRequest(url.Values{"timeout": timeoutStr}, http.Header{"Content-type": []string{"text/html"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -746,7 +746,7 @@ func testParseDownloadRequestParameters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req, err = buildRequest(url.Values{"priceperms": []string{pricePerMSStr}}, http.Header{})
+	req, err = buildRequest(url.Values{"priceperms": []string{pricePerMSStr}}, http.Header{"Content-type": []string{"text/html"}})
 	if err != nil {
 		t.Fatal(err)
 	}

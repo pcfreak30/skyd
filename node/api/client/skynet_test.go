@@ -62,8 +62,6 @@ func TestUrlValuesFromSkynetUploadParams(t *testing.T) {
 		"root",
 		"basechunkredundancy",
 		"filename",
-		"defaultpath",
-		"disabledefaultpath",
 		"monetization",
 	}) {
 		t.Fatal("unexpected")
@@ -120,10 +118,6 @@ func TestUrlValuesFromSkynetUploadParams(t *testing.T) {
 		"basechunkredundancy",
 		"filename",
 		"mode",
-		"defaultpath",
-		"disabledefaultpath",
-		"tryfiles",
-		"errorpages",
 		"monetization",
 		"skykeyname",
 		"skykeyid",

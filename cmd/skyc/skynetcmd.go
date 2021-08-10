@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -14,19 +13,17 @@ import (
 	"sync"
 	"text/tabwriter"
 
-	"gitlab.com/SkynetLabs/skyd/node/api"
-
-	"github.com/vbauerster/mpb/v5"
-
 	"github.com/spf13/cobra"
+	"github.com/vbauerster/mpb/v5"
 	"github.com/vbauerster/mpb/v5/decor"
-
 	"gitlab.com/NebulousLabs/errors"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+
+	"gitlab.com/SkynetLabs/skyd/node/api"
 	"gitlab.com/SkynetLabs/skyd/siatest"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
-	"go.sia.tech/siad/crypto"
-	"go.sia.tech/siad/modules"
 )
 
 var (
@@ -595,11 +592,12 @@ func skynetskylinkcomparecmd(expectedSkylink string, filename string) {
 
 	// Check if the metadata download is the same as the metadata loaded from disk
 	if !bytes.Equal(skyfileMetadataFromFile, skyfileMetadataFromHeader) {
-		fmt.Println("Metadata read from file", len(skyfileMetadataFromFile))
-		fmt.Println(string(skyfileMetadataFromFile))
-		fmt.Println("Metadata read from header", len(skyfileMetadataFromHeader))
-		fmt.Println(string(skyfileMetadataFromHeader))
-		die("Metadatas not equal")
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("Metadata read from file %d\n", len(skyfileMetadataFromFile)))
+		sb.WriteString(string(skyfileMetadataFromFile))
+		sb.WriteString(fmt.Sprintf("Metadata read from header %d\n", len(skyfileMetadataFromHeader)))
+		sb.WriteString(string(skyfileMetadataFromHeader))
+		die(sb.String(), "Metadatas not equal")
 	}
 	fmt.Println("Metadatas Equal")
 
@@ -612,9 +610,8 @@ func skynetskylinkcomparecmd(expectedSkylink string, filename string) {
 	}
 
 	if skylink.String() != expectedSkylink {
-		fmt.Println("Expected", expectedSkylink)
-		fmt.Println("Generated", skylink.String())
-		die("Generated Skylink not Equal to Expected")
+		comp := fmt.Sprintf("Expected %s\nGenerated %s\n", expectedSkylink, skylink.String())
+		die(comp, "Generated Skylink not Equal to Expected")
 	}
 	fmt.Println("Generated Skylink as Expected!")
 }
@@ -900,23 +897,15 @@ func skynetUploadFilesSeparately(sourcePath, destSiaPath string, pbs *mpb.Progre
 func skynetUploadDirectory(sourcePath, destSiaPath string) {
 	skyfilePath, err := skymodules.NewSiaPath(destSiaPath)
 	if err != nil {
-		fmt.Println("Failed to create siapath", destSiaPath)
-		die(err)
+		die(fmt.Sprintf("Failed to create siapath %s\n", destSiaPath), err)
 	}
 	if skynetUploadDisableDefaultPath && skynetUploadDefaultPath != "" {
-		fmt.Println("Illegal combination of parameters: --defaultpath and --disabledefaultpath are mutually exclusive.")
-		die()
+		die("Illegal combination of parameters: --defaultpath and --disabledefaultpath are mutually exclusive.")
 	}
 	if skynetUploadTryFiles != "" && (skynetUploadDisableDefaultPath || skynetUploadDefaultPath != "") {
-		fmt.Println("Illegal combination of parameters: --tryfiles is not compatible with --defaultpath and --disabledefaultpath.")
-		die()
+		die("Illegal combination of parameters: --tryfiles is not compatible with --defaultpath and --disabledefaultpath.")
 	}
-	var tryfiles []string
-	err = json.Unmarshal([]byte(skynetUploadTryFiles), &tryfiles)
-	if err != nil {
-		fmt.Println("Failed to parse tryfiles.")
-		die(err)
-	}
+	tryfiles := strings.Split(skynetUploadTryFiles, ",")
 	errPages, err := api.ParseErrorPages(skynetUploadErrorPages)
 	if err != nil {
 		die(err)
@@ -931,21 +920,18 @@ func skynetUploadDirectory(sourcePath, destSiaPath string) {
 		var offset uint64
 		err = filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
-				fmt.Printf("Failed to read file %s.\n", path)
-				die(err)
+				die(fmt.Sprintf("Failed to read file %s.\n", path), err)
 			}
 			if info.IsDir() {
 				return nil
 			}
 			data, err := ioutil.ReadFile(path)
 			if err != nil {
-				fmt.Printf("Failed to read file %s.\n", path)
-				die(err)
+				die(fmt.Sprintf("Failed to read file %s.\n", path), err)
 			}
 			_, err = skymodules.AddMultipartFile(writer, data, "files[]", info.Name(), skymodules.DefaultFilePerm, &offset)
 			if err != nil {
-				fmt.Printf("Failed to add file %s to multipart upload.\n", path)
-				die(err)
+				die(fmt.Sprintf("Failed to add file %s to multipart upload.\n", path), err)
 			}
 			return nil
 		})
@@ -972,8 +958,7 @@ func skynetUploadDirectory(sourcePath, destSiaPath string) {
 	}
 	skylink, _, err := httpClient.SkynetSkyfileMultiPartPost(sup)
 	if err != nil {
-		fmt.Println("Failed to upload directory.")
-		die(err)
+		die("Failed to upload directory.", err)
 	}
 	fmt.Println("Successfully uploaded directory:", skylink)
 }

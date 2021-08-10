@@ -583,7 +583,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		// If we need to serve a path, different from the requested one, we'll
 		// decide that now.
 		if len(metadata.TryFiles) > 0 {
-			path, _ = determinePathBasedOnTryfiles(path, metadata)
+			path, _ = determinePathBasedOnTryfiles(path, metadata.Subfiles, metadata.TryFiles)
 		} else if defaultPath != "" && path == "/" {
 			_, exists := metadata.Subfiles[strings.TrimPrefix(defaultPath, "/")]
 			if exists {
@@ -1602,42 +1602,4 @@ func (api *API) skynetSkylinkUnpinHandlerPOST(w http.ResponseWriter, req *http.R
 		return
 	}
 	WriteSuccess(w)
-}
-
-// subfilesContains is small helper that check if the given set of subfiles
-// contains a file with the given name.
-func subfilesContains(sub skymodules.SkyfileSubfiles, filename string) bool {
-	if sub == nil {
-		return false
-	}
-	_, exists := sub[filename]
-	return exists
-}
-
-// determinePathBasedOnTryfiles determines if we should serve a different path
-// based on the given metadata. It also returns a boolean which tells us whether
-// the returned path is different from the provided path.Î
-func determinePathBasedOnTryfiles(path string, metadata skymodules.SkyfileMetadata) (string, bool) {
-	if metadata.Subfiles == nil {
-		return path, false
-	}
-	file := strings.Trim(path, "/")
-	if !subfilesContains(metadata.Subfiles, file) {
-		// We'll check all tryfiles from last to first.
-		for i := len(metadata.TryFiles) - 1; i >= 0; i-- {
-			tf := metadata.TryFiles[i]
-			// If we encounter an absolute-path tryfile, and it exists,
-			// we stop searching.
-			if strings.HasPrefix(tf, "/") && subfilesContains(metadata.Subfiles, strings.Trim(tf, "/")) {
-				return tf, true
-			}
-			// Assume the request is for a directory and check if a
-			// tryfile matches.
-			potentialFilename := strings.Trim(strings.TrimSuffix(file, "/")+skymodules.EnsurePrefix(tf, "/"), "/")
-			if subfilesContains(metadata.Subfiles, potentialFilename) {
-				return skymodules.EnsurePrefix(potentialFilename, "/"), true
-			}
-		}
-	}
-	return path, false
 }
