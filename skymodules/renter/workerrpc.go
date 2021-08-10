@@ -147,13 +147,13 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	logKV("finish", "stream.Write")
 
 	// read the cancellation token.
-	logKV("call", "stream.Write")
+	logKV("call", "stream.Read")
 	var ct modules.MDMCancellationToken
 	err = modules.RPCRead(stream, &ct)
 	if err != nil {
 		return
 	}
-	logKV("finish", "stream.Write")
+	logKV("finish", "stream.Read")
 
 	// read the responses.
 	responses = make([]programResponse, 0, len(epr.Program))
