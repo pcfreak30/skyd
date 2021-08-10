@@ -189,7 +189,7 @@ func (j *jobRead) callExpectedBandwidth() (ul, dl uint64) {
 // proof.
 func (j *jobRead) managedRead(w *worker, program modules.Program, programData []byte, cost types.Currency) ([]programResponse, error) {
 	// execute it
-	responses, _, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, j.staticJobReadMetadata().staticSpendingCategory, cost)
+	responses, _, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, j.staticJobReadMetadata().staticSpendingCategory, cost, TraceFuncNoOP)
 	if err != nil {
 		return []programResponse{}, err
 	}

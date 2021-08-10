@@ -118,7 +118,7 @@ func lookupRegistry(w *worker, sid modules.RegistryEntryID, spk *types.SiaPublic
 	cost = cost.Add(bandwidthCost)
 
 	// Execute the program and parse the responses.
-	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, categoryRegistryRead, cost)
+	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, categoryRegistryRead, cost, TraceFuncNoOP)
 	if err != nil {
 		return nil, errors.AddContext(err, "Unable to execute program")
 	}
