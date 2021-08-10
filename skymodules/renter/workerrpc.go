@@ -153,7 +153,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	if err != nil {
 		return
 	}
-	logKV("finish", "stream.Read")
+	logKV("finish", "stream.Write")
 
 	// read the responses.
 	responses = make([]programResponse, 0, len(epr.Program))
