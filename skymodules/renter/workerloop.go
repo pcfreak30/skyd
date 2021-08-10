@@ -268,6 +268,7 @@ func (w *worker) managedBlockUntilReady() bool {
 	// Check internet connectivity. If the worker does not have internet
 	// connectivity, block until connectivity is restored.
 	for !w.staticRenter.staticGateway.Online() {
+		w.staticRenter.staticLog.Printf("gateway offline, worker blocking for %vs\n", offlineCheckFrequency.Seconds())
 		select {
 		case <-w.staticTG.StopChan():
 			return false
