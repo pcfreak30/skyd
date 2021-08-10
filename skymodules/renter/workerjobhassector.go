@@ -2,6 +2,7 @@ package renter
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -265,6 +266,8 @@ func (j jobHasSectorBatch) callExpectedBandwidth() (ul, dl uint64) {
 func (j *jobHasSectorBatch) traceFunc() TraceFunc {
 	return func(alternatingKeyValues ...interface{}) {
 		for _, job := range j.staticJobs {
+			fmt.Println("logging num KV", len(alternatingKeyValues))
+			fmt.Println(alternatingKeyValues)
 			job.staticSpan.LogKV(alternatingKeyValues...)
 		}
 	}
