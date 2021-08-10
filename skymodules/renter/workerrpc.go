@@ -81,6 +81,10 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 		logKV("finish", "managedCommitWithdrawal")
 	}()
 
+	logKV("call", "spinner")
+	time.Sleep(20 * time.Millisecond)
+	logKV("finish", "spinner")
+
 	// create a new stream
 	logKV("call", "staticNewStream")
 	stream, err := w.staticNewStream()
