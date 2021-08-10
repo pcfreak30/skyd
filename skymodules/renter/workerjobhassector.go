@@ -262,6 +262,14 @@ func (j jobHasSectorBatch) callExpectedBandwidth() (ul, dl uint64) {
 	return
 }
 
+func (j *jobHasSectorBatch) traceFunc() TraceFunc {
+	return func(alternatingKeyValues ...interface{}) {
+		for _, job := range j.staticJobs {
+			job.staticSpan.LogKV(alternatingKeyValues...)
+		}
+	}
+}
+
 // managedHasSector returns whether or not the host has a sector with given root
 func (j *jobHasSectorBatch) managedHasSector() (results [][]bool, err error) {
 	if len(j.staticJobs) == 0 {
@@ -288,7 +296,7 @@ func (j *jobHasSectorBatch) managedHasSector() (results [][]bool, err error) {
 	// Execute the program and parse the responses.
 	hasSectors := make([]bool, 0, len(program))
 	var responses []programResponse
-	responses, _, err = w.managedExecuteProgram(program, programData, types.FileContractID{}, categoryDownload, cost)
+	responses, _, err = w.managedExecuteProgram(program, programData, types.FileContractID{}, categoryDownload, cost, j.traceFunc())
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to execute program for has sector job")
 	}

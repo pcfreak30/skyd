@@ -7,6 +7,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/siamux/mux"
@@ -45,8 +46,23 @@ type programResponse struct {
 	Output []byte
 }
 
+// TraceFunc is a helper type that represents the LogKV function on a span.
+type TraceFunc = func(alternatingKeyValues ...interface{})
+
+// TraceFuncNoOP is a TraceFunc function that does nothing but satisfy an
+// interface.
+func TraceFuncNoOP(alternatingKeyValues ...interface{}) {}
+
+// TraceFuncForSpan is a helper function that returns a TraceFunc for the given
+// span. When called, it will record the given key values on the span.
+func TraceFuncForSpan(span opentracing.Span) TraceFunc {
+	return func(alternatingKeyValues ...interface{}) {
+		span.LogKV(alternatingKeyValues...)
+	}
+}
+
 // managedExecuteProgram performs the ExecuteProgramRPC on the host
-func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, category spendingCategory, cost types.Currency) (responses []programResponse, limit mux.BandwidthLimit, err error) {
+func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, category spendingCategory, cost types.Currency, logKV TraceFunc) (responses []programResponse, limit mux.BandwidthLimit, err error) {
 	// Defer a function that schedules a price table update in case we received
 	// an error that indicates the host deems our price table invalid.
 	defer func() {
@@ -64,15 +80,19 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}()
 
 	// create a new stream
+	logKV("createStream_call")
 	stream, err := w.staticNewStream()
 	if err != nil {
 		err = errors.AddContext(err, "Unable to create a new stream")
 		return
 	}
+	logKV("createStream_finish")
 	defer func() {
+		logKV("closeStream_call")
 		if err := stream.Close(); err != nil {
 			w.staticRenter.staticLog.Println("ERROR: failed to close stream", err)
 		}
+		logKV("closeStream_finish")
 	}()
 
 	// set the limit return var.
@@ -119,26 +139,32 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}
 
 	// write contents of the buffer to the stream
+	logKV("writeStream_call")
 	_, err = stream.Write(buffer.Bytes())
 	if err != nil {
 		return
 	}
+	logKV("writeStream_finish")
 
 	// read the cancellation token.
+	logKV("readStream_call")
 	var ct modules.MDMCancellationToken
 	err = modules.RPCRead(stream, &ct)
 	if err != nil {
 		return
 	}
+	logKV("readStream_finish")
 
 	// read the responses.
 	responses = make([]programResponse, 0, len(epr.Program))
 	for i := 0; i < len(epr.Program); i++ {
 		var response programResponse
+		logKV("readStream_call")
 		err = modules.RPCRead(stream, &response)
 		if err != nil {
 			return
 		}
+		logKV("readStream_finish")
 
 		// Read the output data.
 		outputLen := response.OutputLength

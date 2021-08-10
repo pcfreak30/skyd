@@ -630,7 +630,7 @@ func testWorkerAccountSpendingDetails(t *testing.T, wt *workerTester) {
 	cost = cost.Add(bandwidthCost)
 
 	// execute it
-	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost)
+	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost, TraceFuncNoOP)
 	if err != nil {
 		t.Fatal(err)
 	}

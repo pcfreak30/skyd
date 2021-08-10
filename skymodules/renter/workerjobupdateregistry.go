@@ -230,7 +230,7 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue
 
 	// Execute the program and parse the responses.
 	var responses []programResponse
-	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, categoryRegistryWrite, cost)
+	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, categoryRegistryWrite, cost, TraceFuncNoOP)
 	if err != nil {
 		return modules.SignedRegistryValue{}, errors.AddContext(err, "Unable to execute program")
 	}
