@@ -60,7 +60,7 @@ type (
 // newJobUpdateRegistry is a helper method to create a new UpdateRegistry job.
 func (w *worker) newJobUpdateRegistry(ctx context.Context, span opentracing.Span, responseChan chan *jobUpdateRegistryResponse, spk types.SiaPublicKey, srv modules.SignedRegistryValue) *jobUpdateRegistry {
 	jobSpan := opentracing.StartSpan("UpdateRegistryJob", opentracing.ChildOf(span.Context()))
-	jobSpan.SetTag("host", w.staticHostPubKeyStr)
+	// jobSpan.SetTag("host", w.staticHostPubKeyStr)
 	return &jobUpdateRegistry{
 		staticSiaPublicKey:        spk,
 		staticSignedRegistryValue: srv,
@@ -73,8 +73,8 @@ func (w *worker) newJobUpdateRegistry(ctx context.Context, span opentracing.Span
 // callDiscard will discard a job, sending the provided error.
 func (j *jobUpdateRegistry) callDiscard(err error) {
 	// Log info and finish span.
-	j.staticSpan.LogKV("callDiscard", err)
-	j.staticSpan.SetTag("success", false)
+	// j.staticSpan.LogKV("callDiscard", err)
+	// j.staticSpan.SetTag("success", false)
 	defer j.staticSpan.Finish()
 
 	w := j.staticQueue.staticWorker()
@@ -137,8 +137,8 @@ func (j *jobUpdateRegistry) callExecute() {
 		if errVerify := rv.Verify(j.staticSiaPublicKey.ToPublicKey()); errVerify != nil {
 			sendResponse(nil, errVerify)
 			j.staticQueue.callReportFailure(errVerify)
-			span.LogKV("error", errVerify)
-			j.staticSpan.SetTag("success", false)
+			// span.LogKV("error", errVerify)
+			// j.staticSpan.SetTag("success", false)
 			return
 		}
 		// If the entry is valid, check if our suggested can actually not be
@@ -147,8 +147,8 @@ func (j *jobUpdateRegistry) callExecute() {
 		if shouldUpdate {
 			sendResponse(nil, errHostOutdatedProof)
 			j.staticQueue.callReportFailure(errHostOutdatedProof)
-			span.LogKV("error", errHostOutdatedProof)
-			j.staticSpan.SetTag("success", false)
+			// span.LogKV("error", errHostOutdatedProof)
+			// j.staticSpan.SetTag("success", false)
 			return
 		}
 		// If the entry is valid and the revision is also valid, check if we
@@ -157,8 +157,8 @@ func (j *jobUpdateRegistry) callExecute() {
 		if errCheating != nil {
 			sendResponse(nil, errCheating)
 			j.staticQueue.callReportFailure(errCheating)
-			span.LogKV("error", errCheating)
-			j.staticSpan.SetTag("success", false)
+			// span.LogKV("error", errCheating)
+			// j.staticSpan.SetTag("success", false)
 			w.staticRegistryCache.Set(rid, rv, true) // adjust the cache
 			return
 		}
@@ -170,22 +170,22 @@ func (j *jobUpdateRegistry) callExecute() {
 			// though.
 			sendResponse(&rv, err)
 			j.staticQueue.callReportSuccess()
-			span.LogKV("error", err)
-			j.staticSpan.SetTag("success", false)
+			// span.LogKV("error", err)
+			// j.staticSpan.SetTag("success", false)
 			return
 		}
 	} else if err != nil {
 		sendResponse(nil, err)
 		j.staticQueue.callReportFailure(err)
-		span.LogKV("error", err)
-		j.staticSpan.SetTag("success", false)
+		// span.LogKV("error", err)
+		// j.staticSpan.SetTag("success", false)
 		return
 	}
 
 	// Success. We either confirmed the latest revision or updated the host
 	// successfully.
 	jobTime := time.Since(start)
-	j.staticSpan.SetTag("success", true)
+	// j.staticSpan.SetTag("success", true)
 
 	// Update the registry cache.
 	w.staticRegistryCache.Set(rid, j.staticSignedRegistryValue, false)

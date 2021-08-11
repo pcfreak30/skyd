@@ -141,8 +141,8 @@ func (j *jobHasSector) callDiscard(err error) {
 		w.staticRenter.staticLog.Print("callDiscard: launch failed", err)
 	}
 
-	j.staticSpan.LogKV("callDiscard", err)
-	j.staticSpan.SetTag("success", false)
+	// j.staticSpan.LogKV("callDiscard", err)
+	// j.staticSpan.SetTag("success", false)
 	j.staticSpan.Finish()
 }
 
@@ -190,15 +190,18 @@ func (j jobHasSectorBatch) callExecute() {
 	start := time.Now()
 	w := j.staticJobs[0].staticQueue.staticWorker()
 	availables, err := j.managedHasSector()
+	if w.staticRenter.staticDeps.Disrupt("StallHasSectorJobs") {
+		time.Sleep(time.Second)
+	}
 	jobTime := time.Since(start)
 
 	for i := range j.staticJobs {
 		hsj := j.staticJobs[i]
 		// Handle its span
-		if err != nil {
-			hsj.staticSpan.LogKV("error", err)
-		}
-		hsj.staticSpan.SetTag("success", err == nil)
+		// if err != nil {
+		// 	hsj.staticSpan.LogKV("error", err)
+		// }
+		// hsj.staticSpan.SetTag("success", err == nil)
 		hsj.staticSpan.Finish()
 
 		// Create the response.

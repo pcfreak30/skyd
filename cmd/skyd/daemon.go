@@ -285,6 +285,9 @@ func initTracer() (io.Closer, error) {
 		cfg.Disabled = true
 	}
 
+	// HARD CODE DISABLE
+	cfg.Disabled = true
+
 	// Example logger and metrics factory. Use github.com/uber/jaeger-client-go/log
 	// and github.com/uber/jaeger-lib/metrics respectively to bind to real logging and metrics
 	// frameworks.

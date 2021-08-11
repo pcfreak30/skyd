@@ -3,6 +3,7 @@ package renter
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -61,6 +62,10 @@ const (
 	// flagged if the HasSector cost reaches 1% of the total cost of the
 	// allowance.
 	pcwsGougingFractionDenom = 25
+
+	workerBlockBatchSize = 25
+	workerBlockRangeDur  = 100 * time.Millisecond
+	workerBlockMinDur    = time.Second
 )
 
 // pcwsUnreseovledWorker tracks an unresolved worker that is associated with a
@@ -117,6 +122,10 @@ type pcwsWorkerState struct {
 	// more updates. This is specific to this particular worker state, the
 	// pcwsWorkerSet as a whole can be reset by replacing the worker state.
 	workerUpdateChans []chan struct{}
+
+	workerHSResponseTimes []time.Duration
+	workerBlockDetected   bool
+	staticLaunchTime      time.Time
 
 	// Utilities.
 	staticRenter *Renter
@@ -312,6 +321,56 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 		worker:       w,
 		pieceIndices: indices,
 	})
+
+	// Register the HS response time in the list of response times
+	ws.workerHSResponseTimes = append(ws.workerHSResponseTimes, time.Since(ws.staticLaunchTime))
+
+	// Loop over all response times and try to find a worker block. Only do this
+	// check when the amount of responses that came back is greater than 25
+	// because we need at least 25 jobs in the batch to label it a block.
+	if ws.workerBlockDetected || len(ws.workerHSResponseTimes) < workerBlockBatchSize {
+		return
+	}
+
+	// The renter is considered blocked if we can find over 25 jobs that took
+	// longer than 1s to complete and are within 100ms from each other
+	rangeInMS := workerBlockRangeDur
+	for i := 0; i < len(ws.workerHSResponseTimes); i++ {
+		duration := ws.workerHSResponseTimes[i]
+		if duration < workerBlockMinDur {
+			// needs to be at least 1s
+			continue
+		}
+
+		// calculate min and max range
+		var rangeMin time.Duration
+		if duration > rangeInMS {
+			rangeMin = duration - rangeInMS
+		}
+		rangeMax := duration + rangeInMS
+
+		// loop all other jobs and count this batch
+		batchCnt := 0
+		for j := 0; j < len(ws.workerHSResponseTimes); j++ {
+			if j == i {
+				continue
+			}
+			other := ws.workerHSResponseTimes[j]
+			if rangeMin <= other && other <= rangeMax {
+				batchCnt++
+			}
+		}
+
+		if batchCnt >= workerBlockBatchSize {
+			sort.Slice(ws.workerHSResponseTimes, func(i, j int) bool {
+				return ws.workerHSResponseTimes[i] > ws.workerHSResponseTimes[j]
+			})
+			ws.workerBlockDetected = true
+			fmt.Printf("BLOCK DEBUG DETECTED | durations %v\n", ws.workerHSResponseTimes)
+			ws.staticRenter.staticLog.Printf("BLOCK DEBUG | durations %v\n", ws.workerHSResponseTimes)
+			break
+		}
+	}
 }
 
 // managedLaunchWorker will launch a job to determine which sectors of a chunk
@@ -426,7 +485,10 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 	ws := &pcwsWorkerState{
 		unresolvedWorkers: make(map[string]*pcwsUnresolvedWorker),
 
-		staticRenter: pcws.staticRenter,
+		workerHSResponseTimes: make([]time.Duration, 0),
+
+		staticLaunchTime: time.Now(),
+		staticRenter:     pcws.staticRenter,
 	}
 
 	// Launch the thread to find the workers for this launch state.

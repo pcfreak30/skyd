@@ -76,7 +76,7 @@ func (w *worker) newJobReadSector(ctx context.Context, queue *jobReadQueue, resp
 	if span := opentracing.SpanFromContext(ctx); span != nil {
 		spanRef := opentracing.ChildOf(span.Context())
 		jobSpan = opentracing.StartSpan("ReadSectorJob", spanRef)
-		jobSpan.SetTag("root", root)
+		// jobSpan.SetTag("root", root)
 	}
 
 	return &jobReadSector{

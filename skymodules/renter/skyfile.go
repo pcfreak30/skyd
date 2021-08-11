@@ -456,12 +456,12 @@ func (r *Renter) managedUploadBaseSector(ctx context.Context, sup skymodules.Sky
 	// Trace the base sector upload in its own span if the given ctx already has
 	// a span attached.
 	span, ctx := opentracing.StartSpanFromContext(ctx, "managedUploadBaseSector")
-	span.SetTag("skylink", skylink.String())
+	// span.SetTag("skylink", skylink.String())
 	defer func() {
-		if err != nil {
-			span.LogKV("err", err)
-		}
-		span.SetTag("success", err == nil)
+		// if err != nil {
+		// 	span.LogKV("err", err)
+		// }
+		// span.SetTag("success", err == nil)
 		span.Finish()
 	}()
 
@@ -546,14 +546,14 @@ func (r *Renter) managedUploadSkyfile(ctx context.Context, sup skymodules.Skyfil
 // can be used to access the file.
 func (r *Renter) managedUploadSkyfileSmallFile(ctx context.Context, sup skymodules.SkyfileUploadParameters, metadataBytes, fileBytes []byte) (skylink skymodules.Skylink, err error) {
 	// Fetch the span from our context and tag it as small (large=false).
-	if span := opentracing.SpanFromContext(ctx); span != nil {
-		defer func() {
-			if err != nil {
-				span.LogKV("err", err)
-			}
-			span.SetTag("large", false)
-		}()
-	}
+	// if span := opentracing.SpanFromContext(ctx); span != nil {
+	// 	defer func() {
+	// 		if err != nil {
+	// 			span.LogKV("err", err)
+	// 		}
+	// 		span.SetTag("large", false)
+	// 	}()
+	// }
 
 	sl := skymodules.SkyfileLayout{
 		Version:      skymodules.SkyfileVersion,
@@ -606,9 +606,9 @@ func (r *Renter) managedUploadSkyfileLargeFile(ctx context.Context, sup skymodul
 	if span := opentracing.SpanFromContext(ctx); span != nil {
 		defer func() {
 			if err != nil {
-				span.LogKV("err", err)
+				// span.LogKV("err", err)
 			}
-			span.SetTag("large", true)
+			// span.SetTag("large", true)
 		}()
 	}
 
@@ -729,7 +729,7 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 
 	// Start tracing.
 	span := opentracing.StartSpan("DownloadByRoot")
-	span.SetTag("root", root)
+	// span.SetTag("root", root)
 	defer span.Finish()
 
 	// Attach the span to the ctx
@@ -761,7 +761,7 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 
 	// Create a new span.
 	span := opentracing.StartSpan("DownloadSkylink")
-	span.SetTag("skylink", link.String())
+	// span.SetTag("skylink", link.String())
 
 	// Attach the span to the ctx
 	ctx = opentracing.ContextWithSpan(ctx, span)
@@ -775,8 +775,8 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	// Download the data
 	streamer, err := r.managedDownloadSkylink(ctx, link, timeout, pricePerMS)
 	if errors.Contains(err, ErrProjectTimedOut) {
-		span.LogKV("timeout", timeout)
-		span.SetTag("timeout", true)
+		// span.LogKV("timeout", timeout)
+		// span.SetTag("timeout", true)
 		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
 	}
 
@@ -801,7 +801,7 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 
 	// Create a span
 	span := opentracing.StartSpan("DownloadSkylinkBaseSector")
-	span.SetTag("skylink", link.String())
+	// span.SetTag("skylink", link.String())
 	defer span.Finish()
 
 	// Attach the span to the ctx
@@ -841,10 +841,10 @@ func (r *Renter) managedDownloadSkylink(ctx context.Context, link skymodules.Sky
 
 	// Get the span from our context and defer cached tag update.
 	var exists bool
-	span := opentracing.SpanFromContext(ctx)
-	defer func() {
-		span.SetTag("cached", exists)
-	}()
+	// span := opentracing.SpanFromContext(ctx)
+	// defer func() {
+	// 	span.SetTag("cached", exists)
+	// }()
 
 	// Check if this skylink is already in the stream buffer set. If so, we can
 	// skip the lookup procedure and use any data that other threads have
@@ -897,7 +897,7 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 
 	// Create a span.
 	span := opentracing.StartSpan("PinSkylink")
-	span.SetTag("skylink", skylink.String())
+	// span.SetTag("skylink", skylink.String())
 	defer span.Finish()
 
 	// Attach the span to the ctx
@@ -1210,11 +1210,11 @@ func (r *Renter) UploadSkyfile(ctx context.Context, sup skymodules.SkyfileUpload
 	span := opentracing.StartSpan("UploadSkyfile")
 	ctx = opentracing.ContextWithSpan(ctx, span)
 	defer func() {
-		if err != nil {
-			span.LogKV("err", err)
-		}
-		span.SetTag("success", err == nil)
-		span.SetTag("skylink", skylink.String())
+		// if err != nil {
+		// 	span.LogKV("err", err)
+		// }
+		// span.SetTag("success", err == nil)
+		// span.SetTag("skylink", skylink.String())
 		span.Finish()
 	}()
 
@@ -1300,11 +1300,11 @@ func (r *Renter) managedResolveSkylinkV2(ctx context.Context, sl skymodules.Skyl
 	// Create a child span to capture the resolve for v2 skylinks.
 	span, ctx := opentracing.StartSpanFromContext(ctx, "managedTryResolveSkylinkV2")
 	defer func() {
-		if err != nil {
-			span.LogKV("error", err)
-		}
-		span.SetTag("success", err == nil)
-		span.SetTag("skylinkv2", skylink.String())
+		// if err != nil {
+		// 	span.LogKV("error", err)
+		// }
+		// span.SetTag("success", err == nil)
+		// span.SetTag("skylinkv2", skylink.String())
 		span.Finish()
 	}()
 

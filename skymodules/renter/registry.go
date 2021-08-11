@@ -206,7 +206,7 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 	if best == nil || best.staticSignedRegistryValue == nil {
 		return
 	}
-	span.LogKV("revision", best.staticSignedRegistryValue.Revision)
+	// span.LogKV("revision", best.staticSignedRegistryValue.Revision)
 
 	// Drop any responses from goodResps that were slower or equal to best.
 	for i := 0; i < len(goodResps); i++ {
@@ -284,14 +284,14 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 	}
 
 	// If we found a secondBest, use that instead.
-	span.LogKV("best", d.Milliseconds())
+	// span.LogKV("best", d.Milliseconds())
 	if secondBest != nil {
-		span.SetTag("secondbest", true)
-		span.LogKV("secondbest", d2.Milliseconds())
+		// span.SetTag("secondbest", true)
+		// span.LogKV("secondbest", d2.Milliseconds())
 		l.Printf("threadedAddResponseSet: replaced best with secondBest duration %v -> %v (revs: %v -> %v)", d, d2, best.staticSignedRegistryValue.Revision, secondBest.Revision)
 		d = d2
 	} else {
-		span.SetTag("secondbest", false)
+		// span.SetTag("secondbest", false)
 		l.Printf("threadedAddResponseSet: using best duration %v (secondBest: %v, nil: %v)", d, d2, secondBest == nil)
 	}
 
@@ -304,12 +304,12 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 
 	// The error is ignored since it only returns an error if the measurement is
 	// outside of the 5 minute bounds the stats were created with.
-	span.LogKV("datapoint", d.Milliseconds())
-	if d.Milliseconds() > 2000 {
-		span.SetTag("speed", "vslow")
-	} else if d.Milliseconds() > 200 {
-		span.SetTag("speed", "slow")
-	}
+	// span.LogKV("datapoint", d.Milliseconds())
+	// if d.Milliseconds() > 2000 {
+	// 	span.SetTag("speed", "vslow")
+	// } else if d.Milliseconds() > 200 {
+	// 	span.SetTag("speed", "slow")
+	// }
 	r.staticRegReadStats.AddDataPoint(d)
 }
 
@@ -395,11 +395,11 @@ func (r *Renter) managedRegistryEntryHealth(ctx context.Context, rid modules.Reg
 	defer span.Finish()
 
 	// Log some info about this trace.
-	span.LogKV("RID", hex.EncodeToString(rid[:]))
-	if spk != nil && tweak != nil {
-		span.LogKV("SPK", spk.String())
-		span.LogKV("Tweak", tweak.String())
-	}
+	// span.LogKV("RID", hex.EncodeToString(rid[:]))
+	// if spk != nil && tweak != nil {
+	// 	span.LogKV("SPK", spk.String())
+	// 	span.LogKV("Tweak", tweak.String())
+	// }
 
 	// Block until there is memory available, and then ensure the memory gets
 	// returned.
@@ -481,11 +481,11 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	defer span.Finish()
 
 	// Log some info about this trace.
-	span.LogKV("RID", hex.EncodeToString(rid[:]))
-	if spk != nil && tweak != nil {
-		span.LogKV("SPK", spk.String())
-		span.LogKV("Tweak", tweak.String())
-	}
+	// span.LogKV("RID", hex.EncodeToString(rid[:]))
+	// if spk != nil && tweak != nil {
+	// 	span.LogKV("SPK", spk.String())
+	// 	span.LogKV("Tweak", tweak.String())
+	// }
 
 	// Block until there is memory available, and then ensure the memory gets
 	// returned.
@@ -658,7 +658,7 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	// result of the job, even if this thread is not listening.
 	workers := r.staticWorkerPool.callWorkers()
 	staticResponseChan := make(chan *jobUpdateRegistryResponse, len(workers))
-	span.LogKV("workers", len(workers))
+	// span.LogKV("workers", len(workers))
 
 	// Create a context to continue updating registry values in the background.
 	updateTimeoutCtx, updateTimeoutCancel := context.WithTimeout(r.tg.StopCtx(), updateRegistryBackgroundTimeout)

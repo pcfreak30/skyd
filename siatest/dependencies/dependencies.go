@@ -48,6 +48,12 @@ type (
 	DependencyLegacyRenew struct {
 		skymodules.SkynetDependencies
 	}
+
+	// DependencyStallHasSectorJobs stalls the HS job for one second
+	DependencyStallHasSectorJobs struct {
+		skymodules.SkynetDependencies
+	}
+
 	// DependencyStandardUploadRedundancy uses the standard amount of data
 	// pieces and parity pieces as if the upload were to happen when using the
 	// Standard release.
@@ -377,6 +383,11 @@ func (d *DependencyRegistryUpdateLyingHost) Disrupt(s string) bool {
 // Disrupt returns true if the correct string is provided.
 func (d *DependencyInvalidateStatsCache) Disrupt(s string) bool {
 	return s == "DisableInvalidateStatsCache"
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyStallHasSectorJobs) Disrupt(s string) bool {
+	return s == "StallHasSectorJobs"
 }
 
 // Disrupt returns true if the correct string is provided.

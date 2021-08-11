@@ -4500,6 +4500,55 @@ func TestRegistryUpdateRead(t *testing.T) {
 	}
 }
 
+// TestSkynetWorkerBlockDetection
+func TestSkynetWorkerBlockDetection(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  10,
+		Miners: 1,
+	}
+	testDir := skynetTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Add a new renter with a dependency that stills HS jobs for one second
+	rt := node.RenterTemplate
+	rt.Allowance = siatest.DefaultAllowance
+	rt.Allowance.Hosts = 10
+	rt.Allowance.PaymentContractInitialFunding = siatest.DefaultPaymentContractInitialFunding
+	rt.RenterDeps = &dependencies.DependencyStallHasSectorJobs{}
+	nodes, err := tg.AddNodes(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Upload a large file
+	ss := modules.SectorSize
+	skylink, _, _, err := r.UploadNewSkyfileBlocking("largefile", ss*2, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download the file, this used to trigger a race to be detected.
+	_, err = r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestSkynetSkyfileStandardUploadRedundancy is a regression test that verifies
 // the race that occurred in the overdrive code is properly fixed by ensuring
 // the PDC is not accessed from more than one thread. This is a custom test

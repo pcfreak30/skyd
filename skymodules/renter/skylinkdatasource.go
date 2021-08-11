@@ -227,7 +227,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 
 	// Capture the base sector download in a new span.
 	span, ctx := opentracing.StartSpanFromContext(ctx, "managedDownloadByRoot")
-	span.SetTag("root", root)
+	// span.SetTag("root", root)
 	defer span.Finish()
 
 	// Create the pcws for the first chunk. We use a passthrough cipher and
@@ -317,17 +317,17 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, skylink skymodule
 	// NOTE: the sizes used are "exact sizes", meaning they are as close as
 	// possible to their eventual size after taking into account the size of the
 	// metadata. See cmd/skynet-benchmark/dl.go for more info.
-	span := opentracing.SpanFromContext(ctx)
-	switch length := metadata.Length; {
-	case length <= 61e3:
-		span.SetTag("length", "64kb")
-	case length <= 982e3:
-		span.SetTag("length", "1mb")
-	case length <= 3931e3:
-		span.SetTag("length", "4mb")
-	default:
-		span.SetTag("length", "10mb")
-	}
+	// span := opentracing.SpanFromContext(ctx)
+	// switch length := metadata.Length; {
+	// case length <= 61e3:
+	// 	span.SetTag("length", "64kb")
+	// case length <= 982e3:
+	// 	span.SetTag("length", "1mb")
+	// case length <= 3931e3:
+	// 	span.SetTag("length", "4mb")
+	// default:
+	// 	span.SetTag("length", "10mb")
+	// }
 
 	// Create the context for the data source - a child of the renter
 	// threadgroup but otherwise independent.

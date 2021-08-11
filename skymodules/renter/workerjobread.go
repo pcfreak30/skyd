@@ -102,8 +102,8 @@ func (j *jobRead) staticJobReadMetadata() jobReadMetadata {
 func (j *jobRead) callDiscard(err error) {
 	// Log info and finish span.
 	if j.staticSpan != nil {
-		j.staticSpan.LogKV("callDiscard", err)
-		j.staticSpan.SetTag("success", false)
+		// j.staticSpan.LogKV("callDiscard", err)
+		// j.staticSpan.SetTag("success", false)
 		j.staticSpan.Finish()
 	}
 
@@ -130,11 +130,11 @@ func (j *jobRead) callDiscard(err error) {
 func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTime time.Duration) {
 	// Log result and finish
 	if j.staticSpan != nil {
-		j.staticSpan.LogKV(
-			"err", readErr,
-			"duration", readJobTime,
-		)
-		j.staticSpan.SetTag("success", readErr == nil)
+		// j.staticSpan.LogKV(
+		// 	"err", readErr,
+		// 	"duration", readJobTime,
+		// )
+		// j.staticSpan.SetTag("success", readErr == nil)
 		j.staticSpan.Finish()
 	}
 

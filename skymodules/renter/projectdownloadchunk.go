@@ -319,11 +319,11 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 // fail will send an error down the download response channel.
 func (pdc *projectDownloadChunk) fail(err error) {
 	// Log info and finish span.
-	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-		span.LogKV("error", err)
-		span.SetTag("success", false)
-		span.Finish()
-	}
+	// if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+	// 	span.LogKV("error", err)
+	// 	span.SetTag("success", false)
+	// 	span.Finish()
+	// }
 
 	// Create and return a response
 	dr := &downloadResponse{
@@ -361,10 +361,10 @@ func (pdc *projectDownloadChunk) recoverData() ([]byte, error) {
 // there is an error during decode, 'pdc.fail()' will be called.
 func (pdc *projectDownloadChunk) finalize() {
 	// Log info and finish span.
-	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-		span.SetTag("success", true)
-		span.Finish()
-	}
+	// if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+	// 	span.SetTag("success", true)
+	// 	span.Finish()
+	// }
 
 	// Recover the data if necessary.
 	var data []byte
@@ -446,12 +446,12 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 	}
 
 	// Log the event.
-	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-		span.LogKV(
-			"launchWorker", w.staticHostPubKeyStr,
-			"overdriveWorker", isOverdrive,
-		)
-	}
+	// if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+	// 	span.LogKV(
+	// 		"launchWorker", w.staticHostPubKeyStr,
+	// 		"overdriveWorker", isOverdrive,
+	// 	)
+	// }
 
 	// Create the read job metadata.
 	launchedWorkerIndex := uint64(len(pdc.launchedWorkers))

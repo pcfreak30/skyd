@@ -305,26 +305,26 @@ func (sbs *streamBufferSet) callNewStreamFromID(ctx context.Context, id skymodul
 // managedData will block until the data for a data section is available, and
 // then return the data. The data is not safe to modify.
 func (ds *dataSection) managedData(ctx context.Context) (data []byte, err error) {
-	start := time.Now()
+	// start := time.Now()
 
 	// Trace info.
-	var duration time.Duration
-	if span := opentracing.SpanFromContext(ctx); span != nil {
-		defer func() {
-			span.SetTag("success", err == nil)
-			span.SetTag("duration", duration)
-			if err != nil {
-				span.LogKV("error", err)
-				if errors.Contains(err, errTimeout) {
-					span.SetTag("timeout", true)
-				}
-			}
-		}()
-	}
+	// var duration time.Duration
+	// if span := opentracing.SpanFromContext(ctx); span != nil {
+	// 	defer func() {
+	// 		span.SetTag("success", err == nil)
+	// 		span.SetTag("duration", duration)
+	// 		if err != nil {
+	// 			span.LogKV("error", err)
+	// 			if errors.Contains(err, errTimeout) {
+	// 				span.SetTag("timeout", true)
+	// 			}
+	// 		}
+	// 	}()
+	// }
 
 	select {
 	case <-ds.dataAvailable:
-		duration = time.Since(start)
+		// duration = time.Since(start)
 	case <-ctx.Done():
 		return nil, errTimeout
 	}
@@ -627,17 +627,17 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 		defer close(ds.dataAvailable)
 
 		// Create a child span for the data section
-		spanRef := opentracing.ChildOf(sb.staticSpan.Context())
-		span := opentracing.StartSpan("newDataSection", spanRef)
-		span.LogKV("index", index)
-		defer func() {
-			if ds.externErr != nil {
-				span.LogKV("error", ds.externErr)
-			}
-			span.SetTag("success", ds.externErr == nil)
-			span.SetTag("long", ds.externDuration >= longDownloadThreshold)
-			span.Finish()
-		}()
+		// spanRef := opentracing.ChildOf(sb.staticSpan.Context())
+		// span := opentracing.StartSpan("newDataSection", spanRef)
+		// span.LogKV("index", index)
+		// defer func() {
+		// 	if ds.externErr != nil {
+		// 		span.LogKV("error", ds.externErr)
+		// 	}
+		// 	span.SetTag("success", ds.externErr == nil)
+		// 	span.SetTag("long", ds.externDuration >= longDownloadThreshold)
+		// 	span.Finish()
+		// }()
 
 		// Ensure that the streambuffer has not closed.
 		err := sb.staticTG.Add()

@@ -175,7 +175,7 @@ func (w *worker) newJobReadRegistry(ctx context.Context, span opentracing.Span, 
 // newJobReadRegistry is a helper method to create a new ReadRegistry job.
 func (w *worker) newJobReadRegistryEID(ctx context.Context, span opentracing.Span, responseChan chan *jobReadRegistryResponse, sid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) *jobReadRegistry {
 	jobSpan := opentracing.StartSpan("ReadRegistryJob", opentracing.ChildOf(span.Context()))
-	jobSpan.SetTag("host", w.staticHostPubKeyStr)
+	// jobSpan.SetTag("host", w.staticHostPubKeyStr)
 	return &jobReadRegistry{
 		staticSiaPublicKey:    spk,
 		staticRegistryEntryID: sid,
@@ -189,8 +189,8 @@ func (w *worker) newJobReadRegistryEID(ctx context.Context, span opentracing.Spa
 // callDiscard will discard a job, sending the provided error.
 func (j *jobReadRegistry) callDiscard(err error) {
 	// Log info and finish span.
-	j.staticSpan.LogKV("callDiscard", err)
-	j.staticSpan.SetTag("success", false)
+	// j.staticSpan.LogKV("callDiscard", err)
+	// j.staticSpan.SetTag("success", false)
 	defer j.staticSpan.Finish()
 
 	w := j.staticQueue.staticWorker()
@@ -257,8 +257,8 @@ func (j *jobReadRegistry) callExecute() {
 		err := errors.New("can't call lookupRegistry without pubkey/tweak on legacy hosts")
 		sendResponse(nil, err)
 		j.staticQueue.callReportFailure(err)
-		span.LogKV("error", err)
-		j.staticSpan.SetTag("success", false)
+		// span.LogKV("error", err)
+		// j.staticSpan.SetTag("success", false)
 		return
 	}
 	// If both are set, they should match the subscription id.
@@ -269,8 +269,8 @@ func (j *jobReadRegistry) callExecute() {
 			build.Critical(err)
 			sendResponse(nil, err)
 			j.staticQueue.callReportFailure(err)
-			span.LogKV("error", err)
-			j.staticSpan.SetTag("success", false)
+			// span.LogKV("error", err)
+			// j.staticSpan.SetTag("success", false)
 			return
 		}
 	}
@@ -280,8 +280,8 @@ func (j *jobReadRegistry) callExecute() {
 	if err != nil {
 		sendResponse(nil, err)
 		j.staticQueue.callReportFailure(err)
-		span.LogKV("error", err)
-		j.staticSpan.SetTag("success", false)
+		// span.LogKV("error", err)
+		// j.staticSpan.SetTag("success", false)
 		return
 	}
 
@@ -293,8 +293,8 @@ func (j *jobReadRegistry) callExecute() {
 		if errCheating != nil {
 			sendResponse(nil, errCheating)
 			j.staticQueue.callReportFailure(errCheating)
-			span.LogKV("error", errCheating)
-			j.staticSpan.SetTag("success", false)
+			// span.LogKV("error", errCheating)
+			// j.staticSpan.SetTag("success", false)
 			w.staticRegistryCache.Set(j.staticRegistryEntryID, srv.SignedRegistryValue, true) // adjust the cache
 			return
 		}
