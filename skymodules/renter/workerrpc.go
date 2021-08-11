@@ -80,7 +80,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}()
 
 	logKV("call", "spinner")
-	time.Sleep(20 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 	logKV("finish", "spinner")
 
 	// create a new stream
