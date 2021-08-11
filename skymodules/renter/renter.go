@@ -313,7 +313,7 @@ func (r *Renter) Launch(fn func()) error {
 	start := time.Now()
 	launchErr := r.tg.Launch(fn)
 	elapsed := time.Since(start)
-	if elapsed > 20*time.Millisecond {
+	if elapsed > 100*time.Millisecond {
 		r.staticLog.Printf("BLOCK DEBUG | renter took %vms to launch a function on the TG\n", elapsed.Milliseconds())
 	}
 	return launchErr
