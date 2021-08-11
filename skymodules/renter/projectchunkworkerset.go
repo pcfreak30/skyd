@@ -63,9 +63,9 @@ const (
 	// allowance.
 	pcwsGougingFractionDenom = 25
 
-	workerBlockBatchSize = 25
+	workerBlockBatchSize = 40
 	workerBlockRangeDur  = 100 * time.Millisecond
-	workerBlockMinDur    = time.Second
+	workerBlockMinDur    = 2 * time.Second
 )
 
 // pcwsUnreseovledWorker tracks an unresolved worker that is associated with a
@@ -350,24 +350,24 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 		rangeMax := duration + rangeInMS
 
 		// loop all other jobs and count this batch
-		var batch []time.Duration
+		batchCnt := 0
 		for j := 0; j < len(ws.workerHSResponseTimes); j++ {
 			if j == i {
 				continue
 			}
 			other := ws.workerHSResponseTimes[j]
 			if rangeMin <= other && other <= rangeMax {
-				batch = append(batch, other)
+				batchCnt++
 			}
 		}
 
-		if len(batch) >= workerBlockBatchSize {
-			sort.Slice(batch, func(i, j int) bool {
-				return batch[i] > batch[j]
+		if batchCnt >= workerBlockBatchSize {
+			sort.Slice(ws.workerHSResponseTimes, func(i, j int) bool {
+				return ws.workerHSResponseTimes[i] > ws.workerHSResponseTimes[j]
 			})
 			ws.workerBlockDetected = true
-			fmt.Printf("BLOCK DEBUG DETECTED | durations %v\n", batch)
-			ws.staticRenter.staticLog.Printf("BLOCK DEBUG | durations %v\n", batch)
+			fmt.Printf("BLOCK DEBUG DETECTED | durations %v\n", ws.workerHSResponseTimes)
+			ws.staticRenter.staticLog.Printf("BLOCK DEBUG | durations %v\n", ws.workerHSResponseTimes)
 			break
 		}
 	}
