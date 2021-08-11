@@ -350,24 +350,24 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 		rangeMax := duration + rangeInMS
 
 		// loop all other jobs and count this batch
-		batchCnt := 0
+		var batch []time.Duration
 		for j := 0; j < len(ws.workerHSResponseTimes); j++ {
 			if j == i {
 				continue
 			}
 			other := ws.workerHSResponseTimes[j]
 			if rangeMin <= other && other <= rangeMax {
-				batchCnt++
+				batch = append(batch, other)
 			}
 		}
 
-		if batchCnt >= workerBlockBatchSize {
-			sort.Slice(ws.workerHSResponseTimes, func(i, j int) bool {
-				return ws.workerHSResponseTimes[i] > ws.workerHSResponseTimes[j]
+		if len(batch) >= workerBlockBatchSize {
+			sort.Slice(batch, func(i, j int) bool {
+				return batch[i] > batch[j]
 			})
 			ws.workerBlockDetected = true
-			fmt.Printf("BLOCK DEBUG DETECTED | durations %v\n", ws.workerHSResponseTimes)
-			ws.staticRenter.staticLog.Printf("BLOCK DEBUG | durations %v\n", ws.workerHSResponseTimes)
+			fmt.Printf("BLOCK DEBUG DETECTED | durations %v\n", batch)
+			ws.staticRenter.staticLog.Printf("BLOCK DEBUG | durations %v\n", batch)
 			break
 		}
 	}
