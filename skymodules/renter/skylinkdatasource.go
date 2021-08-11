@@ -317,7 +317,7 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, skylink skymodule
 	// NOTE: the sizes used are "exact sizes", meaning they are as close as
 	// possible to their eventual size after taking into account the size of the
 	// metadata. See cmd/skynet-benchmark/dl.go for more info.
-	// span := opentracing.SpanFromContext(ctx)
+	span := opentracing.SpanFromContext(ctx)
 	// switch length := metadata.Length; {
 	// case length <= 61e3:
 	// 	span.SetTag("length", "64kb")

@@ -627,8 +627,8 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 		defer close(ds.dataAvailable)
 
 		// Create a child span for the data section
-		// spanRef := opentracing.ChildOf(sb.staticSpan.Context())
-		// span := opentracing.StartSpan("newDataSection", spanRef)
+		spanRef := opentracing.ChildOf(sb.staticSpan.Context())
+		span := opentracing.StartSpan("newDataSection", spanRef)
 		// span.LogKV("index", index)
 		// defer func() {
 		// 	if ds.externErr != nil {

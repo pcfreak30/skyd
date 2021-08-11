@@ -2,7 +2,6 @@ package renter
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"sort"
 	"time"
