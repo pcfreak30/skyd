@@ -338,11 +338,11 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 		return errors.New("tryfiles are incompatible with defaultpath and disabledefaultpath")
 	}
 
-	err = validateTryFiles(metadata.TryFiles, metadata.Subfiles)
+	err = ValidateTryFiles(metadata.TryFiles, metadata.Subfiles)
 	if err != nil {
 		return errors.AddContext(err, "metadata contains invalid tryfiles configuration")
 	}
-	err = validateErrorPages(metadata.ErrorPages, metadata.Subfiles)
+	err = ValidateErrorPages(metadata.ErrorPages, metadata.Subfiles)
 	if err != nil {
 		return errors.AddContext(err, "metadata contains invalid errorpages configuration")
 	}
@@ -430,8 +430,8 @@ func validateDefaultPath(defaultPath string, subfiles SkyfileSubfiles) (string, 
 	return defaultPath, nil
 }
 
-// validateErrorPages ensures the given errorpages configuration is valid.
-func validateErrorPages(ep map[int]string, subfiles SkyfileSubfiles) error {
+// ValidateErrorPages ensures the given errorpages configuration is valid.
+func ValidateErrorPages(ep map[int]string, subfiles SkyfileSubfiles) error {
 	for code, fname := range ep {
 		// TODO What should be the limit here? Overriding a 200 makes no sense to me but overriding a 204 might?
 		// 	the real use-case is overriding the 4xx codes, though, so we might want to set the limit there.
@@ -452,8 +452,8 @@ func validateErrorPages(ep map[int]string, subfiles SkyfileSubfiles) error {
 	return nil
 }
 
-// validateTryFiles ensures the given tryfiles configuration is valid.
-func validateTryFiles(tf []string, subfiles SkyfileSubfiles) error {
+// ValidateTryFiles ensures the given tryfiles configuration is valid.
+func ValidateTryFiles(tf []string, subfiles SkyfileSubfiles) error {
 	anotherAbsPathFileExists := false
 	for _, fname := range tf {
 		if fname == "" {

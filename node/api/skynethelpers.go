@@ -202,37 +202,117 @@ func (rw *monetizedWriter) Write(b []byte) (int, error) {
 // customStatusResponseWriter is a wrapper for a response writer. It returns
 // a custom status code instead of 200 OK.
 type customStatusResponseWriter struct {
-	staticInner            http.ResponseWriter
-	staticCustomStatusCode int
+	// TODO Do I need to lock this on write?
+	inner            http.ResponseWriter
+	staticErrorPages map[int]string
+	staticMetadata   skymodules.SkyfileMetadata
+	staticStreamer   skymodules.SkyfileStreamer
+	staticRequest    *http.Request
+	statusSent       bool
 }
 
 // newCustomStatusResponseWriter creates a new customStatusResponseWriter.
-func newCustomStatusResponseWriter(inner http.ResponseWriter, customStatusCode int) http.ResponseWriter {
+func newCustomStatusResponseWriter(inner http.ResponseWriter, r *http.Request, meta skymodules.SkyfileMetadata, streamer skymodules.SkyfileStreamer, statusSent bool) http.ResponseWriter {
 	return &customStatusResponseWriter{
-		staticInner:            inner,
-		staticCustomStatusCode: customStatusCode,
+		inner:            inner,
+		staticErrorPages: meta.ErrorPages,
+		staticMetadata:   meta,
+		staticStreamer:   streamer,
+		staticRequest:    r,
+		statusSent:       statusSent,
 	}
 }
 
 // Header calls the inner writers Header method.
 func (rw *customStatusResponseWriter) Header() http.Header {
-	return rw.staticInner.Header()
+	return rw.inner.Header()
 }
 
-// WriteHeader calls the inner writers WriteHeader method but replaces any 404
-// code with the customNotFoundCode.
+// WriteHeader calls the inner writers WriteHeader method if there is an
+// errorpage specified for this status code, it will also extract its content
+// and write it to the inner writer as well.
 func (rw *customStatusResponseWriter) WriteHeader(status int) {
-	code := status
-	if code == http.StatusOK {
-		code = rw.staticCustomStatusCode
+	if rw.statusSent {
+		return
 	}
-	rw.staticInner.WriteHeader(code)
+	rw.statusSent = true
+
+	fmt.Println(">>> ", status)
+	fmt.Printf(">>> rw %+v\n", rw)
+	fmt.Printf(">>> ep %+v\n", rw.staticErrorPages)
+
+	errpath, exists := rw.staticErrorPages[status]
+	if !exists {
+		rw.inner.WriteHeader(status)
+		return
+	}
+
+	metadataForPath, _, offset, size := rw.staticMetadata.ForPath(errpath)
+	if len(metadataForPath.Subfiles) == 0 {
+		fmt.Println(">>> ER no subfiles that match this errpath")
+		WriteError(rw.inner, Error{fmt.Sprintf("CUSTOM: failed to download contents for errpath: %v", errpath)}, http.StatusNotFound)
+		return
+	}
+	rawMetadataForPath, err := json.Marshal(metadataForPath)
+	if err != nil {
+		fmt.Println(">>> ER meta for errpath", err)
+		WriteError(rw.inner, Error{fmt.Sprintf("CUSTOM: failed to marshal subfile metadata for errpath %v", errpath)}, http.StatusNotFound)
+		return
+	}
+	streamer, err := NewLimitStreamer(rw.staticStreamer, metadataForPath, rawMetadataForPath, rw.staticStreamer.Skylink(), rw.staticStreamer.Layout(), offset, size)
+	if err != nil {
+		fmt.Println(">>> ER limit streamer", err)
+		WriteError(rw.inner, Error{fmt.Sprintf("CUSTOM: failed to download contents for errpath: %v, could not create limit streamer", errpath)}, http.StatusInternalServerError)
+		return
+	}
+	rw.inner.WriteHeader(status)
+
+	// TODO content type header
+	// b := make([]byte, size)
+	// n, err := streamer.Read(b)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// fmt.Println("read", n, "bytes from streamer:", string(b))
+	// n, err = fmt.Fprint(rw.inner, string(b))
+	// if err != nil {
+	// 	build.Critical("error writing errorpage content", err)
+	// }
+	// fmt.Println("successfully wrote to writer", n)
+	// rw.inner = newNopWriter(rw.inner)
+	// fmt.Println("replaced inner writer with a nop")
+
+	// we send the data on the same writer, which will no longer accept
+	// status headers.
+	http.ServeContent(rw, rw.staticRequest, rw.staticMetadata.Filename, time.Time{}, streamer)
 }
 
 // Write calls the inner writer Write method.
 func (rw *customStatusResponseWriter) Write(b []byte) (int, error) {
-	return rw.staticInner.Write(b)
+	return rw.inner.Write(b)
 }
+
+type nopWriter struct {
+	inner http.ResponseWriter
+}
+
+// nopWriter is a no-op ResponseWriter replacement that reads the headers from
+// the underlying ResponseWriter but does not write anything.
+func newNopWriter(inner http.ResponseWriter) nopWriter {
+	return nopWriter{
+		inner: inner,
+	}
+}
+
+func (rw nopWriter) Header() http.Header {
+	return rw.inner.Header()
+}
+
+func (rw nopWriter) Write(b []byte) (int, error) {
+	return len(b), nil
+}
+
+func (rw nopWriter) WriteHeader(_ int) {}
 
 // buildETag is a helper function that returns an ETag.
 func buildETag(skylink skymodules.Skylink, path string, format skymodules.SkyfileFormat) string {

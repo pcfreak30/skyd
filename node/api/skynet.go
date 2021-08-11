@@ -555,6 +555,20 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 				}
 			}
 		}
+
+		// If we have active errorpages, override the writer with a custom one
+		// which will serve the custom error content when needed.
+		if len(metadata.ErrorPages) > 0 {
+			err = skymodules.ValidateErrorPages(metadata.ErrorPages, metadata.Subfiles)
+			if err != nil {
+				WriteError(w, Error{"invalid errorpages in metadata, please specify format. error: " + err.Error()}, http.StatusBadRequest)
+				return
+			}
+			w = newCustomStatusResponseWriter(w, req, metadata, streamer, false)
+		}
+		w.Header().Set("Content-Type", "text/html")
+
+
 		if path == "/" && strings.Count(metadata.DefaultPath, "/") > 1 && len(metadata.Subfiles) > 1 {
 			WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s) which refers to a non-root file, please specify a format", metadata.DefaultPath)}, http.StatusBadRequest)
 			return
@@ -574,7 +588,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			return
 		}
 		// If there's a single subfile in the skyfile we want to serve it.
-		if path == "/" && len(metadata.Subfiles) == 1 {
+		if path == "/" && len(metadata.Subfiles) == 1 && !metadata.DisableDefaultPath {
 			for filename := range metadata.Subfiles {
 				path = skymodules.EnsurePrefix(filename, "/")
 				break
@@ -583,6 +597,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		// If we need to serve a path, different from the requested one, we'll
 		// decide that now.
 		if len(metadata.TryFiles) > 0 {
+			fmt.Println(" >>> 0")
 			path, _ = determinePathBasedOnTryfiles(path, metadata.Subfiles, metadata.TryFiles)
 		} else if defaultPath != "" && path == "/" {
 			_, exists := metadata.Subfiles[strings.TrimPrefix(defaultPath, "/")]
@@ -591,12 +606,14 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			}
 		}
 	}
-
+	fmt.Println(" >>> 1")
 	var isSubfile bool
 	// Serve the contents of the skyfile at path if one is set
 	if path != "/" {
+		fmt.Println(" >>> 2")
 		metadataForPath, isFile, offset, size := metadata.ForPath(path)
 		if len(metadataForPath.Subfiles) == 0 {
+			fmt.Println(" >>> 3")
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound)
 			return
 		}
@@ -618,13 +635,15 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		metadata = metadataForPath
 		// servedPath = path
 	}
-
+	fmt.Println(" >>> 4")
 	// If we are serving more than one file, and the format is not
 	// specified, default to downloading it as a zip archive.
 	if !isSubfile && metadata.IsDirectory() && format == skymodules.SkyfileFormatNotSpecified {
+		fmt.Println(" >>> 5")
 		format = skymodules.SkyfileFormatZip
 	}
 
+	fmt.Println(" >>> 5a")
 	// Encode the Layout
 	encLayout := streamer.Layout().Encode()
 
@@ -632,7 +651,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	//
 	// Set the Skylink response header
 	w.Header().Set("Skynet-Skylink", params.skylink.String())
-
+	fmt.Println(" >>> 6")
 	// Set the ETag response header
 	//
 	// NOTE: we use the Skylink returned by the streamer to build the ETag with,
@@ -647,7 +666,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if params.includeLayout {
 		w.Header().Set("Skynet-File-Layout", hex.EncodeToString(encLayout))
 	}
-
+	fmt.Println(" >>> 7")
 	// Set an appropriate Content-Disposition header
 	var cdh string
 	filename := filepath.Base(metadata.Filename)
@@ -664,7 +683,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	monetize := func(w io.Writer) io.Writer {
 		return newMonetizedWriter(w, metadata, api.wallet, settings.CurrencyConversionRates, settings.MonetizationBase)
 	}
-
+	fmt.Println(" >>> 8")
 	// If requested, serve the content as a tar archive, compressed tar
 	// archive or zip archive.
 	if format.IsArchive() {
@@ -685,7 +704,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// Monetize the response if necessary by wrapping the response writer in a
 	// monetized one.
 	mrw := newMonetizedResponseWriter(w, metadata, api.wallet, settings.CurrencyConversionRates, settings.MonetizationBase)
-
+	fmt.Println(" >>> 9")
 	http.ServeContent(mrw, req, metadata.Filename, time.Time{}, streamer)
 }
 

@@ -407,32 +407,32 @@ func TestParseSkyfileMetadata(t *testing.T) {
 	}
 }
 
-// TestValidateErrorPages ensures that validateErrorPages functions correctly.
+// TestValidateErrorPages ensures that ValidateErrorPages functions correctly.
 func TestValidateErrorPages(t *testing.T) {
 	// test code under 400
 	ep := map[int]string{101: "101.html"}
-	err := validateErrorPages(ep, SkyfileSubfiles{})
+	err := ValidateErrorPages(ep, SkyfileSubfiles{})
 	if err == nil || !strings.Contains(err.Error(), "overriding status codes under 400 is not supported") {
 		t.Fatal("Unexpected error", err)
 	}
 
 	// test empty filename
 	ep = map[int]string{404: ""}
-	err = validateErrorPages(ep, SkyfileSubfiles{})
+	err = ValidateErrorPages(ep, SkyfileSubfiles{})
 	if err == nil || !strings.Contains(err.Error(), "an errorpage cannot be an empty string, it needs to be a valid file name") {
 		t.Fatal("Unexpected error", err)
 	}
 
 	// test relative filename
 	ep = map[int]string{404: "404.html"}
-	err = validateErrorPages(ep, SkyfileSubfiles{})
+	err = ValidateErrorPages(ep, SkyfileSubfiles{})
 	if err == nil || !strings.Contains(err.Error(), "all errorpages need to have absolute paths") {
 		t.Fatal("Unexpected error", err)
 	}
 
 	// test non-existent file
 	ep = map[int]string{404: "/404.html"}
-	err = validateErrorPages(ep, SkyfileSubfiles{})
+	err = ValidateErrorPages(ep, SkyfileSubfiles{})
 	if err == nil || !strings.Contains(err.Error(), "all errorpage files must exist") {
 		t.Fatal("Unexpected error", err)
 	}
@@ -440,31 +440,31 @@ func TestValidateErrorPages(t *testing.T) {
 	// test a valid setup
 	ep = map[int]string{404: "/404.html"}
 	sub := SkyfileSubfiles{"404.html": SkyfileSubfileMetadata{}}
-	err = validateErrorPages(ep, sub)
+	err = ValidateErrorPages(ep, sub)
 	if err != nil {
 		t.Fatal("Unexpected error", err)
 	}
 }
 
-// TestValidateTryFiles ensures that validateTryFiles functions correctly.
+// TestValidateTryFiles ensures that ValidateTryFiles functions correctly.
 func TestValidateTryFiles(t *testing.T) {
 	// test non-existent absolute path file
 	tf := []string{"/index.html"}
-	err := validateTryFiles(tf, SkyfileSubfiles{})
+	err := ValidateTryFiles(tf, SkyfileSubfiles{})
 	if err == nil || !strings.Contains(err.Error(), "any absolute path tryfile in the list must exist") {
 		t.Fatal("Unexpected error", err)
 	}
 
 	// test bad filename
 	tf = []string{""}
-	err = validateTryFiles(tf, SkyfileSubfiles{})
+	err = ValidateTryFiles(tf, SkyfileSubfiles{})
 	if err == nil || !strings.Contains(err.Error(), "a tryfile cannot be an empty string, it needs to be a valid file name") {
 		t.Fatal("Unexpected error", err)
 	}
 
 	// test non-existent relative path
 	tf = []string{"index.html"}
-	err = validateTryFiles(tf, SkyfileSubfiles{})
+	err = ValidateTryFiles(tf, SkyfileSubfiles{})
 	if err != nil {
 		t.Fatal("Unexpected error", err)
 	}
@@ -474,7 +474,7 @@ func TestValidateTryFiles(t *testing.T) {
 	sub := SkyfileSubfiles{
 		"/index.html": SkyfileSubfileMetadata{},
 	}
-	err = validateTryFiles(tf, sub)
+	err = ValidateTryFiles(tf, sub)
 	if err != nil {
 		t.Fatal("Unexpected error", err)
 	}
@@ -486,13 +486,13 @@ func TestValidateTryFiles(t *testing.T) {
 		"/index.html": SkyfileSubfileMetadata{},
 		"/about.html": SkyfileSubfileMetadata{},
 	}
-	err = validateTryFiles(tf, sub)
+	err = ValidateTryFiles(tf, sub)
 	if err == nil || !strings.Contains(err.Error(), "only one absolute path tryfile is permitted") {
 		t.Fatal("Unexpected error", err)
 	}
 
 	// test empty tryfiles
-	err = validateTryFiles([]string{}, SkyfileSubfiles{})
+	err = ValidateTryFiles([]string{}, SkyfileSubfiles{})
 	if err != nil {
 		t.Fatal("Unexpected error", err)
 	}

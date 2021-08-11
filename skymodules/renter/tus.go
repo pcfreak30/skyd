@@ -28,7 +28,7 @@ var (
 	PruneTUSUploadTimeout = build.Select(build.Var{
 		Dev:      5 * time.Minute,
 		Standard: 20 * time.Minute,
-		Testing:  5 * time.Second,
+		Testing:  10 * time.Second,
 	}).(time.Duration)
 
 	// PruneTUSUploadInterval is the time that passes between pruning attempts.

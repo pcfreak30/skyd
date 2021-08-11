@@ -2,6 +2,7 @@ package skynet
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -151,10 +152,16 @@ func testSkynetErrorPages(t *testing.T, tg *siatest.TestGroup) {
 	files := []siatest.TestFile{
 		// there is no leading slash on purpose - we shouldn't need it
 		{Name: "404.html", Data: []byte(fc1)},
+		// TODO Test with more status codes.
 	}
 	skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, tf, ep, true, nil, "", skykey.SkykeyID{})
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
+	}
+	status, h, err := r.SkynetSkylinkHead(skylink + "/noexist.html")
+	fmt.Printf(" >>> headers %+v\n", h)
+	if status != http.StatusNotFound {
+		t.Fatalf("Expected status 404, got %d", status)
 	}
 	// get a non-existent file
 	// we expect to receive the custom 404 content and a 404 status code
@@ -164,10 +171,6 @@ func testSkynetErrorPages(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if bytes.Compare(data, []byte(fc1)) != 0 {
 		t.Fatal("Data is different from the expected.")
-	}
-	status, _, err := r.SkynetSkylinkHead(skylink + "/noexist.html")
-	if status != http.StatusNotFound {
-		t.Fatalf("Expected status 404, got %d", status)
 	}
 }
 
