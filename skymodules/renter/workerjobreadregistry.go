@@ -194,7 +194,7 @@ func (j *jobReadRegistry) callDiscard(err error) {
 	defer j.staticSpan.Finish()
 
 	w := j.staticQueue.staticWorker()
-	errLaunch := w.staticRenter.tg.Launch(func() {
+	errLaunch := w.staticRenter.Launch(func() {
 		response := &jobReadRegistryResponse{
 			staticErr:          errors.Extend(err, ErrJobDiscarded),
 			staticCompleteTime: time.Now(),
@@ -228,7 +228,7 @@ func (j *jobReadRegistry) callExecute() {
 
 	// Prepare a method to send a response asynchronously.
 	sendResponse := func(srv *skymodules.RegistryEntry, err error) {
-		errLaunch := w.staticRenter.tg.Launch(func() {
+		errLaunch := w.staticRenter.Launch(func() {
 			response := &jobReadRegistryResponse{
 				staticCompleteTime:        time.Now(),
 				staticSignedRegistryValue: srv,

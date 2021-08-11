@@ -423,7 +423,7 @@ func (r *Renter) managedRegistryEntryHealth(ctx context.Context, rid modules.Reg
 	// Add the response set to the stats after this method is done.
 	startTime := time.Now()
 	defer func() {
-		_ = r.tg.Launch(func() {
+		_ = r.Launch(func() {
 			r.threadedAddResponseSet(r.tg.StopCtx(), span, startTime, responseSet, r.staticLog)
 			backgroundCancel()
 		})
@@ -511,7 +511,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	// Add the response set to the stats after this method is done.
 	startTime := time.Now()
 	defer func() {
-		_ = r.tg.Launch(func() {
+		_ = r.Launch(func() {
 			r.threadedAddResponseSet(r.tg.StopCtx(), span, startTime, responseSet, r.staticLog)
 			backgroundCancel()
 		})

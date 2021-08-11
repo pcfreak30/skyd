@@ -78,7 +78,7 @@ func (j *jobUpdateRegistry) callDiscard(err error) {
 	defer j.staticSpan.Finish()
 
 	w := j.staticQueue.staticWorker()
-	errLaunch := w.staticRenter.tg.Launch(func() {
+	errLaunch := w.staticRenter.Launch(func() {
 		response := &jobUpdateRegistryResponse{
 			srv:       nil,
 			staticErr: errors.Extend(err, ErrJobDiscarded),
@@ -109,7 +109,7 @@ func (j *jobUpdateRegistry) callExecute() {
 
 	// Prepare a method to send a response asynchronously.
 	sendResponse := func(srv *modules.SignedRegistryValue, err error) {
-		errLaunch := w.staticRenter.tg.Launch(func() {
+		errLaunch := w.staticRenter.Launch(func() {
 			response := &jobUpdateRegistryResponse{
 				srv:       srv,
 				staticErr: err,

@@ -245,7 +245,7 @@ func (r *Renter) newDirUpdateBatcher() (*dirUpdateBatcher, error) {
 	close(initialChan)
 
 	dub.nextBatch = dub.newBatch(initialChan)
-	err := r.tg.Launch(dub.threadedExecuteBatchUpdates)
+	err := r.Launch(dub.threadedExecuteBatchUpdates)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to launch the batch updates backghround thread")
 	}

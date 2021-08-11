@@ -188,7 +188,7 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 
 	// Launch a goroutine that collects all download responses, aggregates them
 	// and sends it as a single response over the response channel.
-	err := sds.staticRenter.tg.Launch(func() {
+	err := sds.staticRenter.Launch(func() {
 		data := make([]byte, fetchSize)
 		offset := 0
 		failed := false
@@ -380,7 +380,7 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, skylink skymodule
 
 		// Initialize all of the PCWS objects in a goroutine, closing the
 		// channels as they are ready.
-		err = r.tg.Launch(func() {
+		err = r.Launch(func() {
 			for i, chunk := range fanoutChunks {
 				pcws, err := r.newPCWSByRoots(dsCtx, chunk, ec, fanoutKey, uint64(i))
 				fanoutChunkErrs[i] = err

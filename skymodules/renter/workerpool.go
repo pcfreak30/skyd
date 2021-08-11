@@ -100,12 +100,12 @@ func (wp *workerPool) callUpdate() {
 		wp.workers[id] = w
 
 		// Start the work loop in a separate goroutine
-		err = wp.staticRenter.tg.Launch(w.threadedWorkLoop)
+		err = wp.staticRenter.Launch(w.threadedWorkLoop)
 		if err != nil {
 			return
 		}
 		// Start the subscription loop in a separate goroutine.
-		err = wp.staticRenter.tg.Launch(w.threadedSubscriptionLoop)
+		err = wp.staticRenter.Launch(w.threadedSubscriptionLoop)
 		if err != nil {
 			return
 		}

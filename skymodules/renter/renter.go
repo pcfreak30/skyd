@@ -307,6 +307,18 @@ type Renter struct {
 	tg              threadgroup.ThreadGroup
 }
 
+// Launch wraps the tg launch and prints a message in the renter's log if it
+// took longer than 20ms to launch the function.
+func (r *Renter) Launch(fn func()) error {
+	start := time.Now()
+	launchErr := r.tg.Launch(fn)
+	elapsed := time.Since(start)
+	if elapsed > 20*time.Millisecond {
+		r.staticLog.Printf("BLOCK DEBUG | renter took %vms to launch a function on the TG\n", elapsed.Milliseconds())
+	}
+	return launchErr
+}
+
 // Close closes the Renter and its dependencies
 func (r *Renter) Close() error {
 	// TODO: Is this check needed?
@@ -860,7 +872,7 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 	r.lastEstimationHosts = []skymodules.HostDBEntry{}
 	r.mu.Unlock(id)
 	if cc.Synced {
-		_ = r.tg.Launch(r.staticWorkerPool.callUpdate)
+		_ = r.Launch(r.staticWorkerPool.callUpdate)
 	}
 }
 
@@ -1241,12 +1253,12 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	}
 
 	// Spin up the skynet fee paying goroutine.
-	if err := r.tg.Launch(r.threadedPaySkynetFee); err != nil {
+	if err := r.Launch(r.threadedPaySkynetFee); err != nil {
 		return nil, err
 	}
 
 	// Spin up the tus pruning goroutine.
-	if err := r.tg.Launch(r.threadedPruneTUSUploads); err != nil {
+	if err := r.Launch(r.threadedPruneTUSUploads); err != nil {
 		return nil, err
 	}
 

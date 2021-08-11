@@ -85,7 +85,7 @@ func (j *jobDownloadSnapshot) callDiscard(err error) {
 		staticErr: errors.Extend(err, ErrJobDiscarded),
 	}
 	w := j.staticQueue.staticWorker()
-	w.staticRenter.tg.Launch(func() {
+	w.staticRenter.Launch(func() {
 		select {
 		case j.staticResponseChan <- resp:
 		case <-j.staticCtx.Done():
@@ -106,7 +106,7 @@ func (j *jobDownloadSnapshot) callExecute() {
 			staticErr:       err,
 			staticSnapshots: snapshots,
 		}
-		w.staticRenter.tg.Launch(func() {
+		w.staticRenter.Launch(func() {
 			select {
 			case j.staticResponseChan <- resp:
 			case <-j.staticCtx.Done():

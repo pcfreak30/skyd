@@ -101,7 +101,7 @@ func (j *jobUploadSnapshot) callDiscard(err error) {
 		staticErr: errors.Extend(err, ErrJobDiscarded),
 	}
 	w := j.staticQueue.staticWorker()
-	errLaunch := w.staticRenter.tg.Launch(func() {
+	errLaunch := w.staticRenter.Launch(func() {
 		select {
 		case j.staticResponseChan <- resp:
 		case <-j.staticCtx.Done():
@@ -124,7 +124,7 @@ func (j *jobUploadSnapshot) callExecute() {
 		resp := &jobUploadSnapshotResponse{
 			staticErr: err,
 		}
-		errLaunch := w.staticRenter.tg.Launch(func() {
+		errLaunch := w.staticRenter.Launch(func() {
 			select {
 			case j.staticResponseChan <- resp:
 			case <-j.staticCtx.Done():
