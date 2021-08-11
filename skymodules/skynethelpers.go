@@ -460,7 +460,7 @@ func ValidateTryFiles(tf []string, subfiles SkyfileSubfiles) error {
 			return errors.New("a tryfile cannot be an empty string, it needs to be a valid file name")
 		}
 		if strings.HasPrefix(fname, "/") {
-			_, exists := subfiles[fname]
+			_, exists := subfiles[strings.TrimPrefix(fname, "/")]
 			if !exists {
 				return errors.New("any absolute path tryfile in the list must exist")
 			}

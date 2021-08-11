@@ -439,7 +439,9 @@ func TestValidateErrorPages(t *testing.T) {
 
 	// test a valid setup
 	ep = map[int]string{404: "/404.html"}
-	sub := SkyfileSubfiles{"404.html": SkyfileSubfileMetadata{}}
+	sub := SkyfileSubfiles{
+		"404.html": SkyfileSubfileMetadata{},
+	}
 	err = ValidateErrorPages(ep, sub)
 	if err != nil {
 		t.Fatal("Unexpected error", err)
@@ -472,7 +474,7 @@ func TestValidateTryFiles(t *testing.T) {
 	// test single existent absolute path
 	tf = []string{"/index.html"}
 	sub := SkyfileSubfiles{
-		"/index.html": SkyfileSubfileMetadata{},
+		"index.html": SkyfileSubfileMetadata{},
 	}
 	err = ValidateTryFiles(tf, sub)
 	if err != nil {
@@ -483,8 +485,8 @@ func TestValidateTryFiles(t *testing.T) {
 	// this is pointless but allowed
 	tf = []string{"/index.html", "/about.html"}
 	sub = SkyfileSubfiles{
-		"/index.html": SkyfileSubfileMetadata{},
-		"/about.html": SkyfileSubfileMetadata{},
+		"index.html": SkyfileSubfileMetadata{},
+		"about.html": SkyfileSubfileMetadata{},
 	}
 	err = ValidateTryFiles(tf, sub)
 	if err == nil || !strings.Contains(err.Error(), "only one absolute path tryfile is permitted") {

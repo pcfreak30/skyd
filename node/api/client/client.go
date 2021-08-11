@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"gitlab.com/SkynetLabs/skyd/build"
@@ -190,10 +191,20 @@ func (c *Client) getReaderResponse(resource string) (_ http.Header, _ io.ReadClo
 		return nil, nil, errors.AddContext(err, "unable to perform GET on "+resource)
 	}
 
+	// Check if there's a Skynet-Custom-StatusCode header set and if that
+	// matches the current status code. If that's the case then we want to
+	// return the body and headers as they are because they are the custom
+	// error response specified by the skyfile.
+	customStatusCodeHeader := res.Header.Get(api.SkynetCustomStatusCodeHeader)
+	customStatusCode, _ := strconv.Atoi(customStatusCodeHeader)
+	if customStatusCode == res.StatusCode {
+		return res.Header, res.Body, nil
+	}
+
 	// If the status code is not 2xx, decode and return the accompanying
 	// api.Error.
 	if res.StatusCode < 200 || res.StatusCode > 299 {
-		err := readAPIError(res.Body)
+		err := readAPIError(res.Body) // TODO Potentially, we want to change this to only happen when json
 		drainAndClose(res.Body)
 		return nil, nil, errors.AddContext(err, "GET request error")
 	}
