@@ -63,7 +63,7 @@ const (
 	// allowance.
 	pcwsGougingFractionDenom = 25
 
-	workerBlockBatchSize = 40
+	workerBlockBatchSize = 100
 	workerBlockRangeDur  = 100 * time.Millisecond
 	workerBlockMinDur    = 2 * time.Second
 )
