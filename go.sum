@@ -304,6 +304,8 @@ gitlab.com/NebulousLabs/threadgroup v0.0.0-20200608151952-38921fbef213 h1:owERlK
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20200608151952-38921fbef213/go.mod h1:vIutAvl7lmJqLVYTCBY5WDdJomP+V74At8LCeEYoH8w=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20210812083416-0bfac72491da h1:U03f0YjSPjBMF7U3jNWCHvmAtlQyTKmm6l3W8jpQHS4=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20210812083416-0bfac72491da/go.mod h1:vIutAvl7lmJqLVYTCBY5WDdJomP+V74At8LCeEYoH8w=
+gitlab.com/NebulousLabs/threadgroup v0.0.0-20210812084807-33757265cbcb h1:LGeJOnoz41CoMQoZqYNAfXC3l5d4FDg6h0BU/+ybYh8=
+gitlab.com/NebulousLabs/threadgroup v0.0.0-20210812084807-33757265cbcb/go.mod h1:vIutAvl7lmJqLVYTCBY5WDdJomP+V74At8LCeEYoH8w=
 gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20200618142844-c59a90f49130 h1:0hiQX3a4rmdu/duDhrRxl80zYHZoJDkSbTEFwSlAc74=
 gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20200618142844-c59a90f49130/go.mod h1:SxigdS5Q1ui+OMgGAXt1E/Fg3RB6PvKXMov2O3gvIzs=
 go.etcd.io/bbolt v1.3.2/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=
