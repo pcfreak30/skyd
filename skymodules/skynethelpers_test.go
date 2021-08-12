@@ -483,7 +483,7 @@ func TestValidateTryFiles(t *testing.T) {
 
 	// test multiple absolute paths
 	// this is pointless but allowed
-	tf = []string{"/index.html", "/about.html"}
+	tf = []string{"/about.html", "/index.html"}
 	sub = SkyfileSubfiles{
 		"index.html": SkyfileSubfileMetadata{},
 		"about.html": SkyfileSubfileMetadata{},

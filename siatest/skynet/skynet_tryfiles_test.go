@@ -30,18 +30,18 @@ func testSkynetTryFiles(t *testing.T, tg *siatest.TestGroup) {
 // file in their root directory.
 func testTryFilesWithRootIndex(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
-	fc1 := "File1Contents"
-	fc2 := "File2Contents"
-	fc3 := "File3Contents"
-	fc4 := "File4Contents"
+	idx := "FileContentsIndex"
+	dirWithIdxIdx := "FileContentsDirWithIdxIdx"
+	dirWithIdxAbout := "FileContentsDirWithIdxAbout"
+	dirWithoutIdxAbout := "FileContentsDirWithoutIdxAbout"
 	filename := "with_root_index"
-	tf := []string{"/index.html", "index.html"}
+	tf := []string{"index.html", "/index.html"}
 	ep := map[int]string{}
 	files := []siatest.TestFile{
-		{Name: "index.html", Data: []byte(fc1)},
-		{Name: "dir_with_idx/index.html", Data: []byte(fc2)},
-		{Name: "dir_with_idx/about.html", Data: []byte(fc3)},
-		{Name: "dir_without_idx/about.html", Data: []byte(fc4)},
+		{Name: "index.html", Data: []byte(idx)},
+		{Name: "dir_with_idx/index.html", Data: []byte(dirWithIdxIdx)},
+		{Name: "dir_with_idx/about.html", Data: []byte(dirWithIdxAbout)},
+		{Name: "dir_without_idx/about.html", Data: []byte(dirWithoutIdxAbout)},
 	}
 	skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, tf, ep, true, nil, "", skykey.SkykeyID{})
 	if err != nil {
@@ -52,15 +52,40 @@ func testTryFilesWithRootIndex(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Failed to download existing file.", err)
 	}
-	if bytes.Compare(data, []byte(fc3)) != 0 {
+	if bytes.Compare(data, []byte(dirWithIdxAbout)) != 0 {
 		t.Fatal("Data is different from the expected.")
 	}
 	// get a non-existent file from a dir with an index
+	// this will check for a file called noexist.html and when it doesn't find
+	// it, it will assume it's a dir and check for /dir_with_idx/noexist.html/index.html
+	// when it doesn't find that either it will serve /index.html
 	data, err = r.SkynetSkylinkGet(skylink + "/dir_with_idx/noexist.html")
 	if err != nil {
 		t.Fatal("Failed to download local index file according to tryfiles rules.", err)
 	}
-	if bytes.Compare(data, []byte(fc2)) != 0 {
+	if bytes.Compare(data, []byte(idx)) != 0 {
+		t.Log("Expected data:", idx)
+		t.Log("Actual data:  ", string(data))
+		t.Fatal("Data is different from the expected.")
+	}
+	// request a dir with an index
+	data, err = r.SkynetSkylinkGet(skylink + "/dir_with_idx/")
+	if err != nil {
+		t.Fatal("Failed to download local index file according to tryfiles rules.", err)
+	}
+	if bytes.Compare(data, []byte(dirWithIdxIdx)) != 0 {
+		t.Log("Expected data:", dirWithIdxIdx)
+		t.Log("Actual data:  ", string(data))
+		t.Fatal("Data is different from the expected.")
+	}
+	// request a dir with an index without a trailing slash
+	data, err = r.SkynetSkylinkGet(skylink + "/dir_with_idx")
+	if err != nil {
+		t.Fatal("Failed to download local index file according to tryfiles rules.", err)
+	}
+	if bytes.Compare(data, []byte(dirWithIdxIdx)) != 0 {
+		t.Log("Expected data:", dirWithIdxIdx)
+		t.Log("Actual data:  ", string(data))
 		t.Fatal("Data is different from the expected.")
 	}
 	// get a non-existent file from a dir without an index
@@ -68,7 +93,15 @@ func testTryFilesWithRootIndex(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Failed to download root index file according to tryfiles rules.", err)
 	}
-	if bytes.Compare(data, []byte(fc1)) != 0 {
+	if bytes.Compare(data, []byte(idx)) != 0 {
+		t.Fatal("Data is different from the expected.")
+	}
+	// request a dir without an index
+	data, err = r.SkynetSkylinkGet(skylink + "/dir_without_idx/")
+	if err != nil {
+		t.Fatal("Failed to download root index file according to tryfiles rules.", err)
+	}
+	if bytes.Compare(data, []byte(idx)) != 0 {
 		t.Fatal("Data is different from the expected.")
 	}
 	// get a non-existent file from root dir
@@ -76,7 +109,7 @@ func testTryFilesWithRootIndex(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Failed to download root index file according to tryfiles rules.", err)
 	}
-	if bytes.Compare(data, []byte(fc1)) != 0 {
+	if bytes.Compare(data, []byte(idx)) != 0 {
 		t.Fatal("Data is different from the expected.")
 	}
 }
@@ -110,20 +143,29 @@ func testTryFilesWithoutRootIndex(t *testing.T, tg *siatest.TestGroup) {
 	if bytes.Compare(data, []byte(fc3)) != 0 {
 		t.Fatal("Data is different from the expected.")
 	}
-	// get a non-existent file from a dir with an index
-	data, err = r.SkynetSkylinkGet(skylink + "/dir_with_idx/noexist.html")
+	// get a dir with an index
+	data, err = r.SkynetSkylinkGet(skylink + "/dir_with_idx")
 	if err != nil {
 		t.Fatal("Failed to download local index file according to tryfiles rules.", err)
 	}
 	if bytes.Compare(data, []byte(fc2)) != 0 {
 		t.Fatal("Data is different from the expected.")
 	}
+	// get a non-existent file from a dir with an index
+	data, err = r.SkynetSkylinkGet(skylink + "/dir_with_idx/noexist.html")
+	if err == nil || !strings.Contains(err.Error(), "failed to download contents for path") {
+		t.Fatal("Expected the download to fail with 'failed to download contents for path', got", err)
+	}
+	status, _, err := r.SkynetSkylinkHead(skylink + "/dir_without_idx/noexist.html")
+	if status != http.StatusNotFound {
+		t.Fatalf("Expected status 404, got %d", status)
+	}
 	// get a non-existent file from a dir without an index
 	data, err = r.SkynetSkylinkGet(skylink + "/dir_without_idx/noexist.html")
 	if err == nil || !strings.Contains(err.Error(), "failed to download contents for path") {
 		t.Fatal("Expected the download to fail with 'failed to download contents for path', got", err)
 	}
-	status, _, err := r.SkynetSkylinkHead(skylink + "/dir_without_idx/noexist.html")
+	status, _, err = r.SkynetSkylinkHead(skylink + "/dir_without_idx/noexist.html")
 	if status != http.StatusNotFound {
 		t.Fatalf("Expected status 404, got %d", status)
 	}
@@ -193,7 +235,7 @@ func testTryFiles_TableTests(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	ep := map[int]string{404: "/404.html"}
-	tfWithGlobalIndex := []string{"/index.html", "index.html", "good-news/index.html"}
+	tfWithGlobalIndex := []string{"good-news/index.html", "index.html", "/index.html"}
 	withGlobalIndex, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking("global_index", subfiles, "", false, tfWithGlobalIndex, ep, true, nil, "", skykey.SkykeyID{})
 	if err != nil {
 		t.Fatal(err)
