@@ -244,6 +244,8 @@ func (am *accountManager) managedOpenAccount(hostKey types.SiaPublicKey) (acc *a
 		staticOffset: int64(offset),
 
 		staticReady: make(chan struct{}),
+
+		staticRenter: am.staticRenter,
 	}
 	am.accounts[hostKey.String()] = acc
 	am.mu.Unlock()
@@ -582,6 +584,8 @@ func (am *accountManager) readAccountAt(offset int64) (*account, error) {
 
 		staticOffset: offset,
 		staticFile:   am.staticFile,
+
+		staticRenter: am.staticRenter,
 	}
 	close(acc.staticReady)
 	return acc, nil
