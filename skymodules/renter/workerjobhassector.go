@@ -91,6 +91,7 @@ func (jq *jobHasSectorQueue) callNext() workerJob {
 			break
 		}
 		j := next.(*jobHasSector)
+		j.staticSpan.LogKV("callNext", len(jobs))
 		jobs = append(jobs, j)
 	}
 	if len(jobs) == 0 {

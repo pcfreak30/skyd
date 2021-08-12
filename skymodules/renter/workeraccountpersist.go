@@ -18,10 +18,12 @@ package renter
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
@@ -163,7 +165,13 @@ func (a *account) persist() error {
 		SpendingUploads:           a.spending.uploads,
 	}
 
+	start := time.Now()
 	_, err := a.staticFile.WriteAt(accountData.bytes(), a.staticOffset)
+	elapsed := time.Since(start)
+	if elapsed > 100*time.Millisecond {
+		fmt.Println("writeAt took longer than 100ms, see logs")
+		a.staticRenter.staticLog.Printf("BLOCK DEBUG DETECTED | writeAt took %vms\n", elapsed.Milliseconds())
+	}
 	return errors.AddContext(err, "unable to write the account to disk")
 }
 
