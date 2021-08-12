@@ -168,7 +168,7 @@ func (a *account) persist() error {
 	start := time.Now()
 	_, err := a.staticFile.WriteAt(accountData.bytes(), a.staticOffset)
 	elapsed := time.Since(start)
-	if elapsed > 100*time.Millisecond {
+	if elapsed > time.Second {
 		fmt.Println("writeAt took longer than 100ms, see logs")
 		a.staticRenter.staticLog.Printf("BLOCK DEBUG DETECTED | writeAt took %vms\n", elapsed.Milliseconds())
 	}
@@ -244,6 +244,8 @@ func (am *accountManager) managedOpenAccount(hostKey types.SiaPublicKey) (acc *a
 		staticOffset: int64(offset),
 
 		staticReady: make(chan struct{}),
+
+		staticRenter: am.staticRenter,
 	}
 	am.accounts[hostKey.String()] = acc
 	am.mu.Unlock()
@@ -582,6 +584,8 @@ func (am *accountManager) readAccountAt(offset int64) (*account, error) {
 
 		staticOffset: offset,
 		staticFile:   am.staticFile,
+
+		staticRenter: am.staticRenter,
 	}
 	close(acc.staticReady)
 	return acc, nil
