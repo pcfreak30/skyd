@@ -63,9 +63,9 @@ const (
 	// allowance.
 	pcwsGougingFractionDenom = 25
 
-	workerBlockBatchSize = 100
-	workerBlockRangeDur  = 100 * time.Millisecond
-	workerBlockMinDur    = 2 * time.Second
+	workerBlockBatchSize = 75
+	workerBlockRangeDur  = 50 * time.Millisecond
+	workerBlockMinDur    = 3 * time.Second
 )
 
 // pcwsUnreseovledWorker tracks an unresolved worker that is associated with a
