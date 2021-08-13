@@ -15,7 +15,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
@@ -216,8 +215,8 @@ type customStatusResponseWriter struct {
 	staticMetadata skymodules.SkyfileMetadata
 	staticStreamer skymodules.SkyfileStreamer
 	staticRequest  *http.Request
-	closed         bool
-	m              sync.RWMutex
+	statusSent     bool
+	writerClosed   bool
 }
 
 // newCustomStatusResponseWriter creates a new customStatusResponseWriter.
@@ -230,7 +229,7 @@ func newCustomStatusResponseWriter(inner http.ResponseWriter, r *http.Request, m
 		staticMetadata: meta,
 		staticStreamer: streamer,
 		staticRequest:  r,
-		closed:         statusSent,
+		statusSent:     statusSent,
 	}
 }
 
@@ -243,9 +242,7 @@ func (rw *customStatusResponseWriter) Header() http.Header {
 // errorpage specified for this status code, it will also extract its content
 // and write it to the inner writer as well.
 func (rw *customStatusResponseWriter) WriteHeader(status int) {
-	rw.m.Lock()
-	defer rw.m.Unlock()
-	if rw.closed {
+	if rw.statusSent || rw.writerClosed {
 		return
 	}
 
@@ -275,19 +272,18 @@ func (rw *customStatusResponseWriter) WriteHeader(status int) {
 		rw.inner.Header().Set("Content-Type", metadataForPath.ContentType())
 	}
 	rw.inner.WriteHeader(status)
+	rw.statusSent = true
 
 	// we send the data on the same writer, which will no longer accept
 	// status headers.
 	http.ServeContent(rw, rw.staticRequest, rw.staticMetadata.Filename, time.Time{}, streamer)
 	// prevent any other content being written to this writer
-	rw.closed = true
+	rw.writerClosed = true
 }
 
 // Write calls the inner writer Write method.
 func (rw *customStatusResponseWriter) Write(b []byte) (int, error) {
-	rw.m.RLock()
-	defer rw.m.RUnlock()
-	if rw.closed {
+	if rw.writerClosed {
 		return len(b), nil
 	}
 	return rw.inner.Write(b)
