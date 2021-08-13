@@ -276,7 +276,7 @@ func (c *Client) SkynetSkylinkGetWithLayout(skylink string, incLayout bool) ([]b
 	}
 	// Parse the Layout from the header
 	var layout skymodules.SkyfileLayout
-	layoutStr := header.Get("Skynet-File-Layout")
+	layoutStr := header.Get(api.SkynetFileLayoutHeader)
 	if layoutStr != "" {
 		layoutBytes, err := hex.DecodeString(layoutStr)
 		if err != nil {
@@ -599,7 +599,7 @@ func (c *Client) SkynetSkyfilePostDisableForce(sup skymodules.SkyfileUploadParam
 	// Set the headers
 	headers := http.Header{"Content-Type": []string{"application/x-www-form-urlencoded"}}
 	if disableForce {
-		headers.Add("Skynet-Disable-Force", strconv.FormatBool(disableForce))
+		headers.Add(api.SkynetDisableForceHeader, strconv.FormatBool(disableForce))
 	}
 
 	// Make the call to upload the file.
@@ -999,7 +999,7 @@ func (c *Client) SkylinkFromTUSID(id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	skylinkHeader := header["Skynet-Skylink"]
+	skylinkHeader := header[api.SkynetSkylinkHeader]
 	if len(skylinkHeader) != 1 {
 		return "", errors.New("SkylinkFromTUSID: Skynet-Skylink header has wrong length")
 	}

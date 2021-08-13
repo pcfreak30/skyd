@@ -345,7 +345,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 	contentTypeStr := []string{"multipart/form-data; boundary=---------------------------9051914041544843365972754266"}
 
 	// verify 'Skynet-Disable-Force'
-	hdrs := http.Header{"Skynet-Disable-Force": trueStr}
+	hdrs := http.Header{SkynetDisableForceHeader: trueStr}
 	req := buildRequest(url.Values{}, hdrs)
 	headers, _, err := parseRequest(req, defaultParams)
 	if err != nil {
@@ -849,7 +849,7 @@ func TestAttachRegistryEntryProof(t *testing.T) {
 	attachRegistryEntryProof(w, entries)
 
 	// Get the attached proof.
-	proof := header.Get("Skynet-Proof")
+	proof := header.Get(SkynetProofHeader)
 
 	// Should match the expected proof.
 	if proof != string(expectedProof) {

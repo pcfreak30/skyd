@@ -279,13 +279,20 @@ func testTryFiles_TableTests(t *testing.T, tg *siatest.TestGroup) {
 			name:               "global index, request path '/news/noexist.html'",
 			skylink:            withGlobalIndex,
 			requestPath:        "/news/noexist.html",
-			expectedContent:    fGoodNewsIndex,
+			expectedContent:    fMainIndex,
 			expectedStatusCode: http.StatusOK,
 		},
 		{
 			name:               "global index, request path '/news/bad-news'",
 			skylink:            withGlobalIndex,
 			requestPath:        "/news/bad-news",
+			expectedContent:    fMainIndex,
+			expectedStatusCode: http.StatusOK,
+		},
+		{
+			name:               "global index, request path '/news/good-news'",
+			skylink:            withGlobalIndex,
+			requestPath:        "/news/good-news",
 			expectedContent:    fGoodNewsIndex,
 			expectedStatusCode: http.StatusOK,
 		},
@@ -298,12 +305,11 @@ func testTryFiles_TableTests(t *testing.T, tg *siatest.TestGroup) {
 		},
 		// No global index
 		{
-			name:                   "no global index, request path ''",
-			skylink:                noGlobalIndex,
-			requestPath:            "",
-			expectedContent:        nil,
-			expectedStatusCode:     http.StatusNotFound,
-			expectedErrStrDownload: "failed to download contents for path",
+			name:               "no global index, request path ''",
+			skylink:            noGlobalIndex,
+			requestPath:        "",
+			expectedContent:    fMainIndex,
+			expectedStatusCode: http.StatusOK,
 		},
 		{
 			name:               "no global index, request path '/index.html'",
@@ -313,13 +319,11 @@ func testTryFiles_TableTests(t *testing.T, tg *siatest.TestGroup) {
 			expectedStatusCode: http.StatusOK,
 		},
 		{
-			name:                    "no global index, request path '/about'",
-			skylink:                 noGlobalIndex,
-			requestPath:             "/about",
-			expectedContent:         nil,
-			expectedStatusCode:      http.StatusNotFound,
-			expectedErrStrDownload:  "failed to download contents for path",
-			expectZippedDirAsOutput: false,
+			name:               "no global index, request path '/about'",
+			skylink:            noGlobalIndex,
+			requestPath:        "/about",
+			expectedContent:    fAboutIndex,
+			expectedStatusCode: http.StatusOK,
 		},
 		{
 			name:               "no global index, request path '/about/index.html'",
@@ -332,60 +336,79 @@ func testTryFiles_TableTests(t *testing.T, tg *siatest.TestGroup) {
 			name:               "no global index, request path '/news/noexist.html'",
 			skylink:            noGlobalIndex,
 			requestPath:        "/news/noexist.html",
-			expectedContent:    fGoodNewsIndex,
-			expectedStatusCode: http.StatusOK,
+			expectedContent:    fCustomNotFound,
+			expectedStatusCode: http.StatusNotFound,
 		},
 		{
 			name:               "no global index, request path '/news/bad-news'",
 			skylink:            noGlobalIndex,
 			requestPath:        "/news/bad-news",
+			expectedContent:    fCustomNotFound,
+			expectedStatusCode: http.StatusNotFound,
+		},
+		{
+			name:               "no global index, request path '/news/good-news'",
+			skylink:            noGlobalIndex,
+			requestPath:        "/news/good-news",
 			expectedContent:    fGoodNewsIndex,
 			expectedStatusCode: http.StatusOK,
 		},
 		// No index
 		{
-			name:                   "no global index, request path ''",
-			skylink:                noIndex,
-			requestPath:            "",
-			expectedContent:        nil,
-			expectedStatusCode:     http.StatusNotFound,
-			expectedErrStrDownload: "failed to download contents for path",
+			name:                    "no index, request path ''",
+			skylink:                 noIndex,
+			requestPath:             "",
+			expectZippedDirAsOutput: true,
+			expectedStatusCode:      http.StatusOK,
 		},
 		{
-			name:               "no global index, request path '/index.html'",
+			name:               "no index, request path '/index.html'",
 			skylink:            noIndex,
 			requestPath:        "/index.html",
 			expectedContent:    fMainIndex,
 			expectedStatusCode: http.StatusOK,
 		},
 		{
-			name:                   "no global index, request path '/about'",
-			skylink:                noIndex,
-			requestPath:            "/about",
-			expectedContent:        nil,
-			expectedStatusCode:     http.StatusNotFound,
-			expectedErrStrDownload: "failed to download contents for path",
+			name:                    "no index, request path '/about'",
+			skylink:                 noIndex,
+			requestPath:             "/about",
+			expectedStatusCode:      http.StatusOK,
+			expectZippedDirAsOutput: true,
 		},
 		{
-			name:               "no global index, request path '/about/index.html'",
+			name:               "no index, request path '/about/index.html'",
 			skylink:            noIndex,
 			requestPath:        "/about/index.html",
 			expectedContent:    fAboutIndex,
 			expectedStatusCode: http.StatusOK,
 		},
 		{
-			name:               "no global index, request path '/news/noexist.html'",
+			name:               "no index, request path '/news/noexist.html'",
 			skylink:            noIndex,
 			requestPath:        "/news/noexist.html",
+			expectedContent:    fCustomNotFound,
+			expectedStatusCode: http.StatusNotFound,
+		},
+		{
+			name:               "no index, request path '/news/bad-news'",
+			skylink:            noIndex,
+			requestPath:        "/news/bad-news",
+			expectedContent:    fCustomNotFound,
+			expectedStatusCode: http.StatusNotFound,
+		},
+		{
+			name:               "no index, request path '/news'",
+			skylink:            noIndex,
+			requestPath:        "/news",
 			expectedContent:    fGoodNewsIndex,
 			expectedStatusCode: http.StatusOK,
 		},
 		{
-			name:               "no global index, request path '/news/bad-news'",
-			skylink:            noIndex,
-			requestPath:        "/news/bad-news",
-			expectedContent:    fGoodNewsIndex,
-			expectedStatusCode: http.StatusOK,
+			name:                    "no index, request path '/news/good-news'",
+			skylink:                 noIndex,
+			requestPath:             "/news/good-news",
+			expectedStatusCode:      http.StatusOK,
+			expectZippedDirAsOutput: true,
 		},
 	}
 
@@ -395,6 +418,7 @@ func testTryFiles_TableTests(t *testing.T, tg *siatest.TestGroup) {
 		t.Run(tt.name, func(t *testing.T) {
 			content, err = r.SkynetSkylinkGet(tt.skylink + tt.requestPath)
 			if err == nil && tt.expectedErrStrDownload != "" {
+				t.Log(string(content))
 				t.Fatalf("Test name: %s. Expected error '%s', got <nil>", tt.name, tt.expectedErrStrDownload)
 			}
 			if err != nil && (tt.expectedErrStrDownload == "" || !strings.Contains(err.Error(), tt.expectedErrStrDownload)) {
@@ -406,6 +430,8 @@ func testTryFiles_TableTests(t *testing.T, tg *siatest.TestGroup) {
 					t.Fatalf("Expected zipped content, got %s", string(content))
 				}
 			} else if tt.expectedErrStrDownload == "" && !bytes.Equal(content, tt.expectedContent) {
+				t.Logf("Expected content: %s\n", string(tt.expectedContent))
+				t.Logf("Actual content:   %s\n", string(content))
 				t.Fatalf("Test name: %s. Content mismatch! Expected %d bytes, got %d bytes.", tt.name, len(tt.expectedContent), len(content))
 			}
 			status, _, err = r.SkynetSkylinkHead(tt.skylink + tt.requestPath)

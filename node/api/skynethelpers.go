@@ -29,15 +29,6 @@ import (
 	"go.sia.tech/siad/types"
 )
 
-const (
-	// SkynetCustomStatusCodeHeader specifies the name of the header we use in
-	// order to confirm that the response's status code is meant to be delivered
-	// to the client as-is, along with the provided content. Also, the content
-	// should not be assumed to be an error, even of the status codes indicates
-	// one.
-	SkynetCustomStatusCodeHeader = "Skynet-Custom-StatusCode"
-)
-
 var (
 	// errIncompleteRangeRequest is the error returned when the range
 	// request is incomplete.
@@ -121,12 +112,12 @@ func newMonetizedResponseWriter(inner http.ResponseWriter, md skymodules.Skyfile
 	}
 }
 
-// Header calls the inner writers Header method.
+// Header calls the staticW writers Header method.
 func (rw *monetizedResponseWriter) Header() http.Header {
 	return rw.staticInner.Header()
 }
 
-// WriteHeader calls the inner writers WriteHeader method.
+// WriteHeader calls the staticW writers WriteHeader method.
 func (rw *monetizedResponseWriter) WriteHeader(statusCode int) {
 	rw.staticInner.WriteHeader(statusCode)
 }
@@ -173,9 +164,9 @@ func (rw *monetizedResponseWriter) ReadFrom(r io.Reader) (int64, error) {
 	return io.CopyBuffer(rw.staticW, r, buf)
 }
 
-// Write wraps the inner Write and adds monetization.
+// Write wraps the staticW Write and adds monetization.
 func (rw *monetizedWriter) Write(b []byte) (int, error) {
-	// Handle legacy uploads with length 0 by passing it through to the inner
+	// Handle legacy uploads with length 0 by passing it through to the staticW
 	// writer.
 	if rw.staticMD.Length == 0 && rw.staticMD.Monetization == nil {
 		return rw.staticW.Write(b)
@@ -189,7 +180,7 @@ func (rw *monetizedWriter) Write(b []byte) (int, error) {
 		return 0, err
 	}
 
-	// Forward data to inner.
+	// Forward data to staticW.
 	// TODO: instead of directly writing to the ratelimited writer, write to a
 	// not ratelimited buffer on disk which forwards the data to the writer.
 	// Otherwise we are starving the renter.
@@ -211,7 +202,7 @@ func (rw *monetizedWriter) Write(b []byte) (int, error) {
 // customStatusResponseWriter is a wrapper for a response writer. It returns
 // a custom status code instead of 200 OK.
 type customStatusResponseWriter struct {
-	inner          http.ResponseWriter
+	staticW        http.ResponseWriter
 	staticMetadata skymodules.SkyfileMetadata
 	staticStreamer skymodules.SkyfileStreamer
 	staticRequest  *http.Request
@@ -220,12 +211,12 @@ type customStatusResponseWriter struct {
 }
 
 // newCustomStatusResponseWriter creates a new customStatusResponseWriter.
-func newCustomStatusResponseWriter(inner http.ResponseWriter, r *http.Request, meta skymodules.SkyfileMetadata, streamer skymodules.SkyfileStreamer, statusSent bool) http.ResponseWriter {
+func newCustomStatusResponseWriter(w http.ResponseWriter, r *http.Request, meta skymodules.SkyfileMetadata, streamer skymodules.SkyfileStreamer, statusSent bool) http.ResponseWriter {
 	if meta.ErrorPages == nil {
 		meta.ErrorPages = map[int]string{}
 	}
 	return &customStatusResponseWriter{
-		inner:          inner,
+		staticW:        w,
 		staticMetadata: meta,
 		staticStreamer: streamer,
 		staticRequest:  r,
@@ -233,14 +224,14 @@ func newCustomStatusResponseWriter(inner http.ResponseWriter, r *http.Request, m
 	}
 }
 
-// Header calls the inner writers Header method.
+// Header calls the staticW writers Header method.
 func (rw *customStatusResponseWriter) Header() http.Header {
-	return rw.inner.Header()
+	return rw.staticW.Header()
 }
 
-// WriteHeader calls the inner writers WriteHeader method if there is an
+// WriteHeader calls the staticW writers WriteHeader method if there is an
 // errorpage specified for this status code, it will also extract its content
-// and write it to the inner writer as well.
+// and write it to the staticW writer as well.
 func (rw *customStatusResponseWriter) WriteHeader(status int) {
 	if rw.statusSent || rw.writerClosed {
 		return
@@ -248,30 +239,31 @@ func (rw *customStatusResponseWriter) WriteHeader(status int) {
 
 	errpath, exists := rw.staticMetadata.ErrorPages[status]
 	if !exists {
-		rw.inner.WriteHeader(status)
+		rw.staticW.WriteHeader(status)
 		return
 	}
 
 	metadataForPath, _, offset, size := rw.staticMetadata.ForPath(errpath)
 	if len(metadataForPath.Subfiles) == 0 {
-		WriteError(rw.inner, Error{fmt.Sprintf("failed to download contents for custom errpath: %v", errpath)}, http.StatusNotFound)
+		WriteError(rw.staticW, Error{fmt.Sprintf("custom error page for status %d not found", status)}, http.StatusNotFound)
+		build.Critical(fmt.Sprintf("Custom error page doesn't exist. Error code: %d, Metadata: %+v\n", status, rw.staticMetadata))
 		return
 	}
 	rawMetadataForPath, err := json.Marshal(metadataForPath)
 	if err != nil {
-		WriteError(rw.inner, Error{fmt.Sprintf("failed to marshal subfile metadata for custom errpath %v", errpath)}, http.StatusNotFound)
+		WriteError(rw.staticW, Error{fmt.Sprintf("failed to marshal subfile metadata for custom errpath %v", errpath)}, http.StatusNotFound)
 		return
 	}
 	streamer, err := NewLimitStreamer(rw.staticStreamer, metadataForPath, rawMetadataForPath, rw.staticStreamer.Skylink(), rw.staticStreamer.Layout(), offset, size)
 	if err != nil {
-		WriteError(rw.inner, Error{fmt.Sprintf("failed to download contents for custom errpath: %v, could not create limit streamer", errpath)}, http.StatusInternalServerError)
+		WriteError(rw.staticW, Error{fmt.Sprintf("failed to download contents for custom errpath: %v, could not create limit streamer", errpath)}, http.StatusInternalServerError)
 		return
 	}
 	rw.Header().Set(SkynetCustomStatusCodeHeader, strconv.Itoa(status))
 	if metadataForPath.ContentType() != "" {
-		rw.inner.Header().Set("Content-Type", metadataForPath.ContentType())
+		rw.staticW.Header().Set("Content-Type", metadataForPath.ContentType())
 	}
-	rw.inner.WriteHeader(status)
+	rw.staticW.WriteHeader(status)
 	rw.statusSent = true
 
 	// we send the data on the same writer, which will no longer accept
@@ -281,12 +273,12 @@ func (rw *customStatusResponseWriter) WriteHeader(status int) {
 	rw.writerClosed = true
 }
 
-// Write calls the inner writer Write method.
+// Write calls the staticW writer Write method.
 func (rw *customStatusResponseWriter) Write(b []byte) (int, error) {
 	if rw.writerClosed {
 		return len(b), nil
 	}
-	return rw.inner.Write(b)
+	return rw.staticW.Write(b)
 }
 
 // buildETag is a helper function that returns an ETag.
@@ -468,7 +460,7 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 
 	// parse 'Skynet-Disable-Force' request header
 	var disableForce bool
-	strDisableForce := req.Header.Get("Skynet-Disable-Force")
+	strDisableForce := req.Header.Get(SkynetDisableForceHeader)
 	if strDisableForce != "" {
 		disableForce, err = strconv.ParseBool(strDisableForce)
 		if err != nil {
@@ -521,14 +513,13 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 	if err != nil {
 		return nil, nil, errors.AddContext(err, "unable to parse 'tryfiles' parameter")
 	}
+	if (defaultPath != "" || disableDefaultPath) && len(tryFiles) > 0 {
+		return nil, nil, errors.New("defaultpath and disabledefaultpath are not compatible with tryfiles")
+	}
 	// if we don't have any tryfiles defined, and we don't have a defaultpath or
 	// disabledefaultpath, we want to default to tryfiles with index.html
 	if len(tryFiles) == 0 && defaultPath == "" && disableDefaultPath == false {
 		tryFiles = []string{"index.html"}
-	}
-
-	if (defaultPath != "" || disableDefaultPath) && len(tryFiles) > 0 {
-		return nil, nil, errors.New("defaultpath and disabledefaultpath are not compatible with tryfiles")
 	}
 
 	errPages, err := ParseErrorPages(queryForm.Get("errorpages"))
@@ -844,7 +835,7 @@ func attachRegistryEntryProof(w http.ResponseWriter, srvs []skymodules.RegistryE
 	if err != nil {
 		return err
 	}
-	w.Header().Set("Skynet-Proof", string(b))
+	w.Header().Set(SkynetProofHeader, string(b))
 	return nil
 }
 
@@ -853,12 +844,12 @@ func ParseErrorPages(s string) (map[int]string, error) {
 	if len(s) == 0 {
 		return map[int]string{}, nil
 	}
-	errPages := &map[int]string{}
-	err := json.Unmarshal([]byte(s), errPages)
+	var errPages map[int]string
+	err := json.Unmarshal([]byte(s), &errPages)
 	if err != nil {
 		return nil, errors.AddContext(err, "invalid errorpages value")
 	}
-	return *errPages, nil
+	return errPages, nil
 }
 
 // ParseTryFiles unmarshals a tryfiles string.

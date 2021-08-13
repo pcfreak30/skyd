@@ -44,6 +44,18 @@ const (
 	// could cause a go-routine leak by creating a bunch of requests with very
 	// high timeouts.
 	MaxSkynetRequestTimeout = 15 * 60 // in seconds
+
+	// SkynetCustomStatusCodeHeader specifies the name of the header we use in
+	// order to confirm that the response's status code is meant to be delivered
+	// to the client as-is, along with the provided content. Also, the content
+	// should not be assumed to be an error, even of the status codes indicates
+	// one.
+	SkynetCustomStatusCodeHeader = "Skynet-Custom-StatusCode"
+	SkynetDisableForceHeader     = "Skynet-Disable-Force"
+	SkynetFileLayoutHeader       = "Skynet-File-Layout"
+	SkynetFileMetadataHeader     = "Skynet-File-Metadata"
+	SkynetProofHeader            = "Skynet-Proof"
+	SkynetSkylinkHeader          = "Skynet-Skylink"
 )
 
 var (
@@ -637,7 +649,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// Set the common Header fields
 	//
 	// Set the Skylink response header
-	w.Header().Set("Skynet-Skylink", params.skylink.String())
+	w.Header().Set(SkynetSkylinkHeader, params.skylink.String())
 
 	// Set the ETag response header
 	//
@@ -651,7 +663,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 	// Set the Layout
 	if params.includeLayout {
-		w.Header().Set("Skynet-File-Layout", hex.EncodeToString(encLayout))
+		w.Header().Set(SkynetFileLayoutHeader, hex.EncodeToString(encLayout))
 	}
 
 	// Set an appropriate Content-Disposition header
@@ -759,7 +771,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	// passing the force flag, if they want to they can set overrule the force
 	// flag by passing in the 'Skynet-Disable-Force' header
 	allowForce := true
-	strDisableForce := req.Header.Get("Skynet-Disable-Force")
+	strDisableForce := req.Header.Get(SkynetDisableForceHeader)
 	if strDisableForce != "" {
 		disableForce, err := strconv.ParseBool(strDisableForce)
 		if err != nil {
@@ -808,7 +820,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 		handleSkynetError(w, "failed to pin file to skynet", err)
 		return
 	}
-	w.Header().Set("Skynet-Skylink", skylink.String())
+	w.Header().Set(SkynetSkylinkHeader, skylink.String())
 	WriteSuccess(w)
 }
 
@@ -829,7 +841,7 @@ func (api *API) skynetTUSUploadSkylinkGET(w http.ResponseWriter, _ *http.Request
 	}
 
 	// Set the Skylink response header
-	w.Header().Set("Skynet-Skylink", skylink.String())
+	w.Header().Set(SkynetSkylinkHeader, skylink.String())
 
 	// Respond with the skylink in the body as well.
 	WriteJSON(w, SkynetSkyfileHandlerPOST{
@@ -931,7 +943,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 
 		// Set the Skylink response header
-		w.Header().Set("Skynet-Skylink", skylink.String())
+		w.Header().Set(SkynetSkylinkHeader, skylink.String())
 
 		WriteJSON(w, SkynetSkyfileHandlerPOST{
 			Skylink:    skylink.String(),
@@ -959,7 +971,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	}
 
 	// Set the Skylink response header
-	w.Header().Set("Skynet-Skylink", skylink.String())
+	w.Header().Set(SkynetSkylinkHeader, skylink.String())
 
 	WriteJSON(w, SkynetSkyfileHandlerPOST{
 		Skylink:    skylink.String(),
@@ -1504,7 +1516,7 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 	}
 
 	// Set the Skylink response header
-	w.Header().Set("Skynet-Skylink", skylink.String())
+	w.Header().Set(SkynetSkylinkHeader, skylink.String())
 
 	// Fetch the skyfile's streamer to serve the basesector of the file
 	streamer, srvs, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)

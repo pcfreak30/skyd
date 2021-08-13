@@ -793,7 +793,7 @@ func testSkynetSkylinkHeader(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// verify the response header contains the same Skylink
-	if header.Get("Skynet-Skylink") != skylink.String() {
+	if header.Get(api.SkynetSkylinkHeader) != skylink.String() {
 		t.Fatal("unexpected")
 	}
 
@@ -803,7 +803,7 @@ func testSkynetSkylinkHeader(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if header.Get("Skynet-Skylink") != skylink.String() {
+	if header.Get(api.SkynetSkylinkHeader) != skylink.String() {
 		t.Fatal("unexpected")
 	}
 }
