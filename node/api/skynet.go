@@ -51,11 +51,21 @@ const (
 	// should not be assumed to be an error, even of the status codes indicates
 	// one.
 	SkynetCustomStatusCodeHeader = "Skynet-Custom-StatusCode"
-	SkynetDisableForceHeader     = "Skynet-Disable-Force"
-	SkynetFileLayoutHeader       = "Skynet-File-Layout"
-	SkynetFileMetadataHeader     = "Skynet-File-Metadata"
-	SkynetProofHeader            = "Skynet-Proof"
-	SkynetSkylinkHeader          = "Skynet-Skylink"
+
+	// SkynetDisableForceHeader ...
+	SkynetDisableForceHeader = "Skynet-Disable-Force"
+
+	// SkynetFileLayoutHeader ...
+	SkynetFileLayoutHeader = "Skynet-File-Layout"
+
+	// SkynetFileMetadataHeader ...
+	SkynetFileMetadataHeader = "Skynet-File-Metadata"
+
+	// SkynetProofHeader ...
+	SkynetProofHeader = "Skynet-Proof"
+
+	// SkynetSkylinkHeader ...
+	SkynetSkylinkHeader = "Skynet-Skylink"
 )
 
 var (
