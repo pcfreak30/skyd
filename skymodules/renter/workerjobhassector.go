@@ -22,7 +22,7 @@ const (
 
 	// jobHasSectorQueueMinAvailabilityRate is the minimum availability rate we
 	// return when there haven't been any jobs performed yet by the queue where
-	// the sector was availabile.
+	// the sector was available.
 	jobHasSectorQueueMinAvailabilityRate = 0.001
 
 	// hasSectorBatchSize is the number of has sector jobs batched together upon
