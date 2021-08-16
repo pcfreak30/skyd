@@ -91,6 +91,7 @@ type (
 		// the hopeful pieces without introducing a race condition in the
 		// finished check.
 		availablePieces            [][]*pieceDownload
+		availablePiecesByWorker    map[string][]uint64
 		workersConsideredIndex     int
 		unresolvedWorkersRemaining int
 
@@ -217,6 +218,41 @@ func (pd *pieceDownload) successful() bool {
 	return pd.completed && pd.downloadErr == nil
 }
 
+func (pdc *projectDownloadChunk) updateWorkerHeap(heap *pdcWorkerHeap) {
+	ws := pdc.workerState
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+
+	for _, w := range *heap {
+		// Check if the worker is resolved.
+		hpk := w.worker.staticHostPubKeyStr
+		_, resolved := ws.unresolvedWorkers[w.worker.staticHostPubKeyStr]
+		jrq := w.callReadQueue(pdc.staticIsLowPrio)
+		cost := jrq.callExpectedJobCost(pdc.pieceLength)
+		readDuration := jrq.staticStats.callExpectedJobTime(pdc.pieceLength)
+
+		if !resolved {
+			resolveTime := w.staticExpectedResolveTime
+			if resolveTime.Before(time.Now()) {
+				resolveTime = time.Now().Add(2 * time.Since(resolveTime))
+			}
+			completeTime := resolveTime.Add(readDuration)
+
+			// Update the fields.
+			w.completeTime = completeTime
+			w.cost = cost
+			w.readDuration = readDuration
+			w.unresolved = true
+		} else {
+			w.completeTime = time.Now().Add(readDuration)
+			w.cost = cost
+			w.readDuration = readDuration
+			w.pieces = nil // fix
+			w.unresolved = false
+		}
+	}
+}
+
 // unresolvedWorkers will return the set of unresolved workers from the worker
 // state of the pdc. This operation will also update the set of available pieces
 // within the pdc to reflect any previously unresolved workers that are now
@@ -239,9 +275,12 @@ func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <
 		// resolved worker has.
 		resp := ws.resolvedWorkers[i]
 		for _, pieceIndex := range resp.pieceIndices {
-			pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], &pieceDownload{
+			pd := &pieceDownload{
 				worker: resp.worker,
-			})
+			}
+			pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], pd)
+			hpk := resp.worker.staticHostPubKeyStr
+			pdc.availablePiecesByWorker[hpk] = append(pdc.availablePiecesByWorker[hpk], pieceIndex)
 		}
 	}
 	pdc.workersConsideredIndex = len(ws.resolvedWorkers)

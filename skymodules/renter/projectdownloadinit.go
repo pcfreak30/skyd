@@ -113,9 +113,10 @@ type pdcInitialWorker struct {
 	// so assuming an additional full 'readDuration' per read is overly
 	// pessimistic, at the same time we prefer to spread our downloads over
 	// multiple workers so the pessimism is not too bad.
-	completeTime time.Time
-	cost         types.Currency
-	readDuration time.Duration
+	completeTime              time.Time
+	cost                      types.Currency
+	readDuration              time.Duration
+	staticExpectedResolveTime time.Time
 
 	// The list of pieces indicates which pieces the worker is capable of
 	// fetching. If 'unresolved' is set to true, the worker will be treated as
@@ -207,9 +208,10 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 
 		// Push the element into the heap.
 		heap.Push(&workerHeap, &pdcInitialWorker{
-			completeTime: completeTime,
-			cost:         cost,
-			readDuration: readDuration,
+			completeTime:              completeTime,
+			cost:                      cost,
+			readDuration:              readDuration,
+			staticExpectedResolveTime: uw.staticExpectedResolvedTime,
 
 			pieces:     pieces,
 			unresolved: true,
@@ -500,16 +502,16 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 // launched and then launch them. This is a non-blocking function that returns
 // once jobs have been scheduled for MinPieces workers.
 func (pdc *projectDownloadChunk) launchInitialWorkers() error {
+	// Get the list of unresolved workers. This will also grab an update, so
+	// any workers that have resolved recently will be reflected in the
+	// newly returned set of values.
+	unresolvedWorkers, updateChan := pdc.unresolvedWorkers()
+
+	// Create a list of usable workers, sorted by the amount of time they
+	// are expected to take to return.
+	workerHeap := pdc.initialWorkerHeap(unresolvedWorkers)
+
 	for {
-		// Get the list of unresolved workers. This will also grab an update, so
-		// any workers that have resolved recently will be reflected in the
-		// newly returned set of values.
-		unresolvedWorkers, updateChan := pdc.unresolvedWorkers()
-
-		// Create a list of usable workers, sorted by the amount of time they
-		// are expected to take to return.
-		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers)
-
 		// Create an initial worker set
 		finalWorkers, err := pdc.createInitialWorkerSet(workerHeap)
 		if err != nil {
@@ -530,6 +532,8 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 
 		select {
 		case <-updateChan:
+			// New resolved workers. Update heap.
+			pdc.updateWorkerHeap(&workerHeap)
 		case <-time.After(maxWaitUnresolvedWorkerUpdate):
 			// We want to limit the amount of time spent waiting for unresolved
 			// workers to become resolved. This is because we assign a penalty
