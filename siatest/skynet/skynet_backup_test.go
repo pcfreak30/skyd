@@ -212,9 +212,9 @@ func testDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 	directoryTest("DirectoryBasic_Encryption", sk.Name, "", files, false, defaultTryfiles, errorpages, false)
 
 	// Same basic directory with different default path
-	directoryTest("DirectoryBasic", "", "about.html", files, false, defaultTryfiles, errorpages, true)
+	directoryTest("DirectoryBasic", "", "about.html", files, false, noTryfiles, errorpages, true)
 	// Same basic encrypted directory with different default path
-	directoryTest("DirectoryBasic_Encryption", sk.Name, "about.html", files, false, defaultTryfiles, errorpages, true)
+	directoryTest("DirectoryBasic_Encryption", sk.Name, "about.html", files, false, noTryfiles, errorpages, true)
 
 	// Same basic directory with different default path
 	directoryTest("DirectoryBasic", "", "", files, false, aboutTryfiles, errorpages, true)
