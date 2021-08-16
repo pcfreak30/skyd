@@ -184,16 +184,18 @@ func testTryFilesWithoutRootIndex(t *testing.T, tg *siatest.TestGroup) {
 // treated correctly
 func testSkynetErrorPages(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
-	fc1 := "File1Contents"
+	fc404 := "File404Contents"
+	fc500 := "File500Contents"
 	filename := "err_pages"
 	tf := []string{}
 	ep := map[int]string{
 		404: "/404.html",
+		500: "/500.html",
 	}
 	files := []siatest.TestFile{
 		// there is no leading slash on purpose - we shouldn't need it
-		{Name: "404.html", Data: []byte(fc1)},
-		// TODO Test with more status codes.
+		{Name: "404.html", Data: []byte(fc404)},
+		{Name: "500.html", Data: []byte(fc500)},
 	}
 	skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, tf, ep, true, nil, "", skykey.SkykeyID{})
 	if err != nil {
@@ -209,8 +211,8 @@ func testSkynetErrorPages(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Unexpected error", err)
 	}
-	if bytes.Compare(data, []byte(fc1)) != 0 {
-		t.Log("Expected data:", fc1)
+	if bytes.Compare(data, []byte(fc404)) != 0 {
+		t.Log("Expected data:", fc404)
 		t.Log("Actual data:  ", string(data))
 		t.Fatal("Data is different from the expected.")
 	}

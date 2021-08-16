@@ -199,86 +199,74 @@ func (rw *monetizedWriter) Write(b []byte) (int, error) {
 	return n, nil
 }
 
-// customStatusResponseWriter is a wrapper for a response writer. It returns
-// a custom status code instead of 200 OK.
-type customStatusResponseWriter struct {
-	staticW        http.ResponseWriter
+// customErrorWriter responds to errors with custom content
+// TODO unit test this with various error codes.
+type customErrorWriter struct {
 	staticMetadata skymodules.SkyfileMetadata
 	staticStreamer skymodules.SkyfileStreamer
-	staticRequest  *http.Request
-	statusSent     bool
-	writerClosed   bool
 }
 
-// newCustomStatusResponseWriter creates a new customStatusResponseWriter.
-func newCustomStatusResponseWriter(w http.ResponseWriter, r *http.Request, meta skymodules.SkyfileMetadata, streamer skymodules.SkyfileStreamer, statusSent bool) http.ResponseWriter {
-	if meta.ErrorPages == nil {
-		meta.ErrorPages = map[int]string{}
-	}
-	return &customStatusResponseWriter{
-		staticW:        w,
-		staticMetadata: meta,
-		staticStreamer: streamer,
-		staticRequest:  r,
-		statusSent:     statusSent,
-	}
-}
-
-// Header calls the staticW writers Header method.
-func (rw *customStatusResponseWriter) Header() http.Header {
-	return rw.staticW.Header()
-}
-
-// WriteHeader calls the staticW writers WriteHeader method if there is an
-// errorpage specified for this status code, it will also extract its content
-// and write it to the staticW writer as well.
-func (rw *customStatusResponseWriter) WriteHeader(status int) {
-	if rw.statusSent || rw.writerClosed {
+// WriteError checks whether there's custom content configured for the
+// given error code and writes it the writer, otherwise it sends the standard
+// error content.
+func (ew customErrorWriter) WriteError(w http.ResponseWriter, err Error, code int) {
+	// if we don't have a custom error page for this error code just serve the
+	// standard response
+	if _, exist := ew.staticMetadata.ErrorPages[code]; !exist {
+		WriteError(w, err, code)
 		return
 	}
+	content, contentType, e := ew.customContent(code)
+	if e != nil {
+		build.Critical("Failed to fetch custom error content which should exist:", e)
+		WriteError(w, err, code)
+		return
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.WriteHeader(code)
+	_, e = w.Write(content)
+	if e != nil {
+		build.Critical("Failed to write custom error content:", e)
+	}
+}
 
-	errpath, exists := rw.staticMetadata.ErrorPages[status]
+// customContent returns the custom error content that matches the given status
+// code, as well as its content type.
+func (ew *customErrorWriter) customContent(status int) ([]byte, string, error) {
+	errpath, exists := ew.staticMetadata.ErrorPages[status]
 	if !exists {
-		rw.staticW.WriteHeader(status)
-		return
+		return nil, "", os.ErrNotExist
 	}
 
-	metadataForPath, _, offset, size := rw.staticMetadata.ForPath(errpath)
+	metadataForPath, _, offset, size := ew.staticMetadata.ForPath(errpath)
 	if len(metadataForPath.Subfiles) == 0 {
-		WriteError(rw.staticW, Error{fmt.Sprintf("custom error page for status %d not found", status)}, http.StatusNotFound)
-		build.Critical(fmt.Sprintf("Custom error page doesn't exist. Error code: %d, Metadata: %+v\n", status, rw.staticMetadata))
-		return
+		return nil, "", fmt.Errorf("custom error page for status %d not found", status)
 	}
 	rawMetadataForPath, err := json.Marshal(metadataForPath)
 	if err != nil {
-		WriteError(rw.staticW, Error{fmt.Sprintf("failed to marshal subfile metadata for custom errpath %v", errpath)}, http.StatusNotFound)
-		return
+		return nil, "", fmt.Errorf("failed to marshal subfile metadata for custom errpath %v", errpath)
 	}
-	streamer, err := NewLimitStreamer(rw.staticStreamer, metadataForPath, rawMetadataForPath, rw.staticStreamer.Skylink(), rw.staticStreamer.Layout(), offset, size)
+	streamer, err := NewLimitStreamer(ew.staticStreamer, metadataForPath, rawMetadataForPath, ew.staticStreamer.Skylink(), ew.staticStreamer.Layout(), offset, size)
 	if err != nil {
-		WriteError(rw.staticW, Error{fmt.Sprintf("failed to download contents for custom errpath: %v, could not create limit streamer", errpath)}, http.StatusInternalServerError)
-		return
+		return nil, "", fmt.Errorf("failed to download contents for custom errpath: %v, could not create limit streamer", errpath)
 	}
-	rw.Header().Set(SkynetCustomStatusCodeHeader, strconv.Itoa(status))
-	if metadataForPath.ContentType() != "" {
-		rw.staticW.Header().Set("Content-Type", metadataForPath.ContentType())
+	buf := make([]byte, size)
+	_, err = io.ReadFull(streamer, buf)
+	if err != nil {
+		return nil, "", errors.AddContext(err, "failed to read from streamer")
 	}
-	rw.staticW.WriteHeader(status)
-	rw.statusSent = true
-
-	// we send the data on the same writer, which will no longer accept
-	// status headers.
-	http.ServeContent(rw, rw.staticRequest, rw.staticMetadata.Filename, time.Time{}, streamer)
-	// prevent any other content being written to this writer
-	rw.writerClosed = true
+	return buf, metadataForPath.ContentType(), nil
 }
 
-// Write calls the staticW writer Write method.
-func (rw *customStatusResponseWriter) Write(b []byte) (int, error) {
-	if rw.writerClosed {
-		return len(b), nil
+// newCustomErrorWriter creates a new customErrorWriter.
+func newCustomErrorWriter(meta skymodules.SkyfileMetadata, streamer skymodules.SkyfileStreamer) *customErrorWriter {
+	if meta.ErrorPages == nil {
+		meta.ErrorPages = make(map[int]string)
 	}
-	return rw.staticW.Write(b)
+	return &customErrorWriter{
+		staticMetadata: meta,
+		staticStreamer: streamer,
+	}
 }
 
 // buildETag is a helper function that returns an ETag.

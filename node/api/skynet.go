@@ -541,6 +541,11 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		return
 	}
 
+	// Create a pass-through error writer. Once we properly validate the
+	// relevant metadata we are going to replace this with a properly
+	// initialised copy.
+	ew := newCustomErrorWriter(skymodules.SkyfileMetadata{}, streamer)
+
 	// Only validate default path and tryfiles if the format is not specified,
 	// this way the file can still be downloaded should it have been uploaded
 	// with incorrect metadata, which is possible seeing as it may have been
@@ -582,11 +587,13 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 				WriteError(w, Error{"invalid errorpages in metadata, please specify format. error: " + err.Error()}, http.StatusBadRequest)
 				return
 			}
-			w = newCustomStatusResponseWriter(w, req, metadata, streamer, false)
+			// Now that we know that we have a valid configuration we are
+			// replacing the error writer, so we can serve custom error content.
+			ew = newCustomErrorWriter(metadata, streamer)
 		}
 
 		if path == "/" && strings.Count(metadata.DefaultPath, "/") > 1 && len(metadata.Subfiles) > 1 {
-			WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s) which refers to a non-root file, please specify a format", metadata.DefaultPath)}, http.StatusBadRequest)
+			ew.WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s) which refers to a non-root file, please specify a format", metadata.DefaultPath)}, http.StatusBadRequest)
 			return
 		}
 		// If we don't have a subPath and the skylink doesn't end with a
@@ -626,7 +633,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if path != "/" {
 		metadataForPath, isFile, offset, size := metadata.ForPath(path)
 		if len(metadataForPath.Subfiles) == 0 {
-			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound)
+			ew.WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound)
 			return
 		}
 		// NOTE: we don't have an actual raw metadata for the subpath. So we are
@@ -634,12 +641,12 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		// the metadata can't be used to create a skylink anyway.
 		rawMetadataForPath, err := json.Marshal(metadataForPath)
 		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to marshal subfile metadata for path %v", path)}, http.StatusNotFound)
+			ew.WriteError(w, Error{fmt.Sprintf("failed to marshal subfile metadata for path %v", path)}, http.StatusNotFound)
 			return
 		}
 		streamer, err = NewLimitStreamer(streamer, metadataForPath, rawMetadataForPath, streamer.Skylink(), streamer.Layout(), offset, size)
 		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
+			ew.WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
 			return
 		}
 
@@ -698,7 +705,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if format.IsArchive() {
 		err = serveArchive(w, streamer, format, metadata, monetize)
 		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as %v archive: %v", format, err)}, http.StatusInternalServerError)
+			ew.WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as %v archive: %v", format, err)}, http.StatusInternalServerError)
 		}
 		return
 	}
