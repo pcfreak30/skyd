@@ -433,8 +433,8 @@ func validateDefaultPath(defaultPath string, subfiles SkyfileSubfiles) (string, 
 // ValidateErrorPages ensures the given errorpages configuration is valid.
 func ValidateErrorPages(ep map[int]string, subfiles SkyfileSubfiles) error {
 	for code, fname := range ep {
-		// TODO What should be the limit here? Overriding a 200 makes no sense to me but overriding a 204 might?
-		// 	the real use-case is overriding the 4xx codes, though, so we might want to set the limit there.
+		// We are limiting this to 400 and above because overriding codes under 400 doesn't make sense and will be
+		// disruptive to normal skapp functions like redirects.
 		if code < 400 {
 			return errors.New("overriding status codes under 400 is not supported")
 		}

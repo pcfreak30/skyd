@@ -534,6 +534,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		WriteError(w, Error{"unable to attach proof: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
+
 	// Validate Metadata
 	metadata := streamer.Metadata()
 	if metadata.DefaultPath != "" && len(metadata.Subfiles) == 0 {

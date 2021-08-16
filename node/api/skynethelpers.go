@@ -112,12 +112,12 @@ func newMonetizedResponseWriter(inner http.ResponseWriter, md skymodules.Skyfile
 	}
 }
 
-// Header calls the staticW writers Header method.
+// Header calls the inner writers Header method.
 func (rw *monetizedResponseWriter) Header() http.Header {
 	return rw.staticInner.Header()
 }
 
-// WriteHeader calls the staticW writers WriteHeader method.
+// WriteHeader calls the inner writers WriteHeader method.
 func (rw *monetizedResponseWriter) WriteHeader(statusCode int) {
 	rw.staticInner.WriteHeader(statusCode)
 }
@@ -164,9 +164,9 @@ func (rw *monetizedResponseWriter) ReadFrom(r io.Reader) (int64, error) {
 	return io.CopyBuffer(rw.staticW, r, buf)
 }
 
-// Write wraps the staticW Write and adds monetization.
+// Write wraps the inner Write and adds monetization.
 func (rw *monetizedWriter) Write(b []byte) (int, error) {
-	// Handle legacy uploads with length 0 by passing it through to the staticW
+	// Handle legacy uploads with length 0 by passing it through to the inner
 	// writer.
 	if rw.staticMD.Length == 0 && rw.staticMD.Monetization == nil {
 		return rw.staticW.Write(b)
@@ -180,7 +180,7 @@ func (rw *monetizedWriter) Write(b []byte) (int, error) {
 		return 0, err
 	}
 
-	// Forward data to staticW.
+	// Forward data to inner.
 	// TODO: instead of directly writing to the ratelimited writer, write to a
 	// not ratelimited buffer on disk which forwards the data to the writer.
 	// Otherwise we are starving the renter.
@@ -199,7 +199,18 @@ func (rw *monetizedWriter) Write(b []byte) (int, error) {
 	return n, nil
 }
 
-// customErrorWriter responds to errors with custom content
+// newCustomErrorWriter creates a new customErrorWriter.
+func newCustomErrorWriter(meta skymodules.SkyfileMetadata, streamer skymodules.SkyfileStreamer) *customErrorWriter {
+	if meta.ErrorPages == nil {
+		meta.ErrorPages = make(map[int]string)
+	}
+	return &customErrorWriter{
+		staticMetadata: meta,
+		staticStreamer: streamer,
+	}
+}
+
+// customErrorWriter responds to errors with custom content.
 type customErrorWriter struct {
 	staticMetadata skymodules.SkyfileMetadata
 	staticStreamer skymodules.SkyfileStreamer
@@ -209,8 +220,8 @@ type customErrorWriter struct {
 // given error code and writes it the writer, otherwise it sends the standard
 // error content.
 func (ew customErrorWriter) WriteError(w http.ResponseWriter, err Error, code int) {
-	// if we don't have a custom error page for this error code just serve the
-	// standard response
+	// If we don't have a custom error page for this error code just serve the
+	// standard response.
 	if _, exist := ew.staticMetadata.ErrorPages[code]; !exist {
 		WriteError(w, err, code)
 		return
@@ -222,6 +233,7 @@ func (ew customErrorWriter) WriteError(w http.ResponseWriter, err Error, code in
 		return
 	}
 	w.Header().Set("Content-Type", contentType)
+	w.Header().Set(SkynetCustomStatusCodeHeader, strconv.Itoa(code))
 	w.WriteHeader(code)
 	_, e = w.Write(content)
 	if e != nil {
@@ -255,17 +267,6 @@ func (ew *customErrorWriter) customContent(status int) ([]byte, string, error) {
 		return nil, "", errors.AddContext(err, "failed to read from streamer")
 	}
 	return buf, metadataForPath.ContentType(), nil
-}
-
-// newCustomErrorWriter creates a new customErrorWriter.
-func newCustomErrorWriter(meta skymodules.SkyfileMetadata, streamer skymodules.SkyfileStreamer) *customErrorWriter {
-	if meta.ErrorPages == nil {
-		meta.ErrorPages = make(map[int]string)
-	}
-	return &customErrorWriter{
-		staticMetadata: meta,
-		staticStreamer: streamer,
-	}
 }
 
 // buildETag is a helper function that returns an ETag.
@@ -840,7 +841,6 @@ func ParseErrorPages(s string) (map[int]string, error) {
 }
 
 // ParseTryFiles unmarshals a tryfiles string.
-// TODO unit test
 func ParseTryFiles(s string) ([]string, error) {
 	if len(s) == 0 {
 		return []string{}, nil
@@ -856,7 +856,6 @@ func ParseTryFiles(s string) ([]string, error) {
 // determinePathBasedOnTryfiles determines if we should serve a different path
 // based on the given metadata. It also returns a boolean which tells us whether
 // the returned path is different from the provided path.
-// TODO Unit tests.
 func determinePathBasedOnTryfiles(path string, subfiles skymodules.SkyfileSubfiles, tryfiles []string) (string, bool) {
 	if subfiles == nil {
 		return path, false
