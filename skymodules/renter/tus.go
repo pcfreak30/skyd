@@ -390,6 +390,9 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 	}
 	// In case of any error, return early.
 	if err != nil {
+		for _, chunk := range chunks {
+			chunk.Cancel()
+		}
 		return 0, err
 	}
 
