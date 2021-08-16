@@ -185,17 +185,14 @@ func testTryFilesWithoutRootIndex(t *testing.T, tg *siatest.TestGroup) {
 func testSkynetErrorPages(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 	fc404 := "File404Contents"
-	fc500 := "File500Contents"
 	filename := "err_pages"
 	tf := []string{}
 	ep := map[int]string{
 		404: "/404.html",
-		500: "/500.html",
 	}
 	files := []siatest.TestFile{
 		// there is no leading slash on purpose - we shouldn't need it
 		{Name: "404.html", Data: []byte(fc404)},
-		{Name: "500.html", Data: []byte(fc500)},
 	}
 	skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, tf, ep, true, nil, "", skykey.SkykeyID{})
 	if err != nil {

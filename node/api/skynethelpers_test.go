@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -30,6 +31,11 @@ type testHTTPWriter struct {
 	statusCode int
 	write      []byte
 	header     http.Header
+}
+
+// WrittenContent is a helper for checking what was written to the writer
+func (tw *testHTTPWriter) WrittenContent() []byte {
+	return tw.write
 }
 
 // Header implements http.ResponseWriter.
@@ -954,5 +960,85 @@ func TestParseTryFiles(t *testing.T) {
 			t.Logf("Actual  : %+v\n", out)
 			t.Fatal("Unexpected output.")
 		}
+	}
+}
+
+// TestCustomErrorWriter ensures that customErrorWriter responds with the right
+// content.
+func TestCustomErrorWriter(t *testing.T) {
+	subfiles := skymodules.SkyfileSubfiles{
+		"400.html": skymodules.SkyfileSubfileMetadata{
+			Filename:    "400.html",
+			ContentType: "text/html",
+			Offset:      0,
+			Len:         14,
+		},
+		"404.html": skymodules.SkyfileSubfileMetadata{
+			Filename:    "404.html",
+			ContentType: "text/html",
+			Offset:      14,
+			Len:         14,
+		},
+		"418.html": skymodules.SkyfileSubfileMetadata{
+			Filename:    "418.html",
+			ContentType: "text/html",
+			Offset:      28,
+			Len:         14,
+		},
+		"500.html": skymodules.SkyfileSubfileMetadata{
+			Filename:    "500.html",
+			ContentType: "text/html",
+			Offset:      42,
+			Len:         14,
+		},
+		"502.html": skymodules.SkyfileSubfileMetadata{
+			Filename:    "502.html",
+			ContentType: "text/html",
+			Offset:      56,
+			Len:         14,
+		},
+	}
+	eps := map[int]string{
+		400: "/400.html",
+		404: "/404.html",
+		418: "/418.html",
+		500: "/500.html",
+		502: "/502.html",
+	}
+	meta := skymodules.SkyfileMetadata{
+		Filename:   t.Name(),
+		Length:     60,
+		Subfiles:   subfiles,
+		ErrorPages: eps,
+	}
+	data := []byte("FileContent400FileContent404FileContent418FileContent500FileContent502")
+	rawMD, err := json.Marshal(meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	streamer := renter.SkylinkStreamerFromSlice(data, meta, rawMD, skymodules.Skylink{}, skymodules.SkyfileLayout{})
+
+	ew := newCustomErrorWriter(meta, streamer)
+	w := newTestHTTPWriter()
+
+	// test all errorpage codes
+	for code := range eps {
+		codeStr := strconv.Itoa(code)
+		ew.WriteError(w, Error{"This is an error with status " + codeStr}, code)
+		sf, exists := subfiles[codeStr+".html"]
+		if !exists {
+			t.Fatalf("Expected to find a subfile with name %s", codeStr+".html")
+		}
+		expectedData := data[sf.Offset : sf.Offset+sf.Len]
+		if !reflect.DeepEqual(expectedData, w.WrittenContent()) {
+			t.Fatalf("Expected content '%s', got '%s'", string(expectedData), string(w.WrittenContent()))
+		}
+	}
+
+	// test a non-errorpages code
+	errmsg := "we want to see this"
+	ew.WriteError(w, Error{errmsg}, 401)
+	if !strings.Contains(string(w.WrittenContent()), errmsg) {
+		t.Fatalf("Expected content to contain '%s', got '%s'", errmsg, string(w.WrittenContent()))
 	}
 }

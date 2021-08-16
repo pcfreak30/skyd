@@ -200,7 +200,6 @@ func (rw *monetizedWriter) Write(b []byte) (int, error) {
 }
 
 // customErrorWriter responds to errors with custom content
-// TODO unit test this with various error codes.
 type customErrorWriter struct {
 	staticMetadata skymodules.SkyfileMetadata
 	staticStreamer skymodules.SkyfileStreamer

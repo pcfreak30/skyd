@@ -204,7 +204,7 @@ func (c *Client) getReaderResponse(resource string) (_ http.Header, _ io.ReadClo
 	// If the status code is not 2xx, decode and return the accompanying
 	// api.Error.
 	if res.StatusCode < 200 || res.StatusCode > 299 {
-		err := readAPIError(res.Body) // TODO Potentially, we want to change this to only happen when json
+		err := readAPIError(res.Body)
 		drainAndClose(res.Body)
 		return nil, nil, errors.AddContext(err, "GET request error")
 	}
