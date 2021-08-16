@@ -116,7 +116,7 @@ func lookupRegistry(w *worker, sid modules.RegistryEntryID, spk *types.SiaPublic
 	} else if build.VersionCmp(w.staticCache().staticHostVersion, minReadRegistrySIDVersion) < 0 {
 		refund, err = pb.V156AddReadRegistryInstruction(*spk, *tweak)
 	} else if build.VersionCmp(w.staticCache().staticHostVersion, "1.5.5") < 0 {
-		// TODO: change version
+		// TODO: set version to 1.5.7
 		refund, err = pb.V156AddReadRegistryEIDInstruction(sid, needPKAndTweak)
 	} else {
 		version = modules.ReadRegistryVersionWithType
