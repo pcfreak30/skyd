@@ -219,19 +219,29 @@ func (pd *pieceDownload) successful() bool {
 	return pd.completed && pd.downloadErr == nil
 }
 
+// updateWorkerHeap updates a worker heap by going through all workers and
+// updating them depending on whether they are resolved or not. This does not
+// apply any gouging or maintenance checks again since we don't expect a
+// significant amount of time to pass between the creation of the heap and
+// launching the workers. As a result, this significantly reduces the amount of
+// allocations we are doing compared to creating the initial heap since we reuse
+// the allocated memory.
 func (pdc *projectDownloadChunk) updateWorkerHeap(h *pdcWorkerHeap) {
 	ws := pdc.workerState
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 
-	for i, w := range *h {
+	// Update the available pieces in case some workers resolved.
+	pdc.updateAvailablePieces()
+
+	for _, w := range *h {
 		// Check if the worker is resolved.
-		_, resolved := ws.unresolvedWorkers[w.worker.staticHostPubKeyStr]
+		_, unresolved := ws.unresolvedWorkers[w.worker.staticHostPubKeyStr]
 		jrq := w.worker.callReadQueue(pdc.staticIsLowPrio)
 		cost := jrq.callExpectedJobCost(pdc.pieceLength)
 		readDuration := jrq.staticStats.callExpectedJobTime(pdc.pieceLength)
 
-		if !resolved {
+		if unresolved {
 			resolveTime := w.staticExpectedResolveTime
 			if resolveTime.Before(time.Now()) {
 				resolveTime = time.Now().Add(2 * time.Since(resolveTime))
@@ -251,22 +261,52 @@ func (pdc *projectDownloadChunk) updateWorkerHeap(h *pdcWorkerHeap) {
 			w.pieces = pdc.availablePiecesByWorker[w.worker.staticHostPubKeyStr]
 		}
 
+		// Update fields which are the same for resolved and unresolved
+		// workers.
 		w.readDuration = readDuration
-		w.unresolved = !resolved
+		w.unresolved = unresolved
 		w.cost = cost
-
-		heap.Fix(h, i)
 	}
+
+	// Reestablish heap invariants.
+	heap.Init(h)
 }
 
-// unresolvedWorkers will return the set of unresolved workers from the worker
-// state of the pdc. This operation will also update the set of available pieces
-// within the pdc to reflect any previously unresolved workers that are now
-// available workers.
+// updateAvailablePieces adds any new resolved workers to the pdc's list of
+// available pieces.
+func (pdc *projectDownloadChunk) updateAvailablePieces() {
+	ws := pdc.workerState
+
+	// Add any new resolved workers to the pdc's list of available pieces.
+	for i := pdc.workersConsideredIndex; i < len(ws.resolvedWorkers); i++ {
+		// Add the returned worker to available pieces for each piece that the
+		// resolved worker has.
+		resp := ws.resolvedWorkers[i]
+		hpk := resp.worker.staticHostPubKeyStr
+		_, exists := pdc.availablePiecesByWorker[hpk]
+		if !exists {
+			pdc.availablePiecesByWorker[hpk] = []uint64{}
+		}
+		for _, pieceIndex := range resp.pieceIndices {
+			pd := &pieceDownload{
+				worker: resp.worker,
+			}
+			pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], pd)
+			pdc.availablePiecesByWorker[hpk] = append(pdc.availablePiecesByWorker[hpk], pieceIndex)
+		}
+	}
+	pdc.workersConsideredIndex = len(ws.resolvedWorkers)
+	pdc.unresolvedWorkersRemaining = len(ws.unresolvedWorkers)
+}
+
+// managedUnresolvedWorkers will return the set of unresolved workers from the
+// worker state of the pdc. This operation will also update the set of available
+// pieces within the pdc to reflect any previously unresolved workers that are
+// now available workers.
 //
 // A channel will also be returned which will be closed when there are new
 // unresolved workers available.
-func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <-chan struct{}) {
+func (pdc *projectDownloadChunk) managedUnresolvedWorkers() ([]*pcwsUnresolvedWorker, <-chan struct{}) {
 	ws := pdc.workerState
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
@@ -275,22 +315,9 @@ func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <
 	for _, uw := range ws.unresolvedWorkers {
 		unresolvedWorkers = append(unresolvedWorkers, uw)
 	}
+
 	// Add any new resolved workers to the pdc's list of available pieces.
-	for i := pdc.workersConsideredIndex; i < len(ws.resolvedWorkers); i++ {
-		// Add the returned worker to available pieces for each piece that the
-		// resolved worker has.
-		resp := ws.resolvedWorkers[i]
-		for _, pieceIndex := range resp.pieceIndices {
-			pd := &pieceDownload{
-				worker: resp.worker,
-			}
-			pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], pd)
-			hpk := resp.worker.staticHostPubKeyStr
-			pdc.availablePiecesByWorker[hpk] = append(pdc.availablePiecesByWorker[hpk], pieceIndex)
-		}
-	}
-	pdc.workersConsideredIndex = len(ws.resolvedWorkers)
-	pdc.unresolvedWorkersRemaining = len(ws.unresolvedWorkers)
+	pdc.updateAvailablePieces()
 
 	// If there are more unresolved workers, fetch a channel that will be closed
 	// when more results from unresolved workers are available.
@@ -577,7 +604,7 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 		// code will determine whether launching an overdrive worker is
 		// necessary, and will return a channel that will be closed when enough
 		// time has elapsed that another overdrive worker should be considered.
-		workersUpdatedChan, workersLateChan := pdc.tryOverdrive()
+		workersUpdatedChan, workersLateChan := pdc.managedTryOverdrive()
 
 		// Determine when the next overdrive check needs to run.
 		select {

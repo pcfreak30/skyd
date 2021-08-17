@@ -505,7 +505,7 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 	// Get the list of unresolved workers. This will also grab an update, so
 	// any workers that have resolved recently will be reflected in the
 	// newly returned set of values.
-	unresolvedWorkers, updateChan := pdc.unresolvedWorkers()
+	unresolvedWorkers, updateChan := pdc.managedUnresolvedWorkers()
 
 	// Create a list of usable workers, sorted by the amount of time they
 	// are expected to take to return.
