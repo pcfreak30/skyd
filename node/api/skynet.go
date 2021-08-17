@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/julienschmidt/httprouter"
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -532,6 +531,9 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		_ = streamer.Close()
 	}()
 
+	metadata := streamer.Metadata()
+	ew := newCustomErrorWriter(metadata, streamer)
+
 	// Attach proof.
 	err = attachRegistryEntryProof(w, srvs)
 	if err != nil {
@@ -539,33 +541,19 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		return
 	}
 
-	// Create a pass-through error writer. Once we properly validate the
-	// relevant metadata we are going to replace this with a properly
-	// initialised copy.
-	ew := newCustomErrorWriter(skymodules.SkyfileMetadata{}, streamer)
-
-	metadata := streamer.Metadata()
-
 	// Only validate default path and tryfiles if the format is not specified,
 	// this way the file can still be downloaded should it have been uploaded
 	// with incorrect metadata, which is possible seeing as it may have been
 	// uploaded by a private portal.
 	if format == skymodules.SkyfileFormatNotSpecified {
-		err = skymodules.ValidateSkyfileMetadata(metadata)
-		if err != nil {
-			err = errors.AddContext(err, "invalid metadata, please specify a format if you want to download this skyfile")
-			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-			return
-		}
-
-		defaultPath := metadata.EffectiveDefaultPath()
-
+		// The path we actually want to serve based on defaultpath and tryfiles.
+		servePath := metadata.ServePath(path)
 		// If we don't have a subPath and the skylink doesn't end with a
 		// trailing slash we need to redirect in order to add the trailing
 		// slash. This is only true for skapps - they need it in order to
 		// properly work with relative paths. We also don't need to redirect if
 		// this is a HEAD request or if it's a download as attachment.
-		if path == "/" && (defaultPath != "" || len(metadata.TryFiles) > 0) && !params.attachment && req.Method == http.MethodGet && !strings.HasSuffix(params.skylinkStringNoQuery, "/") {
+		if path == "/" && servePath != path && !params.attachment && req.Method == http.MethodGet && !strings.HasSuffix(params.skylinkStringNoQuery, "/") {
 			location := params.skylinkStringNoQuery + "/"
 			if req.URL.RawQuery != "" {
 				location += "?" + req.URL.RawQuery
@@ -574,21 +562,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			w.WriteHeader(http.StatusTemporaryRedirect)
 			return
 		}
-
-		path = metadata.ServePath(path)
-
-		// If we have active errorpages, override the writer with a custom one
-		// which will serve the custom error content when needed.
-		if len(metadata.ErrorPages) > 0 {
-			err = skymodules.ValidateErrorPages(metadata.ErrorPages, metadata.Subfiles)
-			if err != nil {
-				WriteError(w, Error{"invalid errorpages in metadata, please specify a format if you want to download this skyfile. error: " + err.Error()}, http.StatusBadRequest)
-				return
-			}
-			// Now that we know that we have a valid configuration we are
-			// replacing the error writer, so we can serve custom error content.
-			ew = newCustomErrorWriter(metadata, streamer)
-		}
+		path = servePath
 	}
 	var isSubfile bool
 	// Serve the contents of the skyfile at path if one is set

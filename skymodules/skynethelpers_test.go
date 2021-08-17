@@ -184,7 +184,7 @@ func testValidateSkyfileMetadata(t *testing.T) {
 
 	invalid.DisableDefaultPath = true
 	err = ValidateSkyfileMetadata(invalid)
-	if err != nil {
+	if err == nil {
 		t.Fatal("unexpected outcome")
 	}
 

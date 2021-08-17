@@ -444,8 +444,8 @@ func ValidateErrorPages(ep map[int]string, subfiles SkyfileSubfiles) error {
 	for code, fname := range ep {
 		// We are limiting this to 400 and above because overriding codes under 400 doesn't make sense and will be
 		// disruptive to normal skapp functions like redirects.
-		if code < 400 {
-			return errors.New("overriding status codes under 400 is not supported")
+		if code < 400 || code > 599 {
+			return errors.New("overriding status codes under 400 and above 599 is not supported")
 		}
 		if fname == "" {
 			return errors.New("an errorpage cannot be an empty string, it needs to be a valid file name")
