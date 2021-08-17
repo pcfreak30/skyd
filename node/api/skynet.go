@@ -49,22 +49,28 @@ const (
 	// order to confirm that the response's status code is meant to be delivered
 	// to the client as-is, along with the provided content. Also, the content
 	// should not be assumed to be an error, even of the status codes indicates
-	// one.
+	// one. This is only relevant when the API is being accessed by our client
+	// implementation, and it doesn't make a difference to the regular operation
+	// of the portal.
 	SkynetCustomStatusCodeHeader = "Skynet-Custom-StatusCode"
 
-	// SkynetDisableForceHeader ...
+	// SkynetDisableForceHeader allows disabling the force-update feature.
 	SkynetDisableForceHeader = "Skynet-Disable-Force"
 
-	// SkynetFileLayoutHeader ...
+	// SkynetFileLayoutHeader holds the layout of this skyfile.
 	SkynetFileLayoutHeader = "Skynet-File-Layout"
 
-	// SkynetFileMetadataHeader ...
+	// SkynetFileMetadataHeader holds an encoded JSON object with the metadata
+	// of the skyfile *or* the subdirectory of the skyfile that has been
+	// requested.
 	SkynetFileMetadataHeader = "Skynet-File-Metadata"
 
-	// SkynetProofHeader ...
+	// SkynetProofHeader holds an encoded JSON object with the registry proofs
+	// for this skylink.
 	SkynetProofHeader = "Skynet-Proof"
 
-	// SkynetSkylinkHeader ...
+	// SkynetSkylinkHeader is a string representation of the base64 encoded
+	// Skylink that was requested.
 	SkynetSkylinkHeader = "Skynet-Skylink"
 )
 

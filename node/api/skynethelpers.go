@@ -200,7 +200,7 @@ func (rw *monetizedWriter) Write(b []byte) (int, error) {
 }
 
 // newCustomErrorWriter creates a new customErrorWriter.
-func newCustomErrorWriter(meta skymodules.SkyfileMetadata, streamer skymodules.SkyfileStreamer) *customErrorWriter {
+func newCustomErrorWriter(meta skymodules.SkyfileMetadata, streamer io.ReadSeeker) *customErrorWriter {
 	if meta.ErrorPages == nil {
 		meta.ErrorPages = make(map[int]string)
 	}
@@ -213,7 +213,7 @@ func newCustomErrorWriter(meta skymodules.SkyfileMetadata, streamer skymodules.S
 // customErrorWriter responds to errors with custom content.
 type customErrorWriter struct {
 	staticMetadata skymodules.SkyfileMetadata
-	staticStreamer skymodules.SkyfileStreamer
+	staticStreamer io.ReadSeeker
 }
 
 // WriteError checks whether there's custom content configured for the
@@ -226,7 +226,7 @@ func (ew customErrorWriter) WriteError(w http.ResponseWriter, err Error, code in
 		WriteError(w, err, code)
 		return
 	}
-	content, contentType, e := ew.customContent(code)
+	contentReader, contentType, e := ew.customContent(code)
 	if e != nil {
 		build.Critical("Failed to fetch custom error content which should exist:", e)
 		WriteError(w, err, code)
@@ -235,7 +235,7 @@ func (ew customErrorWriter) WriteError(w http.ResponseWriter, err Error, code in
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set(SkynetCustomStatusCodeHeader, strconv.Itoa(code))
 	w.WriteHeader(code)
-	_, e = w.Write(content)
+	_, e = io.Copy(w, contentReader)
 	if e != nil {
 		build.Critical("Failed to write custom error content:", e)
 	}
@@ -243,7 +243,7 @@ func (ew customErrorWriter) WriteError(w http.ResponseWriter, err Error, code in
 
 // customContent returns the custom error content that matches the given status
 // code, as well as its content type.
-func (ew *customErrorWriter) customContent(status int) ([]byte, string, error) {
+func (ew *customErrorWriter) customContent(status int) (io.Reader, string, error) {
 	errpath, exists := ew.staticMetadata.ErrorPages[status]
 	if !exists {
 		return nil, "", os.ErrNotExist
@@ -253,20 +253,11 @@ func (ew *customErrorWriter) customContent(status int) ([]byte, string, error) {
 	if len(metadataForPath.Subfiles) == 0 {
 		return nil, "", fmt.Errorf("custom error page for status %d not found", status)
 	}
-	rawMetadataForPath, err := json.Marshal(metadataForPath)
+	_, err := ew.staticStreamer.Seek(int64(offset), io.SeekStart)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to marshal subfile metadata for custom errpath %v", errpath)
+		return nil, "", fmt.Errorf("failed to serve custom contents for status code %s, invalid offset, error '%s'", status, err.Error())
 	}
-	streamer, err := NewLimitStreamer(ew.staticStreamer, metadataForPath, rawMetadataForPath, ew.staticStreamer.Skylink(), ew.staticStreamer.Layout(), offset, size)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to download contents for custom errpath: %v, could not create limit streamer", errpath)
-	}
-	buf := make([]byte, size)
-	_, err = io.ReadFull(streamer, buf)
-	if err != nil {
-		return nil, "", errors.AddContext(err, "failed to read from streamer")
-	}
-	return buf, metadataForPath.ContentType(), nil
+	return io.LimitReader(ew.staticStreamer, int64(size)), metadataForPath.ContentType(), nil
 }
 
 // buildETag is a helper function that returns an ETag.

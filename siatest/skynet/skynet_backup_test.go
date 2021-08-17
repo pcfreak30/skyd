@@ -198,33 +198,33 @@ func testDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 	aboutTryfiles := []string{"/about.html"}
 	noTryfiles := []string{}
 	errorpages := map[int]string{}
-	directoryTest("DirectoryBasic_LargeFile", "", "", files, false, defaultTryfiles, errorpages, false)
+	directoryTest("DirectoryBasic0_LargeFile", "", "", files, false, defaultTryfiles, errorpages, false)
 	// Basic Encrypted Directory with Large Subfile
-	directoryTest("DirectoryBasic_LargeFile_Encryption", sk.Name, "", files, false, defaultTryfiles, errorpages, false)
+	directoryTest("DirectoryBasic0_LargeFile_Encryption", sk.Name, "", files, false, defaultTryfiles, errorpages, false)
 
 	// Basic directory
 	files = []siatest.TestFile{
 		{Name: "index.html", Data: []byte("index.html_contents")},
 		{Name: "about.html", Data: []byte("about.html_contents")},
 	}
-	directoryTest("DirectoryBasic", "", "", files, false, defaultTryfiles, errorpages, false)
+	directoryTest("DirectoryBasic1", "", "", files, false, defaultTryfiles, errorpages, false)
 	// Basic encrypted directory
-	directoryTest("DirectoryBasic_Encryption", sk.Name, "", files, false, defaultTryfiles, errorpages, false)
+	directoryTest("DirectoryBasic1_Encryption", sk.Name, "", files, false, defaultTryfiles, errorpages, false)
 
 	// Same basic directory with different default path
-	directoryTest("DirectoryBasic", "", "about.html", files, false, noTryfiles, errorpages, true)
+	directoryTest("DirectoryBasic2", "", "about.html", files, false, noTryfiles, errorpages, true)
 	// Same basic encrypted directory with different default path
-	directoryTest("DirectoryBasic_Encryption", sk.Name, "about.html", files, false, noTryfiles, errorpages, true)
+	directoryTest("DirectoryBasic2_Encryption", sk.Name, "about.html", files, false, noTryfiles, errorpages, true)
 
 	// Same basic directory with different default path
-	directoryTest("DirectoryBasic", "", "", files, false, aboutTryfiles, errorpages, true)
+	directoryTest("DirectoryBasic3", "", "", files, false, aboutTryfiles, errorpages, true)
 	// Same basic encrypted directory with different default path
-	directoryTest("DirectoryBasic_Encryption", sk.Name, "", files, false, aboutTryfiles, errorpages, true)
+	directoryTest("DirectoryBasic3_Encryption", sk.Name, "", files, false, aboutTryfiles, errorpages, true)
 
 	// Same basic directory with no default path
-	directoryTest("DirectoryBasic", "", "", files, true, noTryfiles, errorpages, true)
+	directoryTest("DirectoryBasic4", "", "", files, true, noTryfiles, errorpages, true)
 	// Same basic encrypted directory with no default path
-	directoryTest("DirectoryBasic_Encryption", sk.Name, "", files, true, noTryfiles, errorpages, true)
+	directoryTest("DirectoryBasic4_Encryption", sk.Name, "", files, true, noTryfiles, errorpages, true)
 }
 
 // testDirectoryNested verifies that a nested directory skyfile can be backed up
