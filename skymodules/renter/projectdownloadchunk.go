@@ -2,6 +2,7 @@ package renter
 
 import (
 	"bytes"
+	"container/heap"
 	"context"
 	"encoding/hex"
 	"fmt"
@@ -218,16 +219,15 @@ func (pd *pieceDownload) successful() bool {
 	return pd.completed && pd.downloadErr == nil
 }
 
-func (pdc *projectDownloadChunk) updateWorkerHeap(heap *pdcWorkerHeap) {
+func (pdc *projectDownloadChunk) updateWorkerHeap(h *pdcWorkerHeap) {
 	ws := pdc.workerState
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 
-	for _, w := range *heap {
+	for i, w := range *h {
 		// Check if the worker is resolved.
-		hpk := w.worker.staticHostPubKeyStr
 		_, resolved := ws.unresolvedWorkers[w.worker.staticHostPubKeyStr]
-		jrq := w.callReadQueue(pdc.staticIsLowPrio)
+		jrq := w.worker.callReadQueue(pdc.staticIsLowPrio)
 		cost := jrq.callExpectedJobCost(pdc.pieceLength)
 		readDuration := jrq.staticStats.callExpectedJobTime(pdc.pieceLength)
 
@@ -238,18 +238,24 @@ func (pdc *projectDownloadChunk) updateWorkerHeap(heap *pdcWorkerHeap) {
 			}
 			completeTime := resolveTime.Add(readDuration)
 
-			// Update the fields.
+			// Update the fields specific to the unresolved worker.
+			// The complete time might have changed but the pieces
+			// are still the same.
 			w.completeTime = completeTime
-			w.cost = cost
-			w.readDuration = readDuration
-			w.unresolved = true
 		} else {
+			// Update the fields for the resolved worker.
+			// The complete time is the current time plus the
+			// duration of the read and the pieces might have
+			// changed due to the worker resolving.
 			w.completeTime = time.Now().Add(readDuration)
-			w.cost = cost
-			w.readDuration = readDuration
-			w.pieces = nil // fix
-			w.unresolved = false
+			w.pieces = pdc.availablePiecesByWorker[w.worker.staticHostPubKeyStr]
 		}
+
+		w.readDuration = readDuration
+		w.unresolved = !resolved
+		w.cost = cost
+
+		heap.Fix(h, i)
 	}
 }
 

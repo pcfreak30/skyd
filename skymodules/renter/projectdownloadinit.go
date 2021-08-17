@@ -532,8 +532,6 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 
 		select {
 		case <-updateChan:
-			// New resolved workers. Update heap.
-			pdc.updateWorkerHeap(&workerHeap)
 		case <-time.After(maxWaitUnresolvedWorkerUpdate):
 			// We want to limit the amount of time spent waiting for unresolved
 			// workers to become resolved. This is because we assign a penalty
@@ -543,6 +541,9 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 		case <-pdc.ctx.Done():
 			return errors.New("timed out while trying to build initial set of workers")
 		}
+
+		// Update the heap for the next iteration.
+		pdc.updateWorkerHeap(&workerHeap)
 	}
 }
 
