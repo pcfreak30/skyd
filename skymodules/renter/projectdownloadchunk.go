@@ -248,6 +248,20 @@ func (pdc *projectDownloadChunk) updateWorkerHeap(h *pdcWorkerHeap) {
 			}
 			completeTime := resolveTime.Add(readDuration)
 
+			// Same as in initialWorkerHeap but here we can just
+			// extend the already allocated pieces slice to its full
+			// size and reset it to reduce the number of
+			// allocations.
+			if cap(w.pieces) != pdc.workerSet.staticErasureCoder.MinPieces() {
+				build.Critical("w.pieces has the wrong capacity for an unresolved worker")
+				w.pieces = make([]uint64, pdc.workerSet.staticErasureCoder.MinPieces())
+			} else {
+				w.pieces = w.pieces[:cap(w.pieces)]
+			}
+			for i := 0; i < len(w.pieces); i++ {
+				w.pieces[i] = uint64(i)
+			}
+
 			// Update the fields specific to the unresolved worker.
 			// The complete time might have changed but the pieces
 			// are still the same.
@@ -283,10 +297,6 @@ func (pdc *projectDownloadChunk) updateAvailablePieces() {
 		// resolved worker has.
 		resp := ws.resolvedWorkers[i]
 		hpk := resp.worker.staticHostPubKeyStr
-		_, exists := pdc.availablePiecesByWorker[hpk]
-		if !exists {
-			pdc.availablePiecesByWorker[hpk] = []uint64{}
-		}
 		for _, pieceIndex := range resp.pieceIndices {
 			pd := &pieceDownload{
 				worker: resp.worker,
