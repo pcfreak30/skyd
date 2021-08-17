@@ -211,7 +211,7 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 			}},
 		DefaultPath:        "",
 		DisableDefaultPath: false,
-		TryFiles:           []string{"index.html"},
+		TryFiles:           skymodules.DefaultTryFilesValue,
 	}
 
 	_, md, err := r.SkynetMetadataGet(skylink)
@@ -381,7 +381,7 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 		},
 		DefaultPath:        "",
 		DisableDefaultPath: false,
-		TryFiles:           []string{"index.html"},
+		TryFiles:           skymodules.DefaultTryFilesValue,
 	}
 
 	testName := "NestedDirIndexDefaultPathIndex"

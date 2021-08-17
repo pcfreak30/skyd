@@ -1055,20 +1055,16 @@ func urlValuesFromSkyfileMultipartUploadParameters(sup skymodules.SkyfileMultipa
 	values.Set("defaultpath", sup.DefaultPath)
 	values.Set("disabledefaultpath", strconv.FormatBool(sup.DisableDefaultPath))
 
-	if len(sup.TryFiles) > 0 {
-		b, err := json.Marshal(sup.TryFiles)
-		if err != nil {
-			return url.Values{}, err
-		}
-		values.Set("tryfiles", string(b))
+	b, err := json.Marshal(sup.TryFiles)
+	if err != nil {
+		return url.Values{}, err
 	}
-	if len(sup.ErrorPages) > 0 {
-		b, err := json.Marshal(sup.ErrorPages)
-		if err != nil {
-			return url.Values{}, err
-		}
-		values.Set("errorpages", string(b))
+	values.Set("tryfiles", string(b))
+	b, err = json.Marshal(sup.ErrorPages)
+	if err != nil {
+		return url.Values{}, err
 	}
+	values.Set("errorpages", string(b))
 
 	return values, nil
 }
@@ -1107,6 +1103,17 @@ func urlValuesFromSkyfileUploadParameters(sup skymodules.SkyfileUploadParameters
 
 	values.Set("defaultpath", sup.DefaultPath)
 	values.Set("disabledefaultpath", strconv.FormatBool(sup.DisableDefaultPath))
+
+	b, err := json.Marshal(sup.TryFiles)
+	if err != nil {
+		return url.Values{}, err
+	}
+	values.Set("tryfiles", string(b))
+	b, err = json.Marshal(sup.ErrorPages)
+	if err != nil {
+		return url.Values{}, err
+	}
+	values.Set("errorpages", string(b))
 
 	// encode encryption parameters
 	if sup.SkykeyName != "" {

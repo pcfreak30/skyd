@@ -191,7 +191,7 @@ func (tn *TestNode) UploadNewSkyfileBlocking(filename string, filesize uint64, f
 func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files []TestFile, defaultPath string, disableDefaultPath bool, force bool) (skylink string, sup skymodules.SkyfileMultipartUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
 	var tf []string
 	if defaultPath == "" && disableDefaultPath == false {
-		tf = []string{"index.html"}
+		tf = skymodules.DefaultTryFilesValue
 	}
 	return tn.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, defaultPath, disableDefaultPath, tf, nil, force, nil, "", skykey.SkykeyID{})
 }
@@ -204,7 +204,7 @@ func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files []T
 func (tn *TestNode) UploadNewMultipartSkyfileMonetizedBlocking(filename string, files []TestFile, defaultPath string, disableDefaultPath bool, force bool, monetization *skymodules.Monetization) (skylink string, sup skymodules.SkyfileMultipartUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
 	var tf []string
 	if defaultPath == "" && disableDefaultPath == false {
-		tf = []string{"index.html"}
+		tf = skymodules.DefaultTryFilesValue
 	}
 	return tn.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, defaultPath, disableDefaultPath, tf, nil, force, monetization, "", skykey.SkykeyID{})
 }

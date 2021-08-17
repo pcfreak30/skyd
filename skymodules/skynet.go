@@ -22,6 +22,10 @@ import (
 )
 
 const (
+	// DefaultSkynetDefaultPath is the defaultPath value we use when the user
+	// hasn't specified one and `index.html` exists in the skyfile.
+	DefaultSkynetDefaultPath = "index.html"
+
 	// SkyfileLayoutSize describes the amount of space within the first sector
 	// of a skyfile used to describe the rest of the skyfile.
 	SkyfileLayoutSize = 99
@@ -40,6 +44,13 @@ const (
 	// monetizationLotteryEntropy is the number of bytes generated as entropy
 	// for drawing the lottery ticket.
 	monetizationLotteryEntropy = 32
+)
+
+var (
+	// DefaultTryFilesValue is the value of tryfiles we set on each skyfile,
+	// if none is specified and defaultpath and disabledefaultpath are also
+	// unspecified.
+	DefaultTryFilesValue = []string{"index.html"}
 )
 
 const (
@@ -361,6 +372,32 @@ func (sm SkyfileMetadata) ContentType() string {
 	return ""
 }
 
+// EffectiveDefaultPath returns the default path based not only on what value is
+// set in the metadata struct but also on disabledefaultpath, the number of
+// subfiles, etc.
+func (sm SkyfileMetadata) EffectiveDefaultPath() string {
+	if sm.DisableDefaultPath {
+		return ""
+	}
+	if sm.DefaultPath == "" && !sm.DisableDefaultPath {
+		if len(sm.Subfiles) == 1 {
+			// If `defaultpath` and `disabledefaultpath` are not set and the
+			// skyfile has a single subfile we automatically default to it.
+			for filename := range sm.Subfiles {
+				return EnsurePrefix(filename, "/")
+			}
+		} else {
+			prefixedDefaultSkynetPath := EnsurePrefix(DefaultSkynetDefaultPath, "/")
+			for filename := range sm.Subfiles {
+				if EnsurePrefix(filename, "/") == prefixedDefaultSkynetPath {
+					return prefixedDefaultSkynetPath
+				}
+			}
+		}
+	}
+	return sm.DefaultPath
+}
+
 // IsDirectory returns true if the SkyfileMetadata represents a directory.
 func (sm SkyfileMetadata) IsDirectory() bool {
 	if len(sm.Subfiles) > 1 {
@@ -377,6 +414,28 @@ func (sm SkyfileMetadata) IsDirectory() bool {
 		}
 	}
 	return false
+}
+
+// ServePath takes a requested path and determines what path should be served
+// based on the existence of the requested path, defaultpath, tryfiles, etc.
+func (sm SkyfileMetadata) ServePath(path string) string {
+	// If there's a single subfile in the skyfile we want to serve it.
+	if path == "/" && len(sm.Subfiles) == 1 && !sm.DisableDefaultPath {
+		for filename := range sm.Subfiles {
+			path = EnsurePrefix(filename, "/")
+			break
+		}
+	}
+	defaultPath := sm.EffectiveDefaultPath()
+	if len(sm.TryFiles) > 0 {
+		path, _ = sm.determinePathBasedOnTryfiles(path)
+	} else if defaultPath != "" && path == "/" {
+		_, exists := sm.Subfiles[strings.TrimPrefix(defaultPath, "/")]
+		if exists {
+			path = EnsurePrefix(defaultPath, "/")
+		}
+	}
+	return path
 }
 
 // size returns the total size, which is the sum of the length of all subfiles.
@@ -400,6 +459,33 @@ func (sm SkyfileMetadata) offset() uint64 {
 		}
 	}
 	return min
+}
+
+// determinePathBasedOnTryfiles determines if we should serve a different path
+// based on the given metadata. It also returns a boolean which tells us whether
+// the returned path is different from the provided path.
+func (sm SkyfileMetadata) determinePathBasedOnTryfiles(path string) (string, bool) {
+	if sm.Subfiles == nil {
+		return path, false
+	}
+	file := strings.Trim(path, "/")
+	if _, exists := sm.Subfiles[file]; !exists {
+		for _, tf := range sm.TryFiles {
+			// If we encounter an absolute-path tryfile, and it exists, we stop
+			// searching.
+			_, exists = sm.Subfiles[strings.Trim(tf, "/")]
+			if strings.HasPrefix(tf, "/") && exists {
+				return tf, true
+			}
+			// Assume the request is for a directory and check if a
+			// tryfile matches.
+			potentialFilename := strings.Trim(strings.TrimSuffix(file, "/")+EnsurePrefix(tf, "/"), "/")
+			if _, exists = sm.Subfiles[potentialFilename]; exists {
+				return EnsurePrefix(potentialFilename, "/"), true
+			}
+		}
+	}
+	return path, false
 }
 
 // SkyfileLayout explains the layout information that is used for storing data

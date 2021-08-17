@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/julienschmidt/httprouter"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -28,10 +29,6 @@ import (
 )
 
 const (
-	// DefaultSkynetDefaultPath is the defaultPath value we use when the user
-	// hasn't specified one and `index.html` exists in the skyfile.
-	DefaultSkynetDefaultPath = "index.html"
-
 	// DefaultSkynetRequestTimeout is the default request timeout for routes
 	// that have a timeout query string parameter. If the request can not be
 	// resolved within the given amount of time, it times out. This is used for
@@ -45,13 +42,14 @@ const (
 	// high timeouts.
 	MaxSkynetRequestTimeout = 15 * 60 // in seconds
 
-	// SkynetCustomStatusCodeHeader specifies the name of the header we use in
-	// order to confirm that the response's status code is meant to be delivered
-	// to the client as-is, along with the provided content. Also, the content
-	// should not be assumed to be an error, even of the status codes indicates
-	// one. This is only relevant when the API is being accessed by our client
-	// implementation, and it doesn't make a difference to the regular operation
-	// of the portal.
+	// SkynetCustomStatusCodeHeader is a custom Skynet header that will be set
+	// on the response if the skyfile specifies a custom error response content.
+	// This header instructs the client (as in client.go) that the response's
+	// content  and status code are meant to be delivered to the client as-is.
+	// Also, the content should not be assumed to be an error, even of the
+	// status codes indicates one. This is only relevant when the API is being
+	// accessed by our client implementation, and it doesn't make a difference
+	// to the regular operation of the portal.
 	SkynetCustomStatusCodeHeader = "Skynet-Custom-StatusCode"
 
 	// SkynetDisableForceHeader allows disabling the force-update feature.
@@ -541,68 +539,27 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		return
 	}
 
-	// Validate Metadata
-	metadata := streamer.Metadata()
-	if metadata.DefaultPath != "" && len(metadata.Subfiles) == 0 {
-		WriteError(w, Error{"defaultpath is not allowed on single files, please specify a format if you want to download this skyfile regardless"}, http.StatusBadRequest)
-		return
-	}
-
 	// Create a pass-through error writer. Once we properly validate the
 	// relevant metadata we are going to replace this with a properly
 	// initialised copy.
 	ew := newCustomErrorWriter(skymodules.SkyfileMetadata{}, streamer)
+
+	metadata := streamer.Metadata()
 
 	// Only validate default path and tryfiles if the format is not specified,
 	// this way the file can still be downloaded should it have been uploaded
 	// with incorrect metadata, which is possible seeing as it may have been
 	// uploaded by a private portal.
 	if format == skymodules.SkyfileFormatNotSpecified {
-		if metadata.DefaultPath != "" && metadata.DisableDefaultPath {
-			WriteError(w, Error{"invalid defaultpath state - both defaultpath and disabledefaultpath are set, please specify a format"}, http.StatusBadRequest)
+		err = skymodules.ValidateSkyfileMetadata(metadata)
+		if err != nil {
+			err = errors.AddContext(err, "invalid metadata, please specify a format if you want to download this skyfile")
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 			return
-		}
-		if len(metadata.TryFiles) > 0 && (metadata.DefaultPath != "" || metadata.DisableDefaultPath) {
-			WriteError(w, Error{"invalid metadata - tryfiles set together with defaultpath or disabledefaultpath, please specify a format"}, http.StatusBadRequest)
-			return
-		}
-		defaultPath := metadata.DefaultPath
-		if defaultPath == "" && !metadata.DisableDefaultPath {
-			if len(metadata.Subfiles) == 1 {
-				// If `defaultpath` and `disabledefaultpath` are not set and the
-				// skyfile has a single subfile we automatically default to it.
-				for filename := range metadata.Subfiles {
-					defaultPath = skymodules.EnsurePrefix(filename, "/")
-					break
-				}
-			} else {
-				prefixedDefaultSkynetPath := skymodules.EnsurePrefix(DefaultSkynetDefaultPath, "/")
-				for filename := range metadata.Subfiles {
-					if skymodules.EnsurePrefix(filename, "/") == prefixedDefaultSkynetPath {
-						defaultPath = prefixedDefaultSkynetPath
-						break
-					}
-				}
-			}
 		}
 
-		// If we have active errorpages, override the writer with a custom one
-		// which will serve the custom error content when needed.
-		if len(metadata.ErrorPages) > 0 {
-			err = skymodules.ValidateErrorPages(metadata.ErrorPages, metadata.Subfiles)
-			if err != nil {
-				WriteError(w, Error{"invalid errorpages in metadata, please specify format. error: " + err.Error()}, http.StatusBadRequest)
-				return
-			}
-			// Now that we know that we have a valid configuration we are
-			// replacing the error writer, so we can serve custom error content.
-			ew = newCustomErrorWriter(metadata, streamer)
-		}
+		defaultPath := metadata.EffectiveDefaultPath()
 
-		if path == "/" && strings.Count(metadata.DefaultPath, "/") > 1 && len(metadata.Subfiles) > 1 {
-			ew.WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s) which refers to a non-root file, please specify a format", metadata.DefaultPath)}, http.StatusBadRequest)
-			return
-		}
 		// If we don't have a subPath and the skylink doesn't end with a
 		// trailing slash we need to redirect in order to add the trailing
 		// slash. This is only true for skapps - they need it in order to
@@ -617,22 +574,20 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			w.WriteHeader(http.StatusTemporaryRedirect)
 			return
 		}
-		// If there's a single subfile in the skyfile we want to serve it.
-		if path == "/" && len(metadata.Subfiles) == 1 && !metadata.DisableDefaultPath {
-			for filename := range metadata.Subfiles {
-				path = skymodules.EnsurePrefix(filename, "/")
-				break
+
+		path = metadata.ServePath(path)
+
+		// If we have active errorpages, override the writer with a custom one
+		// which will serve the custom error content when needed.
+		if len(metadata.ErrorPages) > 0 {
+			err = skymodules.ValidateErrorPages(metadata.ErrorPages, metadata.Subfiles)
+			if err != nil {
+				WriteError(w, Error{"invalid errorpages in metadata, please specify a format if you want to download this skyfile. error: " + err.Error()}, http.StatusBadRequest)
+				return
 			}
-		}
-		// If we need to serve a path, different from the requested one, we'll
-		// decide that now.
-		if len(metadata.TryFiles) > 0 {
-			path, _ = determinePathBasedOnTryfiles(path, metadata.Subfiles, metadata.TryFiles)
-		} else if defaultPath != "" && path == "/" {
-			_, exists := metadata.Subfiles[strings.TrimPrefix(defaultPath, "/")]
-			if exists {
-				path = skymodules.EnsurePrefix(defaultPath, "/")
-			}
+			// Now that we know that we have a valid configuration we are
+			// replacing the error writer, so we can serve custom error content.
+			ew = newCustomErrorWriter(metadata, streamer)
 		}
 	}
 	var isSubfile bool

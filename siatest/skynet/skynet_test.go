@@ -801,7 +801,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 				},
 			},
 			Length:   uint64(len(rootFile.Data) + len(nestedFile.Data)),
-			TryFiles: []string{"index.html"},
+			TryFiles: skymodules.DefaultTryFilesValue,
 		}
 		if !reflect.DeepEqual(expected, fileMetadata) {
 			t.Log("Expected:", expected)
@@ -835,7 +835,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	// Define test function
 	largeTestFunc := func(files []siatest.TestFile, fileName, skykeyName string) {
 		// Upload the skyfile
-		skylink, sup, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(fileName, files, "", false, []string{"index.html"}, nil, false, nil, skykeyName, skykey.SkykeyID{})
+		skylink, sup, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(fileName, files, "", false, skymodules.DefaultTryFilesValue, nil, false, nil, skykeyName, skykey.SkykeyID{})
 		if err != nil {
 			t.Fatal(err)
 		}

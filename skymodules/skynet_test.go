@@ -632,3 +632,220 @@ func TestIsSkynetDir(t *testing.T) {
 		}
 	}
 }
+
+// TestDeterminePathBasedOnTryFiles makes sure we make the right decisions
+// when choosing paths.
+func TestDeterminePathBasedOnTryFiles(t *testing.T) {
+	tfWithGlobalIndex := []string{"good-news/index.html", "index.html", "/index.html"}
+	tfNoGlobalIndex := []string{"index.html", "good-news/index.html"}
+	tfNoIndex := []string{"good-news/index.html"}
+
+	subfiles := SkyfileSubfiles{
+		"index.html": SkyfileSubfileMetadata{
+			Filename: "index.html",
+		},
+		"404.html": SkyfileSubfileMetadata{
+			Filename: "404.html",
+		},
+		"about/index.html": SkyfileSubfileMetadata{
+			Filename: "about/index.html",
+		},
+		"news/good-news/index.html": SkyfileSubfileMetadata{
+			Filename: "news/good-news/index.html",
+		},
+		"img/image.html": SkyfileSubfileMetadata{
+			Filename: "img/image.html",
+		},
+	}
+
+	tests := []struct {
+		name              string
+		tryfiles          []string
+		requestPath       string
+		expectedPath      string
+		expectedDifferent bool
+	}{
+		// Global index
+		{
+			name:              "global index, request path ''",
+			tryfiles:          tfWithGlobalIndex,
+			requestPath:       "",
+			expectedPath:      "/index.html",
+			expectedDifferent: true,
+		},
+		{
+			name:              "global index, request path '/about'",
+			tryfiles:          tfWithGlobalIndex,
+			requestPath:       "/about",
+			expectedPath:      "/about/index.html",
+			expectedDifferent: true,
+		},
+		{
+			name:              "global index, request path '/news/noexist.html'",
+			tryfiles:          tfWithGlobalIndex,
+			requestPath:       "/news/noexist.html",
+			expectedPath:      "/index.html",
+			expectedDifferent: true,
+		},
+		{
+			name:              "global index, request path '/news/bad-news'",
+			tryfiles:          tfWithGlobalIndex,
+			requestPath:       "/news/bad-news",
+			expectedPath:      "/index.html",
+			expectedDifferent: true,
+		},
+		{
+			name:              "global index, request path '/news/good-news'",
+			tryfiles:          tfWithGlobalIndex,
+			requestPath:       "/news/good-news",
+			expectedPath:      "/news/good-news/index.html",
+			expectedDifferent: true,
+		},
+		{
+			name:              "global index, request path '/img/noexist.png'",
+			tryfiles:          tfWithGlobalIndex,
+			requestPath:       "/img/noexist.png",
+			expectedPath:      "/index.html",
+			expectedDifferent: true,
+		},
+		// No global index
+		{
+			name:              "no global index, request path ''",
+			tryfiles:          tfNoGlobalIndex,
+			requestPath:       "",
+			expectedPath:      "/index.html",
+			expectedDifferent: true,
+		},
+		{
+			name:              "no global index, request path '/index.html'",
+			tryfiles:          tfNoGlobalIndex,
+			requestPath:       "/index.html",
+			expectedPath:      "/index.html",
+			expectedDifferent: false,
+		},
+		{
+			name:              "no global index, request path '/about'",
+			tryfiles:          tfNoGlobalIndex,
+			requestPath:       "/about",
+			expectedPath:      "/about/index.html",
+			expectedDifferent: true,
+		},
+		{
+			name:              "no global index, request path '/about/index.html'",
+			tryfiles:          tfNoGlobalIndex,
+			requestPath:       "/about/index.html",
+			expectedPath:      "/about/index.html",
+			expectedDifferent: false,
+		},
+		{
+			name:              "no global index, request path '/news/noexist.html'",
+			tryfiles:          tfNoGlobalIndex,
+			requestPath:       "/news/noexist.html",
+			expectedPath:      "/news/noexist.html",
+			expectedDifferent: false,
+		},
+		{
+			name:              "no global index, request path '/news/bad-news'",
+			tryfiles:          tfNoGlobalIndex,
+			requestPath:       "/news/bad-news",
+			expectedPath:      "/news/bad-news",
+			expectedDifferent: false,
+		},
+		{
+			name:              "no global index, request path '/news/good-news'",
+			tryfiles:          tfNoGlobalIndex,
+			requestPath:       "/news/good-news",
+			expectedPath:      "/news/good-news/index.html",
+			expectedDifferent: true,
+		},
+		// No index
+		{
+			name:              "no index, request path ''",
+			requestPath:       "",
+			expectedPath:      "",
+			expectedDifferent: false,
+		},
+		{
+			name:              "no index, request path '/index.html'",
+			tryfiles:          tfNoIndex,
+			requestPath:       "/index.html",
+			expectedPath:      "/index.html",
+			expectedDifferent: false,
+		},
+		{
+			name:              "no index, request path '/about'",
+			tryfiles:          tfNoIndex,
+			requestPath:       "/about",
+			expectedPath:      "/about",
+			expectedDifferent: false,
+		},
+		{
+			name:              "no index, request path '/about/index.html'",
+			tryfiles:          tfNoIndex,
+			requestPath:       "/about/index.html",
+			expectedPath:      "/about/index.html",
+			expectedDifferent: false,
+		},
+		{
+			name:              "no index, request path '/news/noexist.html'",
+			tryfiles:          tfNoIndex,
+			requestPath:       "/news/noexist.html",
+			expectedPath:      "/news/noexist.html",
+			expectedDifferent: false,
+		},
+		{
+			name:              "no index, request path '/news/bad-news'",
+			tryfiles:          tfNoIndex,
+			requestPath:       "/news/bad-news",
+			expectedPath:      "/news/bad-news",
+			expectedDifferent: false,
+		},
+		{
+			name:              "no index, request path '/news'",
+			tryfiles:          tfNoIndex,
+			requestPath:       "/news",
+			expectedPath:      "/news/good-news/index.html",
+			expectedDifferent: true,
+		},
+		{
+			name:              "no index, request path '/news/good-news'",
+			tryfiles:          tfNoIndex,
+			requestPath:       "/news/good-news",
+			expectedPath:      "/news/good-news",
+			expectedDifferent: false,
+		},
+	}
+
+	meta := SkyfileMetadata{
+		TryFiles: tfWithGlobalIndex,
+	}
+	path, diff := meta.determinePathBasedOnTryfiles("anypath")
+	if path != "anypath" {
+		t.Fatalf("Expected path to be 'anypath', got '%s'", path)
+	}
+	if diff {
+		t.Fatal("Expected path to be marked as not different.")
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			meta := SkyfileMetadata{
+				Subfiles: subfiles,
+				TryFiles: tt.tryfiles,
+			}
+			path, diff = meta.determinePathBasedOnTryfiles(tt.requestPath)
+			if path != tt.expectedPath {
+				t.Log("Test name:", tt.name)
+				t.Fatalf("Expected path to be '%s', got '%s'", tt.expectedPath, path)
+			}
+			if diff != tt.expectedDifferent {
+				t.Log("Test name:", tt.name)
+				if tt.expectedDifferent {
+					t.Fatal("Expected path to be marked as different.")
+				} else {
+					t.Fatal("Expected path to be marked as not different.")
+				}
+			}
+		})
+	}
+}

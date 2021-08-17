@@ -219,25 +219,25 @@ type customErrorWriter struct {
 // WriteError checks whether there's custom content configured for the
 // given error code and writes it the writer, otherwise it sends the standard
 // error content.
-func (ew customErrorWriter) WriteError(w http.ResponseWriter, err Error, code int) {
+func (ew customErrorWriter) WriteError(w http.ResponseWriter, e Error, code int) {
 	// If we don't have a custom error page for this error code just serve the
 	// standard response.
 	if _, exist := ew.staticMetadata.ErrorPages[code]; !exist {
-		WriteError(w, err, code)
+		WriteError(w, e, code)
 		return
 	}
-	contentReader, contentType, e := ew.customContent(code)
-	if e != nil {
-		build.Critical("Failed to fetch custom error content which should exist:", e)
-		WriteError(w, err, code)
+	contentReader, contentType, err := ew.customContent(code)
+	if err != nil {
+		build.Critical("Failed to fetch custom error content which should exist:", err)
+		WriteError(w, e, code)
 		return
 	}
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set(SkynetCustomStatusCodeHeader, strconv.Itoa(code))
 	w.WriteHeader(code)
-	_, e = io.Copy(w, contentReader)
-	if e != nil {
-		build.Critical("Failed to write custom error content:", e)
+	_, err = io.Copy(w, contentReader)
+	if err != nil {
+		build.Critical("Failed to write custom error content:", err)
 	}
 }
 
@@ -255,7 +255,7 @@ func (ew *customErrorWriter) customContent(status int) (io.Reader, string, error
 	}
 	_, err := ew.staticStreamer.Seek(int64(offset), io.SeekStart)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to serve custom contents for status code %s, invalid offset, error '%s'", status, err.Error())
+		return nil, "", fmt.Errorf("failed to serve custom contents for status code %d, invalid offset, error '%s'", status, err.Error())
 	}
 	return io.LimitReader(ew.staticStreamer, int64(size)), metadataForPath.ContentType(), nil
 }
@@ -498,7 +498,7 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 	// if we don't have any tryfiles defined, and we don't have a defaultpath or
 	// disabledefaultpath, we want to default to tryfiles with index.html
 	if len(tryFiles) == 0 && defaultPath == "" && disableDefaultPath == false {
-		tryFiles = []string{"index.html"}
+		tryFiles = skymodules.DefaultTryFilesValue
 	}
 
 	errPages, err := ParseErrorPages(queryForm.Get("errorpages"))
@@ -820,10 +820,10 @@ func attachRegistryEntryProof(w http.ResponseWriter, srvs []skymodules.RegistryE
 
 // ParseErrorPages unmarshals an errorpages string into an map[int]string.
 func ParseErrorPages(s string) (map[int]string, error) {
-	if len(s) == 0 {
-		return map[int]string{}, nil
-	}
 	var errPages map[int]string
+	if len(s) == 0 {
+		return errPages, nil
+	}
 	err := json.Unmarshal([]byte(s), &errPages)
 	if err != nil {
 		return nil, errors.AddContext(err, "invalid errorpages value")
@@ -842,31 +842,4 @@ func ParseTryFiles(s string) ([]string, error) {
 		return nil, errors.AddContext(err, "invalid tryfiles value")
 	}
 	return tf, nil
-}
-
-// determinePathBasedOnTryfiles determines if we should serve a different path
-// based on the given metadata. It also returns a boolean which tells us whether
-// the returned path is different from the provided path.
-func determinePathBasedOnTryfiles(path string, subfiles skymodules.SkyfileSubfiles, tryfiles []string) (string, bool) {
-	if subfiles == nil {
-		return path, false
-	}
-	file := strings.Trim(path, "/")
-	if _, exists := subfiles[file]; !exists {
-		for _, tf := range tryfiles {
-			// If we encounter an absolute-path tryfile, and it exists, we stop
-			// searching.
-			_, exists = subfiles[strings.Trim(tf, "/")]
-			if strings.HasPrefix(tf, "/") && exists {
-				return tf, true
-			}
-			// Assume the request is for a directory and check if a
-			// tryfile matches.
-			potentialFilename := strings.Trim(strings.TrimSuffix(file, "/")+skymodules.EnsurePrefix(tf, "/"), "/")
-			if _, exists = subfiles[potentialFilename]; exists {
-				return skymodules.EnsurePrefix(potentialFilename, "/"), true
-			}
-		}
-	}
-	return path, false
 }

@@ -119,7 +119,7 @@ func testSingleFileMultiPart(t *testing.T, tg *siatest.TestGroup) {
 	// Define test function
 	multiFileTest := func(filename, skykeyName string, files []siatest.TestFile) {
 		// Portal 1 uploads the multipart skyfile
-		skylink, sup, _, err := portal1.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, []string{"index.html"}, nil, false, nil, skykeyName, skykey.SkykeyID{})
+		skylink, sup, _, err := portal1.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, skymodules.DefaultTryFilesValue, nil, false, nil, skykeyName, skykey.SkykeyID{})
 		if err != nil {
 			t.Fatalf("Test %v failed to upload: %v", filename, err)
 		}
@@ -248,7 +248,7 @@ func testDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 	// Define test function
 	directoryTest := func(filename, skykeyName string, files []siatest.TestFile) {
 		// Portal 1 uploads the directory
-		skylink, sup, _, err := portal1.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, []string{"index.html"}, nil, false, nil, skykeyName, skykey.SkykeyID{})
+		skylink, sup, _, err := portal1.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, skymodules.DefaultTryFilesValue, nil, false, nil, skykeyName, skykey.SkykeyID{})
 		if err != nil {
 			t.Fatalf("Test %v failed to upload: %v", filename, err)
 		}

@@ -325,12 +325,13 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 		}
 	}
 
-	// validate default path (only if default path was not explicitly disabled)
-	if !metadata.DisableDefaultPath {
-		metadata.DefaultPath, err = validateDefaultPath(metadata.DefaultPath, metadata.Subfiles)
-		if err != nil {
-			return errors.Compose(ErrInvalidDefaultPath, err)
-		}
+	if metadata.DisableDefaultPath && metadata.DefaultPath != "" {
+		return errors.New("invalid defaultpath state - both defaultpath and disabledefaultpath are set, please specify a format if you want to download this skyfile")
+	}
+
+	metadata.DefaultPath, err = validateDefaultPath(metadata.DefaultPath, metadata.Subfiles)
+	if err != nil {
+		return errors.Compose(ErrInvalidDefaultPath, err)
 	}
 
 	// tryfiles are incompatible with defaultpath and disabledefaultpath
@@ -414,7 +415,15 @@ func validateDefaultPath(defaultPath string, subfiles SkyfileSubfiles) (string, 
 	if defaultPath == "" {
 		return defaultPath, nil
 	}
+	if len(subfiles) == 0 {
+		return "", errors.New("defaultpath is not allowed on single files")
+	}
+
 	defaultPath = EnsurePrefix(defaultPath, "/")
+
+	if strings.Count(defaultPath, "/") > 1 && len(subfiles) > 1 {
+		return "", fmt.Errorf("skyfile has invalid default path which refers to a non-root file")
+	}
 
 	// check if we have a subfile at the given default path.
 	_, found := subfiles[strings.TrimPrefix(defaultPath, "/")]
