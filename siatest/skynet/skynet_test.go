@@ -5503,7 +5503,7 @@ func TestSkynetSkylinkHealth(t *testing.T) {
 
 	// Assert its health.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		return assertHealth(skylink, siatest.DefaulTestingBaseChunkRedundancy, 1.0)
+		return assertHealth(skylink, siatest.DefaulTestingBaseChunkRedundancy, 100)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -5522,29 +5522,33 @@ func TestSkynetSkylinkHealth(t *testing.T) {
 	}
 
 	// Assert its health.
-	err = assertHealth(skylink2, skylink2BaseSectorRedundancy, 1.0)
+	err = assertHealth(skylink2, skylink2BaseSectorRedundancy, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Take a host offline.
-	err = tg.RemoveNode(tg.Hosts()[0])
-	if err != nil {
-		t.Fatal(err)
+	// Take two hosts offline.
+	hosts := tg.Hosts()
+	for i := 0; i < 2; i++ {
+		err = tg.RemoveNode(hosts[i])
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// Check health again.
-	// The first file should either have a base sector redundancy of 1 or 2
-	// depending on whether the host we took offline had a piece. 1 of the
-	// fanout pieces is missing so the health is 75%.
-	err1 := assertHealth(skylink, siatest.DefaulTestingBaseChunkRedundancy-1, 0.75)
-	err2 := assertHealth(skylink, siatest.DefaulTestingBaseChunkRedundancy, 0.75)
-	if err1 != nil && err2 != nil {
+	// The first file should either have a base sector redundancy of 0 to 2
+	// depending on whether the hosts we took offline had a piece. 2 of the
+	// fanout pieces are missing so the health is 75%.
+	err1 := assertHealth(skylink, siatest.DefaulTestingBaseChunkRedundancy-2, 75)
+	err2 := assertHealth(skylink, siatest.DefaulTestingBaseChunkRedundancy-1, 75)
+	err3 := assertHealth(skylink, siatest.DefaulTestingBaseChunkRedundancy, 75)
+	if err1 != nil && err2 != nil && err3 != nil {
 		t.Fatal(errors.Compose(err1, err2))
 	}
 	// The second file should have a base sector redundancy of 4. 1 of the
 	// fanout pieces is missing so the health is 75%.
-	err = assertHealth(skylink2, skylink2BaseSectorRedundancy-1, 0.75)
+	err = assertHealth(skylink2, skylink2BaseSectorRedundancy-2, 75)
 	if err != nil {
 		t.Fatal(err)
 	}
