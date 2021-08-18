@@ -565,6 +565,73 @@ func TestFileHealth(t *testing.T) {
 	}
 }
 
+// TestShrink is a unit test for the Shrink method.
+func TestShrink(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Declare a check method.
+	checkFile := func(sf *SiaFile, numChunks, size, diskSize uint64) error {
+		if numChunks != sf.NumChunks() {
+			return fmt.Errorf("Expected %v chunks but was %v", numChunks, sf.NumChunks())
+		}
+		if size != sf.Size() {
+			return fmt.Errorf("Expected size to be %v but was %v", size, sf.Size())
+		}
+		fi, err := os.Stat(sf.siaFilePath)
+		if err != nil {
+			return err
+		}
+		if fi.Size() != int64(diskSize) {
+			return fmt.Errorf("Expected diskSize to be %v but was %v", diskSize, fi.Size())
+		}
+		return nil
+	}
+
+	// Create a siafile with 3 chunks.
+	siaFilePath, _, source, rc, sk, _, _, fileMode := newTestFileParams(1, false)
+	numChunks := 3
+	chunkSize := skymodules.ChunkSize(crypto.TypeDefaultRenter, uint64(rc.MinPieces()))
+	fileSize := chunkSize*uint64(numChunks) - 1 // last chunk is partial
+	sf, _, _ := customTestFileAndWAL(siaFilePath, source, rc, sk, fileSize, numChunks, fileMode)
+
+	// Check initial file. The initial size is 3 full pages + a marshaled
+	// piece. One page for the metadata, 2 for the first 2 chunks and the
+	// empty chunk at the end.
+	if err := checkFile(sf, 3, fileSize, 3*pageSize+uint64(marshaledChunkSize(0))); err != nil {
+		t.Fatal(err)
+	}
+
+	// Shrink to 2 chunks.
+	err := sf.Shrink(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := checkFile(sf, 2, 2*chunkSize, 3*pageSize); err != nil {
+		t.Fatal(err)
+	}
+
+	// Shrink to 0 chunks.
+	err = sf.Shrink(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := checkFile(sf, 0, 0, pageSize); err != nil {
+		t.Fatal(err)
+	}
+
+	// Shrink to 1 chunk. Should fail.
+	err = sf.Shrink(1)
+	if !errors.Contains(err, errShrinkWithTooManyChunks) {
+		t.Fatal("growing the file should fail", err)
+	}
+	if err := checkFile(sf, 0, 0, pageSize); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestGrowNumChunks is a unit test for the SiaFile's GrowNumChunks method.
 func TestGrowNumChunks(t *testing.T) {
 	if testing.Short() {

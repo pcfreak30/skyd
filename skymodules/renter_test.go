@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"gitlab.com/NebulousLabs/fastrand"
@@ -466,4 +467,63 @@ func testDownloadOverdriveStats_NumOverdriveWorkersAvg(t *testing.T) {
 	if math.Abs(expected-stats.NumOverdriveWorkersAvg()) <= 1e-9 {
 		t.Fatal("bad", stats.NumOverdriveWorkersAvg())
 	}
+}
+
+// TestContractUtilityMerge is a unit test for the ContractUtility type's Merge
+// method.
+func TestContractUtilityMerge(t *testing.T) {
+	goodUtility := ContractUtility{
+		GoodForUpload: true,
+		GoodForRenew:  true,
+	}
+
+	utility := func(gfu, gfr, bc, locked bool, lastOOSErr types.BlockHeight) ContractUtility {
+		return ContractUtility{
+			GoodForUpload: gfu,
+			GoodForRenew:  gfr,
+			BadContract:   bc,
+			Locked:        locked,
+			LastOOSErr:    lastOOSErr,
+		}
+	}
+
+	assert := func(cu1, cu2 ContractUtility) {
+		if !reflect.DeepEqual(cu1, cu2) {
+			t.Fatalf("%v != %v", cu1, cu2)
+		}
+	}
+
+	// Good utilities
+	result := goodUtility.Merge(goodUtility)
+	assert(result, goodUtility)
+
+	// !gfu
+	u := utility(false, true, false, false, 0)
+	result = goodUtility.Merge(u)
+	assert(result, u)
+
+	// !gfr
+	u = utility(true, false, false, false, 0)
+	result = goodUtility.Merge(u)
+	assert(result, u)
+
+	// bad contract
+	u = utility(true, true, true, false, 0)
+	result = goodUtility.Merge(u)
+	assert(result, u)
+
+	// lastOOSErr
+	u = utility(true, true, false, false, 1)
+	result = goodUtility.Merge(u)
+	assert(result, u)
+
+	// locked
+	u = utility(true, true, false, true, 0)
+	result = goodUtility.Merge(u)
+	assert(result, u)
+
+	// everything bad
+	u = utility(false, false, true, true, 1)
+	result = goodUtility.Merge(u)
+	assert(result, u)
 }
