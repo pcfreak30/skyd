@@ -255,10 +255,10 @@ type Renter struct {
 	statsMu   sync.Mutex
 
 	// various performance stats
-	staticBaseSectorDownloadStats   *skymodules.SectorDownloadStats
+	staticBaseSectorDownloadStats   *skymodules.DownloadOverdriveStats
 	staticBaseSectorUploadStats     *skymodules.DistributionTracker
 	staticChunkUploadStats          *skymodules.DistributionTracker
-	staticFanoutSectorDownloadStats *skymodules.SectorDownloadStats
+	staticFanoutSectorDownloadStats *skymodules.DownloadOverdriveStats
 	staticRegReadStats              *skymodules.DistributionTracker
 	staticRegWriteStats             *skymodules.DistributionTracker
 	staticStreamBufferStats         *skymodules.DistributionTracker
@@ -803,13 +803,13 @@ func (r *Renter) Performance() (skymodules.RenterPerformance, error) {
 	return skymodules.RenterPerformance{
 		SystemHealthScanDuration: healthDuration,
 
-		BaseSectorDownloadStats:   r.staticBaseSectorDownloadStats,
-		BaseSectorUploadStats:     r.staticBaseSectorUploadStats.Stats(),
-		ChunkUploadStats:          r.staticChunkUploadStats.Stats(),
-		FanoutSectorDownloadStats: r.staticFanoutSectorDownloadStats,
-		RegistryReadStats:         r.staticRegReadStats.Stats(),
-		RegistryWriteStats:        r.staticRegWriteStats.Stats(),
-		StreamBufferReadStats:     r.staticStreamBufferStats.Stats(),
+		BaseSectorDownloadOverdriveStats:   r.staticBaseSectorDownloadStats,
+		BaseSectorUploadStats:              r.staticBaseSectorUploadStats.Stats(),
+		ChunkUploadStats:                   r.staticChunkUploadStats.Stats(),
+		FanoutSectorDownloadOverdriveStats: r.staticFanoutSectorDownloadStats,
+		RegistryReadStats:                  r.staticRegReadStats.Stats(),
+		RegistryWriteStats:                 r.staticRegWriteStats.Stats(),
+		StreamBufferReadStats:              r.staticStreamBufferStats.Stats(),
 	}, nil
 }
 

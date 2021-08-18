@@ -109,8 +109,8 @@ type DirListFunc func(DirectoryInfo)
 type RenterPerformance struct {
 	SystemHealthScanDuration time.Duration
 
-	BaseSectorDownloadStats   *SectorDownloadStats
-	FanoutSectorDownloadStats *SectorDownloadStats
+	BaseSectorDownloadOverdriveStats   *DownloadOverdriveStats
+	FanoutSectorDownloadOverdriveStats *DownloadOverdriveStats
 
 	BaseSectorUploadStats *DistributionTrackerStats
 	ChunkUploadStats      *DistributionTrackerStats
@@ -119,10 +119,10 @@ type RenterPerformance struct {
 	StreamBufferReadStats *DistributionTrackerStats
 }
 
-// SectorDownloadStats is a helper struct that contains information about the
+// DownloadOverdriveStats is a helper struct that contains information about the
 // sector downloads, it keeps track of what percentage of downloads we overdrive
 // and how many overdrive workers get launched.
-type SectorDownloadStats struct {
+type DownloadOverdriveStats struct {
 	// total keeps track of the total amount of downloads
 	total uint64
 
@@ -137,16 +137,16 @@ type SectorDownloadStats struct {
 	mu sync.Mutex
 }
 
-// NewSectorDownloadStats returns a new SectorDownloadStats object.
-func NewSectorDownloadStats() *SectorDownloadStats {
-	return &SectorDownloadStats{}
+// NewSectorDownloadStats returns a new DownloadOverdriveStats object.
+func NewSectorDownloadStats() *DownloadOverdriveStats {
+	return &DownloadOverdriveStats{}
 }
 
 // OverdrivePct returns the frequency with which we overdrive when downloading a
 // sector. The frequency is expressed as a percentage of overall downloads. E.g.
 // an overdrive pct of 0.6 means we launch at least one overdrive worker 60% of
 // the time.
-func (ds *SectorDownloadStats) OverdrivePct() float64 {
+func (ds *DownloadOverdriveStats) OverdrivePct() float64 {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 
@@ -158,7 +158,7 @@ func (ds *SectorDownloadStats) OverdrivePct() float64 {
 
 // NumOverdriveWorkersAvg returns the average amount of overdrive workers we
 // launch.
-func (ds *SectorDownloadStats) NumOverdriveWorkersAvg() float64 {
+func (ds *DownloadOverdriveStats) NumOverdriveWorkersAvg() float64 {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 
@@ -171,7 +171,7 @@ func (ds *SectorDownloadStats) NumOverdriveWorkersAvg() float64 {
 // AddDataPoint adds a data point to the statistics, it takes one parameter
 // called 'numOverdriveWorkers' which represents the amount of overdrive workers
 // launched.
-func (ds *SectorDownloadStats) AddDataPoint(numOverdriveWorkers uint64) {
+func (ds *DownloadOverdriveStats) AddDataPoint(numOverdriveWorkers uint64) {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 
@@ -419,6 +419,23 @@ type ContractUtility struct {
 	// If a contract is locked, the utility should not be updated. 'Locked' is a
 	// value that gets persisted.
 	Locked bool `json:"locked"`
+}
+
+// Merge merges two contract utilities by giving priority to the worse fields.
+// So for example a utility that is !gfu that is merged with a utility that is
+// gfu will result in !gfu whereas locked and !locked results in locked.
+func (cu ContractUtility) Merge(cu2 ContractUtility) ContractUtility {
+	lastOOS := cu.LastOOSErr
+	if cu2.LastOOSErr > lastOOS {
+		lastOOS = cu2.LastOOSErr
+	}
+	return ContractUtility{
+		GoodForUpload: cu.GoodForUpload && cu2.GoodForUpload,
+		GoodForRenew:  cu.GoodForRenew && cu2.GoodForRenew,
+		BadContract:   cu.BadContract || cu2.BadContract,
+		LastOOSErr:    lastOOS,
+		Locked:        cu.Locked || cu2.Locked,
+	}
 }
 
 // ContractWatchStatus provides information about the status of a contract in
@@ -1330,6 +1347,14 @@ type Renter interface {
 	// closed. Otherwise the response with the highest revision number will be
 	// used.
 	ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (RegistryEntry, error)
+
+	// RegistryEntryHealth returns the health of a registry entry specified by
+	// either the spk and tweak or the rid.
+	RegistryEntryHealth(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (RegistryEntryHealth, error)
+
+	// RegistryEntryHealth returns the health of a registry entry specified by
+	// either the spk and tweak or the rid.
+	RegistryEntryHealthRID(ctx context.Context, rid modules.RegistryEntryID) (RegistryEntryHealth, error)
 
 	// ReadRegistryRID starts a registry lookup on all available workers.
 	// The jobs have time to finish their jobs and return a response until
