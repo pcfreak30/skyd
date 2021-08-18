@@ -318,6 +318,12 @@ func NewDependencyInterruptNewStreamTimeout() *DependencyWithDisableAndEnable {
 	return newDependencywithDisableAndEnable("InterruptNewStreamTimeout")
 }
 
+// NewDependencyInterruptHostScan is a dependency that interrupts the host scan
+// and ensures hosts will be considered offline if the dependency is enabled.
+func NewDependencyInterruptHostScan() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("InterruptHostScan")
+}
+
 // NewDependencyInterruptUploadBeforeSendingRevision creates a new dependency
 // that interrupts the upload on the renter side before sending the signed
 // revision to the host.
