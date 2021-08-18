@@ -15,19 +15,18 @@ import (
 )
 
 const (
+	// availabilityMetricsBucketScale is the amount with which we scale each
+	// bucket. Every bucket scales up 25%, this number was chosen because it
+	// provides sufficient granular coverage. Using this scale the buckets are:
+	// 1, 2, 3, 4-5, 6-7, 8-10, 11-13, 14-17, 18-22, 23-28, 29-36, ..., 93-116
+	availabilityMetricsBucketScale = 1.25
+
 	// availabilityMetricsNumBuckets is the total number of buckets we use to
 	// track the sector availability metrics for a certain host. Every bucket
 	// represents a range of total pieces uploaded to the network, the total
-	// amount of pieces is decided by the redundancy scheme used during the
+	// number of pieces is decided by the redundancy scheme used during the
 	// upload.
 	availabilityMetricsNumBuckets = 16
-
-	// availabilityMetricsBucketScale is the amount with which we scale each
-	// bucket. Every bucket scales up 25%, this number was chosen because it
-	// provides sufficiently granularity of coverage. E.g. using this scale the
-	// buckets are the following: 1, 2, 3, 4-5, 6-7, 8-10, 11-13, 14-17, 18-22,
-	// 23-28, 29-36,...
-	availabilityMetricsBucketScale = 1.25
 
 	// jobHasSectorPerformanceDecay defines how much the average performance is
 	// decayed each time a new datapoint is added. The jobs use an exponential
@@ -134,8 +133,10 @@ func newAvailabilityMetrics() *availabilityMetrics {
 		piecesToBucketIndex: make(map[uint64]int),
 	}
 
-	// initialize the buckets and a map that can be used to lookup what bucket
-	// corresponds to what number of pieces in constant time
+	// initialize the buckets and a map that's used for constant time lookups,
+	// this prevents us from calculating what bucket index the given number of
+	// pieces corresponds to. The map won't grow large and every queue has only
+	// one.
 	curr := uint64(1)
 	for bucket := 0; bucket < availabilityMetricsNumBuckets; bucket++ {
 		metrics.buckets[bucket] = &availabilityBucket{}
@@ -156,8 +157,7 @@ func newAvailabilityMetrics() *availabilityMetrics {
 	return metrics
 }
 
-// bucket returns the bucket that corresponds with the given amount of pieces
-// that represents the redundancy scheme with which a sector was uploaded
+// bucket will return the bucket corresponding with 'numPieces'
 func (am *availabilityMetrics) bucket(numPieces uint64) *availabilityBucket {
 	bucketIndex, exists := am.piecesToBucketIndex[numPieces]
 	if !exists {
@@ -167,7 +167,7 @@ func (am *availabilityMetrics) bucket(numPieces uint64) *availabilityBucket {
 }
 
 // updateMetrics will update the availability metrics for the bucket
-// corresponding with the given 'numPieces' parameter.
+// corresponding with 'numPieces'
 func (am *availabilityMetrics) updateMetrics(numPieces int, availables []bool) {
 	if numPieces < 1 {
 		build.Critical("num pieces can never be smaller than 1")
