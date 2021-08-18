@@ -268,7 +268,7 @@ func TestWorkerOfflineHost(t *testing.T) {
 	t.Parallel()
 
 	// create a dependency that allows interrupting host scans, simulating the
-	// behaviour a host goes offline
+	// behaviour of a host going offline
 	deps := dependencies.NewDependencyInterruptHostScan()
 	deps.Disable()
 
@@ -285,13 +285,12 @@ func TestWorkerOfflineHost(t *testing.T) {
 
 	// assert the worker pool has a worker
 	//
-	// NOTE: this is actually redundant because the worker tester will have
-	// verified this already, however we do it anyway to ensure this check takes
-	// place, but we can set a very short retry
+	// NOTE: this is redundant because the worker tester will have verified this
+	// already, we check it anyway here to ensure this check takes place
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		workers := wt.rt.renter.staticWorkerPool.callWorkers()
 		if len(workers) == 0 {
-			return errors.New("no worker")
+			return errors.New("no workers in pool")
 		}
 		return nil
 	})
@@ -313,13 +312,13 @@ func TestWorkerOfflineHost(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// assert the worker gets re-added if its host comes online again
+	// assert the worker gets re-added to the pool if its host comes online
 	deps.Disable()
 	err = build.Retry(600, 100*time.Millisecond, func() error {
 		workers := wt.rt.renter.staticWorkerPool.callWorkers()
 		if len(workers) == 0 {
 			wt.rt.renter.staticWorkerPool.callUpdate()
-			return errors.New("no worker")
+			return errors.New("no workers in pool")
 		}
 		return nil
 	})
