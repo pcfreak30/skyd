@@ -340,7 +340,14 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rdg.Files) != 1 {
+	found := false
+	for _, f := range rdg.Files {
+		if f.Skylinks[0] == skylink {
+			found = true
+			break
+		}
+	}
+	if !found {
 		t.Fatal("expecting a file to be in the SkynetFolder after uploading")
 	}
 
@@ -3929,7 +3936,7 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 			files:                multiNoIndex,
 			defaultPath:          dirAbout,
 			expectedContent:      nil,
-			expectedErrStrUpload: "the default path must point to a file in the root directory of the skyfile",
+			expectedErrStrUpload: "skyfile has invalid default path which refers to a non-root file",
 		},
 	}
 

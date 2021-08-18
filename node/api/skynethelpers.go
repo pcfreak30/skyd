@@ -228,7 +228,8 @@ func (ew customErrorWriter) WriteError(w http.ResponseWriter, e Error, code int)
 	}
 	contentReader, contentType, err := ew.customContent(code)
 	if err != nil {
-		build.Critical("Failed to fetch custom error content which should exist:", err)
+		crtiicalMsg := fmt.Sprintf("Failed to fetch custom error content which should exist.\ntryfiles: %+v\nsubfiles: %+v\nerror: %+v\n", ew.staticMetadata.TryFiles, ew.staticMetadata.Subfiles, err)
+		build.Critical(crtiicalMsg)
 		WriteError(w, e, code)
 		return
 	}
@@ -488,7 +489,7 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 	}
 
 	// parse 'tryfiles' query parameter
-	tryFiles, err := ParseTryFiles(queryForm.Get("tryfiles"))
+	tryFiles, err := UnmarshalTryFiles(queryForm.Get("tryfiles"))
 	if err != nil {
 		return nil, nil, errors.AddContext(err, "unable to parse 'tryfiles' parameter")
 	}
@@ -501,7 +502,7 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		tryFiles = skymodules.DefaultTryFilesValue
 	}
 
-	errPages, err := ParseErrorPages(queryForm.Get("errorpages"))
+	errPages, err := UnmarshalErrorPages(queryForm.Get("errorpages"))
 	if err != nil {
 		return nil, nil, errors.AddContext(err, "invalid errorpages parameter")
 	}
@@ -818,8 +819,8 @@ func attachRegistryEntryProof(w http.ResponseWriter, srvs []skymodules.RegistryE
 	return nil
 }
 
-// ParseErrorPages unmarshals an errorpages string into an map[int]string.
-func ParseErrorPages(s string) (map[int]string, error) {
+// UnmarshalErrorPages unmarshals an errorpages string into an map[int]string.
+func UnmarshalErrorPages(s string) (map[int]string, error) {
 	var errPages map[int]string
 	if len(s) == 0 {
 		return errPages, nil
@@ -831,8 +832,8 @@ func ParseErrorPages(s string) (map[int]string, error) {
 	return errPages, nil
 }
 
-// ParseTryFiles unmarshals a tryfiles string.
-func ParseTryFiles(s string) ([]string, error) {
+// UnmarshalTryFiles unmarshals a tryfiles string.
+func UnmarshalTryFiles(s string) ([]string, error) {
 	if len(s) == 0 {
 		return []string{}, nil
 	}

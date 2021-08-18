@@ -380,18 +380,18 @@ func (sm SkyfileMetadata) EffectiveDefaultPath() string {
 		return ""
 	}
 	if sm.DefaultPath == "" && !sm.DisableDefaultPath {
+		// If `defaultpath` and `disabledefaultpath` are not set and the
+		// skyfile has a single subfile we automatically default to it.
 		if len(sm.Subfiles) == 1 {
-			// If `defaultpath` and `disabledefaultpath` are not set and the
-			// skyfile has a single subfile we automatically default to it.
 			for filename := range sm.Subfiles {
 				return EnsurePrefix(filename, "/")
 			}
-		} else {
-			prefixedDefaultSkynetPath := EnsurePrefix(DefaultSkynetDefaultPath, "/")
-			for filename := range sm.Subfiles {
-				if EnsurePrefix(filename, "/") == prefixedDefaultSkynetPath {
-					return prefixedDefaultSkynetPath
-				}
+		}
+		// If the `defaultpath` is not set but the skyfiles has an `/index.html`
+		// subfile then we automatically default to that.
+		for filename := range sm.Subfiles {
+			if filename == DefaultSkynetDefaultPath {
+				return EnsurePrefix(DefaultSkynetDefaultPath, "/")
 			}
 		}
 	}
@@ -419,20 +419,26 @@ func (sm SkyfileMetadata) IsDirectory() bool {
 // ServePath takes a requested path and determines what path should be served
 // based on the existence of the requested path, defaultpath, tryfiles, etc.
 func (sm SkyfileMetadata) ServePath(path string) string {
-	// If there's a single subfile in the skyfile we want to serve it.
+	// If there's a single subfile in the skyfile we want to serve it. We don't
+	// even need to check the tryfiles.
 	if path == "/" && len(sm.Subfiles) == 1 && !sm.DisableDefaultPath {
 		for filename := range sm.Subfiles {
-			path = EnsurePrefix(filename, "/")
-			break
+			return EnsurePrefix(filename, "/")
 		}
 	}
-	defaultPath := sm.EffectiveDefaultPath()
+
+	// If there are Tryftryfilesiles, determine the servePath based on those.
 	if len(sm.TryFiles) > 0 {
-		path, _ = sm.determinePathBasedOnTryfiles(path)
-	} else if defaultPath != "" && path == "/" {
+		servePath, _ := sm.determinePathBasedOnTryfiles(path)
+		return servePath
+	}
+
+	// Check the defaultpath to determine the servePath.
+	defaultPath := sm.EffectiveDefaultPath()
+	if defaultPath != "" && path == "/" {
 		_, exists := sm.Subfiles[strings.TrimPrefix(defaultPath, "/")]
 		if exists {
-			path = EnsurePrefix(defaultPath, "/")
+			return EnsurePrefix(defaultPath, "/")
 		}
 	}
 	return path

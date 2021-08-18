@@ -906,7 +906,7 @@ func skynetUploadDirectory(sourcePath, destSiaPath string) {
 		die("Illegal combination of parameters: --tryfiles is not compatible with --defaultpath and --disabledefaultpath.")
 	}
 	tryfiles := strings.Split(skynetUploadTryFiles, ",")
-	errPages, err := api.ParseErrorPages(skynetUploadErrorPages)
+	errPages, err := api.UnmarshalErrorPages(skynetUploadErrorPages)
 	if err != nil {
 		die(err)
 	}

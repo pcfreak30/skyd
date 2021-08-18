@@ -433,7 +433,7 @@ func validateDefaultPath(defaultPath string, subfiles SkyfileSubfiles) (string, 
 
 	// ensure it's at the root of the Skyfile
 	if strings.Count(defaultPath, "/") > 1 {
-		return "", fmt.Errorf("invalid default path '%s', the default path must point to a file in the root directory of the skyfile", defaultPath)
+		return "", errors.New("skyfile has invalid default path which refers to a non-root file")
 	}
 
 	return defaultPath, nil

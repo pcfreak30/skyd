@@ -865,8 +865,8 @@ func TestAttachRegistryEntryProof(t *testing.T) {
 	}
 }
 
-// TestParseErrorPages ensures that we properly handle all string inputs.
-func TestParseErrorPages(t *testing.T) {
+// TestUnmarshalErrorPages ensures that we properly handle all string inputs.
+func TestUnmarshalErrorPages(t *testing.T) {
 	tests := []struct {
 		in  string
 		out map[int]string
@@ -898,7 +898,7 @@ func TestParseErrorPages(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		out, err := ParseErrorPages(tt.in)
+		out, err := UnmarshalErrorPages(tt.in)
 		if err != nil && tt.err == "" {
 			t.Fatal("Unexpected error", err)
 		}
@@ -913,8 +913,8 @@ func TestParseErrorPages(t *testing.T) {
 	}
 }
 
-// TestParseTryFiles ensures that we properly handle all string inputs.
-func TestParseTryFiles(t *testing.T) {
+// TestUnmarshalTryFiles ensures that we properly handle all string inputs.
+func TestUnmarshalTryFiles(t *testing.T) {
 	tests := []struct {
 		in  string
 		out []string
@@ -948,7 +948,7 @@ func TestParseTryFiles(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		out, err := ParseTryFiles(tt.in)
+		out, err := UnmarshalTryFiles(tt.in)
 		if err != nil && tt.err == "" {
 			t.Fatal("Unexpected error", err)
 		}

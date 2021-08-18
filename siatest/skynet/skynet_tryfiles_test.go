@@ -2,10 +2,12 @@ package skynet
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/siatest"
 	"gitlab.com/SkynetLabs/skyd/skykey"
 )
@@ -43,74 +45,48 @@ func testTryFilesWithRootIndex(t *testing.T, tg *siatest.TestGroup) {
 		{Name: "dir_with_idx/about.html", Data: []byte(dirWithIdxAbout)},
 		{Name: "dir_without_idx/about.html", Data: []byte(dirWithoutIdxAbout)},
 	}
+
 	skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, tf, ep, true, nil, "", skykey.SkykeyID{})
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
 	// get an existing file
-	data, err := r.SkynetSkylinkGet(skylink + "/dir_with_idx/about.html")
+	err = downloadAndCompare(r, skylink+"/dir_with_idx/about.html", []byte(dirWithIdxAbout))
 	if err != nil {
-		t.Fatal("Failed to download existing file.", err)
-	}
-	if bytes.Compare(data, []byte(dirWithIdxAbout)) != 0 {
-		t.Fatal("Data is different from the expected.")
+		t.Fatal(err)
 	}
 	// get a non-existent file from a dir with an index
 	// this will check for a file called noexist.html and when it doesn't find
 	// it, it will assume it's a dir and check for /dir_with_idx/noexist.html/index.html
 	// when it doesn't find that either it will serve /index.html
-	data, err = r.SkynetSkylinkGet(skylink + "/dir_with_idx/noexist.html")
+	err = downloadAndCompare(r, skylink+"/dir_with_idx/noexist.html", []byte(idx))
 	if err != nil {
-		t.Fatal("Failed to download local index file according to tryfiles rules.", err)
-	}
-	if bytes.Compare(data, []byte(idx)) != 0 {
-		t.Log("Expected data:", idx)
-		t.Log("Actual data:  ", string(data))
-		t.Fatal("Data is different from the expected.")
+		t.Fatal(err)
 	}
 	// request a dir with an index
-	data, err = r.SkynetSkylinkGet(skylink + "/dir_with_idx/")
+	err = downloadAndCompare(r, skylink+"/dir_with_idx/", []byte(dirWithIdxIdx))
 	if err != nil {
-		t.Fatal("Failed to download local index file according to tryfiles rules.", err)
-	}
-	if bytes.Compare(data, []byte(dirWithIdxIdx)) != 0 {
-		t.Log("Expected data:", dirWithIdxIdx)
-		t.Log("Actual data:  ", string(data))
-		t.Fatal("Data is different from the expected.")
+		t.Fatal(err)
 	}
 	// request a dir with an index without a trailing slash
-	data, err = r.SkynetSkylinkGet(skylink + "/dir_with_idx")
+	err = downloadAndCompare(r, skylink+"/dir_with_idx", []byte(dirWithIdxIdx))
 	if err != nil {
-		t.Fatal("Failed to download local index file according to tryfiles rules.", err)
-	}
-	if bytes.Compare(data, []byte(dirWithIdxIdx)) != 0 {
-		t.Log("Expected data:", dirWithIdxIdx)
-		t.Log("Actual data:  ", string(data))
-		t.Fatal("Data is different from the expected.")
+		t.Fatal(err)
 	}
 	// get a non-existent file from a dir without an index
-	data, err = r.SkynetSkylinkGet(skylink + "/dir_without_idx/noexist.html")
+	err = downloadAndCompare(r, skylink+"/dir_without_idx/noexist.html", []byte(idx))
 	if err != nil {
-		t.Fatal("Failed to download root index file according to tryfiles rules.", err)
-	}
-	if bytes.Compare(data, []byte(idx)) != 0 {
-		t.Fatal("Data is different from the expected.")
+		t.Fatal(err)
 	}
 	// request a dir without an index
-	data, err = r.SkynetSkylinkGet(skylink + "/dir_without_idx/")
+	err = downloadAndCompare(r, skylink+"/dir_without_idx/", []byte(idx))
 	if err != nil {
-		t.Fatal("Failed to download root index file according to tryfiles rules.", err)
-	}
-	if bytes.Compare(data, []byte(idx)) != 0 {
-		t.Fatal("Data is different from the expected.")
+		t.Fatal(err)
 	}
 	// get a non-existent file from root dir
-	data, err = r.SkynetSkylinkGet(skylink + "/noexist.html")
+	err = downloadAndCompare(r, skylink+"/noexist.html", []byte(idx))
 	if err != nil {
-		t.Fatal("Failed to download root index file according to tryfiles rules.", err)
-	}
-	if bytes.Compare(data, []byte(idx)) != 0 {
-		t.Fatal("Data is different from the expected.")
+		t.Fatal(err)
 	}
 }
 
@@ -131,28 +107,23 @@ func testTryFilesWithoutRootIndex(t *testing.T, tg *siatest.TestGroup) {
 		{Name: "dir_with_idx/about.html", Data: []byte(fc3)},
 		{Name: "dir_without_idx/about.html", Data: []byte(fc4)},
 	}
+
 	skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, tf, ep, true, nil, "", skykey.SkykeyID{})
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
 	// get an existing file
-	data, err := r.SkynetSkylinkGet(skylink + "/dir_with_idx/about.html")
+	err = downloadAndCompare(r, skylink+"/dir_with_idx/about.html", []byte(fc3))
 	if err != nil {
-		t.Fatal("Failed to download existing file.", err)
-	}
-	if bytes.Compare(data, []byte(fc3)) != 0 {
-		t.Fatal("Data is different from the expected.")
+		t.Fatal(err)
 	}
 	// get a dir with an index
-	data, err = r.SkynetSkylinkGet(skylink + "/dir_with_idx")
+	err = downloadAndCompare(r, skylink+"/dir_with_idx", []byte(fc2))
 	if err != nil {
-		t.Fatal("Failed to download local index file according to tryfiles rules.", err)
-	}
-	if bytes.Compare(data, []byte(fc2)) != 0 {
-		t.Fatal("Data is different from the expected.")
+		t.Fatal(err)
 	}
 	// get a non-existent file from a dir with an index
-	data, err = r.SkynetSkylinkGet(skylink + "/dir_with_idx/noexist.html")
+	_, err = r.SkynetSkylinkGet(skylink + "/dir_with_idx/noexist.html")
 	if err == nil || !strings.Contains(err.Error(), "failed to download contents for path") {
 		t.Fatal("Expected the download to fail with 'failed to download contents for path', got", err)
 	}
@@ -161,7 +132,7 @@ func testTryFilesWithoutRootIndex(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatalf("Expected status 404, got %d", status)
 	}
 	// get a non-existent file from a dir without an index
-	data, err = r.SkynetSkylinkGet(skylink + "/dir_without_idx/noexist.html")
+	_, err = r.SkynetSkylinkGet(skylink + "/dir_without_idx/noexist.html")
 	if err == nil || !strings.Contains(err.Error(), "failed to download contents for path") {
 		t.Fatal("Expected the download to fail with 'failed to download contents for path', got", err)
 	}
@@ -170,7 +141,7 @@ func testTryFilesWithoutRootIndex(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatalf("Expected status 404, got %d", status)
 	}
 	// get a non-existent file from root dir without an index
-	data, err = r.SkynetSkylinkGet(skylink + "/noexist.html")
+	_, err = r.SkynetSkylinkGet(skylink + "/noexist.html")
 	if err == nil || !strings.Contains(err.Error(), "failed to download contents for path") {
 		t.Fatal("Expected the download to fail with 'failed to download contents for path', got", err)
 	}
@@ -200,18 +171,13 @@ func testSkynetErrorPages(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// get a non-existent file
 	// we expect to receive the custom 404 content and a 404 status code
-	status, _, err := r.SkynetSkylinkHead(skylink + "/noexist.html")
+	status, _, _ := r.SkynetSkylinkHead(skylink + "/noexist.html")
 	if status != http.StatusNotFound {
 		t.Fatalf("Expected status 404, got %d", status)
 	}
-	data, err := r.SkynetSkylinkGet(skylink + "/noexist.html")
+	err = downloadAndCompare(r, skylink+"/noexist.html", []byte(fc404))
 	if err != nil {
-		t.Fatal("Unexpected error", err)
-	}
-	if bytes.Compare(data, []byte(fc404)) != 0 {
-		t.Log("Expected data:", fc404)
-		t.Log("Actual data:  ", string(data))
-		t.Fatal("Data is different from the expected.")
+		t.Fatal(err)
 	}
 }
 
@@ -442,4 +408,18 @@ func testTryFiles_TableTests(t *testing.T, tg *siatest.TestGroup) {
 			}
 		})
 	}
+}
+
+// downloadAndCompare is a helper that downloads a skylink and verifies that its
+// content matches the expected one.
+func downloadAndCompare(r *siatest.TestNode, skylink string, expectedData []byte) error {
+	data, err := r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		return errors.AddContext(err, "failed to download")
+	}
+	if bytes.Compare(data, expectedData) != 0 {
+		errMsg := fmt.Sprintf("Expected data: %s\nActual data: %s\nData is different from the expected.", string(expectedData), string(data))
+		return errors.New(errMsg)
+	}
+	return nil
 }
