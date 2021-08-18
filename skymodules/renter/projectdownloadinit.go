@@ -177,6 +177,12 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 			continue
 		}
 
+		// Ignore worker with 0 read duration.
+		readDuration := jrq.staticStats.callExpectedJobTime(pdc.pieceLength)
+		if readDuration == 0 {
+			continue
+		}
+
 		// Add the unresolved worker to the heap, setting its expected
 		// resolve time and worker.
 		workerHeap = append(workerHeap, &pdcInitialWorker{
