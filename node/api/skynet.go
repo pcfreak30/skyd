@@ -1083,8 +1083,8 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 	}
 
 	// Get the sector stats
-	baseSectorStats := renterPerf.BaseSectorDownloadStats
-	fanoutSectorStats := renterPerf.FanoutSectorDownloadStats
+	baseSectorStats := renterPerf.BaseSectorDownloadOverdriveStats
+	fanoutSectorStats := renterPerf.FanoutSectorDownloadOverdriveStats
 
 	WriteJSON(w, &SkynetStatsGET{
 		BaseSectorUpload15mDataPoints: renterPerf.BaseSectorUploadStats.DataPoints[0],

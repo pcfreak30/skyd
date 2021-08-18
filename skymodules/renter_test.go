@@ -2,6 +2,7 @@ package skymodules
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -367,5 +368,102 @@ func TestContractorSpending_SpendingBreakdown(t *testing.T) {
 	}
 	if !expectedUnspentUnallocated.Equals(unspentUnallocated) {
 		t.Fatal("unexpected")
+	}
+}
+
+// TestDownloadOverdriveStats is a collection of unit tests that verify the
+// functionality of the DownloadOverdriveStats object.
+func TestDownloadOverdriveStats(t *testing.T) {
+	t.Parallel()
+
+	t.Run("AddDataPoint", testDownloadOverdriveStats_AddDataPoint)
+	t.Run("NumOverdriveWorkersAvg", testDownloadOverdriveStats_NumOverdriveWorkersAvg)
+	t.Run("OverdrivePct", testDownloadOverdriveStats_OverdrivePct)
+}
+
+// testDownloadOverdriveStats_AddDataPoint is a unit test for the AddDataPoint
+// method on the DownloadOverdriveStats
+func testDownloadOverdriveStats_AddDataPoint(t *testing.T) {
+	t.Parallel()
+
+	// assert initial state
+	stats := NewSectorDownloadStats()
+	if stats.total != 0 ||
+		stats.overdrive != 0 ||
+		stats.overdriveWorkersLaunched != 0 {
+		t.Fatal("bad")
+	}
+
+	// add datapoint with no overdrive workers
+	stats.AddDataPoint(0)
+	if stats.total != 1 ||
+		stats.overdrive != 0 ||
+		stats.overdriveWorkersLaunched != 0 {
+		t.Fatal("bad")
+	}
+
+	// add datapoint with overdrive workers
+	stats.AddDataPoint(2)
+	if stats.total != 2 ||
+		stats.overdrive != 1 ||
+		stats.overdriveWorkersLaunched != 2 {
+		t.Fatal("bad")
+	}
+}
+
+// testDownloadOverdriveStats_OverdrivePct is a unit test for the OverdrivePct
+// method on the DownloadOverdriveStats
+func testDownloadOverdriveStats_OverdrivePct(t *testing.T) {
+	t.Parallel()
+
+	stats := NewSectorDownloadStats()
+	if stats.OverdrivePct() != 0 {
+		t.Fatal("bad")
+	}
+
+	stats.AddDataPoint(0)
+	if stats.OverdrivePct() != 0 {
+		t.Fatal("bad")
+	}
+
+	stats.AddDataPoint(1)
+	if stats.OverdrivePct() != 0.5 {
+		t.Fatal("bad")
+	}
+
+	stats.AddDataPoint(2)
+	stats.AddDataPoint(3)
+	if stats.OverdrivePct() != 0.75 {
+		t.Fatal("bad")
+	}
+}
+
+// testDownloadOverdriveStats_NumOverdriveWorkersAvg is a unit test for the
+// NumOverdriveWorkersAvg method on the DownloadOverdriveStats
+func testDownloadOverdriveStats_NumOverdriveWorkersAvg(t *testing.T) {
+	t.Parallel()
+
+	stats := NewSectorDownloadStats()
+	if stats.NumOverdriveWorkersAvg() != 0 {
+		t.Fatal("bad")
+	}
+
+	stats.AddDataPoint(0)
+	if stats.NumOverdriveWorkersAvg() != 0 {
+		t.Fatal("bad")
+	}
+
+	// this asserts that num overdrive avg includes all downloads
+	stats.AddDataPoint(2)
+	if stats.NumOverdriveWorkersAvg() != 1 {
+		t.Fatal("bad", stats.NumOverdriveWorkersAvg())
+	}
+
+	// assert the average returns floats, use 1e-9 as an equality threshold to
+	// cope with float point errors
+	stats.AddDataPoint(5)
+	expected := 2.3333
+	if math.Abs(expected-stats.NumOverdriveWorkersAvg()) <= 1e-9 {
+		t.Fatal("bad", stats.NumOverdriveWorkersAvg())
 	}
 }
