@@ -1471,6 +1471,9 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 		}
 		launchedWorkers++
 	}
+	if launchedWorkers == 0 {
+		return skymodules.SkylinkHealth{}, errors.New("no workers were launched successfully")
+	}
 
 	rootTotals := make([]uint64, len(roots))
 LOOP:
