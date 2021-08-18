@@ -112,9 +112,9 @@ type (
 	// correspond with sectors that were uploaded with a more or less similar
 	// redundancy scheme
 	availabilityMetrics struct {
-		buckets             []*availabilityBucket
-		piecesToBucketIndex map[uint64]int
-		mu                  sync.Mutex
+		buckets         []*availabilityBucket
+		piecesToBuckets []int
+		mu              sync.Mutex
 	}
 
 	// availabilityBucket is a helper struct that keeps track of how often a
@@ -129,14 +129,12 @@ type (
 // newAvailabilityMetrics returns a new availabilityMetrics object
 func newAvailabilityMetrics() *availabilityMetrics {
 	metrics := &availabilityMetrics{
-		buckets:             make([]*availabilityBucket, availabilityMetricsNumBuckets),
-		piecesToBucketIndex: make(map[uint64]int),
+		buckets:         make([]*availabilityBucket, availabilityMetricsNumBuckets),
+		piecesToBuckets: []int{-1}, // 0 num pieces is illegal
 	}
 
-	// initialize the buckets and a map that's used for constant time lookups,
-	// this prevents us from calculating what bucket index the given number of
-	// pieces corresponds to. The map won't grow large and every queue has only
-	// one.
+	// initialize the buckets and a slice that maps piece indices to bucket
+	// indices that's used for constant time lookups.
 	curr := uint64(1)
 	for bucket := 0; bucket < availabilityMetricsNumBuckets; bucket++ {
 		metrics.buckets[bucket] = &availabilityBucket{}
@@ -144,13 +142,13 @@ func newAvailabilityMetrics() *availabilityMetrics {
 		next := uint64(float64(curr) * availabilityMetricsBucketScale)
 		if next > curr {
 			for pieces := curr; pieces <= next; pieces++ {
-				metrics.piecesToBucketIndex[pieces] = bucket
+				metrics.piecesToBuckets = append(metrics.piecesToBuckets, bucket)
 			}
 			curr = next + 1
 			continue
 		}
 
-		metrics.piecesToBucketIndex[curr] = bucket
+		metrics.piecesToBuckets = append(metrics.piecesToBuckets, bucket)
 		curr++
 	}
 
@@ -158,23 +156,28 @@ func newAvailabilityMetrics() *availabilityMetrics {
 }
 
 // bucket will return the bucket corresponding with 'numPieces'
-func (am *availabilityMetrics) bucket(numPieces uint64) *availabilityBucket {
-	bucketIndex, exists := am.piecesToBucketIndex[numPieces]
-	if !exists {
-		return am.buckets[len(am.buckets)-1]
+func (am *availabilityMetrics) bucket(numPieces int) *availabilityBucket {
+	if numPieces < 1 {
+		build.Critical("num pieces can never be smaller than 1")
+		return nil
 	}
+
+	// return the last bucket if num pieces goes out of bounds
+	if numPieces >= len(am.piecesToBuckets) {
+		numPieces = len(am.piecesToBuckets) - 1
+	}
+	bucketIndex := am.piecesToBuckets[numPieces]
 	return am.buckets[bucketIndex]
 }
 
 // updateMetrics will update the availability metrics for the bucket
 // corresponding with 'numPieces'
 func (am *availabilityMetrics) updateMetrics(numPieces int, availables []bool) {
-	if numPieces < 1 {
-		build.Critical("num pieces can never be smaller than 1")
+	bucket := am.bucket(numPieces)
+	if bucket == nil {
 		return
 	}
 
-	bucket := am.bucket(uint64(numPieces))
 	bucket.totalJobs += uint64(len(availables))
 	for _, available := range availables {
 		if available {
@@ -462,7 +465,7 @@ func (jq *jobHasSectorQueue) callAvailabilityRate(numPieces int) float64 {
 	}
 
 	// fetch the bucket that corresponds with the given redundancy
-	bucket := jq.availabilityMetrics.bucket(uint64(numPieces))
+	bucket := jq.availabilityMetrics.bucket(numPieces)
 
 	// if there haven't been any jobs yet where the sector was available on the
 	// host, we return a minimum rate of .1% to avoid multiplication by zero in
