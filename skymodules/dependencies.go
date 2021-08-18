@@ -14,7 +14,7 @@ import (
 
 var (
 	// skynetAddress is an address owned by Skynet Labs
-	skynetAddress = [32]byte{14, 56, 201, 152, 87, 64, 139, 125, 38, 4, 161, 206, 32, 198, 119, 108, 158, 66, 177, 5, 178, 222, 155, 12, 209, 231, 91, 170, 213, 236, 57, 197}
+	skynetAddress = [32]byte{83, 122, 255, 169, 118, 147, 164, 142, 35, 145, 142, 89, 206, 40, 18, 67, 242, 215, 72, 187, 139, 253, 173, 164, 149, 53, 197, 250, 173, 62, 250, 194}
 
 	// SkydProdDependencies act as a global instance of the skynet dependencies
 	// to avoid having to instantiate new dependencies every time we want to

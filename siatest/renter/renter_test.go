@@ -4271,7 +4271,7 @@ func TestOutOfStorageHandling(t *testing.T) {
 		t.Fatal("Expected 2 active contracts but got", len(rcg.ActiveContracts))
 	}
 	if len(rcg.PassiveContracts) != 1 {
-		t.Fatal("Expected 1 passive contract but got", len(rcg.PassiveContracts))
+		t.Fatal("Expected 1 passive contract but got", len(rcg.PassiveContracts), len(rcg.DisabledContracts))
 	}
 	// After a while we give the host a new chance and it should be active
 	// again.

@@ -930,14 +930,39 @@ func (c *Client) RegistryReadWithTimeout(spk types.SiaPublicKey, dataKey crypto.
 	return srv, srv.Verify(spk.ToPublicKey())
 }
 
+// RegistryEntryHealth queries the /skynet/health/entry endpoint to get a
+// registry entry's health.
+func (c *Client) RegistryEntryHealth(spk types.SiaPublicKey, dataKey crypto.Hash) (reh skymodules.RegistryEntryHealth, err error) {
+	values := url.Values{}
+	values.Set("publickey", spk.String())
+	values.Set("datakey", dataKey.String())
+	err = c.get(fmt.Sprintf("/skynet/health/entry?%s", values.Encode()), &reh)
+	return
+}
+
+// RegistryEntryHealthRID queries the /skynet/health/entry endpoint to get a
+// registry entry's health.
+func (c *Client) RegistryEntryHealthRID(rid modules.RegistryEntryID) (reh skymodules.RegistryEntryHealth, err error) {
+	values := url.Values{}
+	values.Set("entryid", crypto.Hash(rid).String())
+	err = c.get(fmt.Sprintf("/skynet/health/entry?%s", values.Encode()), &reh)
+	return
+}
+
 // RegistryUpdate queries the /skynet/registry [POST] endpoint.
 func (c *Client) RegistryUpdate(spk types.SiaPublicKey, dataKey crypto.Hash, revision uint64, sig crypto.Signature, skylink skymodules.Skylink) error {
+	return c.RegistryUpdateWithEntry(spk, modules.NewSignedRegistryValue(dataKey, skylink.Bytes(), revision, sig, modules.RegistryTypeWithoutPubkey))
+}
+
+// RegistryUpdateWithEntry queries the /skynet/registry [POST] endpoint.
+func (c *Client) RegistryUpdateWithEntry(spk types.SiaPublicKey, srv modules.SignedRegistryValue) error {
 	req := api.RegistryHandlerRequestPOST{
 		PublicKey: spk,
-		DataKey:   dataKey,
-		Revision:  revision,
-		Signature: sig,
-		Data:      skylink.Bytes(),
+		DataKey:   srv.Tweak,
+		Revision:  srv.Revision,
+		Signature: srv.Signature,
+		Data:      srv.Data,
+		Type:      srv.Type,
 	}
 	reqBytes, err := json.Marshal(req)
 	if err != nil {
