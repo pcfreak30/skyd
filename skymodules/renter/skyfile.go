@@ -1477,7 +1477,7 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 
 	rootTotals := make([]uint64, len(roots))
 LOOP:
-	for {
+	for i := 0; i < launchedWorkers; i++ {
 		var resp *jobHasSectorResponse
 		select {
 		case <-ctx.Done():
