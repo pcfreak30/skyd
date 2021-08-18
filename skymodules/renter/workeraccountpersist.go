@@ -271,7 +271,15 @@ func (am *accountManager) managedOpenAccount(hostKey types.SiaPublicKey) (acc *a
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to persist account")
 	}
+
+	start := time.Now()
 	err = acc.staticFile.Sync()
+	elapsed := time.Since(start)
+	if elapsed > time.Second {
+		fmt.Println("sync took longer than 1s, see logs")
+		acc.staticRenter.staticLog.Printf("BLOCK DEBUG DETECTED | sync took %vms\n", elapsed.Milliseconds())
+	}
+
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to sync accounts file")
 	}
