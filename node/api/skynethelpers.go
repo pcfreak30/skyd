@@ -821,7 +821,7 @@ func attachRegistryEntryProof(w http.ResponseWriter, srvs []skymodules.RegistryE
 
 // UnmarshalErrorPages unmarshals an errorpages string into an map[int]string.
 func UnmarshalErrorPages(s string) (map[int]string, error) {
-	var errPages map[int]string
+	errPages := make(map[int]string)
 	if len(s) == 0 {
 		return errPages, nil
 	}
