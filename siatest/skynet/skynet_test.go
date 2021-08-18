@@ -5698,8 +5698,8 @@ func TestSkynetSkylinkHealth(t *testing.T) {
 	if err1 != nil && err2 != nil && err3 != nil {
 		t.Fatal(errors.Compose(err1, err2))
 	}
-	// The second file should have a base sector redundancy of 4. 1 of the
-	// fanout pieces is missing so the health is 75%.
+	// The second file should have a base sector redundancy of 3. 2 of the
+	// fanout pieces are missing so the health is 75%.
 	err = assertHealth(skylink2, skylink2BaseSectorRedundancy-2, 75)
 	if err != nil {
 		t.Fatal(err)
