@@ -1477,11 +1477,11 @@ type SkylinkHealth struct {
 
 	// FanoutOverallHealthPercentage is the worst health of any of the
 	// fanout's chunks on the network.
-	FanoutOverallHealthPercentage float64 `json:"fanoutoverallhealthpercentage"`
+	FanoutOverallHealthPercentage float64 `json:"fanoutoverallhealthpercentage,omitempty"`
 
 	// FanoutHealthPercentages is the individual health of all chunks in the
 	// fanout.
-	FanoutHealthPercentages []float64 `json:"fanouthealthpercentages"`
+	FanoutHealthPercentages []float64 `json:"fanouthealthpercentages,omitempty"`
 }
 
 // RenterDownloadParameters defines the parameters passed to the Renter's

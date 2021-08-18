@@ -1504,7 +1504,6 @@ LOOP:
 	chunkGoodPieces := make([]int, numChunks)
 	onlyOnePiecePerChunk := layout.FanoutDataPieces == 1 && layout.CipherType == crypto.TypePlain
 	numPieces := int(layout.FanoutDataPieces + layout.FanoutParityPieces)
-	fmt.Println("numPieces", layout.FanoutDataPieces, numPieces)
 	for i := 0; i < len(rootTotals); i++ {
 		chunkIndex := rootIndexToChunkIndex[i]
 		if onlyOnePiecePerChunk {
@@ -1520,8 +1519,20 @@ LOOP:
 			chunkGoodPieces[chunkIndex]++
 		}
 	}
+
 	fmt.Println("goodpieces", chunkGoodPieces)
 	fmt.Println("rootTotals", rootTotals)
+
+	// Set the base sector redundancy.
+	health := skymodules.SkylinkHealth{
+		BaseSectorRedundancy: baseSectorRedundancy,
+	}
+
+	// If the fanout datapieces are 0, there is no fanout and we are done.
+	if layout.FanoutDataPieces == 0 {
+		return health, nil
+	}
+
 	// Compute the health of all chunks and remember the worst one. That's
 	// the overall fanout health.
 	worstHealth := float64(numPieces / int(layout.FanoutDataPieces))
