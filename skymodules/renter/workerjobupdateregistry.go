@@ -18,6 +18,11 @@ const (
 	// performance is decayed each time a new datapoint is added. The jobs use
 	// an exponential weighted average.
 	jobUpdateRegistryPerformanceDecay = 0.9
+
+	// minUpdateRegistryEntryTypeVersion is the minimum host version that
+	// supports updating the registry with a registry entry type and
+	// registry update version.
+	minUpdateRegistryEntryTypeVersion = "1.5.7"
 )
 
 // errHostOutdatedProof is returned if the host provides a proof that has a
@@ -218,8 +223,7 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue
 	version := modules.ReadRegistryVersionNoType
 	if build.VersionCmp(w.staticCache().staticHostVersion, "1.5.5") < 0 {
 		pb.V154AddUpdateRegistryInstruction(j.staticSiaPublicKey, j.staticSignedRegistryValue)
-	} else if build.VersionCmp(w.staticCache().staticHostVersion, "1.5.5") < 0 {
-		// TODO: set version to 1.5.7
+	} else if build.VersionCmp(w.staticCache().staticHostVersion, minUpdateRegistryEntryTypeVersion) < 0 {
 		pb.V156AddUpdateRegistryInstruction(j.staticSiaPublicKey, j.staticSignedRegistryValue)
 	} else {
 		version = modules.ReadRegistryVersionWithType
