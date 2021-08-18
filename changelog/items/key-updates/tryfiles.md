@@ -1,0 +1,2 @@
+- Add tryfiles metadata field which lists potential subfiles to serve, in case the requested files doesn't exist.
+- Add errorpages metadata field which defines custom content to be served in case specific error codes are to be returned.

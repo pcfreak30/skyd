@@ -905,7 +905,7 @@ func TestUnmarshalErrorPages(t *testing.T) {
 		if tt.err != "" && (err == nil || !strings.Contains(err.Error(), tt.err)) {
 			t.Fatalf("Expected error '%s', got '%s'\n", tt.err, err.Error())
 		}
-		if !reflect.DeepEqual(out, tt.out) {
+		if (len(out) != len(tt.out)) || !reflect.DeepEqual(out, tt.out) {
 			t.Logf("Expected: %+v\n", tt.out)
 			t.Logf("Actual  : %+v\n", out)
 			t.Fatal("Unexpected output.")
