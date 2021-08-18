@@ -1485,13 +1485,19 @@ LOOP:
 		}
 
 		if resp.staticErr != nil {
+			fmt.Println("err", resp.staticErr)
 			continue
 		}
 		// Add the result to the totals.
+		available := false
 		for i, available := range resp.staticAvailables {
 			if available {
 				rootTotals[i]++
+				available = true
 			}
+		}
+		if available {
+			fmt.Println(resp.staticAvailables)
 		}
 	}
 
