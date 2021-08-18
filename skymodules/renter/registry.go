@@ -454,6 +454,9 @@ func (r *Renter) managedRegistryEntryHealth(ctx context.Context, rid modules.Reg
 			continue
 		}
 		nTotal++
+		// We call ShouldUpdateWith without pubkey here because we don't
+		// want to prefer primary entries here. We will explicitly check
+		// for them afterwards.
 		_, reason := bestSRV.ShouldUpdateWith(&resp.staticSignedRegistryValue.RegistryValue, types.SiaPublicKey{})
 		if resp == best || errors.Contains(reason, modules.ErrSameRevNum) {
 			nBestTotal++
