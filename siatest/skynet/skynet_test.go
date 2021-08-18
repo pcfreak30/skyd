@@ -5640,8 +5640,13 @@ func TestSkynetSkylinkHealth(t *testing.T) {
 		if sh.BaseSectorRedundancy != baseSectorRedundancy {
 			return fmt.Errorf("wrong base sector redundancy %v != %v", sh.BaseSectorRedundancy, baseSectorRedundancy)
 		}
-		if sh.FanoutHealthPercentage != fanoutHealth {
-			return fmt.Errorf("fanout not healthy %v != %v", sh.FanoutHealthPercentage, fanoutHealth)
+		if sh.FanoutOverallHealthPercentage != fanoutHealth {
+			return fmt.Errorf("fanout not healthy %v != %v", sh.FanoutOverallHealthPercentage, fanoutHealth)
+		}
+		for i, health := range sh.FanoutHealthPercentages {
+			if health != fanoutHealth {
+				return fmt.Errorf("chunk %v not healthy %v != %v", i, health, fanoutHealth)
+			}
 		}
 		return nil
 	}

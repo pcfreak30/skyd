@@ -1475,9 +1475,13 @@ type SkylinkHealth struct {
 	// network.
 	BaseSectorRedundancy uint64 `json:"basesectorredundancy"`
 
-	// FanoutHealthPercentage is the worst health of any of the fanout's
-	// chunks on the network.
-	FanoutHealthPercentage float64 `json:"fanouthealthpercentage"`
+	// FanoutOverallHealthPercentage is the worst health of any of the
+	// fanout's chunks on the network.
+	FanoutOverallHealthPercentage float64 `json:"fanoutoverallhealthpercentage"`
+
+	// FanoutHealthPercentages is the individual health of all chunks in the
+	// fanout.
+	FanoutHealthPercentages []float64 `json:"fanouthealthpercentages"`
 }
 
 // RenterDownloadParameters defines the parameters passed to the Renter's

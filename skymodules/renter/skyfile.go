@@ -1523,14 +1523,17 @@ LOOP:
 	// Compute the health of all chunks and remember the worst one. That's
 	// the overall fanout health.
 	var worstHealth float64
+	fanoutHealth := make([]float64, 0, numChunks)
 	for _, goodPieces := range chunkGoodPieces {
 		chunkHealth := siafile.CalculateHealth(int(goodPieces), int(layout.FanoutDataPieces), int(layout.FanoutDataPieces+layout.FanoutParityPieces))
 		if chunkHealth > worstHealth {
 			worstHealth = chunkHealth
 		}
+		fanoutHealth = append(fanoutHealth, skymodules.HealthPercentage(chunkHealth))
 	}
 	return skymodules.SkylinkHealth{
-		BaseSectorRedundancy:   baseSectorRedundancy,
-		FanoutHealthPercentage: skymodules.HealthPercentage(worstHealth),
+		BaseSectorRedundancy:          baseSectorRedundancy,
+		FanoutOverallHealthPercentage: skymodules.HealthPercentage(worstHealth),
+		FanoutHealthPercentages:       fanoutHealth,
 	}, nil
 }
