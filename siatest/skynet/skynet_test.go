@@ -5658,9 +5658,10 @@ func TestSkynetSkylinkHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Assert its health.
+	// Assert its health. The piece should be on 5 hosts and only 1
+	// datapiece is needed so the health should be 5.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		return assertHealth(skylink, siatest.DefaulTestingBaseChunkRedundancy, 100)
+		return assertHealth(skylink, siatest.DefaulTestingBaseChunkRedundancy, 5)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -5678,8 +5679,8 @@ func TestSkynetSkylinkHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Assert its health.
-	err = assertHealth(skylink2, skylink2BaseSectorRedundancy, 100)
+	// Assert its health. Same as before.
+	err = assertHealth(skylink2, skylink2BaseSectorRedundancy, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5696,16 +5697,16 @@ func TestSkynetSkylinkHealth(t *testing.T) {
 	// Check health again.
 	// The first file should either have a base sector redundancy of 0 to 2
 	// depending on whether the hosts we took offline had a piece. 2 of the
-	// fanout pieces are missing so the health is 75%.
-	err1 := assertHealth(skylink, siatest.DefaulTestingBaseChunkRedundancy-2, 75)
-	err2 := assertHealth(skylink, siatest.DefaulTestingBaseChunkRedundancy-1, 75)
-	err3 := assertHealth(skylink, siatest.DefaulTestingBaseChunkRedundancy, 75)
+	// fanout pieces are missing so the health is 3 instead of 5.
+	err1 := assertHealth(skylink, siatest.DefaulTestingBaseChunkRedundancy-2, 3)
+	err2 := assertHealth(skylink, siatest.DefaulTestingBaseChunkRedundancy-1, 3)
+	err3 := assertHealth(skylink, siatest.DefaulTestingBaseChunkRedundancy, 3)
 	if err1 != nil && err2 != nil && err3 != nil {
 		t.Fatal(errors.Compose(err1, err2))
 	}
 	// The second file should have a base sector redundancy of 3. 2 of the
-	// fanout pieces are missing so the health is 75%.
-	err = assertHealth(skylink2, skylink2BaseSectorRedundancy-2, 75)
+	// fanout pieces are missing so the health is 3 again.
+	err = assertHealth(skylink2, skylink2BaseSectorRedundancy-2, 3)
 	if err != nil {
 		t.Fatal(err)
 	}

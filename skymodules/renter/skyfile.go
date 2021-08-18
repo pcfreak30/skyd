@@ -45,7 +45,6 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
-	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -1522,18 +1521,18 @@ LOOP:
 	}
 	// Compute the health of all chunks and remember the worst one. That's
 	// the overall fanout health.
-	var worstHealth float64
+	worstHealth := float64(numPieces / int(layout.FanoutDataPieces))
 	fanoutHealth := make([]float64, 0, numChunks)
 	for _, goodPieces := range chunkGoodPieces {
-		chunkHealth := siafile.CalculateHealth(int(goodPieces), int(layout.FanoutDataPieces), int(layout.FanoutDataPieces+layout.FanoutParityPieces))
-		if chunkHealth > worstHealth {
+		chunkHealth := float64(goodPieces) / float64(layout.FanoutDataPieces)
+		if chunkHealth < worstHealth {
 			worstHealth = chunkHealth
 		}
-		fanoutHealth = append(fanoutHealth, skymodules.HealthPercentage(chunkHealth))
+		fanoutHealth = append(fanoutHealth, chunkHealth)
 	}
 	return skymodules.SkylinkHealth{
 		BaseSectorRedundancy:          baseSectorRedundancy,
-		FanoutOverallHealthPercentage: skymodules.HealthPercentage(worstHealth),
+		FanoutOverallHealthPercentage: worstHealth,
 		FanoutHealthPercentages:       fanoutHealth,
 	}, nil
 }
