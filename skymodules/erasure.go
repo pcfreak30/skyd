@@ -32,6 +32,9 @@ var (
 		Testing:  4,
 	}).(int)
 
+	// RenterDefaultNumPieces is the total number of pieces.
+	RenterDefaultNumPieces = RenterDefaultDataPieces + RenterDefaultParityPieces
+
 	// ECReedSolomon is the marshaled type of the reed solomon coder.
 	ECReedSolomon = ErasureCoderType{0, 0, 0, 1}
 
