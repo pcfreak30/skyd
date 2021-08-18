@@ -259,6 +259,75 @@ func TestJobQueueInitialEstimate(t *testing.T) {
 	}
 }
 
+// TestWorkerOfflineHost verifies that we do not create a worker for hosts that
+// are offline and kill off workers for hosts that went offline.
+func TestWorkerOfflineHost(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a dependency that allows interrupting host scans, simulating the
+	// behaviour a host goes offline
+	deps := dependencies.NewDependencyInterruptHostScan()
+	deps.Disable()
+
+	// create a worker tester with that dependency
+	wt, err := newWorkerTesterCustomDependency(t.Name(), deps, skymodules.SkydProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// assert the worker pool has a worker
+	//
+	// NOTE: this is actually redundant because the worker tester will have
+	// verified this already, however we do it anyway to ensure this check takes
+	// place, but we can set a very short retry
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		workers := wt.rt.renter.staticWorkerPool.callWorkers()
+		if len(workers) == 0 {
+			return errors.New("no worker")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// assert the worker gets removed from the pool if its host appears offline
+	deps.Enable()
+	err = build.Retry(600, 100*time.Millisecond, func() error {
+		workers := wt.rt.renter.staticWorkerPool.callWorkers()
+		if len(workers) != 0 {
+			wt.rt.renter.staticWorkerPool.callUpdate()
+			return errors.New("worker not removed")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// assert the worker gets re-added if its host comes online again
+	deps.Disable()
+	err = build.Retry(600, 100*time.Millisecond, func() error {
+		workers := wt.rt.renter.staticWorkerPool.callWorkers()
+		if len(workers) == 0 {
+			wt.rt.renter.staticWorkerPool.callUpdate()
+			return errors.New("no worker")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestWorkerSpending is a unit test that verifies several actions and whether
 // or not those actions' spending are properly reflected in the contract header.
 func TestWorkerSpending(t *testing.T) {
