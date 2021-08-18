@@ -35,6 +35,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/opentracing/opentracing-go"
@@ -68,6 +69,14 @@ var (
 		Standard: uint8(10),
 		Testing:  uint8(2),
 	}).(uint8)
+
+	// hasSectorBatchSize is the maximum number of hasSector jobs within a
+	// single batch.
+	maxHasSectorBatchSize = build.Select(build.Var{
+		Dev:      uint64(50),
+		Standard: uint64(100),
+		Testing:  uint64(2),
+	}).(uint64)
 )
 
 var (
@@ -1451,55 +1460,77 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 	// Get the workers.
 	workers := r.staticWorkerPool.callWorkers()
 
-	// Launch the jobs.
-	launchedWorkers := 0
-	responseChan := make(chan *jobHasSectorResponse, len(workers))
-	for _, worker := range workers {
-		// Check for gouging.
-		pt := worker.staticPriceTable().staticPriceTable
-		cache := worker.staticCache()
-		err := checkPCWSGouging(pt, cache.staticRenterAllowance, len(workers), len(roots))
-		if err != nil {
-			continue // ignore
+	// Launch the jobs in batches. Each batch with its own response channel.
+	remainingRoots := roots
+	var responseChans []chan *jobHasSectorResponse
+	var launchedWorkerss []int
+	for batchIndex := 0; len(remainingRoots) > 0; batchIndex++ {
+		batch := remainingRoots
+		if uint64(len(remainingRoots)) > maxHasSectorBatchSize {
+			batch = batch[:maxHasSectorBatchSize]
 		}
+		remainingRoots = remainingRoots[len(batch):]
+		responseChan := make(chan *jobHasSectorResponse, len(workers))
 
-		// Add job to worker.
-		jhs := worker.newJobHasSector(ctx, responseChan, roots...)
-		if !worker.staticJobHasSectorQueue.callAdd(jhs) {
-			continue // ignore
-		}
-		launchedWorkers++
-	}
-	if launchedWorkers == 0 {
-		return skymodules.SkylinkHealth{}, errors.New("no workers were launched successfully")
-	}
-
-	rootTotals := make([]uint64, len(roots))
-LOOP:
-	for i := 0; i < launchedWorkers; i++ {
-		var resp *jobHasSectorResponse
-		select {
-		case <-ctx.Done():
-			break LOOP
-		case resp = <-responseChan:
-		}
-
-		if resp.staticErr != nil {
-			fmt.Println("err", resp.staticErr)
-			continue
-		}
-		// Add the result to the totals.
-		available := false
-		for i, available := range resp.staticAvailables {
-			if available {
-				rootTotals[i]++
-				available = true
+		launchedWorkers := 0
+		for _, worker := range workers {
+			// Check for gouging.
+			pt := worker.staticPriceTable().staticPriceTable
+			cache := worker.staticCache()
+			err := checkPCWSGouging(pt, cache.staticRenterAllowance, len(workers), len(roots))
+			if err != nil {
+				continue // ignore
 			}
+
+			// Add job to worker.
+			jhs := worker.newJobHasSector(ctx, responseChan, batch...)
+			if !worker.staticJobHasSectorQueue.callAdd(jhs) {
+				continue // ignore
+			}
+			launchedWorkers++
 		}
-		if available {
-			fmt.Println(resp.staticAvailables)
+		responseChans = append(responseChans, responseChan)
+		launchedWorkerss = append(launchedWorkerss, launchedWorkers)
+
+		// If a batch has 0 launched workers we are done.
+		if launchedWorkers == 0 {
+			return skymodules.SkylinkHealth{}, errors.New("no workers were launched successfully")
 		}
 	}
+
+	// Each batch has its own waiting goroutine.
+	// TODO: Once Sia has upgraded to support larger MDM programs we don't
+	// need the batching here anymore.
+	var wg sync.WaitGroup
+	rootTotals := make([]uint64, len(roots))
+	for batchIndex, responseChan := range responseChans {
+		wg.Add(1)
+		go func(batchIndex uint64, responseChan chan *jobHasSectorResponse) {
+			defer wg.Done()
+
+			for i := 0; i < launchedWorkerss[batchIndex]; i++ {
+				var resp *jobHasSectorResponse
+				select {
+				case <-ctx.Done():
+					return
+				case resp = <-responseChan:
+				}
+
+				if resp.staticErr != nil {
+					fmt.Println("err", resp.staticErr)
+					continue
+				}
+				// Add the result to the totals.
+				for i, available := range resp.staticAvailables {
+					if available {
+						batchOffset := uint64(maxHasSectorBatchSize) * batchIndex
+						rootTotals[batchOffset+uint64(i)]++
+					}
+				}
+			}
+		}(uint64(batchIndex), responseChan)
+	}
+	wg.Wait()
 
 	// First index is the base sector.
 	baseSectorRedundancy, rootTotals := rootTotals[0], rootTotals[1:]
@@ -1525,9 +1556,6 @@ LOOP:
 			chunkGoodPieces[chunkIndex]++
 		}
 	}
-
-	fmt.Println("goodpieces", chunkGoodPieces)
-	fmt.Println("rootTotals", rootTotals)
 
 	// Set the base sector redundancy.
 	health := skymodules.SkylinkHealth{
