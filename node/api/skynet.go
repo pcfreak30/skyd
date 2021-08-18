@@ -1587,6 +1587,42 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 	http.ServeContent(w, req, "", time.Time{}, bytes.NewReader(rawMD))
 }
 
+// skynetSkylinkHealthGET is the handler for the /skynet/health/:skylink
+// endpoint.
+func (api *API) skynetSkylinkHealthGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	strLink := ps.ByName("skylink")
+	var skylink skymodules.Skylink
+	err := skylink.LoadString(strLink)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to parse query params: %v", err)}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse timeout.
+	timeout, err := parseTimeout(queryForm)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(req.Context(), timeout)
+	defer cancel()
+
+	// Get health.
+	sh, err := api.renter.SkylinkHealth(ctx, skylink, DefaultSkynetPricePerMS)
+	if err != nil {
+		handleSkynetError(w, "failed to get skylink health", err)
+		return
+	}
+	WriteJSON(w, sh)
+}
+
 // skynetSkylinkUnpinHandlerPOST will unpin a skylink from this Sia node.
 func (api *API) skynetSkylinkUnpinHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	strLink := ps.ByName("skylink")

@@ -143,6 +143,7 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/skynet/skyfile/*siapath", RequirePassword(api.skynetSkyfileHandlerPOST, requiredPassword))
 		router.GET("/skynet/stats", api.skynetStatsHandlerGET)
 		router.POST("/skynet/unpin/:skylink", RequirePassword(api.skynetSkylinkUnpinHandlerPOST, requiredPassword))
+		router.GET("/skynet/health/skylink/:skylink", api.skynetSkylinkHealthGET)
 
 		// Skykey endpoints
 		router.GET("/skynet/skykey", RequirePassword(api.skykeyHandlerGET, requiredPassword))

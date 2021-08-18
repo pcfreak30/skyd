@@ -45,6 +45,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -1285,6 +1286,15 @@ func (r *Renter) ResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (s
 	return slResolved, srvs, nil
 }
 
+// SkylinkHealth returns the health of a skylink on the network.
+func (r *Renter) SkylinkHealth(ctx context.Context, sl skymodules.Skylink, ppms types.Currency) (skymodules.SkylinkHealth, error) {
+	if err := r.tg.Add(); err != nil {
+		return skymodules.SkylinkHealth{}, err
+	}
+	defer r.tg.Done()
+	return r.managedSkylinkHealth(ctx, sl, ppms)
+}
+
 // managedResolveSkylinkV2 resolves a V2 skylink to a V1 skylink. If the skylink
 // is not a V2 skylink, the input link is returned.
 func (r *Renter) managedResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink, blocklistCheck bool) (skylink skymodules.Skylink, _ *skymodules.RegistryEntry, err error) {
@@ -1377,4 +1387,150 @@ func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, link skymodules
 		}
 	}
 	return link, srvs, nil
+}
+
+// managedSkylinkHealth returns the health of a skylink on the network.
+func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink, ppms types.Currency) (skymodules.SkylinkHealth, error) {
+	// Resolve the skylink if necessary.
+	sl, _, err := r.managedTryResolveSkylinkV2(ctx, sl, true)
+	if err != nil {
+		return skymodules.SkylinkHealth{}, errors.AddContext(err, "failed to resolve skylink")
+	}
+
+	// Get the offset and fetchsize from the skylink
+	offset, fetchSize, err := sl.OffsetAndFetchSize()
+	if err != nil {
+		return skymodules.SkylinkHealth{}, errors.AddContext(err, "unable to parse offset and fetchsize from skylink")
+	}
+
+	// Get base sector.
+	baseSector, err := r.managedDownloadByRoot(ctx, sl.MerkleRoot(), offset, fetchSize, ppms)
+	if err != nil {
+		return skymodules.SkylinkHealth{}, errors.AddContext(err, "unable to download base sector")
+	}
+
+	// Check if the base sector is encrypted, and attempt to decrypt it.
+	encrypted := skymodules.IsEncryptedBaseSector(baseSector)
+	if encrypted {
+		_, err = r.managedDecryptBaseSector(baseSector)
+		if err != nil {
+			return skymodules.SkylinkHealth{}, errors.AddContext(err, "failed to decrypt base sector")
+		}
+	}
+
+	// Parse out the metadata of the skyfile.
+	layout, fanoutBytes, _, _, _, err := skymodules.ParseSkyfileMetadata(baseSector)
+	if err != nil {
+		return skymodules.SkylinkHealth{}, errors.AddContext(err, "error parsing skyfile metadata")
+	}
+
+	// Prepare the list of roots to ask the hosts for.
+	roots := []crypto.Hash{sl.MerkleRoot()}
+
+	// If the file has a fanout, ask the hosts for the fanout as well.
+	rootIndexToChunkIndex := make(map[int]int)
+	numChunks := 0
+	if len(fanoutBytes) > 0 {
+		// Create the list of chunks from the fanout. Since we want to
+		// give an overview of the health of the file on the network, we
+		// don't compress the fanout.
+		fanoutChunks, err := layout.DecodeFanoutIntoChunks(fanoutBytes)
+		if err != nil {
+			return skymodules.SkylinkHealth{}, errors.AddContext(err, "error parsing skyfile fanout")
+		}
+
+		for chunkIndex, chunk := range fanoutChunks {
+			for _, root := range chunk {
+				// -1 to exclude the base sector
+				rootIndexToChunkIndex[len(roots)-1] = chunkIndex
+				roots = append(roots, root)
+			}
+		}
+		numChunks = len(fanoutChunks)
+	}
+
+	// Get the workers.
+	workers := r.staticWorkerPool.callWorkers()
+
+	// Launch the jobs.
+	launchedWorkers := 0
+	responseChan := make(chan *jobHasSectorResponse, len(workers))
+	for _, worker := range workers {
+		// Check for gouging.
+		pt := worker.staticPriceTable().staticPriceTable
+		cache := worker.staticCache()
+		err := checkPCWSGouging(pt, cache.staticRenterAllowance, len(workers), len(roots))
+		if err != nil {
+			continue // ignore
+		}
+
+		// Add job to worker.
+		jhs := worker.newJobHasSector(ctx, responseChan, roots...)
+		if !worker.staticJobHasSectorQueue.callAdd(jhs) {
+			continue // ignore
+		}
+		launchedWorkers++
+	}
+	if launchedWorkers == 0 {
+		return skymodules.SkylinkHealth{}, errors.New("no workers were launched successfully")
+	}
+
+	rootTotals := make([]uint64, len(roots))
+LOOP:
+	for i := 0; i < launchedWorkers; i++ {
+		var resp *jobHasSectorResponse
+		select {
+		case <-ctx.Done():
+			break LOOP
+		case resp = <-responseChan:
+		}
+
+		if resp.staticErr != nil {
+			continue
+		}
+		// Add the result to the totals.
+		for i, available := range resp.staticAvailables {
+			if available {
+				rootTotals[i]++
+			}
+		}
+	}
+
+	// First index is the base sector.
+	baseSectorRedundancy, rootTotals := rootTotals[0], rootTotals[1:]
+
+	// Create a slice of good pieces for each chunk. A chunk has a good
+	// piece if a root belonging to the chunk exists >0 times on the
+	// network.
+	chunkGoodPieces := make([]int, numChunks)
+	onlyOnePiecePerChunk := layout.FanoutDataPieces == 1 && layout.CipherType == crypto.TypePlain
+	numPieces := int(layout.FanoutDataPieces + layout.FanoutParityPieces)
+	for i := 0; i < len(rootTotals); i++ {
+		chunkIndex := rootIndexToChunkIndex[i]
+		if onlyOnePiecePerChunk {
+			// Special Case: If we only need one piece per chunk, we
+			// count all occurrences of that piece up until
+			// numPieces.
+			chunkGoodPieces[chunkIndex] += int(rootTotals[i])
+			if chunkGoodPieces[chunkIndex] > numPieces {
+				chunkGoodPieces[chunkIndex] = numPieces
+			}
+		} else if rootTotals[i] > 0 {
+			// Otherwise every piece only counts as 1 good piece.
+			chunkGoodPieces[chunkIndex]++
+		}
+	}
+	// Compute the health of all chunks and remember the worst one. That's
+	// the overall fanout health.
+	var worstHealth float64
+	for _, goodPieces := range chunkGoodPieces {
+		chunkHealth := siafile.CalculateHealth(int(goodPieces), int(layout.FanoutDataPieces), int(layout.FanoutDataPieces+layout.FanoutParityPieces))
+		if chunkHealth > worstHealth {
+			worstHealth = chunkHealth
+		}
+	}
+	return skymodules.SkylinkHealth{
+		BaseSectorRedundancy:   baseSectorRedundancy,
+		FanoutHealthPercentage: skymodules.HealthPercentage(worstHealth),
+	}, nil
 }
