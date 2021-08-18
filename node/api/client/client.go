@@ -3,7 +3,6 @@ package client
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -214,7 +213,7 @@ func (c *Client) getRawPartialResponse(resource string, from, to uint64) ([]byte
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to construct GET request")
 	}
-	req.Header.Add("Range", fmt.Sprintf("bytes=%d-%d", from, to-1))
+	api.AddRangeHeaderToRequest(req, from, to)
 
 	httpClient := http.Client{CheckRedirect: c.CheckRedirect}
 	// nolint:bodyclose // body is closed by drainAndClose

@@ -55,6 +55,19 @@ func (err Error) Error() string {
 	return err.Message
 }
 
+// AddRangeHeaderToRequest adds a range header to a request
+func AddRangeHeaderToRequest(req *http.Request, from, to uint64) {
+	// Range requests in the Header are inclusive so we decrement 'to' to
+	// ensure the request returns the expected number of bytes.
+	//
+	// Check for underflow and for signle byte requests when from and to are
+	// equal
+	if to > 0 && from != to {
+		to--
+	}
+	req.Header.Add("Range", fmt.Sprintf("bytes=%d-%d", from, to))
+}
+
 // HttpGET is a utility function for making http get requests to sia with a
 // whitelisted user-agent. A non-2xx response does not return an error.
 func HttpGET(url string) (resp *http.Response, err error) {

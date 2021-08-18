@@ -88,11 +88,40 @@ func TestRenterTwo(t *testing.T) {
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
 		{Name: "TestReceivedFieldEqualsFileSize", Test: testReceivedFieldEqualsFileSize},
-		{Name: "TestRemoteRepair", Test: testRemoteRepair},
 		{Name: "TestSingleFileGet", Test: testSingleFileGet},
 		{Name: "TestSiaFileTimestamps", Test: testSiafileTimestamps},
 		{Name: "TestZeroByteFile", Test: testZeroByteFile},
 		{Name: "TestUploadWithAndWithoutForceParameter", Test: testUploadWithAndWithoutForceParameter},
+	}
+
+	// Run tests
+	if err := siatest.RunSubTests(t, groupParams, groupDir, subTests); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestRenterRemoteRepair executes a number of subtests using the same TestGroup
+// to save time on initialization. These tests are also executed without a
+// renter and are required to remove any renters afterwards.
+func TestRenterRemoteRepair(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for the subtests
+	groupParams := siatest.GroupParams{
+		Hosts:   3,
+		Renters: 0,
+		Miners:  1,
+	}
+	groupDir := renterTestDir(t.Name())
+
+	// Specify subtests to run
+	subTests := []siatest.SubTest{
+		{Name: "Basic", Test: testRemoteRepairBasic},
+		{Name: "ForceLegacyDownload", Test: testRemoteRepairForceLegacyDownload},
+		{Name: "FailLegacyDownload", Test: testRemoteRepairFailLegacyDownload},
 	}
 
 	// Run tests
@@ -1183,13 +1212,46 @@ func testPriceTablesUpdated(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
+// testRemoteRepairBasic executes testRemoteRepair with a standard renter.
+func testRemoteRepairBasic(t *testing.T, tg *siatest.TestGroup) {
+	rt := node.RenterTemplate
+	testRemoteRepair(t, tg, rt)
+}
+
+// testRemoteRepairFailLegacyDownload executes testRemoteRepair while causing
+// the legacy repair download to fail.
+func testRemoteRepairFailLegacyDownload(t *testing.T, tg *siatest.TestGroup) {
+	rt := node.RenterTemplate
+	rt.RenterDeps = &dependencies.DependencyFailLegacyRepairDownload{}
+	testRemoteRepair(t, tg, rt)
+}
+
+// testRemoteRepairForceLegacyDownload executes testRemoteRepair while forcing
+// the renter to use the legacy download instead of the skynet download.
+func testRemoteRepairForceLegacyDownload(t *testing.T, tg *siatest.TestGroup) {
+	rt := node.RenterTemplate
+	rt.RenterDeps = &dependencies.DependencyForceLegacyRepairDownload{}
+	testRemoteRepair(t, tg, rt)
+}
+
 // testRemoteRepair tests if a renter correctly repairs a file by
 // downloading it after a host goes offline.
 //
 // This test was extended to also support testing the download cooldowns.
-func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
-	// Grab the first of the group's renters
-	r := tg.Renters()[0]
+func testRemoteRepair(t *testing.T, tg *siatest.TestGroup, rt node.NodeParams) {
+	// Create the renter.
+	nodes, err := tg.AddNodeN(rt, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Remove it at the end of the test.
+	defer func() {
+		if err := tg.RemoveNode(r); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Check that we have enough hosts for this test.
 	if len(tg.Hosts()) < 2 {
@@ -4209,7 +4271,7 @@ func TestOutOfStorageHandling(t *testing.T) {
 		t.Fatal("Expected 2 active contracts but got", len(rcg.ActiveContracts))
 	}
 	if len(rcg.PassiveContracts) != 1 {
-		t.Fatal("Expected 1 passive contract but got", len(rcg.PassiveContracts))
+		t.Fatal("Expected 1 passive contract but got", len(rcg.PassiveContracts), len(rcg.DisabledContracts))
 	}
 	// After a while we give the host a new chance and it should be active
 	// again.

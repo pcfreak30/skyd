@@ -354,6 +354,23 @@ type ContractUtility struct {
 	Locked bool `json:"locked"`
 }
 
+// Merge merges two contract utilities by giving priority to the worse fields.
+// So for example a utility that is !gfu that is merged with a utility that is
+// gfu will result in !gfu whereas locked and !locked results in locked.
+func (cu ContractUtility) Merge(cu2 ContractUtility) ContractUtility {
+	lastOOS := cu.LastOOSErr
+	if cu2.LastOOSErr > lastOOS {
+		lastOOS = cu2.LastOOSErr
+	}
+	return ContractUtility{
+		GoodForUpload: cu.GoodForUpload && cu2.GoodForUpload,
+		GoodForRenew:  cu.GoodForRenew && cu2.GoodForRenew,
+		BadContract:   cu.BadContract || cu2.BadContract,
+		LastOOSErr:    lastOOS,
+		Locked:        cu.Locked || cu2.Locked,
+	}
+}
+
 // ContractWatchStatus provides information about the status of a contract in
 // the renter's watchdog.
 type ContractWatchStatus struct {
