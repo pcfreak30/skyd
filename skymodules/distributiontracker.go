@@ -121,7 +121,7 @@ type (
 
 // durationForIndex converts the index of a timing bucket into a timing.
 func durationForIndex(index int) time.Duration {
-	if index < 0 || index > 64+48*distributionTrackerNumIncrements {
+	if index < 0 || index > distributionTrackerTotalBuckets-1 {
 		build.Critical("distribution duration index out of bounds:", index)
 	}
 
@@ -146,7 +146,7 @@ func durationForIndex(index int) time.Duration {
 // index it also returns a float that represents the fraction of the bucket that
 // is included by the given duration.
 //
-// e.g. if we are dealing with 4ms buckets and a duration of ms is passed, the
+// e.g. if we are dealing with 4ms buckets and a duration of 1ms is passed, the
 // return values would be 0 and 0.25, indicating the duration corresponds with
 // bucket at index 0, and the given duration included 25% of that bucket.
 func indexForDuration(duration time.Duration) (int, float64) {
@@ -275,13 +275,10 @@ func (d *Distribution) DurationForIndex(index int) time.Duration {
 // distribution.
 func (d *Distribution) ExpectedDuration() time.Duration {
 	// Get the total data points.
-	var total float64
-	for i := 0; i < len(d.timings); i++ {
-		total += d.timings[i]
-	}
+	total := d.DataPoints()
 	if total == 0 {
 		// No data collected, just return the worst case.
-		return durationForIndex(len(d.timings))
+		return durationForIndex(len(d.timings) - 1)
 	}
 
 	// Across all buckets, multiply the pct chance times the bucket's duration.
@@ -289,32 +286,29 @@ func (d *Distribution) ExpectedDuration() time.Duration {
 	var expected float64
 	for i := 0; i < len(d.timings); i++ {
 		pct := d.timings[i] / total
-		expected += pct * float64(durationForIndex(i).Nanoseconds())
+		expected += pct * float64(durationForIndex(i))
 	}
 	return time.Duration(expected)
 }
 
 // MergeWith merges the given distribution according to a certain weight.
 func (d *Distribution) MergeWith(other *Distribution, weight float64) {
+	// validate the given distribution
+	if d.staticHalfLife != other.staticHalfLife {
+		build.Critical(fmt.Sprintf("only distributions with equal half lives should be merged, %v != %v", d.staticHalfLife, other.staticHalfLife))
+		return
+	}
+
+	// validate the weight
 	if weight <= 0 || weight > 1 {
 		build.Critical(fmt.Sprintf("unexpected weight %v", weight))
 		return
 	}
 
-	// TODO validate distribution have equal half life (?)
-
-	// loop over every bucket in other's distribution and calculate the pct
-	// chance a datapoint appears in this bucket, append this chance
-	// multiplied by the given weight and add it to the corresponding bucket
-	// in dt.
-	total := other.DataPoints()
-	if total == 0 {
-		return
-	}
-
+	// loop all other timings and append them taking into account the given
+	// weight
 	for bi, b := range other.timings {
-		chance := b / total
-		d.timings[bi] += chance * weight
+		d.timings[bi] += b * weight
 	}
 }
 
@@ -341,13 +335,13 @@ func (d *Distribution) PStat(p float64) time.Duration {
 	}
 	if total == 0 {
 		// No data collected, just return the worst case.
-		return durationForIndex(len(d.timings))
+		return durationForIndex(distributionTrackerTotalBuckets - 1)
 	}
 
 	// Count up until we reach p.
 	var run float64
 	var index int
-	for run/total < p && index < 64+48*distributionTrackerNumIncrements {
+	for run/total < p && index < distributionTrackerTotalBuckets-1 {
 		run += d.timings[index]
 		index++
 	}

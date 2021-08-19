@@ -7,190 +7,26 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestFullDistributionTracker attempts to use a distribution tracker in full,
-// including using actual sleeps instead of artificial clock manipulation.
-func TestFullDistributionTracker(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
+// TestDistributionTracker is a collection of unit test that verify the
+// functionality of the distribution tracker.
+func TestDistributionTracker(t *testing.T) {
 	t.Parallel()
 
-	// Get the standard distributions but then fix their half lives.
-	dt := NewDistributionTrackerStandard()
-	dt.distributions[0].staticHalfLife = 5 * time.Second
-	dt.distributions[1].staticHalfLife = 20 * time.Second
-	dt.distributions[2].staticHalfLife = time.Hour
-
-	// 1000 data points to the first bucket.
-	for i := 0; i < 1e3; i++ {
-		dt.AddDataPoint(time.Millisecond * 3)
-	}
-	// Add 100 data points to the third bucket.
-	for i := 0; i < 100; i++ {
-		dt.AddDataPoint(time.Millisecond * 10)
-	}
-	// Add 10 data points to the 10th bucket.
-	for i := 0; i < 10; i++ {
-		dt.AddDataPoint(time.Millisecond * 39)
-	}
-	// Add 1 data point to the 65th bucket.
-	dt.AddDataPoint(time.Millisecond * 266)
-
-	// Check how the distributions seem.
-	nines := dt.Percentiles()
-	// Each nine should be less than the next, and equal across all
-	// distribuitons.
-	if nines[0][0] >= nines[0][1] || nines[0][1] >= nines[0][2] || nines[0][2] >= nines[0][3] {
-		t.Log(nines)
-		t.Error("bad")
-	}
-	if nines[0][0] != nines[1][0] || nines[1][0] != nines[2][0] {
-		t.Log(nines)
-		t.Error("bad")
-	}
-	if nines[0][1] != nines[1][1] || nines[1][1] != nines[2][1] {
-		t.Log(nines)
-		t.Error("bad")
-	}
-	if nines[0][2] != nines[1][2] || nines[1][2] != nines[2][2] {
-		t.Log(nines)
-		t.Error("bad")
-	}
-	if nines[0][3] != nines[1][3] || nines[1][3] != nines[2][3] {
-		t.Log(nines)
-		t.Error("bad")
-	}
-
-	// Have 20 seconds elpase, and add 2e3 more data points to the first bucket.
-	// This should skew the distribution for the first bucket but not the other
-	// two.
-	time.Sleep(time.Second * 20)
-	for i := 0; i < 2e3; i++ {
-		dt.AddDataPoint(time.Millisecond * 3)
-	}
-	nines = dt.Percentiles()
-	if nines[0][0] != nines[0][1] {
-		t.Log(nines)
-		t.Error("bad")
-	}
-	if nines[0][1] >= nines[1][1] {
-		t.Log(nines)
-		t.Error("bad")
-	}
-	if nines[1][1] != nines[2][1] {
-		t.Log(nines)
-		t.Error("bad")
-	}
-
-	// Add 5,000 more entries, this should shift the 20 second bucket but not
-	// the 1 hour bucket.
-	for i := 0; i < 5e3; i++ {
-		dt.AddDataPoint(time.Millisecond * 3)
-	}
-	nines = dt.Percentiles()
-	if nines[0][1] != nines[0][2] {
-		t.Log(nines)
-		t.Error("bad")
-	}
-	if nines[1][0] != nines[1][1] {
-		t.Log(nines)
-		t.Error("bad")
-	}
-	if nines[1][1] != nines[2][0] {
-		t.Log(nines)
-		t.Error("bad")
-	}
-	if nines[2][0] >= nines[2][1] {
-		t.Log(nines)
-		t.Error("bad")
-	}
+	t.Run("Bucketing", testDistributionBucketing)
+	t.Run("ChanceAfter", testDistributionChanceAfter)
+	t.Run("Clone", testDistributionClone)
+	t.Run("Decay", testDistributionDecay)
+	t.Run("DecayedLifetime", testDistributionDecayedLifetime)
+	t.Run("ExpectedDuration", testDistributionExpectedDuration)
+	t.Run("FullTestLong", testDistributionTrackerFullTestLong)
+	t.Run("Helpers", testDistributionHelpers)
+	t.Run("MergeWith", testDistributionMergeWith)
+	t.Run("Shift", testDistributionShift)
 }
 
-// TestDistributionDecay will test that the distribution is being decayed
-// correctly when enough time has passed.
-func TestDistributionDecay(t *testing.T) {
-	t.Parallel()
-
-	// Create a distribution with a half life of 100 minutes, which means a
-	// decay operation should trigger every minute.
-	d := NewDistribution(time.Minute * 100)
-	totalPoints := func() float64 {
-		var total float64
-		for i := 0; i < len(d.timings); i++ {
-			total += d.timings[i]
-		}
-		return total
-	}
-
-	// Add 500 data points.
-	for i := 0; i < 500; i++ {
-		// Use different buckets.
-		if i%6 == 0 {
-			d.AddDataPoint(time.Millisecond)
-		} else {
-			d.AddDataPoint(time.Millisecond * 100)
-		}
-	}
-	// We accept a range of values to compensate for the limited precision of
-	// floating points.
-	if totalPoints() < 499 || totalPoints() > 501 {
-		t.Error("bad", totalPoints())
-	}
-
-	// Simulate exactly the half life of time passing.
-	d.lastDecay = time.Now().Add(-100 * time.Minute)
-	d.AddDataPoint(time.Millisecond)
-	// We accept a range of values to compensate for the limited precision of
-	// floating points.
-	if totalPoints() < 250 || totalPoints() > 252 {
-		t.Error("bad", totalPoints())
-	}
-
-	// Simulate exactly one quarter of the half life passing twice.
-	d.lastDecay = time.Now().Add(-50 * time.Minute)
-	d.AddDataPoint(time.Millisecond)
-	d.lastDecay = time.Now().Add(-50 * time.Minute)
-	d.AddDataPoint(time.Millisecond)
-	// We accept a range of values to compensate for the limited precision of
-	// floating points.
-	if totalPoints() < 126 || totalPoints() > 128 {
-		t.Error("bad", totalPoints())
-	}
-}
-
-// TestDistributionDecayedLifetime checks that the total counted decayed
-// lifetime of the distribution is being tracked correctly.
-func TestDistributionDecayedLifetime(t *testing.T) {
-	t.Parallel()
-
-	// Create a distribution with a half life of 300 minutes, which means a
-	// decay operation should trigger every three minutes.
-	d := NewDistribution(time.Minute * 300)
-	totalPoints := func() float64 {
-		var total float64
-		for i := 0; i < len(d.timings); i++ {
-			total += d.timings[i]
-		}
-		return total
-	}
-
-	// Do 10k steps, each step advancing one minute. Every third step should
-	// trigger a decay. Add 1 data point each step.
-	for i := 0; i < 10e3; i++ {
-		d.lastDecay = d.lastDecay.Add(-1 * time.Minute)
-		d.AddDataPoint(time.Millisecond)
-	}
-	pointsPerHour := totalPoints() / (float64(d.decayedLifetime) / float64(time.Hour))
-	// We accept a range of values to compensate for the limited precision of
-	// floating points.
-	if pointsPerHour < 55 || pointsPerHour > 65 {
-		t.Error("bad", pointsPerHour)
-	}
-}
-
-// TestDistributionBucketing will check that the distribution is placing timings
+// testDistributionBucketing will check that the distribution is placing timings
 // into the right buckets and then reporting the right timings in the pstats.
-func TestDistributionBucketing(t *testing.T) {
+func testDistributionBucketing(t *testing.T) {
 	t.Parallel()
 
 	// Adding a half life prevents it from decaying every time we add a data
@@ -198,7 +34,7 @@ func TestDistributionBucketing(t *testing.T) {
 	d := NewDistribution(time.Minute * 100)
 
 	// Get a distribution with no data collected.
-	if d.PStat(0.55) != durationForIndex(64+48*distributionTrackerNumIncrements) {
+	if d.PStat(0.55) != durationForIndex(distributionTrackerTotalBuckets-1) {
 		t.Error("expecting a distribution with no data to return the max possible value")
 	}
 
@@ -360,7 +196,7 @@ func TestDistributionBucketing(t *testing.T) {
 			t.Error("bad", i, pstat, total)
 		}
 	}
-	for i < 64+48*7 {
+	for i < 64+48*7-1 {
 		d.AddDataPoint(total)
 		if d.timings[i] != 1 {
 			t.Error("bad:", i)
@@ -396,14 +232,14 @@ func TestDistributionBucketing(t *testing.T) {
 		t.Error("bad", i, pstat, total)
 	}
 	pstat = d.PStat(0.5)
-	if pstat != durationForIndex(((64+48*distributionTrackerNumIncrements)/2)+1) {
-		t.Error("bad", pstat, durationForIndex(201))
+	if pstat != durationForIndex(distributionTrackerTotalBuckets/2) {
+		t.Error("bad", pstat, durationForIndex(distributionTrackerTotalBuckets/2))
 	}
 }
 
-// TestDistribution_ChanceAfter will test the `ChanceAfter` method on the
+// testDistributionChanceAfter will test the `ChanceAfter` method on the
 // distribution tracker.
-func TestDistribution_ChanceAfter(t *testing.T) {
+func testDistributionChanceAfter(t *testing.T) {
 	t.Parallel()
 
 	d := NewDistribution(time.Minute * 100)
@@ -456,9 +292,9 @@ func TestDistribution_ChanceAfter(t *testing.T) {
 	}
 }
 
-// TestDistribution_Clone will test the `Clone` method on the distribution
+// testDistributionClone will test the `Clone` method on the distribution
 // tracker.
-func TestDistribution_Clone(t *testing.T) {
+func testDistributionClone(t *testing.T) {
 	t.Parallel()
 
 	d := NewDistribution(time.Minute * 100)
@@ -502,9 +338,91 @@ func TestDistribution_Clone(t *testing.T) {
 	}
 }
 
-// TestDistribution_ExpectedDuration will test that the distribution correctly
+// testDistributionDecay will test that the distribution is being decayed
+// correctly when enough time has passed.
+func testDistributionDecay(t *testing.T) {
+	t.Parallel()
+
+	// Create a distribution with a half life of 100 minutes, which means a
+	// decay operation should trigger every minute.
+	d := NewDistribution(time.Minute * 100)
+	totalPoints := func() float64 {
+		var total float64
+		for i := 0; i < len(d.timings); i++ {
+			total += d.timings[i]
+		}
+		return total
+	}
+
+	// Add 500 data points.
+	for i := 0; i < 500; i++ {
+		// Use different buckets.
+		if i%6 == 0 {
+			d.AddDataPoint(time.Millisecond)
+		} else {
+			d.AddDataPoint(time.Millisecond * 100)
+		}
+	}
+	// We accept a range of values to compensate for the limited precision of
+	// floating points.
+	if totalPoints() < 499 || totalPoints() > 501 {
+		t.Error("bad", totalPoints())
+	}
+
+	// Simulate exactly the half life of time passing.
+	d.lastDecay = time.Now().Add(-100 * time.Minute)
+	d.AddDataPoint(time.Millisecond)
+	// We accept a range of values to compensate for the limited precision of
+	// floating points.
+	if totalPoints() < 250 || totalPoints() > 252 {
+		t.Error("bad", totalPoints())
+	}
+
+	// Simulate exactly one quarter of the half life passing twice.
+	d.lastDecay = time.Now().Add(-50 * time.Minute)
+	d.AddDataPoint(time.Millisecond)
+	d.lastDecay = time.Now().Add(-50 * time.Minute)
+	d.AddDataPoint(time.Millisecond)
+	// We accept a range of values to compensate for the limited precision of
+	// floating points.
+	if totalPoints() < 126 || totalPoints() > 128 {
+		t.Error("bad", totalPoints())
+	}
+}
+
+// testDistributionDecayedLifetime checks that the total counted decayed
+// lifetime of the distribution is being tracked correctly.
+func testDistributionDecayedLifetime(t *testing.T) {
+	t.Parallel()
+
+	// Create a distribution with a half life of 300 minutes, which means a
+	// decay operation should trigger every three minutes.
+	d := NewDistribution(time.Minute * 300)
+	totalPoints := func() float64 {
+		var total float64
+		for i := 0; i < len(d.timings); i++ {
+			total += d.timings[i]
+		}
+		return total
+	}
+
+	// Do 10k steps, each step advancing one minute. Every third step should
+	// trigger a decay. Add 1 data point each step.
+	for i := 0; i < 10e3; i++ {
+		d.lastDecay = d.lastDecay.Add(-1 * time.Minute)
+		d.AddDataPoint(time.Millisecond)
+	}
+	pointsPerHour := totalPoints() / (float64(d.decayedLifetime) / float64(time.Hour))
+	// We accept a range of values to compensate for the limited precision of
+	// floating points.
+	if pointsPerHour < 55 || pointsPerHour > 65 {
+		t.Error("bad", pointsPerHour)
+	}
+}
+
+// testDistributionExpectedDuration will test that the distribution correctly
 // returns the expected duration based upon all data points in the distribution.
-func TestDistribution_ExpectedDuration(t *testing.T) {
+func testDistributionExpectedDuration(t *testing.T) {
 	t.Parallel()
 
 	d := NewDistribution(time.Minute * 100)
@@ -512,7 +430,7 @@ func TestDistribution_ExpectedDuration(t *testing.T) {
 
 	// check whether we default to the worst case if we have 0 data points
 	expected := d.ExpectedDuration()
-	if expected != durationForIndex(len(d.timings)) {
+	if expected != durationForIndex(len(d.timings)-1) {
 		t.Error("bad")
 	}
 
@@ -545,9 +463,108 @@ func TestDistribution_ExpectedDuration(t *testing.T) {
 	}
 }
 
-// TestDistribution_MergeWith verifies the 'MergeWith' method on the
+// testDistributionTrackerFullTestLong attempts to use a distribution tracker in
+// full, including using actual sleeps instead of artificial clock manipulation.
+func testDistributionTrackerFullTestLong(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Get the standard distributions but then fix their half lives.
+	dt := NewDistributionTrackerStandard()
+	dt.distributions[0].staticHalfLife = 5 * time.Second
+	dt.distributions[1].staticHalfLife = 20 * time.Second
+	dt.distributions[2].staticHalfLife = time.Hour
+
+	// 1000 data points to the first bucket.
+	for i := 0; i < 1e3; i++ {
+		dt.AddDataPoint(time.Millisecond * 3)
+	}
+	// Add 100 data points to the third bucket.
+	for i := 0; i < 100; i++ {
+		dt.AddDataPoint(time.Millisecond * 10)
+	}
+	// Add 10 data points to the 10th bucket.
+	for i := 0; i < 10; i++ {
+		dt.AddDataPoint(time.Millisecond * 39)
+	}
+	// Add 1 data point to the 65th bucket.
+	dt.AddDataPoint(time.Millisecond * 266)
+
+	// Check how the distributions seem.
+	nines := dt.Percentiles()
+	// Each nine should be less than the next, and equal across all
+	// distribuitons.
+	if nines[0][0] >= nines[0][1] || nines[0][1] >= nines[0][2] || nines[0][2] >= nines[0][3] {
+		t.Log(nines)
+		t.Error("bad")
+	}
+	if nines[0][0] != nines[1][0] || nines[1][0] != nines[2][0] {
+		t.Log(nines)
+		t.Error("bad")
+	}
+	if nines[0][1] != nines[1][1] || nines[1][1] != nines[2][1] {
+		t.Log(nines)
+		t.Error("bad")
+	}
+	if nines[0][2] != nines[1][2] || nines[1][2] != nines[2][2] {
+		t.Log(nines)
+		t.Error("bad")
+	}
+	if nines[0][3] != nines[1][3] || nines[1][3] != nines[2][3] {
+		t.Log(nines)
+		t.Error("bad")
+	}
+
+	// Have 20 seconds elpase, and add 2e3 more data points to the first bucket.
+	// This should skew the distribution for the first bucket but not the other
+	// two.
+	time.Sleep(time.Second * 20)
+	for i := 0; i < 2e3; i++ {
+		dt.AddDataPoint(time.Millisecond * 3)
+	}
+	nines = dt.Percentiles()
+	if nines[0][0] != nines[0][1] {
+		t.Log(nines)
+		t.Error("bad")
+	}
+	if nines[0][1] >= nines[1][1] {
+		t.Log(nines)
+		t.Error("bad")
+	}
+	if nines[1][1] != nines[2][1] {
+		t.Log(nines)
+		t.Error("bad")
+	}
+
+	// Add 5,000 more entries, this should shift the 20 second bucket but not
+	// the 1 hour bucket.
+	for i := 0; i < 5e3; i++ {
+		dt.AddDataPoint(time.Millisecond * 3)
+	}
+	nines = dt.Percentiles()
+	if nines[0][1] != nines[0][2] {
+		t.Log(nines)
+		t.Error("bad")
+	}
+	if nines[1][0] != nines[1][1] {
+		t.Log(nines)
+		t.Error("bad")
+	}
+	if nines[1][1] != nines[2][0] {
+		t.Log(nines)
+		t.Error("bad")
+	}
+	if nines[2][0] >= nines[2][1] {
+		t.Log(nines)
+		t.Error("bad")
+	}
+}
+
+// testDistributionMergeWith verifies the 'MergeWith' method on the
 // distribution.
-func TestDistribution_MergeWith(t *testing.T) {
+func testDistributionMergeWith(t *testing.T) {
 	t.Parallel()
 
 	// create a new distribution
@@ -574,7 +591,7 @@ func TestDistribution_MergeWith(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 
-	// get the expected duration and verify it lowers after merging with a
+	// get the expected duration and verify it's lowers after merging with a
 	// distribution that has more datapoints on the lower end
 	expectedDur := d.ExpectedDuration()
 	for i := 0; i < 1000; i++ {
@@ -585,11 +602,43 @@ func TestDistribution_MergeWith(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 
-	// TODO add a good test that covers the weights
+	// create a clean distribution and merge it with 3 distributions using a
+	// weight of 33% every time, the 3 distributions have datapoints below 1s,
+	// between 1s and 2s, and between 2s and 3s respectively
+	clean := NewDistribution(time.Minute * 100)
+	d1s := NewDistribution(time.Minute * 100)
+	for i := 0; i < 1000; i++ {
+		d1s.AddDataPoint(time.Duration(fastrand.Intn(1000)) * ms)
+	}
+	clean.MergeWith(d1s, .33)
+	d2s := NewDistribution(time.Minute * 100)
+	for i := 0; i < 1000; i++ {
+		d2s.AddDataPoint(time.Duration(fastrand.Intn(1000)+1000) * ms)
+	}
+	clean.MergeWith(d2s, .33)
+	d3s := NewDistribution(time.Minute * 100)
+	for i := 0; i < 1000; i++ {
+		d3s.AddDataPoint(time.Duration(fastrand.Intn(1000)+2000) * ms)
+	}
+	clean.MergeWith(d3s, .33)
+
+	// assert the chance after 1,2 and 3s is more or less equal to 33%, 66%, 99%
+	chanceAfter1s := clean.ChanceAfter(time.Second)
+	if chanceAfter1s < 0.31 || chanceAfter1s > 0.35 {
+		t.Fatal("unexpected", chanceAfter1s)
+	}
+	chanceAfter2s := clean.ChanceAfter(2 * time.Second)
+	if chanceAfter2s < 0.64 || chanceAfter2s > 0.68 {
+		t.Fatal("unexpected", chanceAfter2s)
+	}
+	chanceAfter3s := clean.ChanceAfter(3 * time.Second)
+	if chanceAfter3s < 0.97 {
+		t.Fatal("unexpected", chanceAfter3s)
+	}
 }
 
-// TestDistribution_Shift verifies the 'Shift' method on the distribution.
-func TestDistribution_Shift(t *testing.T) {
+// testDistributionShift verifies the 'Shift' method on the distribution.
+func testDistributionShift(t *testing.T) {
 	t.Parallel()
 
 	// create a new distribution
@@ -673,25 +722,27 @@ func TestDistribution_Shift(t *testing.T) {
 	}
 }
 
-// TestIndexForDuration probes the `indexForDuration` helper function.
-func TestIndexForDuration(t *testing.T) {
+// testDistributionHelpers probes the `indexForDuration` helper function.
+func testDistributionHelpers(t *testing.T) {
+	t.Parallel()
+
 	ms := time.Millisecond
 
 	// verify some duration values up until the "initial buckets"
 	// there's 64 initial buckets using a 4ms step size
-	index, fraction := indexForDuration(time.Duration(0))
+	index, fraction := indexForDuration(0)
 	if index != 0 || fraction != 0 {
 		t.Error("bad")
 	}
-	index, fraction = indexForDuration(time.Duration(16) * ms)
+	index, fraction = indexForDuration(16 * ms)
 	if index != 4 || fraction != 0 {
 		t.Error("bad")
 	}
-	index, fraction = indexForDuration(time.Duration(65) * ms)
+	index, fraction = indexForDuration(65 * ms)
 	if index != 16 || fraction != 0.25 {
 		t.Error("bad")
 	}
-	index, fraction = indexForDuration(time.Duration(255) * ms)
+	index, fraction = indexForDuration(255 * ms)
 	if index != 63 || fraction != 0.75 {
 		t.Error("bad")
 	}
@@ -700,14 +751,14 @@ func TestIndexForDuration(t *testing.T) {
 
 	// 64x4ms buckets + 22x16ms buckets = 608ms mark
 	// meaning we are 12ms into the next 16ms bucket which is 75%
-	index, fraction = indexForDuration(time.Duration(620) * ms)
+	index, fraction = indexForDuration(620 * ms)
 	if index != 86 || fraction != 0.75 {
 		t.Error("bad")
 	}
 
 	// 64x4ms buckets + 40x16ms buckets = 896ms mark
 	// meaning we are 0ms into the next bucket
-	index, fraction = indexForDuration(time.Duration(896) * ms)
+	index, fraction = indexForDuration(896 * ms)
 	if index != 104 || fraction != 0 {
 		t.Error("bad")
 	}
@@ -716,7 +767,7 @@ func TestIndexForDuration(t *testing.T) {
 
 	// 64x4ms buckets + 48x16ms buckets + 15*64buckets = 1984ms mark
 	// meaning we are 16ms into the next bucket which is 25%
-	index, fraction = indexForDuration(time.Duration(2000) * ms)
+	index, fraction = indexForDuration(2000 * ms)
 	if index != 127 || fraction != 0.25 {
 		t.Error("bad")
 	}
