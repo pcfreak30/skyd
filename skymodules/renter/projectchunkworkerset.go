@@ -63,7 +63,7 @@ const (
 	pcwsGougingFractionDenom = 25
 )
 
-// pcwsUnreseovledWorker tracks an unresolved worker that is associated with a
+// pcwsUnresolvedWorker tracks an unresolved worker that is associated with a
 // specific projectChunkWorkerSet. The timestamp indicates when the unresolved
 // worker is expected to have a resolution, and is an estimate based on historic
 // performance from the worker.

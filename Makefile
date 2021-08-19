@@ -94,7 +94,7 @@ vet:
 # markdown-spellcheck runs codespell on all markdown files that are not
 # vendored.
 markdown-spellcheck:
-	git ls-files "*.md" :\!:"vendor/**" | xargs codespell 
+	git ls-files "*.md" :\!:"vendor/**" | xargs codespell
 
 # lint runs golangci-lint (which includes golint, a spellcheck of the codebase,
 # and other linters), the custom analyzers, and also a markdown spellchecker.

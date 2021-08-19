@@ -74,6 +74,8 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "NoWorkers", Test: testSkynetNoWorkers},
 		{Name: "DefaultPath", Test: testSkynetDefaultPath},
 		{Name: "DefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
+		{Name: "TryFiles", Test: testSkynetTryFiles},
+		{Name: "TryFiles_TableTests", Test: testTryFiles_TableTests},
 		{Name: "SingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
 		{Name: "DownloadFormats", Test: testSkynetDownloadFormats},
 		{Name: "DownloadBaseSector", Test: testSkynetDownloadBaseSectorNoEncryption},
@@ -178,7 +180,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	if metadata.Filename != filename {
 		t.Error("bad filename")
 	}
-	if skylink != h.Get("Skynet-Skylink") {
+	if skylink != h.Get(api.SkynetSkylinkHeader) {
 		t.Fatal("skylink mismatch")
 	}
 
@@ -192,7 +194,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 		t.Log(metadata2)
 		t.Fatal("metadata doesn't match")
 	}
-	if skylink != h2.Get("Skynet-Skylink") {
+	if skylink != h2.Get(api.SkynetSkylinkHeader) {
 		t.Fatal("skylink mismatch")
 	}
 
@@ -338,7 +340,14 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rdg.Files) != 1 {
+	found := false
+	for _, f := range rdg.Files {
+		if f.Skylinks[0] == skylink {
+			found = true
+			break
+		}
+	}
+	if !found {
 		t.Fatal("expecting a file to be in the SkynetFolder after uploading")
 	}
 
@@ -426,7 +435,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	if metadata.Length != 0 {
 		t.Fatal("Unexpected metadata")
 	}
-	if emptySkylink != h3.Get("Skynet-Skylink") {
+	if emptySkylink != h3.Get(api.SkynetSkylinkHeader) {
 		t.Fatal("skylink mismatch")
 	}
 
@@ -761,7 +770,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	//
 	// Define test func
 	testSmallFunc := func(files []siatest.TestFile, fileName, skykeyName string) {
-		skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(fileName, files, "", false, false, nil, skykeyName, skykey.SkykeyID{})
+		skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(fileName, files, "", false, []string{}, nil, false, nil, skykeyName, skykey.SkykeyID{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -798,11 +807,12 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 					Len:         uint64(len(nestedFile.Data)),
 				},
 			},
-			Length: uint64(len(rootFile.Data) + len(nestedFile.Data)),
+			Length:   uint64(len(rootFile.Data) + len(nestedFile.Data)),
+			TryFiles: skymodules.DefaultTryFilesValue,
 		}
 		if !reflect.DeepEqual(expected, fileMetadata) {
 			t.Log("Expected:", expected)
-			t.Log("Actual:", fileMetadata)
+			t.Log("Actual:  ", fileMetadata)
 			t.Fatal("Metadata mismatch")
 		}
 
@@ -824,7 +834,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	testSmallFunc(files, fileName, "")
 
 	// Test Encryption
-	fileName = "TestFolderUpload_Encrtyped"
+	fileName = "TestFolderUpload_Encrypted"
 	testSmallFunc(files, fileName, sk.Name)
 
 	// LARGE SUBFILES
@@ -832,7 +842,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	// Define test function
 	largeTestFunc := func(files []siatest.TestFile, fileName, skykeyName string) {
 		// Upload the skyfile
-		skylink, sup, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(fileName, files, "", false, false, nil, skykeyName, skykey.SkykeyID{})
+		skylink, sup, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(fileName, files, "", false, skymodules.DefaultTryFilesValue, nil, false, nil, skykeyName, skykey.SkykeyID{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -3105,7 +3115,7 @@ func testSkynetIncludeLayout(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatalf("Unexpected status for HEAD request, expected %v but received %v", http.StatusOK, status)
 	}
 
-	strSkynetFileLayout := header.Get("Skynet-File-Layout")
+	strSkynetFileLayout := header.Get(api.SkynetFileLayoutHeader)
 	if strSkynetFileLayout == "" {
 		t.Fatal("unexpected")
 	}
@@ -3432,7 +3442,6 @@ func testRenameSiaPath(t *testing.T, tg *siatest.TestGroup) {
 func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
-		//{Name: "TestSkynetBasic", Test: testSkynetBasic},
 		{Name: "HasIndexNoDefaultPath", Test: testHasIndexNoDefaultPath},
 		{Name: "HasIndexDisabledDefaultPath", Test: testHasIndexDisabledDefaultPath},
 		{Name: "HasIndexDifferentDefaultPath", Test: testHasIndexDifferentDefaultPath},
@@ -3967,7 +3976,7 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 			files:                multiNoIndex,
 			defaultPath:          dirAbout,
 			expectedContent:      nil,
-			expectedErrStrUpload: "the default path must point to a file in the root directory of the skyfile",
+			expectedErrStrUpload: "skyfile has invalid default path which refers to a non-root file",
 		},
 	}
 
@@ -4647,7 +4656,7 @@ func TestSkynetCleanupOnError(t *testing.T) {
 	// Upload a small file
 	_, small, _, err := r.UploadNewSkyfileBlocking("smallfile", 100, false)
 	if !uploadFailed(err) {
-		t.Fatal("unexpected")
+		t.Fatal("unexpected error on uploading a small file", err)
 	}
 	smallPath, err := skymodules.SkynetFolder.Join(small.SiaPath.String())
 	if err != nil {
@@ -4655,21 +4664,21 @@ func TestSkynetCleanupOnError(t *testing.T) {
 	}
 	_, err = r.RenterFileRootGet(smallPath)
 	if !skyfileDeleted(smallPath) {
-		t.Fatal("unexpected")
+		t.Fatal("unexpected error on getting root for a small file", err)
 	}
 
 	// Upload a large file
 	ss := modules.SectorSize
 	_, large, _, err := r.UploadNewSkyfileBlocking("largefile", ss*2, false)
 	if !uploadFailed(err) {
-		t.Fatal("unexpected")
+		t.Fatal("unexpected error on uploading a large file", err)
 	}
 	largePath, err := skymodules.SkynetFolder.Join(large.SiaPath.String())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !skyfileDeleted(largePath) {
-		t.Fatal("unexpected")
+		t.Fatal("unexpected error on deleting a large file", err)
 	}
 
 	largePathExtended, err := largePath.AddSuffixStr(skymodules.ExtendedSuffix)
@@ -4677,7 +4686,7 @@ func TestSkynetCleanupOnError(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !skyfileDeleted(largePathExtended) {
-		t.Fatal("unexpected")
+		t.Fatal("unexpected error on deleting a large file extended", err)
 	}
 
 	// Disable the dependency and verify the files are not removed
@@ -4686,22 +4695,22 @@ func TestSkynetCleanupOnError(t *testing.T) {
 	// Re-upload the small file and re-test
 	_, small, _, err = r.UploadNewSkyfileBlocking("smallfile", 100, true)
 	if uploadFailed(err) {
-		t.Fatal("unexpected")
+		t.Fatal("unexpected error on reuploading a small file", err)
 	}
 	if skyfileDeleted(smallPath) {
-		t.Fatal("unexpected")
+		t.Fatal("unexpected error on deleting a reuploaded small file", err)
 	}
 
 	// Re-upload the large file and re-test
 	_, large, _, err = r.UploadNewSkyfileBlocking("largefile", ss*2, true)
 	if uploadFailed(err) {
-		t.Fatal("unexpected")
+		t.Fatal("unexpected error on reuploading a large file", err)
 	}
 	if skyfileDeleted(largePath) {
-		t.Fatal("unexpected")
+		t.Fatal("unexpected error on deleting a reuploaded large file", err)
 	}
 	if skyfileDeleted(largePathExtended) {
-		t.Fatal("unexpected")
+		t.Fatal("unexpected error on deleting reuploaded larde file extended", err)
 	}
 }
 
@@ -5509,7 +5518,7 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// It should contain a valid proof.
 	var proof []api.RegistryHandlerGET
-	err = json.Unmarshal([]byte(h.Get("Skynet-Proof")), &proof)
+	err = json.Unmarshal([]byte(h.Get(api.SkynetProofHeader)), &proof)
 	if err != nil {
 		t.Fatal(err)
 	}
