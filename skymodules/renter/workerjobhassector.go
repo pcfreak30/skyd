@@ -114,8 +114,7 @@ type (
 
 	// availabilityMetrics is a helper struct that keeps track of sector
 	// availability metrics, we keep track of these in several buckets that
-	// correspond with sectors that were uploaded with a more or less similar
-	// redundancy scheme
+	// correspond with sectors that were uploaded with a similar redundancy
 	availabilityMetrics struct {
 		buckets         []*availabilityBucket
 		piecesToBuckets []int

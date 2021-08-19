@@ -35,9 +35,9 @@ type (
 		lastDecay time.Time
 
 		// Keeps track of the total amount of time that the data has been alive.
-		// This time gets decayed alongside the values, which means you can get the
-		// total rate of objects being added by dividing the total number of objects
-		// by the decayed lifetime.
+		// This time gets decayed alongside the values, which means you can get
+		// the total rate of objects being added by dividing the total number of
+		// objects by the decayed lifetime.
 		decayedLifetime time.Duration
 	}
 
