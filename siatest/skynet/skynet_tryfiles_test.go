@@ -3,6 +3,7 @@ package skynet
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -381,7 +382,7 @@ func testTryFiles_TableTests(t *testing.T, tg *siatest.TestGroup) {
 	var status int
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			content, err = r.SkynetSkylinkGet(tt.skylink + tt.requestPath)
+			content, status, err = download(r, tt.skylink+tt.requestPath)
 			if err == nil && tt.expectedErrStrDownload != "" {
 				t.Log(string(content))
 				t.Fatalf("Test name: %s. Expected error '%s', got <nil>", tt.name, tt.expectedErrStrDownload)
@@ -399,10 +400,6 @@ func testTryFiles_TableTests(t *testing.T, tg *siatest.TestGroup) {
 				t.Logf("Actual content:   %s\n", string(content))
 				t.Fatalf("Test name: %s. Content mismatch! Expected %d bytes, got %d bytes.", tt.name, len(tt.expectedContent), len(content))
 			}
-			status, _, err = r.SkynetSkylinkHead(tt.skylink + tt.requestPath)
-			if err != nil && (tt.expectedErrStrDownload == "" || !strings.Contains(err.Error(), tt.expectedErrStrDownload)) {
-				t.Fatalf("Test name: %s. (HEAD) Expected error '%s', got '%s'", tt.name, tt.expectedErrStrDownload, err.Error())
-			}
 			if status != tt.expectedStatusCode {
 				t.Fatalf("Test name: %s. Expected status code %d, got %d", tt.name, tt.expectedStatusCode, status)
 			}
@@ -413,13 +410,34 @@ func testTryFiles_TableTests(t *testing.T, tg *siatest.TestGroup) {
 // downloadAndCompare is a helper that downloads a skylink and verifies that its
 // content matches the expected one.
 func downloadAndCompare(r *siatest.TestNode, skylink string, expectedData []byte) error {
-	data, err := r.SkynetSkylinkGet(skylink)
+	data, _, err := download(r, skylink)
 	if err != nil {
-		return errors.AddContext(err, "failed to download")
+		return err
 	}
 	if bytes.Compare(data, expectedData) != 0 {
 		errMsg := fmt.Sprintf("Expected data: %s\nActual data: %s\nData is different from the expected.", string(expectedData), string(data))
 		return errors.New(errMsg)
 	}
 	return nil
+}
+
+// download uses a simple http client to download a skylink. It returns the
+// downloaded content and the status code.
+func download(r *siatest.TestNode, skylink string) ([]byte, int, error) {
+	url := fmt.Sprintf("http://%s/skynet/skylink/%s", r.APIAddress(), skylink)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, 0, errors.AddContext(err, "failed to build request")
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, 0, errors.AddContext(err, "failed to execute request")
+	}
+	defer resp.Body.Close()
+	data := make([]byte, resp.ContentLength)
+	_, err = io.ReadFull(resp.Body, data)
+	if err != nil {
+		return nil, 0, errors.AddContext(err, "failed to read response body")
+	}
+	return data, resp.StatusCode, nil
 }

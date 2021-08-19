@@ -41,16 +41,6 @@ const (
 	// high timeouts.
 	MaxSkynetRequestTimeout = 15 * 60 // in seconds
 
-	// SkynetCustomStatusCodeHeader is a custom Skynet header that will be set
-	// on the response if the skyfile specifies a custom error response content.
-	// This header instructs the client (as in client.go) that the response's
-	// content  and status code are meant to be delivered to the client as-is.
-	// Also, the content should not be assumed to be an error, even of the
-	// status codes indicates one. This is only relevant when the API is being
-	// accessed by our client implementation, and it doesn't make a difference
-	// to the regular operation of the portal.
-	SkynetCustomStatusCodeHeader = "Skynet-Custom-StatusCode"
-
 	// SkynetDisableForceHeader allows disabling the force-update feature.
 	SkynetDisableForceHeader = "Skynet-Disable-Force"
 

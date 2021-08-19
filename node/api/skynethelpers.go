@@ -234,7 +234,6 @@ func (ew customErrorWriter) WriteError(w http.ResponseWriter, e Error, code int)
 		return
 	}
 	w.Header().Set("Content-Type", contentType)
-	w.Header().Set(SkynetCustomStatusCodeHeader, strconv.Itoa(code))
 	w.WriteHeader(code)
 	_, err = io.Copy(w, contentReader)
 	if err != nil {
