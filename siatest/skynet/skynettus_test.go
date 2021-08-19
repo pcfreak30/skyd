@@ -13,6 +13,7 @@ import (
 	"github.com/eventials/go-tus"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/node"
 	"gitlab.com/SkynetLabs/skyd/node/api/client"
 	"gitlab.com/SkynetLabs/skyd/siatest"
@@ -82,11 +83,31 @@ func testTUSUploaderBasic(t *testing.T, r *siatest.TestNode) {
 	chunkSize := 2 * int64(skymodules.ChunkSize(crypto.TypePlain, uint64(skymodules.RenterDefaultDataPieces)))
 
 	// Declare a test helper that uploads a file and downloads it.
-	uploadTest := func(fileSize int64) error {
+	uploadTest := func(fileSize int64, baseSectorRedundancy, fanoutHealth float64) error {
 		uploadedData := fastrand.Bytes(int(fileSize))
 		fileName := hex.EncodeToString(fastrand.Bytes(10))
 		fileType := hex.EncodeToString(fastrand.Bytes(10))
 		skylink, err := r.SkynetTUSUploadFromBytes(uploadedData, chunkSize, fileName, fileType)
+		if err != nil {
+			return err
+		}
+		var sl skymodules.Skylink
+		err = sl.LoadString(skylink)
+		if err != nil {
+			return err
+		}
+
+		// Wait for the upload to reach full health.
+		err = build.Retry(100, 100*time.Millisecond, func() error {
+			shg, err := r.SkylinkHealthGET(sl)
+			if err != nil {
+				return err
+			}
+			if shg.BaseSectorRedundancy != uint64(baseSectorRedundancy) || shg.FanoutEffectiveRedundancy != fanoutHealth {
+				return fmt.Errorf("wrong health %v %v", shg.BaseSectorRedundancy, shg.FanoutEffectiveRedundancy)
+			}
+			return nil
+		})
 		if err != nil {
 			return err
 		}
@@ -132,22 +153,22 @@ func testTUSUploaderBasic(t *testing.T, r *siatest.TestNode) {
 	}
 
 	// Upload a large file.
-	if err := uploadTest(chunkSize*5 + chunkSize/2); err != nil {
+	if err := uploadTest(chunkSize*5+chunkSize/2, 2, 3); err != nil {
 		t.Fatal(err)
 	}
 
 	// Upload a byte that's smaller than a sector but still a large file.
-	if err := uploadTest(int64(modules.SectorSize) - 1); err != nil {
+	if err := uploadTest(int64(modules.SectorSize)-1, 2, 3); err != nil {
 		t.Fatal(err)
 	}
 
 	// Upload a small file.
-	if err := uploadTest(1); err != nil {
+	if err := uploadTest(1, 2, 0); err != nil {
 		t.Fatal(err)
 	}
 
 	// Upload empty file.
-	if err := uploadTest(0); err != nil {
+	if err := uploadTest(0, 2, 0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -164,7 +185,7 @@ func testTUSUploaderBasic(t *testing.T, r *siatest.TestNode) {
 	}
 
 	// Upload file that is too large.
-	if err := uploadTest(2 * chunkSize); err == nil || !strings.Contains(err.Error(), "upload body is to large") {
+	if err := uploadTest(2*chunkSize, 0, 0); err == nil || !strings.Contains(err.Error(), "upload body is to large") {
 		t.Fatal(err)
 	}
 

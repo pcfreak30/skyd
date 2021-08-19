@@ -1468,6 +1468,9 @@ type Renter interface {
 	// potentially more expensive, hosts.
 	DownloadSkylinkBaseSector(link Skylink, timeout time.Duration, pricePerMS types.Currency) (Streamer, []RegistryEntry, error)
 
+	// SkylinkHealth returns the health of a skylink on the network.
+	SkylinkHealth(ctx context.Context, link Skylink, ppms types.Currency) (SkylinkHealth, error)
+
 	// UploadSkyfile will upload data to the Sia network from a reader and
 	// create a skyfile, returning the skylink that can be used to access the
 	// file.
@@ -1531,6 +1534,29 @@ type SkyfileStreamer interface {
 	Metadata() SkyfileMetadata
 	RawMetadata() []byte
 	Skylink() Skylink
+}
+
+// SkylinkHealth describes the health of a skylink on the network.
+type SkylinkHealth struct {
+	// BaseSectorRedundancy is the number of base sector pieces on the
+	// network.
+	BaseSectorRedundancy uint64 `json:"basesectorredundancy"`
+
+	// FanoutEffectiveRedundancy is the worst redundancy of any of the
+	// fanout's chunks on the network.
+	FanoutEffectiveRedundancy float64 `json:"fanouteffectiveredundancy,omitempty"`
+
+	// FanoutDataPieces are the datapieces of the erasure coder specified in
+	// the layout of the skyfile.
+	FanoutDataPieces uint8 `json:"fanoutdatapieces,omitempty"`
+
+	// FanoutDataPieces are the paritypieces of the erasure coder specified
+	// in the layout of the skyfile.
+	FanoutParityPieces uint8 `json:"fanoutparitypieces,omitempty"`
+
+	// FanoutRedundancy is the individual redundancy of all chunks in the
+	// fanout.
+	FanoutRedundancy []float64 `json:"fanoutredundancy,omitempty"`
 }
 
 // RenterDownloadParameters defines the parameters passed to the Renter's
