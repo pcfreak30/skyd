@@ -360,10 +360,28 @@ func (pdc *projectDownloadChunk) recoverData() ([]byte, error) {
 // the erasure coder, and then send the result down the response channel. If
 // there is an error during decode, 'pdc.fail()' will be called.
 func (pdc *projectDownloadChunk) finalize() {
+	// Convenience Variables
+	ec := pdc.workerSet.staticErasureCoder
+	r := pdc.workerSet.staticRenter
+
 	// Log info and finish span.
 	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
 		span.SetTag("success", true)
 		span.Finish()
+	}
+
+	// Update the sector download statistics
+	minPieces := ec.MinPieces()
+	numOverdriveWorkers := uint64(len(pdc.launchedWorkers) - minPieces)
+	if numOverdriveWorkers < 0 {
+		build.Critical("num overdrive workers should never be less than zero")
+	} else {
+		// track base sector and fanout sector download separately
+		if minPieces == 1 {
+			r.staticBaseSectorDownloadStats.AddDataPoint(numOverdriveWorkers)
+		} else {
+			r.staticFanoutSectorDownloadStats.AddDataPoint(numOverdriveWorkers)
+		}
 	}
 
 	// Recover the data if necessary.

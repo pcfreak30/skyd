@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -108,11 +109,77 @@ type DirListFunc func(DirectoryInfo)
 type RenterPerformance struct {
 	SystemHealthScanDuration time.Duration
 
+	BaseSectorDownloadOverdriveStats   *DownloadOverdriveStats
+	FanoutSectorDownloadOverdriveStats *DownloadOverdriveStats
+
 	BaseSectorUploadStats *DistributionTrackerStats
 	ChunkUploadStats      *DistributionTrackerStats
 	RegistryReadStats     *DistributionTrackerStats
 	RegistryWriteStats    *DistributionTrackerStats
 	StreamBufferReadStats *DistributionTrackerStats
+}
+
+// DownloadOverdriveStats is a helper struct that contains information about the
+// sector downloads, it keeps track of what percentage of downloads we overdrive
+// and how many overdrive workers get launched.
+type DownloadOverdriveStats struct {
+	// total keeps track of the total amount of downloads
+	total uint64
+
+	// overdrive keeps track of the amount of times the download requires one or
+	// more overdrive workers to be launched in order to complete
+	overdrive uint64
+
+	// overdriveWorkersLaunched keeps track of the amount of overdrive workers
+	// that were launched for a download
+	overdriveWorkersLaunched uint64
+
+	mu sync.Mutex
+}
+
+// NewSectorDownloadStats returns a new DownloadOverdriveStats object.
+func NewSectorDownloadStats() *DownloadOverdriveStats {
+	return &DownloadOverdriveStats{}
+}
+
+// OverdrivePct returns the frequency with which we overdrive when downloading a
+// sector. The frequency is expressed as a percentage of overall downloads. E.g.
+// an overdrive pct of 0.6 means we launch at least one overdrive worker 60% of
+// the time.
+func (ds *DownloadOverdriveStats) OverdrivePct() float64 {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
+	if ds.total == 0 {
+		return 0
+	}
+	return float64(ds.overdrive) / float64(ds.total)
+}
+
+// NumOverdriveWorkersAvg returns the average amount of overdrive workers we
+// launch.
+func (ds *DownloadOverdriveStats) NumOverdriveWorkersAvg() float64 {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
+	if ds.total == 0 {
+		return 0
+	}
+	return float64(ds.overdriveWorkersLaunched) / float64(ds.total)
+}
+
+// AddDataPoint adds a data point to the statistics, it takes one parameter
+// called 'numOverdriveWorkers' which represents the amount of overdrive workers
+// launched.
+func (ds *DownloadOverdriveStats) AddDataPoint(numOverdriveWorkers uint64) {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
+	ds.total++
+	ds.overdriveWorkersLaunched += numOverdriveWorkers
+	if numOverdriveWorkers > 0 {
+		ds.overdrive++
+	}
 }
 
 // RenterStats is a struct which tracks key metrics in a single renter. This

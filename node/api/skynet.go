@@ -112,6 +112,12 @@ type (
 		BaseSectorUpload15mP999ms     float64 `json:"basesectorupload15mp999ms"`
 		BaseSectorUpload15mP9999ms    float64 `json:"basesectorupload15mp9999ms"`
 
+		// Sector Download Stats
+		BaseSectorOverdrivePct   float64 `json:"basesectoroverdrivepct"`
+		BaseSectorOverdriveAvg   float64 `json:"basesectoroverdriveavg"`
+		FanoutSectorOverdrivePct float64 `json:"fanoutsectoroverdrivepct"`
+		FanoutSectorOverdriveAvg float64 `json:"fanoutsectoroverdriveavg"`
+
 		// Chunk Upload Stats
 		ChunkUpload15mDataPoints float64 `json:"chunkupload15mdatapoints"`
 		ChunkUpload15mP99ms      float64 `json:"chunkupload15mp99ms"`
@@ -1055,11 +1061,20 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 		totalStorage += c.Size()
 	}
 
+	// Get the sector stats
+	baseSectorStats := renterPerf.BaseSectorDownloadOverdriveStats
+	fanoutSectorStats := renterPerf.FanoutSectorDownloadOverdriveStats
+
 	WriteJSON(w, &SkynetStatsGET{
 		BaseSectorUpload15mDataPoints: renterPerf.BaseSectorUploadStats.DataPoints[0],
 		BaseSectorUpload15mP99ms:      float64(renterPerf.BaseSectorUploadStats.Nines[0][1]) / float64(time.Millisecond),
 		BaseSectorUpload15mP999ms:     float64(renterPerf.BaseSectorUploadStats.Nines[0][2]) / float64(time.Millisecond),
 		BaseSectorUpload15mP9999ms:    float64(renterPerf.BaseSectorUploadStats.Nines[0][3]) / float64(time.Millisecond),
+
+		BaseSectorOverdrivePct:   baseSectorStats.OverdrivePct(),
+		BaseSectorOverdriveAvg:   baseSectorStats.NumOverdriveWorkersAvg(),
+		FanoutSectorOverdrivePct: fanoutSectorStats.OverdrivePct(),
+		FanoutSectorOverdriveAvg: fanoutSectorStats.NumOverdriveWorkersAvg(),
 
 		ChunkUpload15mDataPoints: renterPerf.ChunkUploadStats.DataPoints[0],
 		ChunkUpload15mP99ms:      float64(renterPerf.ChunkUploadStats.Nines[0][1]) / float64(time.Millisecond),
