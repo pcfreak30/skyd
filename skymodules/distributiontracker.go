@@ -22,7 +22,6 @@ package skymodules
 
 import (
 	"fmt"
-	"math"
 	"reflect"
 	"sync"
 	"time"
@@ -31,21 +30,6 @@ import (
 )
 
 const (
-	// distributionTrackerDecayFrequencyDenom determines what percentage of the
-	// half life must expire before a decay is applied. If the decay denominator
-	// is '100', it means that the decay will only be applied once 1/100 (1%) of
-	// the half life has elapsed.
-	//
-	// The main reason that the decay is performed in small blocks instead of
-	// continuously is the limited precision of floating point numbers. We found
-	// that in production, performing a decay after a very tiny amount of time
-	// had elapsed resulted in highly inaccurate data, because the floating
-	// points rounded the result too heavily. 100 is generally a good value,
-	// because it is infrequent enough that the float point precision can still
-	// provide strong accuracy, yet frequent enough that a value which has not
-	// been decayed recently is still also an accurate value.
-	distributionTrackerDecayFrequencyDenom = 100
-
 	// distributionTrackerInitialStepSize defines the step size that we use for
 	// the first bucketsPerStepChange buckets of a distribution. This means that
 	// this is the smallest timing that is supported by the distribution. The
@@ -104,19 +88,8 @@ type (
 	// NOTE: If you extend this struct, take the changes into account in the
 	// 'Clone' method.
 	Distribution struct {
-		// Determines the decay rate of data in the distribution. Zero value
-		// here means that no decay is applied.
-		staticHalfLife time.Duration
-
-		// Tracks the last time decay was applied so we know if we need to apply
-		// another round of decay when adding a datapoint.
-		lastDecay time.Time
-
-		// Keeps track of the total amount of time that this distribution has
-		// been alive. This time gets decayed alongside the values, which means
-		// you can get the total rate of objects being added by dividing the
-		// total number of objects by the decayed lifetime.
-		decayedLifetime time.Duration
+		// Decay is applied to the distribution.
+		*GenericDecay
 
 		// Buckets that represent the distribution. The first
 		// bucketsPerStepChange buckets start at 4ms and are 4ms spaced apart.
@@ -208,32 +181,11 @@ func indexForDuration(duration time.Duration) (int, float64) {
 
 // addDecay will decay the distribution.
 func (d *Distribution) addDecay() {
-	// Don't add any decay if the half life is zero.
-	if d.staticHalfLife == 0 {
-		return
-	}
-
-	// Determine if a decay should be applied based on the progression through
-	// the half life. We don't apply any decay if not much time has elapsed
-	// because applying decay over very short periods taxes the precision of the
-	// float64s that we use.
-	sincelastDecay := time.Since(d.lastDecay)
-	decayFrequency := d.staticHalfLife / distributionTrackerDecayFrequencyDenom
-	if sincelastDecay < decayFrequency {
-		return
-	}
-
-	// Determine how much decay should be applied.
-	d.decayedLifetime += time.Since(d.lastDecay)
-	strength := float64(sincelastDecay) / float64(d.staticHalfLife)
-	mult := math.Pow(0.5, strength) // 0.5 is the power you use to perform half life calculations
-
-	// Apply the decay to all values.
-	for i := 0; i < len(d.timings); i++ {
-		d.timings[i] *= mult
-	}
-	d.decayedLifetime = time.Duration(float64(d.decayedLifetime) * mult)
-	d.lastDecay = time.Now()
+	d.Decay(func(decay float64) {
+		for i := 0; i < len(d.timings); i++ {
+			d.timings[i] *= decay
+		}
+	})
 }
 
 // AddDataPoint will add a sampled time to the distribution, performing a decay
@@ -284,11 +236,7 @@ func (d *Distribution) ChanceAfter(dur time.Duration) float64 {
 
 // Clone returns a deep copy of the distribution.
 func (d *Distribution) Clone() *Distribution {
-	c := &Distribution{
-		staticHalfLife:  d.staticHalfLife,
-		lastDecay:       d.lastDecay,
-		decayedLifetime: d.decayedLifetime,
-	}
+	c := &Distribution{GenericDecay: d.GenericDecay.Clone()}
 	for i, b := range d.timings {
 		c.timings[i] = b
 	}
@@ -510,8 +458,7 @@ func (dt *DistributionTracker) Stats() *DistributionTrackerStats {
 // NewDistribution will create a distribution with the provided half life.
 func NewDistribution(halfLife time.Duration) *Distribution {
 	return &Distribution{
-		staticHalfLife: halfLife,
-		lastDecay:      time.Now(),
+		GenericDecay: NewDecay(halfLife),
 	}
 }
 

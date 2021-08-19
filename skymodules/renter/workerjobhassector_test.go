@@ -22,7 +22,7 @@ func TestHasSectorJobBatchCallNext(t *testing.T) {
 
 	// Create queue and job.
 	queue := jobHasSectorQueue{
-		availabilityMetrics: newAvailabilityMetrics(),
+		availabilityMetrics: newAvailabilityMetrics(availabilityMetricsDefaultHalfLife),
 		jobGenericQueue:     newJobGenericQueue(&worker{}),
 	}
 	jhs := &jobHasSector{
@@ -258,60 +258,68 @@ func TestHasSectorJobExpectedBandwidth(t *testing.T) {
 func TestAvailabilityMetrics(t *testing.T) {
 	t.Parallel()
 
-	metrics := newAvailabilityMetrics()
+	// verify we have the expected amount of buckets
+	metrics := newAvailabilityMetrics(100 * time.Second)
 	if len(metrics.buckets) != availabilityMetricsNumBuckets {
 		t.Fatal("bad")
 	}
 
+	// verify the piecesToBuckets slice against this hardcoded slice
+	expected := []int{-1, 0, 1, 2, 3, 3, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15}
+	if len(metrics.piecesToBuckets) != len(expected) {
+		t.Fatal("bad")
+	}
+	for i := range expected {
+		if metrics.piecesToBuckets[i] != expected[i] {
+			t.Fatal("bad")
+		}
+	}
+
 	// manually verify some bucket indices
-	bucketIndex, exists := metrics.piecesToBucketIndex[1]
-	if !exists || bucketIndex != 0 {
+	bucketIndex := metrics.piecesToBuckets[1]
+	if bucketIndex != 0 {
+		t.Fatal("bad", bucketIndex)
+	}
+	bucketIndex = metrics.piecesToBuckets[10]
+	if bucketIndex != 5 {
 		t.Fatal("bad")
 	}
-	bucketIndex, exists = metrics.piecesToBucketIndex[10]
-	if !exists || bucketIndex != 5 {
+	bucketIndex = metrics.piecesToBuckets[30]
+	if bucketIndex != 10 {
 		t.Fatal("bad")
 	}
-	bucketIndex, exists = metrics.piecesToBucketIndex[30]
-	if !exists || bucketIndex != 10 {
-		t.Fatal("bad")
-	}
-	bucketIndex, exists = metrics.piecesToBucketIndex[96]
-	if !exists || bucketIndex != 15 {
+	bucketIndex = metrics.piecesToBuckets[96]
+	if bucketIndex != 15 {
 		t.Fatal("bad")
 	}
 
 	// assert we're returning the last bucket if the num pieces is larger than
 	// what we support, which is 116 num pieces with the current defaults
-	_, exists = metrics.piecesToBucketIndex[999]
-	if exists {
-		t.Fatal("bad")
-	}
 	if metrics.bucket(999) != metrics.buckets[bucketIndex] {
 		t.Fatal("bad")
 	}
 
 	// assert the bucket has no datapoints yet
 	bucket := metrics.bucket(10)
-	if bucket.totalAvailable != 0 || bucket.totalJobs != 0 {
+	if bucket.totalAvailable != 0 || bucket.totalLookups != 0 {
 		t.Fatal("bad")
 	}
 
 	// update metrics and assert the correct bucket got updated
 	metrics.updateMetrics(10, []bool{true, true, false})
 	bucket = metrics.bucket(10)
-	if bucket.totalAvailable != 2 || bucket.totalJobs != 3 {
+	if bucket.totalAvailable != 2 || bucket.totalLookups != 3 {
 		t.Fatal("bad")
 	}
 
 	// assert all other buckets have not been updated
 	for b := 0; b < availabilityMetricsNumBuckets; b++ {
-		bucketIndex = metrics.piecesToBucketIndex[10]
+		bucketIndex = metrics.piecesToBuckets[10]
 		if b == bucketIndex {
 			continue
 		}
 		bucket := metrics.buckets[b]
-		if bucket.totalAvailable != 0 || bucket.totalJobs != 0 {
+		if bucket.totalAvailable != 0 || bucket.totalLookups != 0 {
 			t.Fatal("bad")
 		}
 	}
