@@ -488,17 +488,25 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 	}
 
 	// parse 'tryfiles' query parameter
-	tryFiles, err := UnmarshalTryFiles(queryForm.Get("tryfiles"))
-	if err != nil {
-		return nil, nil, errors.AddContext(err, "unable to parse 'tryfiles' parameter")
-	}
-	if (defaultPath != "" || disableDefaultPath) && len(tryFiles) > 0 {
-		return nil, nil, errors.New("defaultpath and disabledefaultpath are not compatible with tryfiles")
-	}
-	// if we don't have any tryfiles defined, and we don't have a defaultpath or
-	// disabledefaultpath, we want to default to tryfiles with index.html
-	if len(tryFiles) == 0 && defaultPath == "" && disableDefaultPath == false {
-		tryFiles = skymodules.DefaultTryFilesValue
+	var tryFiles []string
+	// There is a difference between the tryfiles value being set to empty or
+	// not being set at all. If it's not set at all we'll use the default value
+	// but if it's set to empty we will leave it empty.
+	if _, isSet := queryForm["tryfiles"]; isSet {
+		tryFiles, err = UnmarshalTryFiles(queryForm.Get("tryfiles"))
+		if err != nil {
+			return nil, nil, errors.AddContext(err, "unable to parse 'tryfiles' parameter")
+		}
+		if (defaultPath != "" || disableDefaultPath) && len(tryFiles) > 0 {
+			return nil, nil, errors.New("defaultpath and disabledefaultpath are not compatible with tryfiles")
+		}
+	} else {
+		// If we don't have any tryfiles defined, and we don't have a defaultpath or
+		// disabledefaultpath, we want to default to tryfiles with index.html.
+		// This only happens if the tryfiles are not passed at all.
+		if defaultPath == "" && disableDefaultPath == false {
+			tryFiles = skymodules.DefaultTryFilesValue
+		}
 	}
 
 	errPages, err := UnmarshalErrorPages(queryForm.Get("errorpages"))

@@ -15,13 +15,13 @@ import (
 	"time"
 
 	"github.com/julienschmidt/httprouter"
-	"go.sia.tech/siad/crypto"
-	"go.sia.tech/siad/modules"
-
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skykey"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 )
@@ -447,6 +447,14 @@ func testParseUploadRequestParameters(t *testing.T) {
 	}
 
 	// verify tryfiles
+	req = buildRequest(url.Values{"tryfiles": nil}, http.Header{})
+	_, params, err = parseRequest(req, defaultParams)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	if !reflect.DeepEqual(params.tryFiles, skymodules.DefaultTryFilesValue) {
+		t.Fatalf("Expected '%s', got '%s'\n", skymodules.DefaultTryFilesValue, params.tryFiles)
+	}
 	req = buildRequest(url.Values{"tryfiles": []string{}}, http.Header{})
 	_, params, err = parseRequest(req, defaultParams)
 	if err != nil {
@@ -454,6 +462,14 @@ func testParseUploadRequestParameters(t *testing.T) {
 	}
 	if !reflect.DeepEqual(params.tryFiles, skymodules.DefaultTryFilesValue) {
 		t.Fatalf("Expected '%s', got '%s'\n", skymodules.DefaultTryFilesValue, params.tryFiles)
+	}
+	req = buildRequest(url.Values{"tryfiles": []string{""}}, http.Header{})
+	_, params, err = parseRequest(req, defaultParams)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	if !reflect.DeepEqual(params.tryFiles, []string{}) {
+		t.Fatalf("Expected '%s', got '%s'\n", []string{}, params.tryFiles)
 	}
 	req = buildRequest(url.Values{"tryfiles": []string{"[\"index.html\"]"}}, http.Header{})
 	_, params, err = parseRequest(req, defaultParams)
