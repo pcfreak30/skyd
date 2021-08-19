@@ -173,7 +173,7 @@ func durationForIndex(index int) time.Duration {
 // index it also returns a float that represents the fraction of the bucket that
 // is included by the given duration.
 //
-// e.g. if we are dealing with 4ms buckets and a duration of ms is passed, the
+// e.g. if we are dealing with 4ms buckets and a duration of 1ms is passed, the
 // return values would be 0 and 0.25, indicating the duration corresponds with
 // bucket at index 0, and the given duration included 25% of that bucket.
 func indexForDuration(duration time.Duration) (int, float64) {
@@ -348,12 +348,17 @@ func (d *Distribution) ExpectedDuration() time.Duration {
 
 // MergeWith merges the given distribution according to a certain weight.
 func (d *Distribution) MergeWith(other *Distribution, weight float64) {
+	// validate the given distribution
+	if d.staticHalfLife != other.staticHalfLife {
+		build.Critical(fmt.Sprintf("only distributions with equal half lives should be merged, %v != %v", d.staticHalfLife, other.staticHalfLife))
+		return
+	}
+
+	// validate the weight
 	if weight <= 0 || weight > 1 {
 		build.Critical(fmt.Sprintf("unexpected weight %v", weight))
 		return
 	}
-
-	// TODO validate distribution have equal half life (?)
 
 	// loop over every bucket in other's distribution and calculate the pct
 	// chance a datapoint appears in this bucket, append this chance
