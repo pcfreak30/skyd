@@ -91,7 +91,7 @@ func TestHasSectorJobQueueAvailabilityRate(t *testing.T) {
 	}
 
 	// assert the min availability rate on a new queue
-	randomNumPieces := fastrand.Intn(64)
+	randomNumPieces := fastrand.Intn(64) + 1
 	if w.staticJobHasSectorQueue.callAvailabilityRate(randomNumPieces) != jobHasSectorQueueMinAvailabilityRate {
 		t.Fatal("unexpected")
 	}
