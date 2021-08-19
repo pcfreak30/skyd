@@ -62,9 +62,6 @@ const (
 	// distributionTrackerNumIncrements defines the number of times the stats
 	// get incremented.
 	distributionTrackerNumIncrements = 7
-
-	// distributionTrackerMaxIndex defines the last bucket index
-	distributionTrackerMaxIndex = 64 + 48*distributionTrackerNumIncrements - 1
 )
 
 // NOTE: These consts are interconnected, do not change them.
@@ -151,7 +148,7 @@ type (
 
 // durationForIndex converts the index of a timing bucket into a timing.
 func durationForIndex(index int) time.Duration {
-	if index < 0 || index > distributionTrackerMaxIndex {
+	if index < 0 || index > distributionTrackerTotalBuckets-1 {
 		build.Critical("distribution duration index out of bounds:", index)
 	}
 
@@ -390,13 +387,13 @@ func (d *Distribution) PStat(p float64) time.Duration {
 	}
 	if total == 0 {
 		// No data collected, just return the worst case.
-		return durationForIndex(distributionTrackerMaxIndex)
+		return durationForIndex(distributionTrackerTotalBuckets - 1)
 	}
 
 	// Count up until we reach p.
 	var run float64
 	var index int
-	for run/total < p && index < distributionTrackerMaxIndex {
+	for run/total < p && index < distributionTrackerTotalBuckets-1 {
 		run += d.timings[index]
 		index++
 	}

@@ -34,7 +34,7 @@ func testDistributionBucketing(t *testing.T) {
 	d := NewDistribution(time.Minute * 100)
 
 	// Get a distribution with no data collected.
-	if d.PStat(0.55) != durationForIndex(distributionTrackerMaxIndex) {
+	if d.PStat(0.55) != durationForIndex(distributionTrackerTotalBuckets-1) {
 		t.Error("expecting a distribution with no data to return the max possible value")
 	}
 
@@ -232,8 +232,8 @@ func testDistributionBucketing(t *testing.T) {
 		t.Error("bad", i, pstat, total)
 	}
 	pstat = d.PStat(0.5)
-	if pstat != durationForIndex((distributionTrackerMaxIndex+1)/2) {
-		t.Error("bad", pstat, durationForIndex(200))
+	if pstat != durationForIndex(distributionTrackerTotalBuckets/2) {
+		t.Error("bad", pstat, durationForIndex(distributionTrackerTotalBuckets/2))
 	}
 }
 
