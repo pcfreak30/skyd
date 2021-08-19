@@ -1579,8 +1579,10 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 		fanoutHealth = append(fanoutHealth, chunkHealth)
 	}
 	return skymodules.SkylinkHealth{
-		BaseSectorRedundancy:          baseSectorRedundancy,
-		FanoutOverallHealthPercentage: worstHealth,
-		FanoutHealthPercentages:       fanoutHealth,
+		BaseSectorRedundancy:      baseSectorRedundancy,
+		FanoutEffectiveRedundancy: worstHealth,
+		FanoutRedundancy:          fanoutHealth,
+		FanoutDataPieces:          layout.FanoutDataPieces,
+		FanoutParityPieces:        layout.FanoutParityPieces,
 	}, nil
 }

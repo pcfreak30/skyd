@@ -5640,10 +5640,18 @@ func TestSkynetSkylinkHealth(t *testing.T) {
 		if sh.BaseSectorRedundancy != baseSectorRedundancy {
 			return fmt.Errorf("wrong base sector redundancy %v != %v", sh.BaseSectorRedundancy, baseSectorRedundancy)
 		}
-		if sh.FanoutOverallHealthPercentage != fanoutHealth {
-			return fmt.Errorf("fanout not healthy %v != %v", sh.FanoutOverallHealthPercentage, fanoutHealth)
+		if sh.FanoutEffectiveRedundancy != fanoutHealth {
+			return fmt.Errorf("fanout not healthy %v != %v", sh.FanoutEffectiveRedundancy, fanoutHealth)
 		}
-		for i, health := range sh.FanoutHealthPercentages {
+		dataPieces := uint8(skymodules.RenterDefaultDataPieces)
+		parityPieces := uint8(skymodules.RenterDefaultParityPieces)
+		if sh.FanoutDataPieces != dataPieces {
+			return fmt.Errorf("invalid datapieces %v != %v", sh.FanoutDataPieces, dataPieces)
+		}
+		if sh.FanoutParityPieces != parityPieces {
+			return fmt.Errorf("invalid paritypieces %v != %v", sh.FanoutParityPieces, parityPieces)
+		}
+		for i, health := range sh.FanoutRedundancy {
 			if health != fanoutHealth {
 				return fmt.Errorf("chunk %v not healthy %v != %v", i, health, fanoutHealth)
 			}

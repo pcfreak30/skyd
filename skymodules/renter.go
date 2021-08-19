@@ -1475,13 +1475,21 @@ type SkylinkHealth struct {
 	// network.
 	BaseSectorRedundancy uint64 `json:"basesectorredundancy"`
 
-	// FanoutOverallHealthPercentage is the worst health of any of the
+	// FanoutEffectiveRedundancy is the worst redundancy of any of the
 	// fanout's chunks on the network.
-	FanoutOverallHealthPercentage float64 `json:"fanoutoverallhealthpercentage,omitempty"`
+	FanoutEffectiveRedundancy float64 `json:"fanouteffectiveredundancy,omitempty"`
 
-	// FanoutHealthPercentages is the individual health of all chunks in the
+	// FanoutDataPieces are the datapieces of the erasure coder specified in
+	// the layout of the skyfile.
+	FanoutDataPieces uint8
+
+	// FanoutDataPieces are the paritypieces of the erasure coder specified
+	// in the layout of the skyfile.
+	FanoutParityPieces uint8
+
+	// FanoutRedundancy is the individual redundancy of all chunks in the
 	// fanout.
-	FanoutHealthPercentages []float64 `json:"fanouthealthpercentages,omitempty"`
+	FanoutRedundancy []float64 `json:"fanoutredundancy,omitempty"`
 }
 
 // RenterDownloadParameters defines the parameters passed to the Renter's

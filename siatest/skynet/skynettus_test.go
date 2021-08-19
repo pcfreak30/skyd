@@ -103,8 +103,8 @@ func testTUSUploaderBasic(t *testing.T, r *siatest.TestNode) {
 			if err != nil {
 				return err
 			}
-			if shg.BaseSectorRedundancy != uint64(baseSectorRedundancy) || shg.FanoutOverallHealthPercentage != fanoutHealth {
-				return fmt.Errorf("wrong health %v %v", shg.BaseSectorRedundancy, shg.FanoutOverallHealthPercentage)
+			if shg.BaseSectorRedundancy != uint64(baseSectorRedundancy) || shg.FanoutEffectiveRedundancy != fanoutHealth {
+				return fmt.Errorf("wrong health %v %v", shg.BaseSectorRedundancy, shg.FanoutEffectiveRedundancy)
 			}
 			return nil
 		})
