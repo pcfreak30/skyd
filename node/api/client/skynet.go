@@ -1055,12 +1055,18 @@ func urlValuesFromSkyfileMultipartUploadParameters(sup skymodules.SkyfileMultipa
 	values.Set("defaultpath", sup.DefaultPath)
 	values.Set("disabledefaultpath", strconv.FormatBool(sup.DisableDefaultPath))
 
-	b, err := json.Marshal(sup.TryFiles)
-	if err != nil {
-		return url.Values{}, err
+	// We check the length because we want to only serialize this when its
+	// length is more than zero in order to match the behaviour of
+	// url.Values{}.Encode().
+	if len(sup.TryFiles) > 0 {
+		b, err := json.Marshal(sup.TryFiles)
+		if err != nil {
+			return url.Values{}, err
+		}
+		values.Set("tryfiles", string(b))
 	}
-	values.Set("tryfiles", string(b))
-	b, err = json.Marshal(sup.ErrorPages)
+
+	b, err := json.Marshal(sup.ErrorPages)
 	if err != nil {
 		return url.Values{}, err
 	}
