@@ -7,6 +7,7 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -20,6 +21,10 @@ const (
 	// provides sufficient granular coverage. Using this scale the buckets are:
 	// 1, 2, 3, 4-5, 6-7, 8-10, 11-13, 14-17, 18-22, 23-28, 29-36, ..., 93-116
 	availabilityMetricsBucketScale = 1.25
+
+	// availabilityMetricsDefaultHalfLife is the default half life of the decay
+	// applied to the availability buckets.
+	availabilityMetricsDefaultHalfLife = 100 * time.Hour
 
 	// availabilityMetricsNumBuckets is the total number of buckets we use to
 	// track the sector availability metrics for a certain host. Every bucket
@@ -121,13 +126,18 @@ type (
 	// sector was available, every bucket holds these stats for sectors that
 	// were uploaded with a similar redundancy scheme
 	availabilityBucket struct {
-		totalAvailable uint64
-		totalJobs      uint64
+		*skymodules.GenericDecay
+
+		// Keeps track of the total amount of sectors that were available and
+		// the total amount of lookups that were performed. Note that a decaying
+		// factor is applied to these variables.
+		totalAvailable float64
+		totalLookups   float64
 	}
 )
 
 // newAvailabilityMetrics returns a new availabilityMetrics object
-func newAvailabilityMetrics() *availabilityMetrics {
+func newAvailabilityMetrics(halfLife time.Duration) *availabilityMetrics {
 	metrics := &availabilityMetrics{
 		buckets:         make([]*availabilityBucket, availabilityMetricsNumBuckets),
 		piecesToBuckets: []int{-1}, // 0 num pieces is illegal
@@ -137,7 +147,7 @@ func newAvailabilityMetrics() *availabilityMetrics {
 	// indices that's used for constant time lookups.
 	curr := uint64(1)
 	for bucket := 0; bucket < availabilityMetricsNumBuckets; bucket++ {
-		metrics.buckets[bucket] = &availabilityBucket{}
+		metrics.buckets[bucket] = &availabilityBucket{GenericDecay: skymodules.NewDecay(halfLife)}
 
 		next := uint64(float64(curr) * availabilityMetricsBucketScale)
 		if next > curr {
@@ -153,6 +163,14 @@ func newAvailabilityMetrics() *availabilityMetrics {
 	}
 
 	return metrics
+}
+
+// addDecay applies decay to the data in the availability bucket
+func (ab *availabilityBucket) addDecay() {
+	ab.Decay(func(decay float64) {
+		ab.totalAvailable *= decay
+		ab.totalLookups *= decay
+	})
 }
 
 // bucket will return the bucket corresponding with 'numPieces'
@@ -178,7 +196,9 @@ func (am *availabilityMetrics) updateMetrics(numPieces int, availables []bool) {
 		return
 	}
 
-	bucket.totalJobs += uint64(len(availables))
+	bucket.addDecay()
+
+	bucket.totalLookups += float64(len(availables))
 	for _, available := range availables {
 		if available {
 			bucket.totalAvailable++
@@ -470,11 +490,11 @@ func (jq *jobHasSectorQueue) callAvailabilityRate(numPieces int) float64 {
 	// if there haven't been any jobs yet where the sector was available on the
 	// host, we return a minimum rate of .1% to avoid multiplication by zero in
 	// our download code algorithms.
-	if bucket.totalAvailable == 0 || bucket.totalJobs == 0 {
+	if bucket.totalAvailable == 0 || bucket.totalLookups == 0 {
 		return jobHasSectorQueueMinAvailabilityRate
 	}
 
-	return float64(bucket.totalAvailable) / float64(bucket.totalJobs)
+	return bucket.totalAvailable / bucket.totalLookups
 }
 
 // callUpdateAvailabilityMetrics updates the fields on the has sector queue that
@@ -509,7 +529,7 @@ func (w *worker) initJobHasSectorQueue() {
 	}
 
 	w.staticJobHasSectorQueue = &jobHasSectorQueue{
-		availabilityMetrics: newAvailabilityMetrics(),
+		availabilityMetrics: newAvailabilityMetrics(availabilityMetricsDefaultHalfLife),
 		jobGenericQueue:     newJobGenericQueue(w),
 	}
 }

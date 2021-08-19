@@ -22,7 +22,7 @@ func TestHasSectorJobBatchCallNext(t *testing.T) {
 
 	// Create queue and job.
 	queue := jobHasSectorQueue{
-		availabilityMetrics: newAvailabilityMetrics(),
+		availabilityMetrics: newAvailabilityMetrics(availabilityMetricsDefaultHalfLife),
 		jobGenericQueue:     newJobGenericQueue(&worker{}),
 	}
 	jhs := &jobHasSector{
@@ -259,7 +259,7 @@ func TestAvailabilityMetrics(t *testing.T) {
 	t.Parallel()
 
 	// verify we have the expected amount of buckets
-	metrics := newAvailabilityMetrics()
+	metrics := newAvailabilityMetrics(100 * time.Second)
 	if len(metrics.buckets) != availabilityMetricsNumBuckets {
 		t.Fatal("bad")
 	}
@@ -301,14 +301,14 @@ func TestAvailabilityMetrics(t *testing.T) {
 
 	// assert the bucket has no datapoints yet
 	bucket := metrics.bucket(10)
-	if bucket.totalAvailable != 0 || bucket.totalJobs != 0 {
+	if bucket.totalAvailable != 0 || bucket.totalLookups != 0 {
 		t.Fatal("bad")
 	}
 
 	// update metrics and assert the correct bucket got updated
 	metrics.updateMetrics(10, []bool{true, true, false})
 	bucket = metrics.bucket(10)
-	if bucket.totalAvailable != 2 || bucket.totalJobs != 3 {
+	if bucket.totalAvailable != 2 || bucket.totalLookups != 3 {
 		t.Fatal("bad")
 	}
 
@@ -319,7 +319,7 @@ func TestAvailabilityMetrics(t *testing.T) {
 			continue
 		}
 		bucket := metrics.buckets[b]
-		if bucket.totalAvailable != 0 || bucket.totalJobs != 0 {
+		if bucket.totalAvailable != 0 || bucket.totalLookups != 0 {
 			t.Fatal("bad")
 		}
 	}
