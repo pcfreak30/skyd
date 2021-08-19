@@ -5598,3 +5598,124 @@ func TestAddResponseSetIgnoreEntriesWithoutRevision(t *testing.T) {
 	}
 	t.Log("p99")
 }
+
+// TestSkynetSkylinkHealth tests the /skynet/health/skylink endpoint.
+func TestSkynetSkylinkHealth(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Define the parameters.
+	groupParams := siatest.GroupParams{
+		Hosts:   modules.RenterDefaultDataPieces + modules.RenterDefaultParityPieces,
+		Miners:  1,
+		Renters: 1,
+	}
+	groupDir := skynetTestDir(t.Name())
+
+	// Create a testgroup.
+	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
+	if err != nil {
+		t.Fatal(errors.AddContext(err, "failed to create group"))
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	r := tg.Renters()[0]
+
+	// helper function for asserting health
+	assertHealth := func(skylink string, baseSectorRedundancy uint64, fanoutHealth float64) error {
+		// Get the health.
+		var sl skymodules.Skylink
+		if err := sl.LoadString(skylink); err != nil {
+			t.Fatal(err)
+		}
+		sh, err := r.SkylinkHealthGET(sl)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sh.BaseSectorRedundancy != baseSectorRedundancy {
+			return fmt.Errorf("wrong base sector redundancy %v != %v", sh.BaseSectorRedundancy, baseSectorRedundancy)
+		}
+		if sh.FanoutEffectiveRedundancy != fanoutHealth {
+			return fmt.Errorf("fanout not healthy %v != %v", sh.FanoutEffectiveRedundancy, fanoutHealth)
+		}
+		dataPieces := uint8(skymodules.RenterDefaultDataPieces)
+		parityPieces := uint8(skymodules.RenterDefaultParityPieces)
+		if sh.FanoutDataPieces != dataPieces {
+			return fmt.Errorf("invalid datapieces %v != %v", sh.FanoutDataPieces, dataPieces)
+		}
+		if sh.FanoutParityPieces != parityPieces {
+			return fmt.Errorf("invalid paritypieces %v != %v", sh.FanoutParityPieces, parityPieces)
+		}
+		for i, health := range sh.FanoutRedundancy {
+			if health != fanoutHealth {
+				return fmt.Errorf("chunk %v not healthy %v != %v", i, health, fanoutHealth)
+			}
+		}
+		return nil
+	}
+
+	// Upload a file with multiple chunks.
+	size := modules.SectorSize * 3
+	skylink, _, _, err := r.UploadNewSkyfileBlocking(t.Name(), size, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Assert its health. The piece should be on 5 hosts and only 1
+	// datapiece is needed so the health should be 5.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		return assertHealth(skylink, siatest.DefaulTestingBaseChunkRedundancy, 5)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload another file but encrypted. This makes sure we test encrypted
+	// skylinks as well as fanouts that can't be compressed.
+	_, err = r.SkykeyCreateKeyPost("key", skykey.TypePrivateID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	skylink2BaseSectorRedundancy := uint64(5)
+	skylink2, _, _, err := r.UploadSkyfileBlockingCustom(t.Name()+"2", fastrand.Bytes(int(size)), "key", uint8(skylink2BaseSectorRedundancy), false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Assert its health. Same as before.
+	err = assertHealth(skylink2, skylink2BaseSectorRedundancy, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Take two hosts offline.
+	hosts := tg.Hosts()
+	for i := 0; i < 2; i++ {
+		err = tg.RemoveNode(hosts[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Check health again.
+	// The first file should either have a base sector redundancy of 0 to 2
+	// depending on whether the hosts we took offline had a piece. 2 of the
+	// fanout pieces are missing so the health is 3 instead of 5.
+	err1 := assertHealth(skylink, siatest.DefaulTestingBaseChunkRedundancy-2, 3)
+	err2 := assertHealth(skylink, siatest.DefaulTestingBaseChunkRedundancy-1, 3)
+	err3 := assertHealth(skylink, siatest.DefaulTestingBaseChunkRedundancy, 3)
+	if err1 != nil && err2 != nil && err3 != nil {
+		t.Fatal(errors.Compose(err1, err2))
+	}
+	// The second file should have a base sector redundancy of 3. 2 of the
+	// fanout pieces are missing so the health is 3 again.
+	err = assertHealth(skylink2, skylink2BaseSectorRedundancy-2, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+}

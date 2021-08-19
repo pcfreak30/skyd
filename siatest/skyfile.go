@@ -14,6 +14,10 @@ import (
 	"go.sia.tech/siad/types"
 )
 
+// DefaulTestingBaseChunkRedundancy is the redundancy used for the base chunk
+// when uploading skyfiles for testing.
+const DefaulTestingBaseChunkRedundancy = 2
+
 // TestFile is a small helper struct that identifies a file to be uploaded. The
 // upload helpers take a slice of these files to ensure order is maintained.
 type TestFile struct {
@@ -82,7 +86,7 @@ func (tn *TestNode) UploadNewSkyfileWithDataBlocking(filename string, filedata [
 // using its Skylink. Returns the skylink, the parameters used for the upload
 // and potentially an error.
 func (tn *TestNode) UploadNewEncryptedSkyfileBlocking(filename string, filedata []byte, skykeyName string, force bool) (skylink string, sup skymodules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
-	return tn.UploadSkyfileBlockingCustom(filename, filedata, skykeyName, 2, force, nil)
+	return tn.UploadSkyfileBlockingCustom(filename, filedata, skykeyName, DefaulTestingBaseChunkRedundancy, force, nil)
 }
 
 // UploadNewSkyfileMonetizedBlocking attempts to upload a skyfile with given
@@ -90,7 +94,7 @@ func (tn *TestNode) UploadNewEncryptedSkyfileBlocking(filename string, filedata 
 // will verify the file can be downloaded using its Skylink. Returns the
 // skylink, the parameters used for the upload and potentially an error.
 func (tn *TestNode) UploadNewSkyfileMonetizedBlocking(filename string, filedata []byte, force bool, monetization *skymodules.Monetization) (skylink string, sup skymodules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
-	return tn.UploadSkyfileBlockingCustom(filename, filedata, "", 2, force, monetization)
+	return tn.UploadSkyfileBlockingCustom(filename, filedata, "", DefaulTestingBaseChunkRedundancy, force, monetization)
 }
 
 // UploadSkyfileCustom attempts to upload a skyfile. Returns the skylink, the
