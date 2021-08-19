@@ -832,6 +832,10 @@ func (r *Renter) managedDownloadSkylink(ctx context.Context, link skymodules.Sky
 		if err != nil {
 			return nil, errors.AddContext(err, "failed to fetch fixture")
 		}
+		err = skymodules.ValidateSkyfileMetadata(sf.Metadata)
+		if err!=nil{
+			return nil, errors.AddContext(err, "invalid metadata")
+		}
 		rawMD, err := json.Marshal(sf.Metadata)
 		if err != nil {
 			return nil, errors.AddContext(err, "failed to fetch fixture")

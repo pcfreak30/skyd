@@ -537,7 +537,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// Attach proof.
 	err = attachRegistryEntryProof(w, srvs)
 	if err != nil {
-		WriteError(w, Error{"unable to attach proof: " + err.Error()}, http.StatusInternalServerError)
+		ew.WriteError(w, Error{"unable to attach proof: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
@@ -548,19 +548,13 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if format == skymodules.SkyfileFormatNotSpecified {
 		// The path we actually want to serve based on defaultpath and tryfiles.
 		servePath := metadata.ServePath(path)
-		var isSkapp bool
-		for f := range metadata.Subfiles {
-			if strings.HasSuffix(f, ".html") {
-				isSkapp = true
-				break
-			}
-		}
+		isSingle := len(metadata.Subfiles) == 1
 		// If we don't have a subPath and the skylink doesn't end with a
 		// trailing slash we need to redirect in order to add the trailing
 		// slash. This is only true for skapps - they need it in order to
 		// properly work with relative paths. We also don't need to redirect if
 		// this is a HEAD request or if it's a download as attachment.
-		if isSkapp && path == "/" && servePath != path && !params.attachment && req.Method == http.MethodGet && !strings.HasSuffix(params.skylinkStringNoQuery, "/") {
+		if !isSingle && path == "/" && servePath != path && !params.attachment && req.Method == http.MethodGet && !strings.HasSuffix(params.skylinkStringNoQuery, "/") {
 			location := params.skylinkStringNoQuery + "/"
 			if req.URL.RawQuery != "" {
 				location += "?" + req.URL.RawQuery
@@ -595,7 +589,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 		isSubfile = isFile
 		metadata = metadataForPath
-		// servedPath = path
 	}
 	// If we are serving more than one file, and the format is not
 	// specified, default to downloading it as a zip archive.
