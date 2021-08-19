@@ -1481,11 +1481,11 @@ type SkylinkHealth struct {
 
 	// FanoutDataPieces are the datapieces of the erasure coder specified in
 	// the layout of the skyfile.
-	FanoutDataPieces uint8
+	FanoutDataPieces uint8 `json:"fanoutdatapieces,omitempty"`
 
 	// FanoutDataPieces are the paritypieces of the erasure coder specified
 	// in the layout of the skyfile.
-	FanoutParityPieces uint8
+	FanoutParityPieces uint8 `json:"fanoutparitypieces,omitempty"`
 
 	// FanoutRedundancy is the individual redundancy of all chunks in the
 	// fanout.
