@@ -48,7 +48,7 @@ func TestUrlValuesFromSkynetUploadParams(t *testing.T) {
 		Filename:            "file.txt",
 		DefaultPath:         "index.html",
 		DisableDefaultPath:  false,
-		TryFiles:            []string{},
+		TryFiles:            []string{""},
 		ErrorPages:          map[int]string{},
 		Monetization:        monetization,
 	}
@@ -70,6 +70,7 @@ func TestUrlValuesFromSkynetUploadParams(t *testing.T) {
 		"errorpages",
 		"monetization",
 	}) {
+		t.Log(values)
 		t.Fatal("unexpected")
 	}
 
