@@ -24,7 +24,7 @@ const (
 
 	// availabilityMetricsDefaultHalfLife is the default half life of the decay
 	// applied to the availability buckets.
-	availabilityMetricsDefaultHalfLife = 24 * time.Hour
+	availabilityMetricsDefaultHalfLife = 100 * time.Hour
 
 	// availabilityMetricsNumBuckets is the total number of buckets we use to
 	// track the sector availability metrics for a certain host. Every bucket
