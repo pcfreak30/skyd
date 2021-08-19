@@ -409,6 +409,8 @@ func TestParseSkyfileMetadata(t *testing.T) {
 
 // TestValidateErrorPages ensures that ValidateErrorPages functions correctly.
 func TestValidateErrorPages(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		ep   map[int]string
@@ -417,13 +419,27 @@ func TestValidateErrorPages(t *testing.T) {
 	}{
 		{
 			name: "test code under 400",
-			ep:   map[int]string{101: "101.html"},
+			ep:   map[int]string{399: "/399.html"},
 			sub:  SkyfileSubfiles{},
 			err:  "overriding status codes under 400 and above 599 is not supported",
 		},
 		{
+			name: "test code at or above 400",
+			ep:   map[int]string{400: "/400.html"},
+			sub: SkyfileSubfiles{
+				"400.html": SkyfileSubfileMetadata{},
+			},
+		},
+		{
+			name: "test code at or below 599",
+			ep:   map[int]string{599: "/599.html"},
+			sub: SkyfileSubfiles{
+				"599.html": SkyfileSubfileMetadata{},
+			},
+		},
+		{
 			name: "test code above 599",
-			ep:   map[int]string{700: "700.html"},
+			ep:   map[int]string{600: "/600.html"},
 			sub:  SkyfileSubfiles{},
 			err:  "overriding status codes under 400 and above 599 is not supported",
 		},
@@ -451,13 +467,13 @@ func TestValidateErrorPages(t *testing.T) {
 			sub: SkyfileSubfiles{
 				"404.html": SkyfileSubfileMetadata{},
 			},
-			err: "",
 		},
 	}
 
 	for _, tt := range tests {
 		err := ValidateErrorPages(tt.ep, tt.sub)
 		if (err == nil && tt.err != "") || (err != nil && !strings.Contains(err.Error(), tt.err)) {
+			t.Log("Failing test:", tt.name)
 			t.Fatalf("Expected error '%s', got '%v'", tt.err, err)
 		}
 	}
@@ -465,6 +481,8 @@ func TestValidateErrorPages(t *testing.T) {
 
 // TestValidateTryFiles ensures that ValidateTryFiles functions correctly.
 func TestValidateTryFiles(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		tf   []string

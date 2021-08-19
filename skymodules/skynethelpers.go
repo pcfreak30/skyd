@@ -412,7 +412,6 @@ func fileContentType(filename string, file io.Reader) (string, error) {
 // validateDefaultPath ensures the given default path makes sense in relation to
 // the subfiles being uploaded. It returns a potentially altered default path.
 func validateDefaultPath(defaultPath string, subfiles SkyfileSubfiles) (string, error) {
-	fmt.Println(" >>> ", defaultPath, subfiles)
 	if defaultPath == "" {
 		return defaultPath, nil
 	}

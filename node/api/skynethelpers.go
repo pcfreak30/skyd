@@ -228,8 +228,8 @@ func (ew customErrorWriter) WriteError(w http.ResponseWriter, e Error, code int)
 	}
 	contentReader, contentType, err := ew.customContent(code)
 	if err != nil {
-		crtiicalMsg := fmt.Sprintf("Failed to fetch custom error content which should exist.\ntryfiles: %+v\nsubfiles: %+v\nerror: %+v\n", ew.staticMetadata.TryFiles, ew.staticMetadata.Subfiles, err)
-		build.Critical(crtiicalMsg)
+		msg := fmt.Sprintf("Failed to fetch custom error content which should exist.\ntryfiles: %+v\nsubfiles: %+v\nerror: %+v\n", ew.staticMetadata.TryFiles, ew.staticMetadata.Subfiles, err)
+		build.Critical(msg)
 		WriteError(w, e, code)
 		return
 	}
@@ -504,7 +504,7 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 
 	errPages, err := UnmarshalErrorPages(queryForm.Get("errorpages"))
 	if err != nil {
-		return nil, nil, errors.AddContext(err, "invalid errorpages parameter")
+		return nil, nil, errors.AddContext(err, "invalid 'errorpages' parameter")
 	}
 
 	// parse 'dryrun' query parameter

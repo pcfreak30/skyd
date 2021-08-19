@@ -479,7 +479,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 		t.Fatalf("Unexpected 404 errorpage - expected 'notfound.html', got %s\n", params.errorPages[404])
 	}
 
-	// verify that 'tryfiles' 'web' cannot be combined with 'defaultpath' or
+	// verify that 'tryfiles' cannot be combined with 'defaultpath' or
 	// 'disabledefaultpath'
 	req = buildRequest(url.Values{"tryfiles": []string{"[\"index.html\"]"}, "defaultpath": skymodules.DefaultTryFilesValue}, http.Header{"Content-type": []string{"text/html"}})
 	_, params, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
@@ -867,6 +867,8 @@ func TestAttachRegistryEntryProof(t *testing.T) {
 
 // TestUnmarshalErrorPages ensures that we properly handle all string inputs.
 func TestUnmarshalErrorPages(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		in   string
@@ -924,6 +926,8 @@ func TestUnmarshalErrorPages(t *testing.T) {
 
 // TestUnmarshalTryFiles ensures that we properly handle all string inputs.
 func TestUnmarshalTryFiles(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		in   string
@@ -985,6 +989,8 @@ func TestUnmarshalTryFiles(t *testing.T) {
 // TestCustomErrorWriter ensures that customErrorWriter responds with the right
 // content.
 func TestCustomErrorWriter(t *testing.T) {
+	t.Parallel()
+
 	subfiles := skymodules.SkyfileSubfiles{
 		"400.html": skymodules.SkyfileSubfileMetadata{
 			Filename:    "400.html",

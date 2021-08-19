@@ -224,6 +224,7 @@ type (
 		// TryFiles specifies an ordered list of files to serve, in case the
 		// requested file does not exist.
 		TryFiles []string
+
 		// ErrorPages overrides the content served for the specified error
 		// codes.
 		ErrorPages map[int]string
@@ -379,7 +380,7 @@ func (sm SkyfileMetadata) EffectiveDefaultPath() string {
 	if sm.DisableDefaultPath {
 		return ""
 	}
-	if sm.DefaultPath == "" && !sm.DisableDefaultPath {
+	if sm.DefaultPath == "" {
 		// If `defaultpath` and `disabledefaultpath` are not set and the
 		// skyfile has a single subfile we automatically default to it.
 		if len(sm.Subfiles) == 1 {
@@ -389,10 +390,8 @@ func (sm SkyfileMetadata) EffectiveDefaultPath() string {
 		}
 		// If the `defaultpath` is not set but the skyfiles has an `/index.html`
 		// subfile then we automatically default to that.
-		for filename := range sm.Subfiles {
-			if filename == DefaultSkynetDefaultPath {
-				return EnsurePrefix(DefaultSkynetDefaultPath, "/")
-			}
+		if _, exists := sm.Subfiles[DefaultSkynetDefaultPath]; exists {
+			return EnsurePrefix(DefaultSkynetDefaultPath, "/")
 		}
 	}
 	return sm.DefaultPath
@@ -427,10 +426,9 @@ func (sm SkyfileMetadata) ServePath(path string) string {
 		}
 	}
 
-	// If there are Tryftryfilesiles, determine the servePath based on those.
+	// If there are tryfiles, determine the servePath based on those.
 	if len(sm.TryFiles) > 0 {
-		servePath, _ := sm.determinePathBasedOnTryfiles(path)
-		return servePath
+		return sm.determinePathBasedOnTryfiles(path)
 	}
 
 	// Check the defaultpath to determine the servePath.
@@ -468,11 +466,10 @@ func (sm SkyfileMetadata) offset() uint64 {
 }
 
 // determinePathBasedOnTryfiles determines if we should serve a different path
-// based on the given metadata. It also returns a boolean which tells us whether
-// the returned path is different from the provided path.
-func (sm SkyfileMetadata) determinePathBasedOnTryfiles(path string) (string, bool) {
+// based on the given metadata.
+func (sm SkyfileMetadata) determinePathBasedOnTryfiles(path string) string {
 	if sm.Subfiles == nil {
-		return path, false
+		return path
 	}
 	file := strings.Trim(path, "/")
 	if _, exists := sm.Subfiles[file]; !exists {
@@ -481,17 +478,17 @@ func (sm SkyfileMetadata) determinePathBasedOnTryfiles(path string) (string, boo
 			// searching.
 			_, exists = sm.Subfiles[strings.Trim(tf, "/")]
 			if strings.HasPrefix(tf, "/") && exists {
-				return tf, true
+				return tf
 			}
 			// Assume the request is for a directory and check if a
 			// tryfile matches.
 			potentialFilename := strings.Trim(strings.TrimSuffix(file, "/")+EnsurePrefix(tf, "/"), "/")
 			if _, exists = sm.Subfiles[potentialFilename]; exists {
-				return EnsurePrefix(potentialFilename, "/"), true
+				return EnsurePrefix(potentialFilename, "/")
 			}
 		}
 	}
-	return path, false
+	return path
 }
 
 // SkyfileLayout explains the layout information that is used for storing data

@@ -3987,8 +3987,8 @@ applicable to skyfiles without subfiles.
 
 **tryfiles** | []string
 The `tryfiles` field allows us to set a list of potential subfiles to return in
-case the requested one does not exist or is a directory. Those subfiles might 
-be listed with relatiev or absolute paths. If the path is absolute the files 
+case the requested one does not exist or is a directory. Those subfiles might
+be listed with relative or absolute paths. If the path is absolute the files
 must exist.
 
 **errorpages** | JSON
