@@ -409,6 +409,10 @@ func (r *Renter) managedRegistryEntryHealth(ctx context.Context, rid modules.Reg
 	}
 	defer r.staticRegistryMemoryManager.Return(readRegistryMemory)
 
+	// Get the start time before launching the workers to avoid negative
+	// datapoints later.
+	startTime := time.Now()
+
 	// Specify a context for the background jobs. It will be closed as soon as
 	// threadedAddResponseSet is done.
 	backgroundCtx, backgroundCancel := context.WithCancel(r.tg.StopCtx())
@@ -421,7 +425,6 @@ func (r *Renter) managedRegistryEntryHealth(ctx context.Context, rid modules.Reg
 	}
 
 	// Add the response set to the stats after this method is done.
-	startTime := time.Now()
 	defer func() {
 		_ = r.tg.Launch(func() {
 			r.threadedAddResponseSet(r.tg.StopCtx(), span, startTime, responseSet, r.staticLog)
@@ -502,6 +505,10 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	// threadedAddResponseSet is done.
 	backgroundCtx, backgroundCancel := context.WithCancel(r.tg.StopCtx())
 
+	// Get the start time before launching the workers to avoid negative
+	// datapoints later.
+	startTime := time.Now()
+
 	responseSet := r.managedLaunchReadRegistryWorkers(backgroundCtx, span, rid, spk, tweak)
 	numWorkers := responseSet.left
 
@@ -512,7 +519,6 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	}
 
 	// Add the response set to the stats after this method is done.
-	startTime := time.Now()
 	defer func() {
 		_ = r.tg.Launch(func() {
 			r.threadedAddResponseSet(r.tg.StopCtx(), span, startTime, responseSet, r.staticLog)

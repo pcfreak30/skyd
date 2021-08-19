@@ -397,6 +397,12 @@ func (hdb *HostDB) managedScanHost(entry skymodules.HostDBEntry) {
 	var settings modules.HostExternalSettings
 	var latency time.Duration
 	err = func() error {
+		// Disrupt the host scan by returning an error here simulating a failed
+		// host interaction.
+		if hdb.staticDeps.Disrupt("InterruptHostScan") {
+			return errors.New("InterruptHostScan")
+		}
+
 		timeout := hostRequestTimeout
 		hdb.mu.RLock()
 		if len(hdb.initialScanLatencies) > minScansForSpeedup {

@@ -855,6 +855,12 @@ func (c *Client) SkykeySkykeysGet() ([]skykey.Skykey, error) {
 	return res, nil
 }
 
+// SkylinkHealthGET queries the /skynet/health/skylink/:skylink endpoint.
+func (c *Client) SkylinkHealthGET(sl skymodules.Skylink) (sh skymodules.SkylinkHealth, err error) {
+	err = c.get(fmt.Sprintf("/skynet/health/skylink/%s", sl.String()), &sh)
+	return
+}
+
 // RegistryRead queries the /skynet/registry [GET] endpoint.
 func (c *Client) RegistryRead(spk types.SiaPublicKey, dataKey crypto.Hash) (modules.SignedRegistryValue, error) {
 	return c.RegistryReadWithTimeout(spk, dataKey, 0)
