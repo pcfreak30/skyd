@@ -34,7 +34,7 @@ func testDistributionBucketing(t *testing.T) {
 	d := NewDistribution(time.Minute * 100)
 
 	// Get a distribution with no data collected.
-	if d.PStat(0.55) != durationForIndex(64+48*distributionTrackerNumIncrements) {
+	if d.PStat(0.55) != durationForIndex(distributionTrackerMaxIndex) {
 		t.Error("expecting a distribution with no data to return the max possible value")
 	}
 
@@ -196,7 +196,7 @@ func testDistributionBucketing(t *testing.T) {
 			t.Error("bad", i, pstat, total)
 		}
 	}
-	for i < 64+48*7 {
+	for i < 64+48*7-1 {
 		d.AddDataPoint(total)
 		if d.timings[i] != 1 {
 			t.Error("bad:", i)
@@ -232,8 +232,8 @@ func testDistributionBucketing(t *testing.T) {
 		t.Error("bad", i, pstat, total)
 	}
 	pstat = d.PStat(0.5)
-	if pstat != durationForIndex(((64+48*distributionTrackerNumIncrements)/2)+1) {
-		t.Error("bad", pstat, durationForIndex(201))
+	if pstat != durationForIndex((distributionTrackerMaxIndex+1)/2) {
+		t.Error("bad", pstat, durationForIndex(200))
 	}
 }
 
@@ -430,7 +430,7 @@ func testDistributionExpectedDuration(t *testing.T) {
 
 	// check whether we default to the worst case if we have 0 data points
 	expected := d.ExpectedDuration()
-	if expected != durationForIndex(len(d.timings)) {
+	if expected != durationForIndex(len(d.timings)-1) {
 		t.Error("bad")
 	}
 
