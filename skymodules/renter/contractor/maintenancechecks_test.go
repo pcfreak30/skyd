@@ -6,9 +6,68 @@ import (
 	"testing"
 
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
 )
+
+// TestUtilityUpdateStatusMerge is a unit test for the utilityUpdateStatus.Merge
+// method.
+func TestUtilityUpdateStatusMerge(t *testing.T) {
+	t.Parallel()
+
+	// Declare testcases.
+	tests := []struct {
+		us1    utilityUpdateStatus
+		us2    utilityUpdateStatus
+		result utilityUpdateStatus
+	}{
+		{
+			us1:    noUpdate,
+			us2:    suggestedUtilityUpdate,
+			result: suggestedUtilityUpdate,
+		},
+		{
+			us1:    suggestedUtilityUpdate,
+			us2:    necessaryUtilityUpdate,
+			result: necessaryUtilityUpdate,
+		},
+		{
+			us1:    noUpdate,
+			us2:    necessaryUtilityUpdate,
+			result: necessaryUtilityUpdate,
+		},
+		{
+			us1:    noUpdate,
+			us2:    noUpdate,
+			result: noUpdate,
+		},
+		{
+			us1:    suggestedUtilityUpdate,
+			us2:    suggestedUtilityUpdate,
+			result: suggestedUtilityUpdate,
+		},
+		{
+			us1:    necessaryUtilityUpdate,
+			us2:    necessaryUtilityUpdate,
+			result: necessaryUtilityUpdate,
+		},
+	}
+
+	// Run tests.
+	for _, test := range tests {
+		us1 := test.us1
+		us2 := test.us2
+		result := us1.Merge(us2)
+		if result != test.result {
+			t.Fatal("wrong resulte", result, test.result)
+		}
+		result = us2.Merge(us1)
+		if result != test.result {
+			t.Fatal("wrong resulte", result, test.result)
+		}
+	}
+}
 
 // TestDeadScoreCheck is a unit test for deadScoreCheck.
 func TestDeadScoreCheck(t *testing.T) {
@@ -20,26 +79,78 @@ func TestDeadScoreCheck(t *testing.T) {
 	}
 	badUtility := skymodules.ContractUtility{}
 
-	utility, update := deadScoreCheck(goodUtility, types.NewCurrency64(0))
-	if !update {
-		t.Fatal(update)
+	utility, uus := deadScoreCheck(goodUtility, types.NewCurrency64(0))
+	if uus != necessaryUtilityUpdate {
+		t.Fatal(uus)
 	}
 	if !reflect.DeepEqual(utility, badUtility) {
 		t.Fatal("wrong utility")
 	}
-	utility, update = deadScoreCheck(goodUtility, types.NewCurrency64(1))
-	if !update {
-		t.Fatal(update)
+	utility, uus = deadScoreCheck(goodUtility, types.NewCurrency64(1))
+	if uus != necessaryUtilityUpdate {
+		t.Fatal(uus)
 	}
 	if !reflect.DeepEqual(utility, badUtility) {
 		t.Fatal("wrong utility")
 	}
-	utility, update = deadScoreCheck(goodUtility, types.NewCurrency64(2))
-	if update {
-		t.Fatal(update)
+	utility, uus = deadScoreCheck(goodUtility, types.NewCurrency64(2))
+	if uus != noUpdate {
+		t.Fatal(uus)
 	}
 	if !reflect.DeepEqual(utility, goodUtility) {
 		t.Fatal("wrong utility")
+	}
+}
+
+// TestStorageGougingCheck is a unit test for storageGougingCheck.
+func TestStorageGougingCheck(t *testing.T) {
+	t.Parallel()
+
+	allowance := skymodules.DefaultAllowance
+	allowance.MaxStoragePrice = types.SiacoinPrecision
+	host := skymodules.HostDBEntry{
+		HostExternalSettings: modules.HostExternalSettings{
+			StoragePrice: allowance.MaxStoragePrice,
+		},
+	}
+	goodUtility := skymodules.ContractUtility{
+		GoodForUpload: true,
+		GoodForRenew:  true,
+	}
+	badUtility := skymodules.ContractUtility{}
+	goodContract := skymodules.RenterContract{Utility: goodUtility}
+
+	// Below max price cases first.
+	u, uus := storageGougingCheck(goodContract, allowance, host, 0)
+	if uus != noUpdate {
+		t.Fatal("wrong uus", uus)
+	}
+	if !reflect.DeepEqual(u, goodUtility) {
+		t.Fatal("wrong utility", u, goodUtility)
+	}
+	u, uus = storageGougingCheck(goodContract, allowance, host, 1)
+	if uus != noUpdate {
+		t.Fatal("wrong uus", uus)
+	}
+	if !reflect.DeepEqual(u, goodUtility) {
+		t.Fatal("wrong utility", u)
+	}
+
+	// Above max price cases.
+	host.StoragePrice = host.StoragePrice.Add64(1)
+	u, uus = storageGougingCheck(goodContract, allowance, host, 0)
+	if uus != necessaryUtilityUpdate {
+		t.Fatal("wrong uus", uus)
+	}
+	if !reflect.DeepEqual(u, skymodules.ContractUtility{GoodForRenew: true}) {
+		t.Fatal("wrong utility", u)
+	}
+	u, uus = storageGougingCheck(goodContract, allowance, host, 1)
+	if uus != necessaryUtilityUpdate {
+		t.Fatal("wrong uus", uus)
+	}
+	if !reflect.DeepEqual(u, badUtility) {
+		t.Fatal("wrong utility", u)
 	}
 }
 
@@ -57,9 +168,9 @@ func TestUpForRenewalCheck(t *testing.T) {
 		blockHeight types.BlockHeight
 		endHeight   types.BlockHeight
 
-		gfu    bool
-		gfr    bool
-		update bool
+		gfu bool
+		gfr bool
+		uus utilityUpdateStatus
 	}{
 		// Not renewing.
 		{
@@ -67,9 +178,9 @@ func TestUpForRenewalCheck(t *testing.T) {
 			endHeight:   100,
 			renewWindow: 10,
 
-			gfu:    true,
-			gfr:    true,
-			update: false,
+			gfu: true,
+			gfr: true,
+			uus: noUpdate,
 		},
 		// One block before second half of renew window.
 		{
@@ -77,9 +188,9 @@ func TestUpForRenewalCheck(t *testing.T) {
 			endHeight:   11,
 			renewWindow: 20,
 
-			gfu:    true,
-			gfr:    true,
-			update: false,
+			gfu: true,
+			gfr: true,
+			uus: noUpdate,
 		},
 		// Beginning of second half.
 		{
@@ -87,9 +198,9 @@ func TestUpForRenewalCheck(t *testing.T) {
 			endHeight:   11,
 			renewWindow: 20,
 
-			gfu:    false,
-			gfr:    true,
-			update: true,
+			gfu: false,
+			gfr: true,
+			uus: necessaryUtilityUpdate,
 		},
 		// One block in second half.
 		{
@@ -97,14 +208,14 @@ func TestUpForRenewalCheck(t *testing.T) {
 			endHeight:   11,
 			renewWindow: 20,
 
-			gfu:    false,
-			gfr:    true,
-			update: true,
+			gfu: false,
+			gfr: true,
+			uus: necessaryUtilityUpdate,
 		},
 	}
 
 	for i, test := range tests {
-		u, update := upForRenewalCheck(skymodules.RenterContract{
+		u, uus := upForRenewalCheck(skymodules.RenterContract{
 			EndHeight: test.endHeight,
 			Utility: skymodules.ContractUtility{
 				GoodForUpload: true,
@@ -112,8 +223,8 @@ func TestUpForRenewalCheck(t *testing.T) {
 			},
 		}, test.renewWindow, test.blockHeight, logger)
 
-		if update != test.update {
-			t.Errorf("%v (update): %v != %v", i, update, test.update)
+		if uus != test.uus {
+			t.Errorf("%v (update): %v != %v", i, uus, test.uus)
 		}
 		if u.GoodForRenew != test.gfr {
 			t.Errorf("%v (gfr): %v != %v", i, u.GoodForRenew, test.gfr)

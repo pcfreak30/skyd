@@ -17,7 +17,7 @@ import (
 	"net/url"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
+	"go.sia.tech/siad/build"
 	"go.sia.tech/siad/node/api"
 	"go.sia.tech/siad/types"
 )

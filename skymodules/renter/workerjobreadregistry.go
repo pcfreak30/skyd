@@ -34,6 +34,10 @@ const (
 
 type (
 	// jobReadRegistry contains information about a ReadRegistry query.
+	// Only a registry entry ID is required to read an entry but if the public key
+	// and tweak are also specified, a different MDM program can be used that
+	// doesn't require the host to respond with the public key and tweak since they
+	// are already known.
 	jobReadRegistry struct {
 		staticRegistryEntryID modules.RegistryEntryID
 		staticSiaPublicKey    *types.SiaPublicKey

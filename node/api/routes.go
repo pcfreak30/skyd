@@ -128,6 +128,7 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/skynet/basesector/*skylink", api.skynetBaseSectorHandlerGET)
 		router.GET("/skynet/blocklist", api.skynetBlocklistHandlerGET)
 		router.POST("/skynet/blocklist", RequirePassword(api.skynetBlocklistHandlerPOST, requiredPassword))
+		router.GET("/skynet/health/entry", api.registryEntryHealthHandlerGET)
 		router.GET("/skynet/metadata/:skylink", api.skynetMetadataHandlerGET)
 		router.POST("/skynet/pin/:skylink", RequirePassword(api.skynetSkylinkPinHandlerPOST, requiredPassword))
 		router.GET("/skynet/portals", api.skynetPortalsHandlerGET)
@@ -142,6 +143,7 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/skynet/skyfile/*siapath", RequirePassword(api.skynetSkyfileHandlerPOST, requiredPassword))
 		router.GET("/skynet/stats", api.skynetStatsHandlerGET)
 		router.POST("/skynet/unpin/:skylink", RequirePassword(api.skynetSkylinkUnpinHandlerPOST, requiredPassword))
+		router.GET("/skynet/health/skylink/:skylink", api.skynetSkylinkHealthGET)
 
 		// Skykey endpoints
 		router.GET("/skynet/skykey", RequirePassword(api.skykeyHandlerGET, requiredPassword))

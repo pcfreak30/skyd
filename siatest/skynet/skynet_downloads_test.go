@@ -211,6 +211,7 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 			}},
 		DefaultPath:        "",
 		DisableDefaultPath: false,
+		TryFiles:           skymodules.DefaultTryFilesValue,
 	}
 
 	_, md, err := r.SkynetMetadataGet(skylink)
@@ -380,6 +381,7 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 		},
 		DefaultPath:        "",
 		DisableDefaultPath: false,
+		TryFiles:           skymodules.DefaultTryFilesValue,
 	}
 
 	testName := "NestedDirIndexDefaultPathIndex"
@@ -791,7 +793,7 @@ func testSkynetSkylinkHeader(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// verify the response header contains the same Skylink
-	if header.Get("Skynet-Skylink") != skylink.String() {
+	if header.Get(api.SkynetSkylinkHeader) != skylink.String() {
 		t.Fatal("unexpected")
 	}
 
@@ -801,7 +803,7 @@ func testSkynetSkylinkHeader(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if header.Get("Skynet-Skylink") != skylink.String() {
+	if header.Get(api.SkynetSkylinkHeader) != skylink.String() {
 		t.Fatal("unexpected")
 	}
 }
@@ -896,10 +898,8 @@ func verifyDownloadRaw(t *testing.T, r *siatest.TestNode, skylink string, expect
 	}
 	if !bytes.Equal(data, expectedData) {
 		t.Log("Test:", testName)
-		t.Log("expected data: ")
-		siatest.PrintJSON(expectedData)
-		t.Log("actual   data: ")
-		siatest.PrintJSON(data)
+		t.Log("expected data: ", siatest.PrintJSON(expectedData))
+		t.Log("actual   data: ", siatest.PrintJSON(data))
 		return errors.New("Unexpected data")
 	}
 	return nil

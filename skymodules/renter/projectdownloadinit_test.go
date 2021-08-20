@@ -113,9 +113,17 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 	pcws.staticErasureCoder = ec
 
 	// mock a pdc
+	uw := make(map[string]*pcwsUnresolvedWorker)
+	for _, w := range unresolvedWorkers {
+		uw[w.staticWorker.staticHostPubKeyStr] = w
+	}
 	pdc := new(projectDownloadChunk)
 	pdc.pieceLength = 1 << 16 // 64kb
 	pdc.workerSet = pcws
+	pdc.workerState = &pcwsWorkerState{
+		unresolvedWorkers: uw,
+		staticRenter:      pcws.staticRenter,
+	}
 
 	// create the initial worker heap and validate the order in which the
 	// unresolved workers were added

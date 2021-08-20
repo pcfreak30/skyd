@@ -113,9 +113,10 @@ type pdcInitialWorker struct {
 	// so assuming an additional full 'readDuration' per read is overly
 	// pessimistic, at the same time we prefer to spread our downloads over
 	// multiple workers so the pessimism is not too bad.
-	completeTime time.Time
-	cost         types.Currency
-	readDuration time.Duration
+	completeTime              time.Time
+	cost                      types.Currency
+	readDuration              time.Duration
+	staticExpectedResolveTime time.Time
 
 	// The list of pieces indicates which pieces the worker is capable of
 	// fetching. If 'unresolved' is set to true, the worker will be treated as
@@ -176,56 +177,37 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 			continue
 		}
 
-		// Fetch the resolveTime, which is the time until the HS job is expected
-		// to resolve. If that time is in the past, add a penalty that assumes
-		// that there is some unusual circumstance preventing the worker from
-		// being on time and that it may be another while before the worker
-		// resolves; favor some other worker instead.
-		resolveTime := uw.staticExpectedResolvedTime
-		if resolveTime.Before(time.Now()) {
-			resolveTime = time.Now().Add(2 * time.Since(resolveTime))
-		}
-
-		// Determine the expected readDuration and cost for this worker. Add the
-		// readDuration to the hasSectorTime to get the full complete time for
-		// the download.
-		cost := jrq.callExpectedJobCost(pdc.pieceLength)
+		// Ignore worker with 0 read duration.
 		readDuration := jrq.staticStats.callExpectedJobTime(pdc.pieceLength)
 		if readDuration == 0 {
 			continue
 		}
-		completeTime := resolveTime.Add(readDuration)
 
-		// Create the pieces for the unresolved worker. Because the unresolved
-		// worker could be potentially used to fetch any piece (we won't know
-		// until the resolution is complete), we add a set of pieces as though
-		// the worker could single-handedly complete all of the pieces.
-		pieces := make([]uint64, pdc.workerSet.staticErasureCoder.MinPieces())
-		for i := 0; i < len(pieces); i++ {
-			pieces[i] = uint64(i)
-		}
-
-		// Push the element into the heap.
-		heap.Push(&workerHeap, &pdcInitialWorker{
-			completeTime: completeTime,
-			cost:         cost,
-			readDuration: readDuration,
-
-			pieces:     pieces,
-			unresolved: true,
-			worker:     w,
+		// Add the unresolved worker to the heap, setting its expected
+		// resolve time and worker.
+		workerHeap = append(workerHeap, &pdcInitialWorker{
+			staticExpectedResolveTime: uw.staticExpectedResolvedTime,
+			pieces:                    make([]uint64, pdc.workerSet.staticErasureCoder.MinPieces()),
+			worker:                    w,
 		})
 	}
 
 	// Add the resolved workers to the heap. In the worker state, the resolved
 	// workers are organized as a series of available pieces, because that is
 	// what made the overdrive code the easiest.
-	resolvedWorkersMap := make(map[string]*pdcInitialWorker)
-	for i, piece := range pdc.availablePieces {
+	resolvedWorkersMap := make(map[string]struct{})
+	for _, piece := range pdc.availablePieces {
 		for _, pieceDownload := range piece {
 			w := pieceDownload.worker
 			pt := w.staticPriceTable().staticPriceTable
 			allowance := w.staticCache().staticRenterAllowance
+
+			// Add each worker only once.
+			_, exists := resolvedWorkersMap[w.staticHostPubKeyStr]
+			if exists {
+				continue
+			}
+			resolvedWorkersMap[w.staticHostPubKeyStr] = struct{}{}
 
 			// Ignore this worker if its host is considered to be price gouging.
 			err := checkProjectDownloadGouging(pt, allowance)
@@ -240,34 +222,17 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 				continue
 			}
 
-			// If the worker is already in the resolved workers map, add this
-			// piece to the set of pieces the worker can complete. Otherwise,
-			// create a new element for this worker.
-			elem, exists := resolvedWorkersMap[w.staticHostPubKeyStr]
-			if exists {
-				// Elem is a pointer, so the map does not need to be updated.
-				elem.pieces = append(elem.pieces, uint64(i))
-			} else {
-				cost := jrq.callExpectedJobCost(pdc.pieceLength)
-				readDuration := jrq.staticStats.callExpectedJobTime(pdc.pieceLength)
-				resolvedWorkersMap[w.staticHostPubKeyStr] = &pdcInitialWorker{
-					completeTime: time.Now().Add(readDuration),
-					cost:         cost,
-					readDuration: readDuration,
-
-					pieces:     []uint64{uint64(i)},
-					unresolved: false,
-					worker:     w,
-				}
-			}
+			// Add the worker to the heap. It's already resolved so
+			// we leave the expected resolve time zero.
+			workerHeap = append(workerHeap, &pdcInitialWorker{
+				worker: w,
+			})
 		}
 	}
 
-	// Push a pdcInitialWorker into the heap for each worker in the resolved
-	// workers map.
-	for _, rw := range resolvedWorkersMap {
-		heap.Push(&workerHeap, rw)
-	}
+	// Call updatewWorkerHeap to set all the missing fields on the workers and sort
+	// the heap.
+	pdc.updateWorkerHeap(&workerHeap)
 	return workerHeap
 }
 
@@ -500,16 +465,16 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 // launched and then launch them. This is a non-blocking function that returns
 // once jobs have been scheduled for MinPieces workers.
 func (pdc *projectDownloadChunk) launchInitialWorkers() error {
+	// Get the list of unresolved workers. This will also grab an update, so
+	// any workers that have resolved recently will be reflected in the
+	// newly returned set of values.
+	unresolvedWorkers, updateChan := pdc.managedUnresolvedWorkers()
+
+	// Create a list of usable workers, sorted by the amount of time they
+	// are expected to take to return.
+	workerHeap := pdc.initialWorkerHeap(unresolvedWorkers)
+
 	for {
-		// Get the list of unresolved workers. This will also grab an update, so
-		// any workers that have resolved recently will be reflected in the
-		// newly returned set of values.
-		unresolvedWorkers, updateChan := pdc.unresolvedWorkers()
-
-		// Create a list of usable workers, sorted by the amount of time they
-		// are expected to take to return.
-		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers)
-
 		// Create an initial worker set
 		finalWorkers, err := pdc.createInitialWorkerSet(workerHeap)
 		if err != nil {
@@ -539,6 +504,9 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 		case <-pdc.ctx.Done():
 			return errors.New("timed out while trying to build initial set of workers")
 		}
+
+		// Update the heap for the next iteration.
+		pdc.updateWorkerHeap(&workerHeap)
 	}
 }
 

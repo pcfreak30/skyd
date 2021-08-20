@@ -235,6 +235,8 @@ func newSkyfileMultipartReader(reader *multipart.Reader, sup SkyfileUploadParame
 			Mode:               sup.Mode,
 			DefaultPath:        sup.DefaultPath,
 			DisableDefaultPath: sup.DisableDefaultPath,
+			TryFiles:           sup.TryFiles,
+			ErrorPages:         sup.ErrorPages,
 			Subfiles:           make(SkyfileSubfiles),
 		},
 		metadataAvail: make(chan struct{}),

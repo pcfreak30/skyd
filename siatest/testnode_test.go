@@ -9,6 +9,60 @@ import (
 	"gitlab.com/SkynetLabs/skyd/node"
 )
 
+// TestNodeRestartSameAddresses is a unit test to confirm that a node binds to
+// the same addresses after a restart.
+func TestNodeRestartSameAddresses(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a node.
+	testDir := siatestTestDir(t.Name())
+	tn, err := newCleanNode(node.AllModules(filepath.Join(testDir, "node")), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hg, err := tn.HostGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	es := hg.ExternalSettings
+
+	// Get its addresses and make sure they are not empty.
+	apiAddr := tn.APIAddress()
+	gatewayAddr := string(tn.GatewayAddress())
+	hostAddr := string(es.NetAddress)
+	siamuxAddr := es.SiaMuxAddress()
+	if apiAddr == "" || gatewayAddr == "" || hostAddr == "" || siamuxAddr == "" {
+		t.Fatal("empty address", apiAddr, gatewayAddr, hostAddr, siamuxAddr)
+	}
+
+	// Restart the node and make sure the addresses are the same.
+	err = tn.RestartNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hg, err = tn.HostGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	es = hg.ExternalSettings
+
+	if apiAddr != tn.APIAddress() {
+		t.Fatal(apiAddr, tn.APIAddress())
+	}
+	if gatewayAddr != string(tn.GatewayAddress()) {
+		t.Fatal(gatewayAddr, string(tn.GatewayAddress()))
+	}
+	if hostAddr != string(es.NetAddress) {
+		t.Fatal(hostAddr, es.NetAddress)
+	}
+	if siamuxAddr != es.SiaMuxAddress() {
+		t.Fatal(siamuxAddr, es.SiaMuxAddress())
+	}
+}
+
 // TestNextNodeAddress probes nextNodeAddress to verify that the addresses are
 // indexing properly
 func TestNextNodeAddress(t *testing.T) {

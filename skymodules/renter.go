@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -108,11 +109,77 @@ type DirListFunc func(DirectoryInfo)
 type RenterPerformance struct {
 	SystemHealthScanDuration time.Duration
 
+	BaseSectorDownloadOverdriveStats   *DownloadOverdriveStats
+	FanoutSectorDownloadOverdriveStats *DownloadOverdriveStats
+
 	BaseSectorUploadStats *DistributionTrackerStats
 	ChunkUploadStats      *DistributionTrackerStats
 	RegistryReadStats     *DistributionTrackerStats
 	RegistryWriteStats    *DistributionTrackerStats
 	StreamBufferReadStats *DistributionTrackerStats
+}
+
+// DownloadOverdriveStats is a helper struct that contains information about the
+// sector downloads, it keeps track of what percentage of downloads we overdrive
+// and how many overdrive workers get launched.
+type DownloadOverdriveStats struct {
+	// total keeps track of the total amount of downloads
+	total uint64
+
+	// overdrive keeps track of the amount of times the download requires one or
+	// more overdrive workers to be launched in order to complete
+	overdrive uint64
+
+	// overdriveWorkersLaunched keeps track of the amount of overdrive workers
+	// that were launched for a download
+	overdriveWorkersLaunched uint64
+
+	mu sync.Mutex
+}
+
+// NewSectorDownloadStats returns a new DownloadOverdriveStats object.
+func NewSectorDownloadStats() *DownloadOverdriveStats {
+	return &DownloadOverdriveStats{}
+}
+
+// OverdrivePct returns the frequency with which we overdrive when downloading a
+// sector. The frequency is expressed as a percentage of overall downloads. E.g.
+// an overdrive pct of 0.6 means we launch at least one overdrive worker 60% of
+// the time.
+func (ds *DownloadOverdriveStats) OverdrivePct() float64 {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
+	if ds.total == 0 {
+		return 0
+	}
+	return float64(ds.overdrive) / float64(ds.total)
+}
+
+// NumOverdriveWorkersAvg returns the average amount of overdrive workers we
+// launch.
+func (ds *DownloadOverdriveStats) NumOverdriveWorkersAvg() float64 {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
+	if ds.total == 0 {
+		return 0
+	}
+	return float64(ds.overdriveWorkersLaunched) / float64(ds.total)
+}
+
+// AddDataPoint adds a data point to the statistics, it takes one parameter
+// called 'numOverdriveWorkers' which represents the amount of overdrive workers
+// launched.
+func (ds *DownloadOverdriveStats) AddDataPoint(numOverdriveWorkers uint64) {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
+	ds.total++
+	ds.overdriveWorkersLaunched += numOverdriveWorkers
+	if numOverdriveWorkers > 0 {
+		ds.overdrive++
+	}
 }
 
 // RenterStats is a struct which tracks key metrics in a single renter. This
@@ -352,6 +419,23 @@ type ContractUtility struct {
 	// If a contract is locked, the utility should not be updated. 'Locked' is a
 	// value that gets persisted.
 	Locked bool `json:"locked"`
+}
+
+// Merge merges two contract utilities by giving priority to the worse fields.
+// So for example a utility that is !gfu that is merged with a utility that is
+// gfu will result in !gfu whereas locked and !locked results in locked.
+func (cu ContractUtility) Merge(cu2 ContractUtility) ContractUtility {
+	lastOOS := cu.LastOOSErr
+	if cu2.LastOOSErr > lastOOS {
+		lastOOS = cu2.LastOOSErr
+	}
+	return ContractUtility{
+		GoodForUpload: cu.GoodForUpload && cu2.GoodForUpload,
+		GoodForRenew:  cu.GoodForRenew && cu2.GoodForRenew,
+		BadContract:   cu.BadContract || cu2.BadContract,
+		LastOOSErr:    lastOOS,
+		Locked:        cu.Locked || cu2.Locked,
+	}
 }
 
 // ContractWatchStatus provides information about the status of a contract in
@@ -1264,6 +1348,14 @@ type Renter interface {
 	// used.
 	ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (RegistryEntry, error)
 
+	// RegistryEntryHealth returns the health of a registry entry specified by
+	// either the spk and tweak or the rid.
+	RegistryEntryHealth(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (RegistryEntryHealth, error)
+
+	// RegistryEntryHealth returns the health of a registry entry specified by
+	// either the spk and tweak or the rid.
+	RegistryEntryHealthRID(ctx context.Context, rid modules.RegistryEntryID) (RegistryEntryHealth, error)
+
 	// ReadRegistryRID starts a registry lookup on all available workers.
 	// The jobs have time to finish their jobs and return a response until
 	// the context is closed. Otherwise the response with the highest
@@ -1376,6 +1468,9 @@ type Renter interface {
 	// potentially more expensive, hosts.
 	DownloadSkylinkBaseSector(link Skylink, timeout time.Duration, pricePerMS types.Currency) (Streamer, []RegistryEntry, error)
 
+	// SkylinkHealth returns the health of a skylink on the network.
+	SkylinkHealth(ctx context.Context, link Skylink, ppms types.Currency) (SkylinkHealth, error)
+
 	// UploadSkyfile will upload data to the Sia network from a reader and
 	// create a skyfile, returning the skylink that can be used to access the
 	// file.
@@ -1439,6 +1534,29 @@ type SkyfileStreamer interface {
 	Metadata() SkyfileMetadata
 	RawMetadata() []byte
 	Skylink() Skylink
+}
+
+// SkylinkHealth describes the health of a skylink on the network.
+type SkylinkHealth struct {
+	// BaseSectorRedundancy is the number of base sector pieces on the
+	// network.
+	BaseSectorRedundancy uint64 `json:"basesectorredundancy"`
+
+	// FanoutEffectiveRedundancy is the worst redundancy of any of the
+	// fanout's chunks on the network.
+	FanoutEffectiveRedundancy float64 `json:"fanouteffectiveredundancy,omitempty"`
+
+	// FanoutDataPieces are the datapieces of the erasure coder specified in
+	// the layout of the skyfile.
+	FanoutDataPieces uint8 `json:"fanoutdatapieces,omitempty"`
+
+	// FanoutDataPieces are the paritypieces of the erasure coder specified
+	// in the layout of the skyfile.
+	FanoutParityPieces uint8 `json:"fanoutparitypieces,omitempty"`
+
+	// FanoutRedundancy is the individual redundancy of all chunks in the
+	// fanout.
+	FanoutRedundancy []float64 `json:"fanoutredundancy,omitempty"`
 }
 
 // RenterDownloadParameters defines the parameters passed to the Renter's
