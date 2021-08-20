@@ -314,6 +314,37 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	})
 }
 
+// WaitForResults waits for all workers of the state to resolve up until ctx is
+// closed. Once the ctx is closed, all available responses are returned.
+func (ws *pcwsWorkerState) WaitForResults(ctx context.Context) []*pcwsWorkerResponse {
+	for {
+		ws.mu.Lock()
+
+		// If there are no more unresolved workers we are done.
+		if len(ws.unresolvedWorkers) == 0 {
+			rw := ws.resolvedWorkers
+			ws.mu.Unlock()
+			return rw
+		}
+
+		// If there are unresolved workers, register for the update and
+		// wait.
+		updateChan := ws.registerForWorkerUpdate()
+		ws.mu.Unlock()
+
+		select {
+		case <-updateChan:
+			continue // check again
+		case <-ctx.Done():
+			// timeout reached
+			ws.mu.Lock()
+			rw := ws.resolvedWorkers
+			ws.mu.Unlock()
+			return rw
+		}
+	}
+}
+
 // managedLaunchWorker will launch a job to determine which sectors of a chunk
 // are available through that worker. The resulting unresolved worker is
 // returned so it can be added to the pending worker state.
