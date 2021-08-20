@@ -1457,8 +1457,7 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 
 		for chunkIndex, chunk := range fanoutChunks {
 			for _, root := range chunk {
-				// -1 to exclude the base sector
-				rootIndexToChunkIndex[len(roots)-1] = chunkIndex
+				rootIndexToChunkIndex[len(roots)] = chunkIndex
 				roots = append(roots, root)
 			}
 		}
