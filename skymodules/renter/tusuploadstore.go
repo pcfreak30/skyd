@@ -10,6 +10,9 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
+// skynetTUSUploadStore defines an interface for a storage backend that is
+// capable of storing upload information as well as locking uploads and pruning
+// them.
 type skynetTUSUploadStore interface {
 	Prune() error
 	SaveUpload(upload *skynetTUSUpload) error
@@ -18,6 +21,7 @@ type skynetTUSUploadStore interface {
 	handler.Locker
 }
 
+// newSkynetTUSInMemoryUploadStore creates a new skynetTUSInMemoryUploadStore.
 func newSkynetTUSInMemoryUploadStore(r *Renter) *skynetTUSInMemoryUploadStore {
 	return &skynetTUSInMemoryUploadStore{
 		uploads:      make(map[string]*skynetTUSUpload),
@@ -26,6 +30,8 @@ func newSkynetTUSInMemoryUploadStore(r *Renter) *skynetTUSInMemoryUploadStore {
 	}
 }
 
+// skynetTUSInMemoryUploadStore is an in-memory skynetTUSUploadStore
+// implementation.
 type skynetTUSInMemoryUploadStore struct {
 	uploads      map[string]*skynetTUSUpload
 	mu           sync.Mutex
@@ -33,10 +39,13 @@ type skynetTUSInMemoryUploadStore struct {
 	staticLocker *memorylocker.MemoryLocker
 }
 
+// NewLock implements handler.Locker by forwarding the call to an in-memory
+// locker.
 func (us *skynetTUSInMemoryUploadStore) NewLock(id string) (handler.Lock, error) {
 	return us.staticLocker.NewLock(id)
 }
 
+// SaveUpload saves an upload.
 func (us *skynetTUSInMemoryUploadStore) SaveUpload(u *skynetTUSUpload) error {
 	us.mu.Lock()
 	defer us.mu.Unlock()
@@ -44,6 +53,7 @@ func (us *skynetTUSInMemoryUploadStore) SaveUpload(u *skynetTUSUpload) error {
 	return nil
 }
 
+// Upload returns an upload by ID.
 func (us *skynetTUSInMemoryUploadStore) Upload(id string) (*skynetTUSUpload, error) {
 	us.mu.Lock()
 	defer us.mu.Unlock()
