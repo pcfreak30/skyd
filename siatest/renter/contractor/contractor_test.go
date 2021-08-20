@@ -1591,16 +1591,16 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 		t.Fatal(err)
 	}
 	// Connect the miner to the renter.
-	gg, err := renter.GatewayGet()
+	gg, err := reorgMiner.GatewayGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := reorgMiner.GatewayConnectPost(gg.NetAddress); err != nil {
+	if err := renter.GatewayConnectPost(gg.NetAddress); err != nil && !errors.Contains(err, client.ErrPeerExists) {
 		t.Fatal(err)
 	}
 
 	// Sync the renter to the reorg miner.
-	err = build.Retry(50, 250*time.Millisecond, func() error {
+	err = build.Retry(100, 250*time.Millisecond, func() error {
 		renterCG, err := renter.ConsensusGet()
 		if err != nil {
 			return err

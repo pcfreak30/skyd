@@ -9,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -21,7 +22,8 @@ func TestHasSectorJobBatchCallNext(t *testing.T) {
 
 	// Create queue and job.
 	queue := jobHasSectorQueue{
-		jobGenericQueue: newJobGenericQueue(&worker{}),
+		availabilityMetrics: newAvailabilityMetrics(availabilityMetricsDefaultHalfLife),
+		jobGenericQueue:     newJobGenericQueue(&worker{}),
 	}
 	jhs := &jobHasSector{
 		jobGeneric: &jobGeneric{
@@ -56,9 +58,9 @@ func TestHasSectorJobBatchCallNext(t *testing.T) {
 	}
 }
 
-// TestHasSectorJobQueueSuccessRate is a unit that verifies the HS job queue
-// correctly returns the success rate
-func TestHasSectorJobQueueSuccessRate(t *testing.T) {
+// TestHasSectorJobQueueAvailabilityRate is a unit that verifies the HS job
+// queue correctly returns the availability rate
+func TestHasSectorJobQueueAvailabilityRate(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -88,9 +90,9 @@ func TestHasSectorJobQueueSuccessRate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// assert the seed success rate on a new queue
-	successRate := w.staticJobHasSectorQueue.callSuccessRate()
-	if successRate != jobHasSectorQueueSuccessRateSeed {
+	// assert the min availability rate on a new queue
+	randomNumPieces := fastrand.Intn(64) + 1
+	if w.staticJobHasSectorQueue.callAvailabilityRate(randomNumPieces) != jobHasSectorQueueMinAvailabilityRate {
 		t.Fatal("unexpected")
 	}
 
@@ -107,17 +109,17 @@ func TestHasSectorJobQueueSuccessRate(t *testing.T) {
 	// add a job where the host is supposed to find one root out of two
 	roots := []crypto.Hash{sectorRoot, randomRoot}
 	responseChan := make(chan *jobHasSectorResponse, 1)
-	jhs := w.newJobHasSector(context.Background(), responseChan, roots...)
+	jhs := w.newJobHasSector(context.Background(), responseChan, randomNumPieces, roots...)
 	added := w.staticJobHasSectorQueue.callAdd(jhs)
 	if !added {
-		t.Fatal(err)
+		t.Fatal("unexpected")
 	}
 
-	// check whether the success rate is correct
+	// check whether the availability rate is correct
 	if err := build.Retry(10, 10*time.Millisecond, func() error {
-		successRate := w.staticJobHasSectorQueue.callSuccessRate()
-		if successRate != .5 {
-			return fmt.Errorf("unexpected success rate %v", successRate)
+		availabilityRate := w.staticJobHasSectorQueue.callAvailabilityRate(randomNumPieces)
+		if availabilityRate != .5 {
+			return fmt.Errorf("unexpected availability rate %v != .5", availabilityRate)
 		}
 		return nil
 	}); err != nil {
@@ -127,17 +129,17 @@ func TestHasSectorJobQueueSuccessRate(t *testing.T) {
 	// add a job where the host won't find any root
 	roots = []crypto.Hash{randomRoot, randomRoot, randomRoot}
 	responseChan = make(chan *jobHasSectorResponse, 1)
-	jhs = w.newJobHasSector(context.Background(), responseChan, roots...)
+	jhs = w.newJobHasSector(context.Background(), responseChan, randomNumPieces, roots...)
 	added = w.staticJobHasSectorQueue.callAdd(jhs)
 	if !added {
-		t.Fatal(err)
+		t.Fatal("unexpected")
 	}
 
-	// check whether the success rate is correct
+	// check whether the availability rate is correct
 	if err := build.Retry(10, 10*time.Millisecond, func() error {
-		successRate := w.staticJobHasSectorQueue.callSuccessRate()
-		if successRate != .2 {
-			return fmt.Errorf("unexpected success rate %v", successRate)
+		availabilityRate := w.staticJobHasSectorQueue.callAvailabilityRate(randomNumPieces)
+		if availabilityRate != .2 {
+			return fmt.Errorf("unexpected availability rate %v != .2", availabilityRate)
 		}
 		return nil
 	}); err != nil {
@@ -190,6 +192,7 @@ func TestHasSectorJobExpectedBandwidth(t *testing.T) {
 		// build job
 		jhs := new(jobHasSector)
 		jhs.staticSectors = sectors
+		jhs.staticNumPieces = skymodules.RenterDefaultNumPieces
 
 		// build a batch from the job for comparison
 		jhsb := *&jobHasSectorBatch{
@@ -248,5 +251,76 @@ func TestHasSectorJobExpectedBandwidth(t *testing.T) {
 	dl, ul = numPacketsRequiredForSectors(17)
 	if dl != 2 || ul != 2 {
 		t.Fatal("unexpected")
+	}
+}
+
+// TestAvailabilityMetrics is a unit test for AvailabilityMetrics
+func TestAvailabilityMetrics(t *testing.T) {
+	t.Parallel()
+
+	// verify we have the expected amount of buckets
+	metrics := newAvailabilityMetrics(100 * time.Second)
+	if len(metrics.buckets) != availabilityMetricsNumBuckets {
+		t.Fatal("bad")
+	}
+
+	// verify the piecesToBuckets slice against this hardcoded slice
+	expected := []int{-1, 0, 1, 2, 3, 3, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15}
+	if len(metrics.piecesToBuckets) != len(expected) {
+		t.Fatal("bad")
+	}
+	for i := range expected {
+		if metrics.piecesToBuckets[i] != expected[i] {
+			t.Fatal("bad")
+		}
+	}
+
+	// manually verify some bucket indices
+	bucketIndex := metrics.piecesToBuckets[1]
+	if bucketIndex != 0 {
+		t.Fatal("bad", bucketIndex)
+	}
+	bucketIndex = metrics.piecesToBuckets[10]
+	if bucketIndex != 5 {
+		t.Fatal("bad")
+	}
+	bucketIndex = metrics.piecesToBuckets[30]
+	if bucketIndex != 10 {
+		t.Fatal("bad")
+	}
+	bucketIndex = metrics.piecesToBuckets[96]
+	if bucketIndex != 15 {
+		t.Fatal("bad")
+	}
+
+	// assert we're returning the last bucket if the num pieces is larger than
+	// what we support, which is 116 num pieces with the current defaults
+	if metrics.bucket(999) != metrics.buckets[bucketIndex] {
+		t.Fatal("bad")
+	}
+
+	// assert the bucket has no datapoints yet
+	bucket := metrics.bucket(10)
+	if bucket.totalAvailable != 0 || bucket.totalLookups != 0 {
+		t.Fatal("bad")
+	}
+
+	// update metrics and assert the correct bucket got updated
+	metrics.updateMetrics(10, []bool{true, true, false})
+	bucket = metrics.bucket(10)
+	if bucket.totalAvailable != 2 || bucket.totalLookups != 3 {
+		t.Fatal("bad")
+	}
+
+	// assert all other buckets have not been updated
+	for b := 0; b < availabilityMetricsNumBuckets; b++ {
+		bucketIndex = metrics.piecesToBuckets[10]
+		if b == bucketIndex {
+			continue
+		}
+		bucket := metrics.buckets[b]
+		if bucket.totalAvailable != 0 || bucket.totalLookups != 0 {
+			t.Fatal("bad")
+		}
 	}
 }

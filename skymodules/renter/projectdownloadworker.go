@@ -42,11 +42,6 @@ type (
 	// worker exactly the same as a resolved worker in the download algorithm
 	// that constructs the best worker set.
 	chimeraWorker struct {
-		// cachedCost returns the average expected job cost of this chimera
-		// worker, it is cached meaning it will only be calculated the first
-		// time cost is requested after the chimera worker was finalized.
-		cachedCost types.Currency
-
 		// cachedDistribution contains a distribution that is the weighted
 		// combination of all worker distrubtions in this chimera worker, it is
 		// cached meaning it will only be calculated the first time the
@@ -65,11 +60,12 @@ type (
 	//
 	// NOTE: extending this struct requires an update to the `split` method.
 	individualWorker struct {
-		staticLaunchedAt       time.Time
-		staticPieceIndices     []uint64
-		staticResolveChance    float64
-		staticReadDistribution *skymodules.Distribution
-		staticWorker           *worker
+		staticLaunchedAt         time.Time
+		staticPieceIndices       []uint64
+		staticResolveChance      float64
+		staticLookupDistribution *skymodules.Distribution
+		staticReadDistribution   *skymodules.Distribution
+		staticWorker             *worker
 	}
 
 	// workerSet is a collection of workers that may or may not have been
@@ -118,7 +114,7 @@ func (cw *chimeraWorker) addWorker(w *individualWorker) (remainder *individualWo
 	return
 }
 
-// cost implements downloadWorker interface.
+// cost implements the downloadWorker interface.
 func (cw *chimeraWorker) cost(length uint64) types.Currency {
 	numWorkers := uint64(len(cw.workers))
 	if numWorkers == 0 {
@@ -132,8 +128,12 @@ func (cw *chimeraWorker) cost(length uint64) types.Currency {
 	return total.Div64(numWorkers)
 }
 
-// distribution implements downloadWorker interface.
+// distribution implements the downloadWorker interface.
 func (cw *chimeraWorker) distribution() *skymodules.Distribution {
+	if cw.remaining() != 0 {
+		build.Critical("developer error, chimera is not complete")
+	}
+
 	if cw.cachedDistribution == nil {
 		dt := skymodules.NewDistributionTrackerStandard()
 		cw.cachedDistribution = dt.Distribution(0)
@@ -144,29 +144,43 @@ func (cw *chimeraWorker) distribution() *skymodules.Distribution {
 	return cw.cachedDistribution
 }
 
-// pieces implements downloadWorker interface.
+// pieces implements the downloadWorker interface.
 func (cw *chimeraWorker) pieces() []uint64 {
 	return nil
 }
 
-// worker implements downloadWorker interface.
+// remaining returns the remaining chance this chimera worker needs to be
+// complete and to have a 100% chance of resolving a piece
+func (cw *chimeraWorker) remaining() float64 {
+	remaining := float64(1)
+	for _, weight := range cw.weights {
+		remaining -= weight
+	}
+	return remaining
+}
+
+// worker implements the downloadWorker interface.
 func (cw *chimeraWorker) worker() *worker {
 	return nil
 }
 
-// cost implements downloadWorker interface.
+// cost implements the downloadWorker interface.
 func (iw *individualWorker) cost(length uint64) types.Currency {
-	if iw.staticLaunchedAt != (time.Time{}) {
+	// workers that have already been launched have a zero cost
+	if iw.isLaunched() {
 		return types.ZeroCurrency
 	}
 	return iw.staticWorker.staticJobReadQueue.callExpectedJobCost(length)
 }
 
-// distribution implements downloadWorker interface.
+// distribution implements the downloadWorker interface.
 func (iw *individualWorker) distribution() *skymodules.Distribution {
-	if iw.staticLaunchedAt != (time.Time{}) {
-		// we always perform the shift on a clone of the worker's distribution,
-		// this to ensure we don't keep shifting the same distribution
+	// if the worker has been launched already, we want to shift the
+	// distribution with the time that elapsed since it was launched
+	//
+	// NOTE: we always shift on a clone of the original read distribution to
+	// avoid shifting the same distribution multiple times
+	if iw.isLaunched() {
 		clone := iw.staticReadDistribution.Clone()
 		clone.Shift(time.Since(iw.staticLaunchedAt))
 		return clone
@@ -174,12 +188,17 @@ func (iw *individualWorker) distribution() *skymodules.Distribution {
 	return iw.staticReadDistribution
 }
 
-// pieces implements downloadWorker interface.
+// isLaunched returns true when this workers has been launched.
+func (iw *individualWorker) isLaunched() bool {
+	return iw.staticLaunchedAt != (time.Time{})
+}
+
+// pieces implements the downloadWorker interface.
 func (iw *individualWorker) pieces() []uint64 {
 	return iw.staticPieceIndices
 }
 
-// worker implements downloadWorker interface.
+// worker implements the downloadWorker interface.
 func (iw *individualWorker) worker() *worker {
 	return iw.staticWorker
 }
@@ -194,18 +213,20 @@ func (iw *individualWorker) split(chance float64) (*individualWorker, *individua
 	}
 
 	main := &individualWorker{
-		staticLaunchedAt:       iw.staticLaunchedAt,
-		staticPieceIndices:     iw.staticPieceIndices,
-		staticResolveChance:    chance,
-		staticReadDistribution: iw.staticReadDistribution,
-		staticWorker:           iw.staticWorker,
+		staticLaunchedAt:         iw.staticLaunchedAt,
+		staticPieceIndices:       iw.staticPieceIndices,
+		staticResolveChance:      chance,
+		staticLookupDistribution: iw.staticLookupDistribution,
+		staticReadDistribution:   iw.staticReadDistribution,
+		staticWorker:             iw.staticWorker,
 	}
 	remainder := &individualWorker{
-		staticLaunchedAt:       iw.staticLaunchedAt,
-		staticPieceIndices:     iw.staticPieceIndices,
-		staticResolveChance:    iw.staticResolveChance - chance,
-		staticReadDistribution: iw.staticReadDistribution,
-		staticWorker:           iw.staticWorker,
+		staticLaunchedAt:         iw.staticLaunchedAt,
+		staticPieceIndices:       iw.staticPieceIndices,
+		staticResolveChance:      iw.staticResolveChance - chance,
+		staticLookupDistribution: iw.staticLookupDistribution,
+		staticReadDistribution:   iw.staticReadDistribution,
+		staticWorker:             iw.staticWorker,
 	}
 
 	return main, remainder
@@ -383,6 +404,7 @@ func (pdc *projectDownloadChunk) workers() (resolved, unresolved []*individualWo
 
 	// convenience variables
 	minPieces := pdc.workerSet.staticErasureCoder.MinPieces()
+	numPieces := pdc.workerSet.staticErasureCoder.NumPieces()
 	length := pdc.pieceLength
 
 	for _, rw := range ws.resolvedWorkers {
@@ -394,12 +416,14 @@ func (pdc *projectDownloadChunk) workers() (resolved, unresolved []*individualWo
 		w := rw.worker
 		stats := w.staticJobReadQueue.staticStats
 		rdt := stats.distributionTrackerForLength(length)
+		ldt := w.staticJobHasSectorQueue.staticDT
 		resolved = append(resolved, &individualWorker{
-			staticLaunchedAt:       pdc.launchedAt(w),
-			staticPieceIndices:     rw.pieceIndices,
-			staticResolveChance:    1,
-			staticReadDistribution: rdt.Distribution(0),
-			staticWorker:           w,
+			staticLaunchedAt:         pdc.launchedAt(w),
+			staticPieceIndices:       rw.pieceIndices,
+			staticResolveChance:      1,
+			staticLookupDistribution: ldt.Distribution(0),
+			staticReadDistribution:   rdt.Distribution(0),
+			staticWorker:             w,
 		})
 	}
 
@@ -407,6 +431,7 @@ func (pdc *projectDownloadChunk) workers() (resolved, unresolved []*individualWo
 		w := uw.staticWorker
 		stats := w.staticJobReadQueue.staticStats
 		rdt := stats.distributionTrackerForLength(length)
+		ldt := w.staticJobHasSectorQueue.staticDT
 
 		// exclude workers that are not useful
 		if !isGoodForDownload(w) {
@@ -420,10 +445,11 @@ func (pdc *projectDownloadChunk) workers() (resolved, unresolved []*individualWo
 		}
 
 		unresolved = append(unresolved, &individualWorker{
-			staticPieceIndices:     pieceIndices,
-			staticResolveChance:    w.staticJobHasSectorQueue.callSuccessRate(),
-			staticReadDistribution: rdt.Distribution(0),
-			staticWorker:           w,
+			staticPieceIndices:       pieceIndices,
+			staticResolveChance:      w.staticJobHasSectorQueue.callAvailabilityRate(numPieces),
+			staticLookupDistribution: ldt.Distribution(0),
+			staticReadDistribution:   rdt.Distribution(0),
+			staticWorker:             w,
 		})
 	}
 
@@ -553,8 +579,8 @@ func (pdc *projectDownloadChunk) createWorkerSet(maxOverdriveWorkers int) (*work
 
 	// sort unresolved workers by expected resolve time
 	sort.Slice(unresolvedWorkers, func(i, j int) bool {
-		dI := unresolvedWorkers[i].staticReadDistribution
-		dJ := unresolvedWorkers[j].staticReadDistribution
+		dI := unresolvedWorkers[i].staticLookupDistribution
+		dJ := unresolvedWorkers[j].staticLookupDistribution
 		return dI.ExpectedDuration() < dJ.ExpectedDuration()
 	})
 

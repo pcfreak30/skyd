@@ -348,7 +348,7 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 	jhs := w.newJobHasSectorWithPostExecutionHook(ctx, responseChan, func(resp *jobHasSectorResponse) {
 		ws.managedHandleResponse(resp)
 		cancel()
-	}, pcws.staticPieceRoots...)
+	}, pcws.staticErasureCoder.NumPieces(), pcws.staticPieceRoots...)
 
 	expectedJobTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs, pcwsHasSectorTimeout)
 	if err != nil {
@@ -548,8 +548,9 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 
 		pricePerMS: pricePerMS,
 
-		availablePieces: make([][]*pieceDownload, ec.NumPieces()),
-		dataPieces:      make([][]byte, ec.NumPieces()),
+		availablePieces:         make([][]*pieceDownload, ec.NumPieces()),
+		availablePiecesByWorker: make(map[string][]uint64),
+		dataPieces:              make([][]byte, ec.NumPieces()),
 
 		staticSkipRecovery: skipRecovery,
 

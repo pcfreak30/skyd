@@ -258,6 +258,24 @@ func parseTimeout(queryForm url.Values) (time.Duration, error) {
 	return time.Duration(timeoutInt) * time.Second, nil
 }
 
+// parseRegistryTimeout tries to parse the timeout from the query string and
+// validate it. If not present, it will default to the max allowed value.
+func parseRegistryTimeout(queryForm url.Values) (time.Duration, error) {
+	timeoutStr := queryForm.Get("timeout")
+	if timeoutStr == "" {
+		return renter.MaxRegistryReadTimeout, nil
+	}
+
+	timeoutInt, err := strconv.Atoi(timeoutStr)
+	if err != nil {
+		return 0, errors.AddContext(err, "unable to parse 'timeout'")
+	}
+	if timeoutInt > int(renter.MaxRegistryReadTimeout.Seconds()) {
+		return 0, errors.AddContext(err, fmt.Sprintf("'timeout' parameter too high, maximum allowed timeout is %ds", MaxSkynetRequestTimeout))
+	}
+	return time.Duration(timeoutInt) * time.Second, nil
+}
+
 // parseDownloadRequestParameters is a helper function that parses all of the
 // query parameters from a download request
 func parseDownloadRequestParameters(req *http.Request) (*skyfileDownloadParams, error) {

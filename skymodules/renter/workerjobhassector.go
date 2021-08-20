@@ -16,19 +16,32 @@ import (
 )
 
 const (
+	// availabilityMetricsBucketScale is the amount with which we scale each
+	// bucket. Every bucket scales up 25%, this number was chosen because it
+	// provides sufficient granular coverage. Using this scale the buckets are:
+	// 1, 2, 3, 4-5, 6-7, 8-10, 11-13, 14-17, 18-22, 23-28, 29-36, ..., 93-116
+	availabilityMetricsBucketScale = 1.25
+
+	// availabilityMetricsDefaultHalfLife is the default half life of the decay
+	// applied to the availability buckets.
+	availabilityMetricsDefaultHalfLife = 100 * time.Hour
+
+	// availabilityMetricsNumBuckets is the total number of buckets we use to
+	// track the sector availability metrics for a certain host. Every bucket
+	// represents a range of total pieces uploaded to the network, the total
+	// number of pieces is decided by the redundancy scheme used during the
+	// upload.
+	availabilityMetricsNumBuckets = 16
+
 	// jobHasSectorPerformanceDecay defines how much the average performance is
 	// decayed each time a new datapoint is added. The jobs use an exponential
 	// weighted average.
 	jobHasSectorPerformanceDecay = 0.9
 
-	// jobHasSectorQueueSuccessRateSeed is the success rate we return when there
-	// haven't been any jobs performed yet by the queue to avoid unexpected
-	// behaviour when using the success rate in multiplications.
-	jobHasSectorQueueSuccessRateSeed = 0.01
-
-	// jobHasSectorQueueSuccessRateMinimum is the minimum success rate we return
-	// when there haven't been any successful jobs yet.
-	jobHasSectorQueueSuccessRateMinimum = 0.001
+	// jobHasSectorQueueMinAvailabilityRate is the minimum availability rate we
+	// return when there haven't been any jobs performed yet by the queue where
+	// the sector was available.
+	jobHasSectorQueueMinAvailabilityRate = 0.001
 
 	// hasSectorBatchSize is the number of has sector jobs batched together upon
 	// calling callNext.
@@ -47,6 +60,14 @@ type (
 	jobHasSector struct {
 		staticSectors      []crypto.Hash
 		staticResponseChan chan *jobHasSectorResponse
+
+		// staticNumPieces represents the redundancy with which the sectors were
+		// uploaded, it is the total number of pieces meaning the sum of the
+		// data and parity pieces used by the erasure coder
+		//
+		// NOTE: we assume that all sectors corresponding to the roots listed
+		// in this HS job were uploaded using the same redundancy scheme
+		staticNumPieces int
 
 		staticPostExecutionHook func(*jobHasSectorResponse)
 		once                    sync.Once
@@ -68,13 +89,10 @@ type (
 		// worker's recent performance for jobHasSectorQueue.
 		weightedJobTime float64
 
-		// totalAvailable counts the amount of jobs where the sector was
-		// available on the host.
-		//
-		// totalJobs counts the total amount of jobs that were successfully
-		// executed.
-		totalAvailable uint64
-		totalJobs      uint64
+		// availabilityMetrics keeps track of how often a sector was available
+		// on this host, we keep track of this in a way that we take the
+		// redundancy with which the sector was uploaded into account
+		availabilityMetrics *availabilityMetrics
 
 		// staticDT is a distribution tracker that keeps track of the HS job
 		// duration
@@ -97,7 +115,99 @@ type (
 		// purposes.
 		staticJobTime time.Duration
 	}
+
+	// availabilityMetrics is a helper struct that keeps track of sector
+	// availability metrics, we keep track of these in several buckets that
+	// correspond with sectors that were uploaded with a similar redundancy
+	availabilityMetrics struct {
+		buckets         []*availabilityBucket
+		piecesToBuckets []int
+		mu              sync.Mutex
+	}
+
+	// availabilityBucket is a helper struct that keeps track of how often a
+	// sector was available, every bucket holds these stats for sectors that
+	// were uploaded with a similar redundancy scheme
+	availabilityBucket struct {
+		*skymodules.GenericDecay
+
+		// Keeps track of the total amount of sectors that were available and
+		// the total amount of lookups that were performed. Note that a decaying
+		// factor is applied to these variables.
+		totalAvailable float64
+		totalLookups   float64
+	}
 )
+
+// newAvailabilityMetrics returns a new availabilityMetrics object
+func newAvailabilityMetrics(halfLife time.Duration) *availabilityMetrics {
+	metrics := &availabilityMetrics{
+		buckets:         make([]*availabilityBucket, availabilityMetricsNumBuckets),
+		piecesToBuckets: []int{-1}, // 0 num pieces is illegal
+	}
+
+	// initialize the buckets and a slice that maps piece indices to bucket
+	// indices that's used for constant time lookups.
+	curr := uint64(1)
+	for bucket := 0; bucket < availabilityMetricsNumBuckets; bucket++ {
+		metrics.buckets[bucket] = &availabilityBucket{GenericDecay: skymodules.NewDecay(halfLife)}
+
+		next := uint64(float64(curr) * availabilityMetricsBucketScale)
+		if next > curr {
+			for pieces := curr; pieces <= next; pieces++ {
+				metrics.piecesToBuckets = append(metrics.piecesToBuckets, bucket)
+			}
+			curr = next + 1
+			continue
+		}
+
+		metrics.piecesToBuckets = append(metrics.piecesToBuckets, bucket)
+		curr++
+	}
+
+	return metrics
+}
+
+// addDecay applies decay to the data in the availability bucket
+func (ab *availabilityBucket) addDecay() {
+	ab.Decay(func(decay float64) {
+		ab.totalAvailable *= decay
+		ab.totalLookups *= decay
+	})
+}
+
+// bucket will return the bucket corresponding with 'numPieces'
+func (am *availabilityMetrics) bucket(numPieces int) *availabilityBucket {
+	if numPieces < 1 {
+		build.Critical("num pieces can never be smaller than 1")
+		return nil
+	}
+
+	// return the last bucket if num pieces goes out of bounds
+	if numPieces >= len(am.piecesToBuckets) {
+		numPieces = len(am.piecesToBuckets) - 1
+	}
+	bucketIndex := am.piecesToBuckets[numPieces]
+	return am.buckets[bucketIndex]
+}
+
+// updateMetrics will update the availability metrics for the bucket
+// corresponding with 'numPieces'
+func (am *availabilityMetrics) updateMetrics(numPieces int, availables []bool) {
+	bucket := am.bucket(numPieces)
+	if bucket == nil {
+		return
+	}
+
+	bucket.addDecay()
+
+	bucket.totalLookups += float64(len(availables))
+	for _, available := range availables {
+		if available {
+			bucket.totalAvailable++
+		}
+	}
+}
 
 // callNext overwrites the generic call next and batches a certain number of has
 // sector jobs together.
@@ -125,16 +235,17 @@ func (jq *jobHasSectorQueue) callNext() workerJob {
 }
 
 // newJobHasSector is a helper method to create a new HasSector job.
-func (w *worker) newJobHasSector(ctx context.Context, responseChan chan *jobHasSectorResponse, roots ...crypto.Hash) *jobHasSector {
-	return w.newJobHasSectorWithPostExecutionHook(ctx, responseChan, nil, roots...)
+func (w *worker) newJobHasSector(ctx context.Context, responseChan chan *jobHasSectorResponse, numPieces int, roots ...crypto.Hash) *jobHasSector {
+	return w.newJobHasSectorWithPostExecutionHook(ctx, responseChan, nil, numPieces, roots...)
 }
 
 // newJobHasSectorWithPostExecutionHook is a helper method to create a new
 // HasSector job with a post execution hook that is executed after the response
 // is available but before sending it over the channel.
-func (w *worker) newJobHasSectorWithPostExecutionHook(ctx context.Context, responseChan chan *jobHasSectorResponse, hook func(*jobHasSectorResponse), roots ...crypto.Hash) *jobHasSector {
+func (w *worker) newJobHasSectorWithPostExecutionHook(ctx context.Context, responseChan chan *jobHasSectorResponse, hook func(*jobHasSectorResponse), numPieces int, roots ...crypto.Hash) *jobHasSector {
 	span, _ := opentracing.StartSpanFromContext(ctx, "HasSectorJob")
 	return &jobHasSector{
+		staticNumPieces:         numPieces,
 		staticSectors:           roots,
 		staticResponseChan:      responseChan,
 		staticPostExecutionHook: hook,
@@ -254,7 +365,7 @@ func (j jobHasSectorBatch) callExecute() {
 		// the queue.
 		jq := hsj.staticQueue.(*jobHasSectorQueue)
 		jq.callUpdateJobTimeMetrics(jobTime)
-		jq.callUpdateAvailabilityMetrics(availables[i])
+		jq.callUpdateAvailabilityMetrics(hsj.staticNumPieces, availables[i])
 		if err2 != nil {
 			w.staticRenter.staticLog.Println("callExecute: launch failed", err)
 		}
@@ -363,41 +474,39 @@ func (jq *jobHasSectorQueue) callExpectedJobTime() time.Duration {
 	return jq.expectedJobTime()
 }
 
-// callSuccessRate returns the percentage of jobs that came back having the
+// callAvailabilityRate returns the percentage of jobs that came back having the
 // sector for this queue's worker.
-func (jq *jobHasSectorQueue) callSuccessRate() float64 {
+func (jq *jobHasSectorQueue) callAvailabilityRate(numPieces int) float64 {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 
-	// if there haven't been any jobs yet, seed the success rate with a rate of
-	// 1% to avoid unexpected behaviour when multiplying by 0 in our download
-	// algorithms. We can do this because we send an HS job to all hosts on
-	// every download so this should converge to the actual value super quickly.
-	if jq.totalJobs == 0 {
-		return jobHasSectorQueueSuccessRateSeed
+	// assert the given value for num pieces makes sense, we throw a critical
+	// here as this can only be caused by developer error
+	if numPieces < 1 {
+		build.Critical("num pieces can never be smaller than 1")
+		return 0
 	}
 
-	// if there haven't been any jobs yet that came back indicating the host has
-	// the sector, we return a min success rate of .1%.
-	if jq.totalAvailable == 0 {
-		return jobHasSectorQueueSuccessRateMinimum
+	// fetch the bucket that corresponds with the given redundancy
+	bucket := jq.availabilityMetrics.bucket(numPieces)
+
+	// if there haven't been any jobs yet where the sector was available on the
+	// host, we return a minimum rate of .1% to avoid multiplication by zero in
+	// our download code algorithms.
+	if bucket.totalAvailable == 0 || bucket.totalLookups == 0 {
+		return jobHasSectorQueueMinAvailabilityRate
 	}
 
-	return float64(jq.totalAvailable) / float64(jq.totalJobs)
+	return bucket.totalAvailable / bucket.totalLookups
 }
 
 // callUpdateAvailabilityMetrics updates the fields on the has sector queue that
 // keep track of how many jobs were executed successfully, and how many jobs had
 // the sector be available.
-func (jq *jobHasSectorQueue) callUpdateAvailabilityMetrics(availables []bool) {
+func (jq *jobHasSectorQueue) callUpdateAvailabilityMetrics(numPieces int, availables []bool) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
-	jq.totalJobs += uint64(len(availables))
-	for _, available := range availables {
-		if available {
-			jq.totalAvailable++
-		}
-	}
+	jq.availabilityMetrics.updateMetrics(numPieces, availables)
 }
 
 // callUpdateJobTimeMetrics takes a duration it took to fulfil that job and uses
@@ -424,8 +533,8 @@ func (w *worker) initJobHasSectorQueue() {
 	}
 
 	w.staticJobHasSectorQueue = &jobHasSectorQueue{
-		jobGenericQueue: newJobGenericQueue(w),
-
+		availabilityMetrics: newAvailabilityMetrics(availabilityMetricsDefaultHalfLife),
+		jobGenericQueue:     newJobGenericQueue(w),
 		staticDT: skymodules.NewDistributionTrackerStandard(),
 	}
 }

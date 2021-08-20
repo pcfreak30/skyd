@@ -22,7 +22,7 @@ package skymodules
 
 import (
 	"fmt"
-	"math"
+	"reflect"
 	"sync"
 	"time"
 
@@ -30,21 +30,6 @@ import (
 )
 
 const (
-	// distributionTrackerDecayFrequencyDenom determines what percentage of the
-	// half life must expire before a decay is applied. If the decay denominator
-	// is '100', it means that the decay will only be applied once 1/100 (1%) of
-	// the half life has elapsed.
-	//
-	// The main reason that the decay is performed in small blocks instead of
-	// continuously is the limited precision of floating point numbers. We found
-	// that in production, performing a decay after a very tiny amount of time
-	// had elapsed resulted in highly inaccurate data, because the floating
-	// points rounded the result too heavily. 100 is generally a good value,
-	// because it is infrequent enough that the float point precision can still
-	// provide strong accuracy, yet frequent enough that a value which has not
-	// been decayed recently is still also an accurate value.
-	distributionTrackerDecayFrequencyDenom = 100
-
 	// distributionTrackerInitialStepSize defines the step size that we use for
 	// the first bucketsPerStepChange buckets of a distribution. This means that
 	// this is the smallest timing that is supported by the distribution. The
@@ -99,20 +84,12 @@ type (
 	//
 	// NOTE: This struct is not thread safe, thread safety is derived from the
 	// parent object.
+	//
+	// NOTE: If you extend this struct, take the changes into account in the
+	// 'Clone' method.
 	Distribution struct {
-		// Determines the decay rate of data in the distribution. Zero value
-		// here means that no decay is applied.
-		staticHalfLife time.Duration
-
-		// Tracks the last time decay was applied so we know if we need to apply
-		// another round of decay when adding a datapoint.
-		lastDecay time.Time
-
-		// Keeps track of the total amount of time that this distribution has
-		// been alive. This time gets decayed alongside the values, which means
-		// you can get the total rate of objects being added by dividing the
-		// total number of objects by the decayed lifetime.
-		decayedLifetime time.Duration
+		// Decay is applied to the distribution.
+		*GenericDecay
 
 		// Buckets that represent the distribution. The first
 		// bucketsPerStepChange buckets start at 4ms and are 4ms spaced apart.
@@ -142,9 +119,9 @@ type (
 	}
 )
 
-// timingIndexToDuration converts the index of a timing bucket into a timing.
+// durationForIndex converts the index of a timing bucket into a timing.
 func durationForIndex(index int) time.Duration {
-	if index < 0 || index > 64+48*distributionTrackerNumIncrements {
+	if index < 0 || index > distributionTrackerTotalBuckets-1 {
 		build.Critical("distribution duration index out of bounds:", index)
 	}
 
@@ -165,7 +142,13 @@ func durationForIndex(index int) time.Duration {
 	return prevMax
 }
 
-// TODO PJ: docstring
+// indexForDuration converts the given duration to a bucket index. Alongside the
+// index it also returns a float that represents the fraction of the bucket that
+// is included by the given duration.
+//
+// e.g. if we are dealing with 4ms buckets and a duration of 1ms is passed, the
+// return values would be 0 and 0.25, indicating the duration corresponds with
+// bucket at index 0, and the given duration included 25% of that bucket.
 func indexForDuration(duration time.Duration) (int, float64) {
 	if duration < 0 {
 		build.Critical("negative duration")
@@ -198,32 +181,11 @@ func indexForDuration(duration time.Duration) (int, float64) {
 
 // addDecay will decay the distribution.
 func (d *Distribution) addDecay() {
-	// Don't add any decay if the half life is zero.
-	if d.staticHalfLife == 0 {
-		return
-	}
-
-	// Determine if a decay should be applied based on the progression through
-	// the half life. We don't apply any decay if not much time has elapsed
-	// because applying decay over very short periods taxes the precision of the
-	// float64s that we use.
-	sincelastDecay := time.Since(d.lastDecay)
-	decayFrequency := d.staticHalfLife / distributionTrackerDecayFrequencyDenom
-	if sincelastDecay < decayFrequency {
-		return
-	}
-
-	// Determine how much decay should be applied.
-	d.decayedLifetime += time.Since(d.lastDecay)
-	strength := float64(sincelastDecay) / float64(d.staticHalfLife)
-	mult := math.Pow(0.5, strength) // 0.5 is the power you use to perform half life calculations
-
-	// Apply the decay to all values.
-	for i := 0; i < len(d.timings); i++ {
-		d.timings[i] *= mult
-	}
-	d.decayedLifetime = time.Duration(float64(d.decayedLifetime) * mult)
-	d.lastDecay = time.Now()
+	d.Decay(func(decay float64) {
+		for i := 0; i < len(d.timings); i++ {
+			d.timings[i] *= decay
+		}
+	})
 }
 
 // AddDataPoint will add a sampled time to the distribution, performing a decay
@@ -243,7 +205,7 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 	d.timings[index]++
 }
 
-// TODO PJ: docstring
+// ChanceAfter returns the chance we find a data point after the given duration.
 func (d *Distribution) ChanceAfter(dur time.Duration) float64 {
 	// Check for negative inputs.
 	if dur < 0 {
@@ -251,36 +213,41 @@ func (d *Distribution) ChanceAfter(dur time.Duration) float64 {
 		return 0
 	}
 
-	// Get the total data points. Return worst case if no data was collected.
+	// Get the total data points. If no data was collected we return 0.
 	total := d.DataPoints()
 	if total == 0 {
-		return .5 // TODO PJ: hmmm
+		return 0
 	}
 
-	// Get the data point count up until the given index.
+	// Get the amount of data points up until the bucket index.
 	count := float64(0)
 	index, fraction := indexForDuration(dur)
-	for i := 0; i <= index; i++ {
-		if i == index {
-			count += fraction * d.timings[index]
-		} else {
-			count += d.timings[i]
-		}
+	for i := 0; i < index; i++ {
+		count += d.timings[i]
 	}
 
+	// Add the fraction of the data points in the bucket at index.
+	count += fraction * d.timings[index]
+
+	// Calculate the chance
 	chance := count / total
 	return chance
 }
 
+// Clone returns a deep copy of the distribution.
 func (d *Distribution) Clone() *Distribution {
-	c := &Distribution{
-		staticHalfLife:  d.staticHalfLife,
-		lastDecay:       d.lastDecay,
-		decayedLifetime: d.decayedLifetime,
-	}
+	c := &Distribution{GenericDecay: d.GenericDecay.Clone()}
 	for i, b := range d.timings {
 		c.timings[i] = b
 	}
+
+	// sanity check using reflect package, only executed in testing
+	if build.Release == "testing" {
+		if !reflect.DeepEqual(d, c) {
+			build.Critical("cloned distribution not equal")
+		}
+	}
+
 	return c
 }
 
@@ -299,7 +266,7 @@ func (d *Distribution) DataPoints() float64 {
 	return total
 }
 
-// TODO PJ: docstring
+// DurationForIndex converts the index of a bucket into a duration.
 func (d *Distribution) DurationForIndex(index int) time.Duration {
 	return durationForIndex(index)
 }
@@ -308,13 +275,10 @@ func (d *Distribution) DurationForIndex(index int) time.Duration {
 // distribution.
 func (d *Distribution) ExpectedDuration() time.Duration {
 	// Get the total data points.
-	var total float64
-	for i := 0; i < len(d.timings); i++ {
-		total += d.timings[i]
-	}
+	total := d.DataPoints()
 	if total == 0 {
 		// No data collected, just return the worst case.
-		return durationForIndex(len(d.timings))
+		return durationForIndex(len(d.timings) - 1)
 	}
 
 	// Across all buckets, multiply the pct chance times the bucket's duration.
@@ -322,28 +286,29 @@ func (d *Distribution) ExpectedDuration() time.Duration {
 	var expected float64
 	for i := 0; i < len(d.timings); i++ {
 		pct := d.timings[i] / total
-		expected += pct * float64(durationForIndex(i).Nanoseconds())
+		expected += pct * float64(durationForIndex(i))
 	}
 	return time.Duration(expected)
 }
 
 // MergeWith merges the given distribution according to a certain weight.
 func (d *Distribution) MergeWith(other *Distribution, weight float64) {
+	// validate the given distribution
+	if d.staticHalfLife != other.staticHalfLife {
+		build.Critical(fmt.Sprintf("only distributions with equal half lives should be merged, %v != %v", d.staticHalfLife, other.staticHalfLife))
+		return
+	}
+
+	// validate the weight
 	if weight <= 0 || weight > 1 {
 		build.Critical(fmt.Sprintf("unexpected weight %v", weight))
 		return
 	}
 
-	// TODO validate distribution have equal half life (?)
-
-	// loop over every bucket in other's distribution and calculate the pct
-	// chance a datapoint appears in this bucket, append this chance
-	// multiplied by the given weight and add it to the corresponding bucket
-	// in dt.
-	total := other.DataPoints()
+	// loop all other timings and append them taking into account the given
+	// weight
 	for bi, b := range other.timings {
-		chance := b / total
-		d.timings[bi] += chance * weight
+		d.timings[bi] += b * weight
 	}
 }
 
@@ -370,13 +335,13 @@ func (d *Distribution) PStat(p float64) time.Duration {
 	}
 	if total == 0 {
 		// No data collected, just return the worst case.
-		return durationForIndex(len(d.timings))
+		return durationForIndex(distributionTrackerTotalBuckets - 1)
 	}
 
 	// Count up until we reach p.
 	var run float64
 	var index int
-	for run/total < p && index < 64+48*distributionTrackerNumIncrements {
+	for run/total < p && index < distributionTrackerTotalBuckets-1 {
 		run += d.timings[index]
 		index++
 	}
@@ -385,6 +350,11 @@ func (d *Distribution) PStat(p float64) time.Duration {
 	return durationForIndex(index)
 }
 
+// Shift shifts the distribution by a certain duration. The shift operation will
+// essentially ignore all data points up until the duration with which we're
+// shifting. If that duration does not perfectly align with the distribution's
+// buckets, we smear the fractionalised value over the buckets preceding the
+// bucket that corresponds with the given duration.
 func (d *Distribution) Shift(dur time.Duration) {
 	// Check for negative inputs.
 	if dur < 0 {
@@ -482,8 +452,7 @@ func (dt *DistributionTracker) Stats() *DistributionTrackerStats {
 // NewDistribution will create a distribution with the provided half life.
 func NewDistribution(halfLife time.Duration) *Distribution {
 	return &Distribution{
-		staticHalfLife: halfLife,
-		lastDecay:      time.Now(),
+		GenericDecay: NewDecay(halfLife),
 	}
 }
 

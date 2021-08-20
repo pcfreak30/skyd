@@ -196,11 +196,12 @@ type (
 	// RegistryHandlerRequestPOST is the expected format of the json request for
 	// /skynet/registry [POST].
 	RegistryHandlerRequestPOST struct {
-		PublicKey types.SiaPublicKey `json:"publickey"`
-		DataKey   crypto.Hash        `json:"datakey"`
-		Revision  uint64             `json:"revision"`
-		Signature crypto.Signature   `json:"signature"`
-		Data      []byte             `json:"data"`
+		PublicKey types.SiaPublicKey        `json:"publickey"`
+		DataKey   crypto.Hash               `json:"datakey"`
+		Revision  uint64                    `json:"revision"`
+		Signature crypto.Signature          `json:"signature"`
+		Data      []byte                    `json:"data"`
+		Type      modules.RegistryEntryType `json:"type"`
 	}
 
 	// SkylinkResolveGET is the response returned by the /skylink/resolve
@@ -234,20 +235,10 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 	}
 
 	// Parse the timeout.
-	timeout := DefaultSkynetRequestTimeout
-	timeoutStr := queryForm.Get("timeout")
-	if timeoutStr != "" {
-		timeoutInt, err := strconv.Atoi(timeoutStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-
-		if timeoutInt > MaxSkynetRequestTimeout {
-			WriteError(w, Error{fmt.Sprintf("'timeout' parameter too high, maximum allowed timeout is %ds", MaxSkynetRequestTimeout)}, http.StatusBadRequest)
-			return
-		}
-		timeout = time.Duration(timeoutInt) * time.Second
+	timeout, err := parseTimeout(queryForm)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
 	}
 
 	// Parse pricePerMS.
@@ -302,9 +293,16 @@ func (api *API) skynetBlocklistHandlerGET(w http.ResponseWriter, _ *http.Request
 
 // skynetBlocklistHandlerPOST handles the API call to block certain skylinks.
 func (api *API) skynetBlocklistHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
+		return
+	}
+
 	// Parse parameters
 	var params SkynetBlocklistPOST
-	err := json.NewDecoder(req.Body).Decode(&params)
+	err = json.NewDecoder(req.Body).Decode(&params)
 	if err != nil {
 		WriteError(w, Error{"invalid parameters: " + err.Error()}, http.StatusBadRequest)
 		return
@@ -317,19 +315,10 @@ func (api *API) skynetBlocklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 	}
 
 	// Parse the timeout.
-	timeout := renter.MaxRegistryReadTimeout
-	timeoutStr := req.FormValue("timeout")
-	if timeoutStr != "" {
-		timeoutInt, err := strconv.Atoi(timeoutStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		timeout = time.Duration(timeoutInt) * time.Second
-		if timeout > renter.MaxRegistryReadTimeout || timeout == 0 {
-			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %ds", renter.MaxRegistryReadTimeout)}, http.StatusBadRequest)
-			return
-		}
+	timeout, err := parseTimeout(queryForm)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
 	}
 
 	// Generate context
@@ -398,20 +387,10 @@ func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, p
 	}
 
 	// Parse the timeout.
-	timeout := DefaultSkynetRequestTimeout
-	timeoutStr := queryForm.Get("timeout")
-	if timeoutStr != "" {
-		timeoutInt, err := strconv.Atoi(timeoutStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-
-		if timeoutInt > MaxSkynetRequestTimeout {
-			WriteError(w, Error{fmt.Sprintf("'timeout' parameter too high, maximum allowed timeout is %ds", MaxSkynetRequestTimeout)}, http.StatusBadRequest)
-			return
-		}
-		timeout = time.Duration(timeoutInt) * time.Second
+	timeout, err := parseTimeout(queryForm)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
 	}
 
 	// Parse the root.
@@ -1083,8 +1062,8 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 	}
 
 	// Get the sector stats
-	baseSectorStats := renterPerf.BaseSectorDownloadStats
-	fanoutSectorStats := renterPerf.FanoutSectorDownloadStats
+	baseSectorStats := renterPerf.BaseSectorDownloadOverdriveStats
+	fanoutSectorStats := renterPerf.FanoutSectorDownloadOverdriveStats
 
 	WriteJSON(w, &SkynetStatsGET{
 		BaseSectorUpload15mDataPoints: renterPerf.BaseSectorUploadStats.DataPoints[0],
@@ -1330,6 +1309,12 @@ func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 		return
 	}
 
+	// If the type wasn't set, default to no pubkey to preserve
+	// compatibility.
+	if rhp.Type == modules.RegistryTypeInvalid {
+		rhp.Type = modules.RegistryTypeWithoutPubkey
+	}
+
 	// Check data length here to be able to offer a better and faster error
 	// message than when the hosts return it.
 	if len(rhp.Data) > modules.RegistryDataSize {
@@ -1338,7 +1323,7 @@ func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 	}
 
 	// Update the registry.
-	srv := modules.NewSignedRegistryValue(rhp.DataKey, rhp.Data, rhp.Revision, rhp.Signature, modules.RegistryTypeWithoutPubkey)
+	srv := modules.NewSignedRegistryValue(rhp.DataKey, rhp.Data, rhp.Revision, rhp.Signature, rhp.Type)
 	err = api.renter.UpdateRegistry(rhp.PublicKey, srv, renter.DefaultRegistryUpdateTimeout)
 	if err != nil {
 		WriteError(w, Error{"Unable to update the registry: " + err.Error()}, http.StatusBadRequest)
@@ -1349,9 +1334,15 @@ func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 
 // registryHandlerGET handles the GET calls to /skynet/registry.
 func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
+		return
+	}
 	// Parse public key
 	var spk types.SiaPublicKey
-	err := spk.LoadString(req.FormValue("publickey"))
+	err = spk.LoadString(queryForm.Get("publickey"))
 	if err != nil {
 		WriteError(w, Error{"Unable to parse publickey param: " + err.Error()}, http.StatusBadRequest)
 		return
@@ -1359,26 +1350,17 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 
 	// Parse datakey.
 	var dataKey crypto.Hash
-	err = dataKey.LoadString(req.FormValue("datakey"))
+	err = dataKey.LoadString(queryForm.Get("datakey"))
 	if err != nil {
 		WriteError(w, Error{"Unable to decode dataKey param: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 
 	// Parse the timeout.
-	timeout := renter.MaxRegistryReadTimeout
-	timeoutStr := req.FormValue("timeout")
-	if timeoutStr != "" {
-		timeoutInt, err := strconv.Atoi(timeoutStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		timeout = time.Duration(timeoutInt) * time.Second
-		if timeout > renter.MaxRegistryReadTimeout || timeout == 0 {
-			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %ds", renter.MaxRegistryReadTimeout)}, http.StatusBadRequest)
-			return
-		}
+	timeout, err := parseRegistryTimeout(queryForm)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
 	}
 
 	// Read registry.
@@ -1401,11 +1383,82 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 	})
 }
 
+// registryEntryHealthHandlerGET is the handler for the /skynet/registry/health
+// endpoint.
+func (api *API) registryEntryHealthHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
+		return
+	}
+	spkStr := queryForm.Get("publickey")
+	tweakStr := queryForm.Get("datakey")
+	ridStr := queryForm.Get("entryid")
+
+	// Parse the timeout.
+	timeout, err := parseRegistryTimeout(queryForm)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(req.Context(), timeout)
+	defer cancel()
+
+	// If the publickey and datakey are set we use them. Otherwise we look
+	// for the entryid.
+	var reh skymodules.RegistryEntryHealth
+	if spkStr != "" && tweakStr != "" {
+		// Parse public key
+		var spk types.SiaPublicKey
+		err := spk.LoadString(spkStr)
+		if err != nil {
+			WriteError(w, Error{"Unable to parse 'publickey' param: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+
+		// Parse datakey.
+		var dataKey crypto.Hash
+		err = dataKey.LoadString(tweakStr)
+		if err != nil {
+			WriteError(w, Error{"Unable to decode 'dataKey' param: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		reh, err = api.renter.RegistryEntryHealth(ctx, spk, dataKey)
+	} else if ridStr != "" {
+		// Parse rid.
+		var rid crypto.Hash
+		err := rid.LoadString(ridStr)
+		if err != nil {
+			WriteError(w, Error{"Unable to decode 'entryid' param: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		reh, err = api.renter.RegistryEntryHealthRID(ctx, modules.RegistryEntryID(rid))
+	} else {
+		WriteError(w, Error{"Need to specify either publickey and datakey or entryid"}, http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		handleSkynetError(w, "unable to read from the registry", err)
+		return
+	}
+
+	// Send response.
+	WriteJSON(w, reh)
+}
+
 // skylinkResolveGET handles the GET calls to /skylink/resolve/:skylink.
 func (api *API) skylinkResolveGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
+		return
+	}
+
 	// Parse Skylink
 	var sl skymodules.Skylink
-	err := sl.LoadString(ps.ByName("skylink"))
+	err = sl.LoadString(ps.ByName("skylink"))
 	if err != nil {
 		WriteError(w, Error{"Unable to parse skylink" + err.Error()}, http.StatusBadRequest)
 		return
@@ -1418,19 +1471,10 @@ func (api *API) skylinkResolveGET(w http.ResponseWriter, req *http.Request, ps h
 	}
 
 	// Parse the timeout.
-	timeout := renter.MaxRegistryReadTimeout
-	timeoutStr := req.FormValue("timeout")
-	if timeoutStr != "" {
-		timeoutInt, err := strconv.Atoi(timeoutStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		timeout = time.Duration(timeoutInt) * time.Second
-		if timeout > renter.MaxRegistryReadTimeout || timeout == 0 {
-			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %ds", renter.MaxRegistryReadTimeout)}, http.StatusBadRequest)
-			return
-		}
+	timeout, err := parseTimeout(queryForm)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
 	}
 
 	// Resolve skylink.
@@ -1492,20 +1536,10 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 	}
 
 	// Parse the timeout.
-	timeout := DefaultSkynetRequestTimeout
-	timeoutStr := queryForm.Get("timeout")
-	if timeoutStr != "" {
-		timeoutInt, err := strconv.Atoi(timeoutStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-
-		if timeoutInt > MaxSkynetRequestTimeout {
-			WriteError(w, Error{fmt.Sprintf("'timeout' parameter too high, maximum allowed timeout is %ds", MaxSkynetRequestTimeout)}, http.StatusBadRequest)
-			return
-		}
-		timeout = time.Duration(timeoutInt) * time.Second
+	timeout, err := parseTimeout(queryForm)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
 	}
 
 	// Parse pricePerMS.
@@ -1566,6 +1600,42 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 	}
 	w.Header().Set("Content-Type", "application/json")
 	http.ServeContent(w, req, "", time.Time{}, bytes.NewReader(rawMD))
+}
+
+// skynetSkylinkHealthGET is the handler for the /skynet/health/:skylink
+// endpoint.
+func (api *API) skynetSkylinkHealthGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	strLink := ps.ByName("skylink")
+	var skylink skymodules.Skylink
+	err := skylink.LoadString(strLink)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to parse query params: %v", err)}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse timeout.
+	timeout, err := parseTimeout(queryForm)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(req.Context(), timeout)
+	defer cancel()
+
+	// Get health.
+	sh, err := api.renter.SkylinkHealth(ctx, skylink, DefaultSkynetPricePerMS)
+	if err != nil {
+		handleSkynetError(w, "failed to get skylink health", err)
+		return
+	}
+	WriteJSON(w, sh)
 }
 
 // skynetSkylinkUnpinHandlerPOST will unpin a skylink from this Sia node.

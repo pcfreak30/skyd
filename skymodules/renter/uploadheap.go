@@ -312,13 +312,16 @@ func (uh *uploadHeap) managedPause(duration time.Duration) {
 }
 
 // managedPush will try and add a chunk to the upload heap. If the chunk is
-// added it will return true otherwise it will return false
+// added it will return true otherwise it will return false. If false is
+// returned due to an existing uploadchunk being in the heap already, that chunk
+// will be returned to allow the caller to wait for that chunk to be done
+// uploading.
 //
 // If the chunkType is set to streamChunk then managedPush will add the chunk
 // directly to the repair map so that it is tracked by the heap but won't be
 // popped off the heap by the regular repair loop. In this case the caller is
 // then responsible for ensuring the chunk is sent to the workers for repair.
-func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk, ct chunkType) bool {
+func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk, ct chunkType) (*unfinishedUploadChunk, bool) {
 	// Grab chunk stuck status and update the chunkCreationTime
 	uuc.mu.Lock()
 	chunkStuck := uuc.stuck
@@ -330,9 +333,9 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk, ct chunkType) bool
 	// Check if chunk is in any of the heap maps
 	uh.mu.Lock()
 	defer uh.mu.Unlock()
-	_, existsUnstuckHeap := uh.unstuckHeapChunks[uuc.id]
-	_, existsRepairing := uh.repairingChunks[uuc.id]
-	_, existsStuckHeap := uh.stuckHeapChunks[uuc.id]
+	uucUnstuck, existsUnstuckHeap := uh.unstuckHeapChunks[uuc.id]
+	uucRepairing, existsRepairing := uh.repairingChunks[uuc.id]
+	uucStuck, existsStuckHeap := uh.stuckHeapChunks[uuc.id]
 	exists := existsUnstuckHeap || existsRepairing || existsStuckHeap
 
 	// Check if the chunk can be added to the heap
@@ -343,11 +346,11 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk, ct chunkType) bool
 	if canAddStuckChunk {
 		uh.stuckHeapChunks[uuc.id] = uuc
 		heap.Push(&uh.heap, uuc)
-		return true
+		return nil, true
 	} else if canAddUnstuckChunk {
 		uh.unstuckHeapChunks[uuc.id] = uuc
 		heap.Push(&uh.heap, uuc)
-		return true
+		return nil, true
 	} else if ct == chunkTypeStreamChunk && !existsRepairing {
 		// Make sure the chunk is removed from unstuck and stuck maps
 		delete(uh.unstuckHeapChunks, uuc.id)
@@ -360,9 +363,18 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk, ct chunkType) bool
 
 		// Add to the repair map
 		uh.repairingChunks[uuc.id] = uuc
-		return true
+		return uuc, true
 	}
-	return false
+	// Return a potentially existing upload chunk that prevented our chunk
+	// from being added to the heap.
+	if existsUnstuckHeap {
+		return uucUnstuck, false
+	} else if existsRepairing {
+		return uucRepairing, false
+	} else if existsStuckHeap {
+		return uucStuck, false
+	}
+	return nil, false
 }
 
 // managedPop will pull a chunk off of the upload heap and return it.
@@ -476,9 +488,7 @@ func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType)
 	// a sourceReader. Since we now have a chunk that does have a sourceReader we
 	// want to cancel the repair of the existing chunk in order to prioritize
 	// using the sourcereader to repair the chunk.
-	existingUUC.cancelMU.Lock()
-	existingUUC.canceled = true
-	existingUUC.cancelMU.Unlock()
+	existingUUC.Cancel()
 
 	// Wait for all workers to finish ongoing work on the existing chunk.
 	existingUUC.cancelWG.Wait()
@@ -510,7 +520,7 @@ func (r *Renter) ResumeRepairsAndUploads() error {
 }
 
 // managedBuildUnfinishedChunk will pull out a single unfinished chunk of a file.
-func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesystem.FileNode, chunkIndex uint64, hosts map[string]struct{}, hostPublicKeys map[string]types.SiaPublicKey, priority bool, offline, goodForRenew map[string]bool, mm *memoryManager) (*unfinishedUploadChunk, error) {
+func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesystem.FileNode, chunkIndex uint64, hosts map[string]struct{}, priority bool, offline, goodForRenew map[string]bool, mm *memoryManager) (*unfinishedUploadChunk, error) {
 	// Copy entry
 	entryCopy := entry.Copy()
 	stuck, err := entry.StuckChunkByIndex(chunkIndex)
@@ -696,7 +706,7 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		}
 
 		// Create unfinishedUploadChunk
-		chunk, err := r.managedBuildUnfinishedChunk(r.tg.StopCtx(), entry, uint64(index), hosts, pks, memoryPriorityLow, offline, goodForRenew, mm)
+		chunk, err := r.managedBuildUnfinishedChunk(r.tg.StopCtx(), entry, uint64(index), hosts, memoryPriorityLow, offline, goodForRenew, mm)
 		if err != nil {
 			r.staticLog.Debugln("Error when building an unfinished chunk:", err)
 			continue
@@ -862,7 +872,7 @@ func (r *Renter) managedBuildAndPushRandomChunk(siaPath skymodules.SiaPath, host
 	}()
 
 	// Push chunk onto the uploadHeap
-	pushed, err := r.managedPushChunkForRepair(randChunk, chunkTypeLocalChunk)
+	_, pushed, err := r.managedPushChunkForRepair(randChunk, chunkTypeLocalChunk)
 	if err != nil {
 		return errors.Compose(allErrs, err, randChunk.fileEntry.Close())
 	}
@@ -1015,7 +1025,7 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	for len(tempChunkHeap) > 0 && (r.staticUploadHeap.managedLen() < maxUploadHeapChunks || target == targetBackupChunks) {
 		// Add this chunk to the upload heap.
 		chunk := heap.Pop(&tempChunkHeap).(*unfinishedUploadChunk)
-		pushed, err := r.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
+		_, pushed, err := r.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
 			r.staticRepairLog.Println("WARN: Error pushing chunk for repair", err)
 			err = chunk.fileEntry.Close()
@@ -1250,26 +1260,26 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath skymodules.SiaPath, hosts map[
 //
 // The boolean returned indicates whether or not the chunk was successfully
 // pushed onto the uploadHeap.
-func (r *Renter) managedPushChunkForRepair(uuc *unfinishedUploadChunk, ct chunkType) (bool, error) {
+func (r *Renter) managedPushChunkForRepair(uuc *unfinishedUploadChunk, ct chunkType) (*unfinishedUploadChunk, bool, error) {
 	// Validate use of chunkType
 	if (ct == chunkTypeStreamChunk) != (uuc.sourceReader != nil) {
 		err := fmt.Errorf("Invalid chunkType use: streamChunk  %v, chunk has sourceReader reader %v",
 			ct == chunkTypeStreamChunk, uuc.sourceReader != nil)
 		build.Critical(err)
-		return false, err
+		return nil, false, err
 	}
 
 	// Try and update any existing chunk in the heap
 	err := r.staticUploadHeap.managedTryUpdate(uuc, ct)
 	if err != nil {
-		return false, errors.AddContext(err, "unable to update chunk in heap")
+		return nil, false, errors.AddContext(err, "unable to update chunk in heap")
 	}
 	// Push the chunk onto the upload heap
-	pushed := r.staticUploadHeap.managedPush(uuc, ct)
+	existingUUC, pushed := r.staticUploadHeap.managedPush(uuc, ct)
 	// If we were not able to push the chunk, or if the chunkType is localChunk we
 	// return
 	if !pushed || ct == chunkTypeLocalChunk {
-		return pushed, nil
+		return existingUUC, pushed, nil
 	}
 
 	// For streamChunks update the heap popped time
@@ -1279,15 +1289,15 @@ func (r *Renter) managedPushChunkForRepair(uuc *unfinishedUploadChunk, ct chunkT
 
 	// Disrupt check
 	if r.staticDeps.Disrupt("skipPrepareNextChunk") {
-		return pushed, nil
+		return nil, pushed, nil
 	}
 
 	// Prepare and send the chunk to the workers.
 	err = r.managedPrepareNextChunk(uuc)
 	if err != nil {
-		return pushed, errors.AddContext(err, "unable to prepare chunk for workers")
+		return uuc, pushed, errors.AddContext(err, "unable to prepare chunk for workers")
 	}
-	return pushed, nil
+	return nil, pushed, nil
 }
 
 // managedPrepareNextChunk takes the next chunk from the chunk heap and prepares

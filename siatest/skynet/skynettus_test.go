@@ -13,6 +13,7 @@ import (
 	"github.com/eventials/go-tus"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/node"
 	"gitlab.com/SkynetLabs/skyd/node/api/client"
 	"gitlab.com/SkynetLabs/skyd/siatest"
@@ -63,6 +64,9 @@ func TestSkynetTUSUploader(t *testing.T) {
 	t.Run("UnstableConnection", func(t *testing.T) {
 		testTUSUploaderUnstableConnection(t, tg)
 	})
+	t.Run("DroppedConnection", func(t *testing.T) {
+		testTUSUploaderConnectionDropped(t, tg)
+	})
 }
 
 // testTUSUploadBasic tests uploading multiple files using the TUS protocol and
@@ -79,11 +83,31 @@ func testTUSUploaderBasic(t *testing.T, r *siatest.TestNode) {
 	chunkSize := 2 * int64(skymodules.ChunkSize(crypto.TypePlain, uint64(skymodules.RenterDefaultDataPieces)))
 
 	// Declare a test helper that uploads a file and downloads it.
-	uploadTest := func(fileSize int64) error {
+	uploadTest := func(fileSize int64, baseSectorRedundancy, fanoutHealth float64) error {
 		uploadedData := fastrand.Bytes(int(fileSize))
 		fileName := hex.EncodeToString(fastrand.Bytes(10))
 		fileType := hex.EncodeToString(fastrand.Bytes(10))
 		skylink, err := r.SkynetTUSUploadFromBytes(uploadedData, chunkSize, fileName, fileType)
+		if err != nil {
+			return err
+		}
+		var sl skymodules.Skylink
+		err = sl.LoadString(skylink)
+		if err != nil {
+			return err
+		}
+
+		// Wait for the upload to reach full health.
+		err = build.Retry(100, 100*time.Millisecond, func() error {
+			shg, err := r.SkylinkHealthGET(sl)
+			if err != nil {
+				return err
+			}
+			if shg.BaseSectorRedundancy != uint64(baseSectorRedundancy) || shg.FanoutEffectiveRedundancy != fanoutHealth {
+				return fmt.Errorf("wrong health %v %v", shg.BaseSectorRedundancy, shg.FanoutEffectiveRedundancy)
+			}
+			return nil
+		})
 		if err != nil {
 			return err
 		}
@@ -129,22 +153,22 @@ func testTUSUploaderBasic(t *testing.T, r *siatest.TestNode) {
 	}
 
 	// Upload a large file.
-	if err := uploadTest(chunkSize*5 + chunkSize/2); err != nil {
+	if err := uploadTest(chunkSize*5+chunkSize/2, 2, 3); err != nil {
 		t.Fatal(err)
 	}
 
 	// Upload a byte that's smaller than a sector but still a large file.
-	if err := uploadTest(int64(modules.SectorSize) - 1); err != nil {
+	if err := uploadTest(int64(modules.SectorSize)-1, 2, 3); err != nil {
 		t.Fatal(err)
 	}
 
 	// Upload a small file.
-	if err := uploadTest(1); err != nil {
+	if err := uploadTest(1, 2, 0); err != nil {
 		t.Fatal(err)
 	}
 
 	// Upload empty file.
-	if err := uploadTest(0); err != nil {
+	if err := uploadTest(0, 2, 0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -161,7 +185,7 @@ func testTUSUploaderBasic(t *testing.T, r *siatest.TestNode) {
 	}
 
 	// Upload file that is too large.
-	if err := uploadTest(2 * chunkSize); err == nil || !strings.Contains(err.Error(), "upload body is to large") {
+	if err := uploadTest(2*chunkSize, 0, 0); err == nil || !strings.Contains(err.Error(), "upload body is to large") {
 		t.Fatal(err)
 	}
 
@@ -370,6 +394,80 @@ func testTUSUploaderUnstableConnection(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+
+	// Fetch skylink after upload is done.
+	skylink, err := client.SkylinkFromTUSURL(tc, uploader.Url())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download the uploaded data and compare it to the uploaded data.
+	downloadedData, err := r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(uploadedData, downloadedData) {
+		t.Fatal("data doesn't match")
+	}
+}
+
+// testTUSUploaderConnectionDropped tests dropping the connection between
+// chunks.
+func testTUSUploaderConnectionDropped(t *testing.T, tg *siatest.TestGroup) {
+	// Add a custom renter with dependency.
+	rp := node.RenterTemplate
+	deps := dependencies.NewDependencyTUSConnectionDrop()
+	rp.RenterDeps = deps
+	nodes, err := tg.AddNodes(rp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+	defer func() {
+		if err := tg.RemoveNode(r); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Get a tus client.
+	chunkSize := int64(skymodules.ChunkSize(crypto.TypePlain, uint64(skymodules.RenterDefaultDataPieces)))
+
+	// Create upload for a file that is 1.5 chunks large.
+	uploadedData := fastrand.Bytes(int(3 * chunkSize / 2))
+	tc, upload, err := r.SkynetTUSNewUploadFromBytes(uploadedData, chunkSize)
+
+	// Create uploader and upload the first chunk.
+	uploader, err := tc.CreateUpload(upload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = uploader.UploadChunck()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Trigger the failure on the dependency and try to upload the remaining
+	// data. That should fail.
+	deps.Fail()
+	err = uploader.Upload()
+	if err == nil {
+		t.Fatal("should fail")
+	}
+
+	// Pick up upload from where we left off. The offset should be at 1 chunk since
+	// we only managed to upload 1 chunk successfully.
+	uploader, err = tc.ResumeUpload(upload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if upload.Offset() != chunkSize {
+		t.Fatal("wrong offset")
+	}
+	// Upload remaining data. Should work now.
+	err = uploader.Upload()
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Fetch skylink after upload is done.

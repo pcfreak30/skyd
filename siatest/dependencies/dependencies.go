@@ -225,6 +225,12 @@ type (
 	}
 )
 
+// NewDependencyTUSConnectionDrop creates a new DependencyTUSConnectionDrop
+// which simulates a dropped connection during a TUS upload.
+func NewDependencyTUSConnectionDrop() *DependencyInterruptOnceOnKeyword {
+	return newDependencyInterruptOnceOnKeyword("TUSConnectionDropped")
+}
+
 // NewDependencyCorruptMDMOutput returns a dependency that can be used to
 // manually corrupt the MDM output returned by hosts.
 func NewDependencyCorruptMDMOutput() *DependencyInterruptOnceOnKeyword {
@@ -310,6 +316,12 @@ func NewDependencyInterruptDownloadAfterSendingRevision() *DependencyInterruptOn
 // the host.
 func NewDependencyInterruptNewStreamTimeout() *DependencyWithDisableAndEnable {
 	return newDependencywithDisableAndEnable("InterruptNewStreamTimeout")
+}
+
+// NewDependencyInterruptHostScan is a dependency that interrupts the host scan
+// and ensures hosts will be considered offline if the dependency is enabled.
+func NewDependencyInterruptHostScan() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("InterruptHostScan")
 }
 
 // NewDependencyInterruptUploadBeforeSendingRevision creates a new dependency
