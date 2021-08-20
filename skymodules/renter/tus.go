@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 
@@ -49,7 +48,7 @@ type (
 	// skynetTUSUploader implements multiple TUS interfaces for skynet uploads
 	// allowing for resumable uploads.
 	skynetTUSUploader struct {
-		uploads map[string]*skynetTUSUpload
+		staticUploads skynetTUSUploadStore
 
 		staticRenter *Renter
 		mu           sync.Mutex
@@ -84,14 +83,20 @@ type (
 // newSkynetTUSUploader creates a new uploader.
 func newSkynetTUSUploader(renter *Renter) *skynetTUSUploader {
 	return &skynetTUSUploader{
-		uploads:      make(map[string]*skynetTUSUpload),
-		staticRenter: renter,
+		staticUploads: newSkynetTUSInMemoryUploadStore(renter),
+		staticRenter:  renter,
 	}
 }
 
 // SkynetTUSUploader returns the renter's uploader for registering in the API.
 func (r *Renter) SkynetTUSUploader() skymodules.SkynetTUSDataStore {
 	return r.staticSkynetTUSUploader
+}
+
+// NewLock implements the handler.Locker interface by passing on the call to the
+// upload storage backend.
+func (stu *skynetTUSUploader) NewLock(id string) (handler.Lock, error) {
+	return stu.staticUploads.NewLock(id)
 }
 
 // NewUpload creates a new upload from fileinfo.
@@ -106,7 +111,6 @@ func (stu *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileIn
 		lastWrite:      time.Now(),
 		staticUploader: stu,
 	}
-	stu.uploads[info.ID] = upload
 
 	// Get a siapath.
 	sp := skymodules.RandomSkynetFilePath()
@@ -161,6 +165,12 @@ func (stu *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileIn
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create Cipher key for FileUploadParams")
 	}
+
+	// Add the upload to the map of uploads.
+	err = stu.staticUploads.SaveUpload(upload)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to save new upload")
+	}
 	return upload, nil
 }
 
@@ -168,53 +178,18 @@ func (stu *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileIn
 func (stu *skynetTUSUploader) GetUpload(ctx context.Context, id string) (handler.Upload, error) {
 	stu.mu.Lock()
 	defer stu.mu.Unlock()
-	upload, exists := stu.uploads[id]
-	if !exists {
-		return nil, os.ErrNotExist
-	}
-	return upload, nil
-}
-
-// PruneUploads removes uploads that have been idle for too long.
-func (stu *skynetTUSUploader) PruneUploads() {
-	stu.mu.Lock()
-	var toDelete []skymodules.SiaPath
-	for id, upload := range stu.uploads {
-		upload.mu.Lock()
-		lastWrite := upload.lastWrite
-		complete := upload.complete
-		upload.mu.Unlock()
-		if time.Since(lastWrite) < PruneTUSUploadTimeout {
-			continue // nothing to do
-		}
-		// Prune
-		_ = upload.Close()
-		delete(stu.uploads, id)
-
-		// If the upload wasn't completed, delete the files on disk.
-		if !complete {
-			toDelete = append(toDelete, upload.staticSUP.SiaPath)
-			toDelete = append(toDelete, upload.staticUP.SiaPath)
-		}
-	}
-	stu.mu.Unlock()
-
-	// Delete files outside of lock.
-	for _, sp := range toDelete {
-		_ = stu.staticRenter.DeleteFile(sp)
-	}
+	return stu.staticUploads.Upload(id)
 }
 
 // Skylink returns the skylink for the upload with the given ID.
 func (stu *skynetTUSUploader) Skylink(id string) (skymodules.Skylink, bool) {
 	stu.mu.Lock()
 	defer stu.mu.Unlock()
-	upload, exists := stu.uploads[id]
-	if !exists {
+	upload, err := stu.staticUploads.Upload(id)
+	if err != nil {
 		return skymodules.Skylink{}, false
 	}
-
-	_, exists = upload.fi.MetaData["Skylink"]
+	_, exists := upload.fi.MetaData["Skylink"]
 	return upload.sl, exists
 }
 
@@ -540,7 +515,7 @@ func (r *Renter) threadedPruneTUSUploads() {
 			return // shutdown
 		case <-ticker.C:
 		}
-		r.staticSkynetTUSUploader.PruneUploads()
+		r.staticSkynetTUSUploader.staticUploads.Prune()
 	}
 }
 
