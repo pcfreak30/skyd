@@ -523,18 +523,19 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if format == skymodules.SkyfileFormatNotSpecified {
 		// The path we actually want to serve based on defaultpath and tryfiles.
 		servePath := metadata.ServePath(path)
+		isSingle := len(metadata.Subfiles) == 1
 		// If we don't have a subPath and the skylink doesn't end with a
 		// trailing slash we need to redirect in order to add the trailing
 		// slash. This is only true for skapps - they need it in order to
 		// properly work with relative paths. We also don't need to redirect if
 		// this is a HEAD request or if it's a download as attachment.
-		if path == "/" && servePath != path && !params.attachment && req.Method == http.MethodGet && !strings.HasSuffix(params.skylinkStringNoQuery, "/") {
+		if !isSingle && path == "/" && servePath != path && !params.attachment && req.Method == http.MethodGet && !strings.HasSuffix(params.skylinkStringNoQuery, "/") {
 			location := params.skylinkStringNoQuery + "/"
 			if req.URL.RawQuery != "" {
 				location += "?" + req.URL.RawQuery
 			}
 			w.Header().Set("Location", location)
-			w.WriteHeader(http.StatusTemporaryRedirect)
+			w.WriteHeader(http.StatusPermanentRedirect)
 			return
 		}
 		path = servePath
