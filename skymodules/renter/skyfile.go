@@ -1438,6 +1438,7 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 	// If the file has a fanout, ask the hosts for the fanout as well.
 	rootIndexToChunkIndex := make(map[int]int)
 	numChunks := 0
+	numPieces := int(layout.FanoutDataPieces + layout.FanoutParityPieces)
 	if len(fanoutBytes) > 0 {
 		// Create the list of chunks from the fanout. Since we want to
 		// give an overview of the health of the file on the network, we
@@ -1482,8 +1483,19 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 				continue // ignore
 			}
 
+			// TODO: This is not accurate. There might be a better
+			// solution.
+			var pieces int
+			if numPieces == 0 {
+				// No fanout.
+				pieces = int(SkyfileDefaultBaseChunkRedundancy)
+			} else {
+				// Has fanout.
+				pieces = numPieces
+			}
+
 			// Add job to worker.
-			jhs := worker.newJobHasSector(ctx, responseChan, batch...)
+			jhs := worker.newJobHasSector(ctx, responseChan, pieces, batch...)
 			if !worker.staticJobHasSectorQueue.callAdd(jhs) {
 				continue // ignore
 			}
@@ -1540,7 +1552,6 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 	// network.
 	chunkGoodPieces := make([]int, numChunks)
 	onlyOnePiecePerChunk := layout.FanoutDataPieces == 1 && layout.CipherType == crypto.TypePlain
-	numPieces := int(layout.FanoutDataPieces + layout.FanoutParityPieces)
 	for i := 0; i < len(rootTotals); i++ {
 		chunkIndex := rootIndexToChunkIndex[i]
 		if onlyOnePiecePerChunk {
