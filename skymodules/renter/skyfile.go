@@ -794,7 +794,7 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 
 // DownloadSkylinkBaseSector will take a link and turn it into the data of
 // a basesector without any decoding of the metadata, fanout, or decryption.
-func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time.Duration, pricePerMS types.Currency) (skymodules.Streamer, []skymodules.RegistryEntry, error) {
+func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time.Duration, pricePerMS types.Currency) (skymodules.SkyfileStreamer, []skymodules.RegistryEntry, error) {
 	if err := r.tg.Add(); err != nil {
 		return nil, nil, err
 	}
@@ -830,7 +830,16 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 
 	// Download the base sector
 	baseSector, err := r.managedDownloadByRoot(ctx, link.MerkleRoot(), offset, fetchSize, pricePerMS)
-	return StreamerFromSlice(baseSector), srvs, err
+	if err != nil {
+		return nil, nil, errors.AddContext(err, "unable to download base sector")
+	}
+
+	// Parse base sector.
+	sl, _, sm, rawMD, _, err := skymodules.ParseSkyfileMetadata(baseSector)
+	if err != nil {
+		return nil, nil, errors.AddContext(err, "unable to download base sector")
+	}
+	return SkylinkStreamerFromSlice(baseSector, sm, rawMD, link, sl), srvs, err
 }
 
 // managedDownloadSkylink will take a link and turn it into the metadata and

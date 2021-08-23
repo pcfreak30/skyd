@@ -576,7 +576,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// Set the common Header fields
 	//
 	// Set the Skylink response header
-	w.Header().Set(SkynetSkylinkHeader, params.skylink.String())
+	w.Header().Set(SkynetSkylinkHeader, streamer.Skylink().String())
 
 	// Set the ETag response header
 	//
@@ -1506,9 +1506,6 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 		}
 	}
 
-	// Set the Skylink response header
-	w.Header().Set(SkynetSkylinkHeader, skylink.String())
-
 	// Fetch the skyfile's streamer to serve the basesector of the file
 	streamer, srvs, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
 	if err != nil {
@@ -1520,6 +1517,9 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 		// error here.
 		_ = streamer.Close()
 	}()
+
+	// Set the Skylink response header
+	w.Header().Set(SkynetSkylinkHeader, streamer.Skylink().String())
 
 	// Attach proof.
 	err = attachRegistryEntryProof(w, srvs)
