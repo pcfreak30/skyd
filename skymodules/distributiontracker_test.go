@@ -461,6 +461,54 @@ func testDistributionExpectedDuration(t *testing.T) {
 	if expected < 50*ms || expected > 75*ms {
 		t.Error("bad")
 	}
+
+	// reset the distribution
+	d = NewDistribution(time.Minute * 100)
+
+	// add one datapoint to every bucket and keep track of the total duration
+	var totalDuration int64
+	for i := 0; i < distributionTrackerTotalBuckets; i++ {
+		point := durationForIndex(i)
+		totalDuration += point.Nanoseconds()
+		d.AddDataPoint(point)
+	}
+
+	// the expected duration is the sum of the duration of all buckets
+	// multiplied by the % chance a datapoint is in that bucket, because we
+	// added exactly one datapoint to every bucket, the pct chance will be
+	// the same across all buckets, namely 1/distributionTrackerTotalBuckets
+	pctChance := float64(1) / float64(distributionTrackerTotalBuckets)
+	expected = time.Duration(pctChance * float64(totalDuration))
+	if d.ExpectedDuration() != expected {
+		t.Error("bad", d.ExpectedDuration(), expected)
+	}
+
+	// add 100 datapoints to the first and last bucket
+	firstBucketDur := durationForIndex(0)
+	lastBucketDur := durationForIndex(distributionTrackerTotalBuckets - 1)
+	for i := 0; i < 100; i++ {
+		d.AddDataPoint(firstBucketDur)
+		d.AddDataPoint(lastBucketDur)
+	}
+
+	// now calculate the expected duration from the first and lust bucket
+	// separately and sum it with the expected durations of the other buckets,
+	// we have to this into account in the total duration
+	totalDuration -= firstBucketDur.Nanoseconds()
+	totalDuration -= lastBucketDur.Nanoseconds()
+
+	pctChanceFirst := float64(101) / float64(d.DataPoints())
+	pctChanceLast := float64(101) / float64(d.DataPoints())
+	pctChanceOther := float64(1) / float64(d.DataPoints())
+
+	expectedFirst := pctChanceFirst * float64(firstBucketDur)
+	expectedLast := pctChanceLast * float64(lastBucketDur)
+	expectedOthers := pctChanceOther * float64(totalDuration)
+
+	expected = time.Duration(expectedFirst + expectedOthers + expectedLast)
+	if d.ExpectedDuration() != expected {
+		t.Error("bad", d.ExpectedDuration(), expected)
+	}
 }
 
 // testDistributionTrackerFullTestLong attempts to use a distribution tracker in
@@ -634,6 +682,83 @@ func testDistributionMergeWith(t *testing.T) {
 	chanceAfter3s := clean.ChanceAfter(3 * time.Second)
 	if chanceAfter3s < 0.97 {
 		t.Fatal("unexpected", chanceAfter3s)
+	}
+
+	// create two distributions
+	d1 := NewDistribution(time.Minute * 100)
+	d2 := NewDistribution(time.Minute * 100)
+
+	// add a datapoint in every bucket
+	for i := 0; i < distributionTrackerTotalBuckets; i++ {
+		d1.AddDataPoint(durationForIndex(i))
+		d2.AddDataPoint(durationForIndex(i))
+	}
+	if d1.DataPoints() != distributionTrackerTotalBuckets {
+		t.Fatal("unexpected")
+	}
+	if d2.DataPoints() != distributionTrackerTotalBuckets {
+		t.Fatal("unexpected")
+	}
+	if d1.ExpectedDuration() != d2.ExpectedDuration() {
+		t.Fatal("unexpected")
+	}
+	oldExpectedDuration := d1.ExpectedDuration()
+
+	// merge the two distributions using a weight of .5
+	d1.MergeWith(d2, .5)
+	if d1.DataPoints() != 1.5*distributionTrackerTotalBuckets {
+		t.Fatal("unexpected")
+	}
+	if d2.DataPoints() != distributionTrackerTotalBuckets {
+		t.Fatal("unexpected")
+	}
+
+	// assert the expected duration has not changed, the expected duration
+	// relies on the pct chance a datapoint is in some bucket, seeing as the
+	// datapoints are evenly distributed, this has not changed
+	if d1.ExpectedDuration() != oldExpectedDuration {
+		t.Fatal("unexpected")
+	}
+
+	// create a third and fourth distribution with datapoints in the lower and
+	// up half of the buckets
+	d3 := NewDistribution(time.Minute * 100)
+	d4 := NewDistribution(time.Minute * 100)
+	var totalDurFirstHalf int64
+	var totalDurSecondHalf int64
+	for i := 0; i < distributionTrackerTotalBuckets; i++ {
+		point := durationForIndex(i)
+		if i < distributionTrackerTotalBuckets/2 {
+			d3.AddDataPoint(point)
+			totalDurFirstHalf += point.Nanoseconds()
+		} else {
+			d4.AddDataPoint(durationForIndex(i))
+			totalDurSecondHalf += point.Nanoseconds()
+		}
+	}
+
+	// merge the third distribution using a weight of 1, manually calculate the
+	// expected duration and compare it with the actual value
+	d1.MergeWith(d3, 1)
+	if d1.ExpectedDuration() >= oldExpectedDuration {
+		t.Fatal("unexpected")
+	}
+	pctChanceFirst := 2.5 / d1.DataPoints()
+	pctChanceSecond := 1.5 / d1.DataPoints()
+	if d1.ExpectedDuration() != time.Duration(pctChanceFirst*float64(totalDurFirstHalf)+pctChanceSecond*float64(totalDurSecondHalf)) {
+		t.Fatal("unexpected")
+	}
+
+	// merge the fourth distribution, again using a weight of 1, the expect
+	// duration should be back to normal because we're evenly distributed again
+	d1.MergeWith(d4, 1)
+	if d1.ExpectedDuration() != oldExpectedDuration {
+		t.Fatal("unexpected")
+	}
+	pctChanceFirst = 2.5 / d1.DataPoints()
+	pctChanceSecond = 2.5 / d1.DataPoints()
+	if d1.ExpectedDuration() != time.Duration(pctChanceFirst*float64(totalDurFirstHalf)+pctChanceSecond*float64(totalDurSecondHalf)) {
+		t.Fatal("unexpected")
 	}
 }
 
