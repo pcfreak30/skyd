@@ -41,8 +41,8 @@ func TestChimeraWorker(t *testing.T) {
 		d1.AddDataPoint(time.Duration(fastrand.Uint64n(100)) * time.Millisecond)
 	}
 	iw1 := &individualWorker{
-		staticPieceIndices:     []uint64{1, 2},
-		staticResolveChance:    .2,
+		pieceIndices:           []uint64{1, 2},
+		resolveChance:          .2,
 		staticReadDistribution: d1,
 		staticWorker:           mockWorker(0),
 	}
@@ -63,8 +63,8 @@ func TestChimeraWorker(t *testing.T) {
 		d2.AddDataPoint(time.Duration(fastrand.Uint64n(100)) * time.Millisecond)
 	}
 	iw2 := &individualWorker{
-		staticPieceIndices:     []uint64{1, 2},
-		staticResolveChance:    .2,
+		pieceIndices:           []uint64{1, 2},
+		resolveChance:          .2,
 		staticReadDistribution: d2,
 		staticWorker:           mockWorker(0),
 	}
@@ -85,8 +85,8 @@ func TestChimeraWorker(t *testing.T) {
 		d3.AddDataPoint(time.Duration(fastrand.Uint64n(100)+1000) * time.Millisecond)
 	}
 	iw3 := &individualWorker{
-		staticPieceIndices:     []uint64{1, 2},
-		staticResolveChance:    .85,
+		pieceIndices:           []uint64{1, 2},
+		resolveChance:          .85,
 		staticReadDistribution: d3,
 		staticWorker:           mockWorker(0),
 	}
@@ -97,7 +97,7 @@ func TestChimeraWorker(t *testing.T) {
 	if remainder == nil {
 		t.Fatal("bad")
 	}
-	if !consideredEqual(remainder.staticResolveChance, 0.25) {
+	if !consideredEqual(remainder.resolveChance, 0.25) {
 		t.Fatal("bad")
 	}
 	if !consideredEqual(cw.remaining(), 0) {
@@ -143,7 +143,7 @@ func testIndividualWorker_cost(t *testing.T) {
 		t.Fatal("bad")
 	}
 
-	iw.staticLaunchedAt = time.Now()
+	iw.launchedAt = time.Now()
 	cost = iw.cost(randLength)
 	if !cost.IsZero() {
 		t.Fatal("bad")
@@ -169,7 +169,7 @@ func testIndividualWorker_distribution(t *testing.T) {
 	// the distribution from the worker should return a distribution that got
 	// shifted by the time since it launched
 	chanceAfter100MS := d.ChanceAfter(100 * time.Millisecond)
-	iw.staticLaunchedAt = time.Now().Add(time.Duration(-500) * time.Millisecond)
+	iw.launchedAt = time.Now().Add(time.Duration(-500) * time.Millisecond)
 	if iw.distribution().ChanceAfter(100*time.Millisecond) >= chanceAfter100MS {
 		t.Fatal("bad")
 	}
@@ -185,7 +185,7 @@ func testIndividualWorker_pieces(t *testing.T) {
 	}
 
 	pieceIndices := []uint64{0, 1, 2}
-	iw.staticPieceIndices = pieceIndices
+	iw.pieceIndices = pieceIndices
 	if len(iw.pieces()) != len(pieceIndices) {
 		t.Fatal("bad")
 	}
@@ -205,7 +205,7 @@ func testIndividualWorker_isLaunched(t *testing.T) {
 		t.Fatal("bad")
 	}
 
-	iw.staticLaunchedAt = time.Now()
+	iw.launchedAt = time.Now()
 	if !iw.isLaunched() {
 		t.Fatal("bad")
 	}
@@ -232,9 +232,9 @@ func testIndividualWorker_split(t *testing.T) {
 	t.Parallel()
 
 	iw := &individualWorker{
-		staticLaunchedAt:       time.Now(),
-		staticPieceIndices:     []uint64{0},
-		staticResolveChance:    0.055,
+		launchedAt:             time.Now(),
+		pieceIndices:           []uint64{0},
+		resolveChance:          0.055,
 		staticReadDistribution: skymodules.NewDistribution(time.Minute * 100),
 		staticWorker:           mockWorker(time.Duration(fastrand.Uint64n(99))),
 	}
@@ -242,21 +242,21 @@ func testIndividualWorker_split(t *testing.T) {
 	// verify the resolve chance was split between main and remainder
 	chance := 0.0234
 	main, remainder := iw.split(chance)
-	if main.staticResolveChance != chance {
+	if main.resolveChance != chance {
 		t.Fatal("bad")
 	}
-	if remainder.staticResolveChance != iw.staticResolveChance-chance {
+	if remainder.resolveChance != iw.resolveChance-chance {
 		t.Fatal("bad")
 	}
 
 	// verify that all other properties of the individual worker are identical
-	if main.staticLaunchedAt != remainder.staticLaunchedAt {
+	if main.launchedAt != remainder.launchedAt {
 		t.Fatal("bad")
 	}
 	if main.staticWorker != remainder.staticWorker {
 		t.Fatal("bad")
 	}
-	if len(main.staticPieceIndices) != len(remainder.staticPieceIndices) {
+	if len(main.pieceIndices) != len(remainder.pieceIndices) {
 		t.Fatal("bad")
 	}
 	if !reflect.DeepEqual(main.staticReadDistribution, remainder.staticReadDistribution) {

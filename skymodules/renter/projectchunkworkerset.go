@@ -310,6 +310,7 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 			indices = append(indices, uint64(i))
 		}
 	}
+	fmt.Println("found", indices)
 	// Add this worker to the set of resolved workers (even if there are no
 	// indices that the worker can fetch).
 	ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
@@ -470,6 +471,7 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 // will select those workers only if the additional expense of using those
 // workers is less than 100 * pricePerMS.
 func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePerMS types.Currency, offset, length uint64, skipRecovery, lowPrio bool) (chan *downloadResponse, error) {
+	fmt.Println("MANAGED DOWNLOAD", offset, length)
 	// Potentially force a timeout via a disrupt for testing.
 	if pcws.staticRenter.staticDeps.Disrupt("timeoutProjectDownloadByRoot") {
 		return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)

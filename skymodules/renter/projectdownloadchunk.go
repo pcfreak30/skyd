@@ -255,7 +255,7 @@ func (pdc *projectDownloadChunk) updateWorkerHeap(h *pdcWorkerHeap) {
 	defer ws.mu.Unlock()
 
 	// Update the available pieces in case some workers resolved.
-	pdc.updateAvailablePieces()
+	pdc.updateAvailablePiecesOld()
 
 	for _, w := range *h {
 		// Check if the worker is resolved.
@@ -309,7 +309,7 @@ func (pdc *projectDownloadChunk) updateWorkerHeap(h *pdcWorkerHeap) {
 	heap.Init(h)
 }
 
-// updateAvailablePieces adds any new resolved workers to the pdc's list of
+// updateAvailablePiecesOld adds any new resolved workers to the pdc's list of
 // available pieces.
 func (pdc *projectDownloadChunk) updateAvailablePiecesOld() {
 	ws := pdc.workerState
@@ -350,7 +350,7 @@ func (pdc *projectDownloadChunk) managedUnresolvedWorkers() ([]*pcwsUnresolvedWo
 	}
 
 	// Add any new resolved workers to the pdc's list of available pieces.
-	pdc.updateAvailablePieces()
+	pdc.updateAvailablePiecesOld()
 
 	// If there are more unresolved workers, fetch a channel that will be closed
 	// when more results from unresolved workers are available.
@@ -360,6 +360,7 @@ func (pdc *projectDownloadChunk) managedUnresolvedWorkers() ([]*pcwsUnresolvedWo
 // handleJobReadResponse will take a jobReadResponse from a worker job
 // and integrate it into the set of pieces.
 func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
+	fmt.Println("handle JRR", jrr.staticErr)
 	// Prevent a production panic.
 	if jrr == nil {
 		pdc.workerSet.staticRenter.staticLog.Critical("received nil job read response in handleJobReadResponse")
@@ -417,6 +418,11 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 			pieceFound = true
 			pdc.availablePieces[pieceIndex][i].completed = true
 		}
+	}
+
+	// TODO: should we add this check? 
+	if !pieceFound {
+		build.Critical("COULD NOT MARK PIECE AS COMPLETED")
 	}
 }
 
@@ -516,7 +522,8 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 	// potential downloads.
 	completedPieces := 0
 	hopefulPieces := 0
-	for _, piece := range pdc.availablePieces {
+	for pI, piece := range pdc.availablePieces {
+		fmt.Println("avail piece", pI)
 		// Only count one piece as hopeful per set.
 		hopeful := false
 		for _, pieceDownload := range piece {
@@ -525,6 +532,7 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 			if pieceDownload.successful() {
 				hopeful = true
 				completedPieces++
+				fmt.Println("successful download", completedPieces)
 				break
 			}
 			// If this piece has not yet failed, it is hopeful. Keep looking
@@ -536,6 +544,7 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 		}
 		if hopeful {
 			hopefulPieces++
+			fmt.Println("hopeful", hopefulPieces)
 		}
 	}
 	if completedPieces >= ec.MinPieces() {
@@ -548,6 +557,7 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 
 	// Ensure that there are enough pieces that could potentially become
 	// completed to finish the download.
+	fmt.Printf("completed %v hopeful %v minpieces %v", completedPieces, hopefulPieces, ec.MinPieces())
 	if hopefulPieces < ec.MinPieces() {
 		return false, errNotEnoughPieces
 	}

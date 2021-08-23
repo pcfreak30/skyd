@@ -87,6 +87,17 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "Stats", Test: testSkynetStats},
 	}
 
+	// TODO: remove
+	subTests = []siatest.SubTest{
+		{Name: "Basic", Test: testSkynetBasic},
+		{Name: "SkylinkV2Download", Test: testSkylinkV2Download},
+		{Name: "ConvertSiaFile", Test: testConvertSiaFile},
+		{Name: "LargeMetadata", Test: testSkynetLargeMetadata},
+		{Name: "MultipartUpload", Test: testSkynetMultipartUpload},
+		{Name: "InvalidFilename", Test: testSkynetInvalidFilename},
+		{Name: "SubDirDownload", Test: testSkynetSubDirDownload},
+	}
+
 	// Run tests
 	if err := siatest.RunSubTests(t, groupParams, groupDir, subTests); err != nil {
 		t.Fatal(err)
