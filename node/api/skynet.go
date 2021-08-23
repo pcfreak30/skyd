@@ -57,8 +57,12 @@ const (
 	SkynetProofHeader = "Skynet-Proof"
 
 	// SkynetSkylinkHeader is a string representation of the base64 encoded
-	// Skylink that was requested.
+	// v1 Skylink that was served.
 	SkynetSkylinkHeader = "Skynet-Skylink"
+
+	// SkynetRequestedSkylinkHeader is a string representation of the base64 encoded
+	// Skylink that was requested.
+	SkynetRequestedSkylinkHeader = "Skynet-Requested-Skylink"
 )
 
 var (
@@ -577,6 +581,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	//
 	// Set the Skylink response header
 	w.Header().Set(SkynetSkylinkHeader, streamer.Skylink().String())
+	w.Header().Set(SkynetRequestedSkylinkHeader, params.skylink.String())
 
 	// Set the ETag response header
 	//
@@ -1520,6 +1525,7 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 
 	// Set the Skylink response header
 	w.Header().Set(SkynetSkylinkHeader, streamer.Skylink().String())
+	w.Header().Set(SkynetRequestedSkylinkHeader, skylink.String())
 
 	// Attach proof.
 	err = attachRegistryEntryProof(w, srvs)
