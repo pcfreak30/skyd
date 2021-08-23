@@ -476,7 +476,8 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 
 	for {
 		// Create an initial worker set
-		finalWorkers, err := pdc.createInitialWorkerSet(workerHeap)
+		workerHeapCopy := append([]*pdcInitialWorker{}, workerHeap...)
+		finalWorkers, err := pdc.createInitialWorkerSet(workerHeapCopy)
 		if err != nil {
 			return errors.AddContext(err, "unable to build initial set of workers")
 		}
