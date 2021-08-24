@@ -1431,6 +1431,7 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 	if err != nil {
 		return skymodules.SkylinkHealth{}, errors.AddContext(err, "error parsing skyfile metadata")
 	}
+	numPieces := int(layout.FanoutDataPieces + layout.FanoutParityPieces)
 
 	// Prepare the list of roots to ask the hosts for.
 	roots := []crypto.Hash{sl.MerkleRoot()}
@@ -1482,8 +1483,19 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 				continue // ignore
 			}
 
+			// TODO: This is not accurate. There might be a better
+			// solution.
+			var pieces int
+			if numPieces == 0 {
+				// No fanout.
+				pieces = int(SkyfileDefaultBaseChunkRedundancy)
+			} else {
+				// Has fanout.
+				pieces = numPieces
+			}
+
 			// Add job to worker.
-			jhs := worker.newJobHasSector(ctx, responseChan, batch...)
+			jhs := worker.newJobHasSector(ctx, responseChan, pieces, batch...)
 			if !worker.staticJobHasSectorQueue.callAdd(jhs) {
 				continue // ignore
 			}
@@ -1540,7 +1552,6 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 	// network.
 	chunkGoodPieces := make([]int, numChunks)
 	onlyOnePiecePerChunk := layout.FanoutDataPieces == 1 && layout.CipherType == crypto.TypePlain
-	numPieces := int(layout.FanoutDataPieces + layout.FanoutParityPieces)
 	for i := 0; i < len(rootTotals); i++ {
 		chunkIndex := rootIndexToChunkIndex[i]
 		if onlyOnePiecePerChunk {
