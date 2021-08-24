@@ -1446,7 +1446,6 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 	// If the file has a fanout, ask the hosts for the fanout as well.
 	rootIndexToChunkIndex := make(map[int]int)
 	numChunks := 0
-	numPieces := int(layout.FanoutDataPieces + layout.FanoutParityPieces)
 	if len(fanoutBytes) > 0 {
 		// Create the list of chunks from the fanout. Since we want to
 		// give an overview of the health of the file on the network, we
