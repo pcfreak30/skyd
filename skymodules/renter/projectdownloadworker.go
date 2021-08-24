@@ -96,8 +96,8 @@ func (cw *chimeraWorker) distribution() *skymodules.Distribution {
 	}
 
 	if cw.cachedDistribution == nil {
-		dt := skymodules.NewDistributionTrackerStandard()
-		cw.cachedDistribution = dt.Distribution(0)
+		halfLife := cw.distributions[0].HalfLife()
+		cw.cachedDistribution = skymodules.NewDistribution(halfLife)
 		for i, distribution := range cw.distributions {
 			cw.cachedDistribution.MergeWith(distribution, cw.weights[i])
 		}
