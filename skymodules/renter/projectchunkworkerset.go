@@ -319,27 +319,22 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 func (ws *pcwsWorkerState) WaitForResults(ctx context.Context) []*pcwsWorkerResponse {
 	for {
 		ws.mu.Lock()
-
-		// If there are no more unresolved workers we are done.
-		if len(ws.unresolvedWorkers) == 0 {
-			rw := ws.resolvedWorkers
-			ws.mu.Unlock()
-			return rw
-		}
-
-		// If there are unresolved workers, register for the update and
-		// wait.
+		rw := ws.resolvedWorkers
+		noUnresolvedWorkers := len(ws.unresolvedWorkers) == 0
 		updateChan := ws.registerForWorkerUpdate()
 		ws.mu.Unlock()
 
+		// If there are no more unresolved workers, we are done.
+		if noUnresolvedWorkers {
+			return rw
+		}
+
+		// Otherwise we wait for either an update or the timeout.
 		select {
 		case <-updateChan:
-			continue // check again
+			continue
 		case <-ctx.Done():
-			// timeout reached
-			ws.mu.Lock()
-			rw := ws.resolvedWorkers
-			ws.mu.Unlock()
+			// Timeout reached. Return what we got.
 			return rw
 		}
 	}
