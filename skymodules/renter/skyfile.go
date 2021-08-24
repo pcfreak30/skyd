@@ -794,9 +794,9 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 
 // DownloadSkylinkBaseSector will take a link and turn it into the data of
 // a basesector without any decoding of the metadata, fanout, or decryption.
-func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time.Duration, pricePerMS types.Currency) (skymodules.SkyfileStreamer, []skymodules.RegistryEntry, error) {
+func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time.Duration, pricePerMS types.Currency) (skymodules.Streamer, []skymodules.RegistryEntry, skymodules.Skylink, error) {
 	if err := r.tg.Add(); err != nil {
-		return nil, nil, err
+		return nil, nil, link, err
 	}
 	defer r.tg.Done()
 
@@ -819,27 +819,18 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 	// Check if link needs to be resolved from V2 to V1.
 	link, srvs, err := r.managedTryResolveSkylinkV2(ctx, link, true)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, link, err
 	}
 
 	// Find the fetch size.
 	offset, fetchSize, err := link.OffsetAndFetchSize()
 	if err != nil {
-		return nil, nil, errors.AddContext(err, "unable to get offset and fetch size")
+		return nil, nil, link, errors.AddContext(err, "unable to get offset and fetch size")
 	}
 
 	// Download the base sector
 	baseSector, err := r.managedDownloadByRoot(ctx, link.MerkleRoot(), offset, fetchSize, pricePerMS)
-	if err != nil {
-		return nil, nil, errors.AddContext(err, "unable to download base sector")
-	}
-
-	// Parse base sector.
-	sl, _, sm, rawMD, _, err := skymodules.ParseSkyfileMetadata(baseSector)
-	if err != nil {
-		return nil, nil, errors.AddContext(err, "unable to download base sector")
-	}
-	return SkylinkStreamerFromSlice(baseSector, sm, rawMD, link, sl), srvs, err
+	return StreamerFromSlice(baseSector), srvs, link, err
 }
 
 // managedDownloadSkylink will take a link and turn it into the metadata and

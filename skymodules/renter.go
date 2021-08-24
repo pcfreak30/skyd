@@ -1466,7 +1466,7 @@ type Renter interface {
 	// exceeds the given timeout value. Passing a timeout of 0 is considered as
 	// no timeout. The pricePerMS acts as a budget to spend on faster, and thus
 	// potentially more expensive, hosts.
-	DownloadSkylinkBaseSector(link Skylink, timeout time.Duration, pricePerMS types.Currency) (SkyfileStreamer, []RegistryEntry, error)
+	DownloadSkylinkBaseSector(link Skylink, timeout time.Duration, pricePerMS types.Currency) (Streamer, []RegistryEntry, Skylink, error)
 
 	// SkylinkHealth returns the health of a skylink on the network.
 	SkylinkHealth(ctx context.Context, link Skylink, ppms types.Currency) (SkylinkHealth, error)

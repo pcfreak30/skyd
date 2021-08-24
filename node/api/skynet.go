@@ -272,7 +272,7 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 	}
 
 	// Fetch the skyfile's streamer to serve the basesector of the file
-	streamer, srvs, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
+	streamer, srvs, _, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
 	if err != nil {
 		handleSkynetError(w, "failed to fetch base sector", err)
 		return
@@ -1512,7 +1512,7 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 	}
 
 	// Fetch the skyfile's streamer to serve the basesector of the file
-	streamer, srvs, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
+	streamer, srvs, resolvedLink, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
 	if err != nil {
 		handleSkynetError(w, "failed to fetch base sector", err)
 		return
@@ -1524,7 +1524,7 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 	}()
 
 	// Set the Skylink response header
-	w.Header().Set(SkynetSkylinkHeader, streamer.Skylink().String())
+	w.Header().Set(SkynetSkylinkHeader, resolvedLink.String())
 	w.Header().Set(SkynetRequestedSkylinkHeader, skylink.String())
 
 	// Attach proof.
