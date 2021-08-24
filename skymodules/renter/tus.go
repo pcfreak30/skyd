@@ -176,19 +176,17 @@ func (stu *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileIn
 
 // GetUpload returns an existing upload.
 func (stu *skynetTUSUploader) GetUpload(ctx context.Context, id string) (handler.Upload, error) {
-	stu.mu.Lock()
-	defer stu.mu.Unlock()
 	return stu.staticUploads.Upload(id)
 }
 
 // Skylink returns the skylink for the upload with the given ID.
 func (stu *skynetTUSUploader) Skylink(id string) (skymodules.Skylink, bool) {
-	stu.mu.Lock()
-	defer stu.mu.Unlock()
 	upload, err := stu.staticUploads.Upload(id)
 	if err != nil {
 		return skymodules.Skylink{}, false
 	}
+	upload.mu.Lock()
+	defer upload.mu.Unlock()
 	_, exists := upload.fi.MetaData["Skylink"]
 	return upload.sl, exists
 }
