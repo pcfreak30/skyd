@@ -3985,6 +3985,17 @@ nor to the single file in directory upload. This parameter is mutually exclusive
 with `defaultpath` and specifying both will result in an error. Neither one is 
 applicable to skyfiles without subfiles.
 
+**tryfiles** | []string
+The `tryfiles` field allows us to set a list of potential subfiles to return in
+case the requested one does not exist or is a directory. Those subfiles might
+be listed with relative or absolute paths. If the path is absolute the files
+must exist.
+
+**errorpages** | JSON
+The `errorpages` JSON object defines a mapping of error codes and subfiles which
+are to be served in case we are serving the respective error code. All subfiles 
+referred like this must be defined with absolute paths and must exist.
+
 **filename** | string  
 The name of the file. This name will be encoded into the skyfile metadata, and
 will be a part of the skylink. If the name changes, the skylink will change as
