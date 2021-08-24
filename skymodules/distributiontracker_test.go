@@ -1,6 +1,7 @@
 package skymodules
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -844,6 +845,60 @@ func testDistributionShift(t *testing.T) {
 	// all buckets preceding the one at which we shifted.
 	if d.ChanceAfter(16*ms) == 0 {
 		t.Fatal("bad")
+	}
+
+	// reset the new distribution
+	d = NewDistribution(time.Minute * 100)
+
+	// add one datapoint in every bucket
+	for i := 0; i < distributionTrackerTotalBuckets; i++ {
+		d.AddDataPoint(durationForIndex(i))
+	}
+
+	// shift it by 100 buckets and assert all buckets are completely empty,
+	// there was no smear because the shift aligned perfectly with a bucket
+	d.Shift(durationForIndex(100))
+	for i := 0; i < 100; i++ {
+		if d.ChanceAfter(durationForIndex(i)) != 0 {
+			t.Fatal("bad")
+		}
+	}
+
+	// shift it again but now make sure we shift at a fraction of a bucket so we
+	// should see a remainder value smeared out across all preceding buckets
+	shiftAt := durationForIndex(200) + (256/2)*ms
+
+	// quickly assert that we're shifting at the exact point we want to shift,
+	// namely at bucket index 200 and we want to make sure we're at exactly 50%
+	// of that bucket, which is a 256ms bucket.
+	index, fraction := indexForDuration(shiftAt)
+	if index != 200 || fraction != .5 {
+		t.Fatal("bad")
+	}
+
+	// perform the shift
+	d.Shift(shiftAt)
+
+	// we expected to see a smear of 1/2/200 because we are smearing half of the
+	// original value over the buckets before it
+	smear := float64(1) / float64(400)
+
+	// we know the value now in all buckets up until bucket with index 200, so
+	// the chance after every duration will increase with the same amount, let's
+	// calculate the amount for the bucket at index 1 which is the step with
+	// which we'll be increasing
+	index, fraction = indexForDuration(4 * ms)
+	if index != 1 && fraction != 1 {
+		t.Fatal("bad")
+	}
+
+	// compare the expected chance with the actual chance, allow for some
+	// floating point precision errors up until 1e-9
+	for i := 1; i < 200; i++ {
+		chance = smear * float64(i) / d.DataPoints()
+		if math.Abs(chance-d.ChanceAfter(durationForIndex(i))) > 1e-9 {
+			t.Fatal("bad", i, chance, d.ChanceAfter(durationForIndex(i)))
+		}
 	}
 }
 
