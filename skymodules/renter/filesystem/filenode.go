@@ -252,3 +252,8 @@ func (n *FileNode) staticCachedInfo(siaPath skymodules.SiaPath) (skymodules.File
 	}
 	return fileInfo, nil
 }
+
+// SiaPath returns the SiaPath of a node.
+func (n *FileNode) SiaPath() (skymodules.SiaPath, bool) {
+	return n.staticFS.FileSiaPath(n), true
+}

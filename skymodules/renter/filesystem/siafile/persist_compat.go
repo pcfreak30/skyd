@@ -30,7 +30,7 @@ type (
 	}
 	// FileChunk is a helper struct that contains data about a chunk.
 	FileChunk struct {
-		Pieces [][]Piece
+		Pieces [][]skymodules.Piece
 	}
 )
 

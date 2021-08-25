@@ -129,7 +129,7 @@ func (s *Snapshot) NumChunks() uint64 {
 
 // Pieces returns all the pieces for a chunk in a slice of slices that contains
 // all the pieces for a certain index.
-func (s *Snapshot) Pieces(chunkIndex uint64) [][]Piece {
+func (s *Snapshot) Pieces(chunkIndex uint64) [][]skymodules.Piece {
 	// Return the pieces. Since the snapshot is meant to be used read-only, we
 	// don't have to return a deep-copy here.
 	return s.staticChunks[chunkIndex].Pieces
@@ -193,8 +193,8 @@ func (sf *SiaFile) readlockSnapshot(sp skymodules.SiaPath, chunks []chunk) (*Sna
 		}
 	}
 	// Allocate all the piece sets and pieces at once.
-	allPieceSets := make([][]Piece, numPieceSets)
-	allPieces := make([]Piece, numPieces)
+	allPieceSets := make([][]skymodules.Piece, numPieceSets)
+	allPieces := make([]skymodules.Piece, numPieces)
 
 	// Copy chunks.
 	exportedChunks := make([]Chunk, 0, len(chunks))
@@ -206,7 +206,7 @@ func (sf *SiaFile) readlockSnapshot(sp skymodules.SiaPath, chunks []chunk) (*Sna
 			pieces[pieceIndex] = allPieces[:len(chunk.Pieces[pieceIndex])]
 			allPieces = allPieces[len(chunk.Pieces[pieceIndex]):]
 			for i, piece := range chunk.Pieces[pieceIndex] {
-				pieces[pieceIndex][i] = Piece{
+				pieces[pieceIndex][i] = skymodules.Piece{
 					HostPubKey: sf.hostKey(piece.HostTableOffset).PublicKey,
 					MerkleRoot: piece.MerkleRoot,
 				}
@@ -248,8 +248,8 @@ func (sf *SiaFile) Snapshot(sp skymodules.SiaPath) (*Snapshot, error) {
 	return sf.readlockSnapshot(sp, chunks)
 }
 
-// SnapshotRange creates a snapshot of the Siafile over a specific range.
-func (sf *SiaFile) SnapshotRange(sp skymodules.SiaPath, offset, length uint64) (*Snapshot, error) {
+// DownloadStore creates a snapshot of the Siafile over a specific range.
+func (sf *SiaFile) DownloadStore(sp skymodules.SiaPath, offset, length uint64) (skymodules.DownloadMetadataStore, error) {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
 

@@ -91,20 +91,13 @@ type (
 
 	// Chunk is an exported chunk. It contains exported pieces.
 	Chunk struct {
-		Pieces [][]Piece
+		Pieces [][]skymodules.Piece
 	}
 
 	// piece represents a single piece of a chunk on disk
 	piece struct {
 		HostTableOffset uint32      // offset of the host's key within the pubKeyTable
 		MerkleRoot      crypto.Hash // merkle root of the piece
-	}
-
-	// Piece is an exported piece. It contains a resolved public key instead of
-	// the table offset.
-	Piece struct {
-		HostPubKey types.SiaPublicKey // public key of the host
-		MerkleRoot crypto.Hash        // merkle root of the piece
 	}
 
 	// HostPublicKey is an entry in the HostPubKey table.
@@ -568,7 +561,7 @@ func (sf *SiaFile) expiration(contracts map[string]skymodules.RenterContract) ty
 	}
 
 	lowest := ^types.BlockHeight(0)
-	var pieceSets [][]Piece
+	var pieceSets [][]skymodules.Piece
 	for _, pieceSet := range pieceSets {
 		for _, piece := range pieceSet {
 			contract, exists := contracts[piece.HostPubKey.String()]
@@ -751,7 +744,7 @@ func (sf *SiaFile) NumChunks() uint64 {
 
 // Pieces returns all the pieces for a chunk in a slice of slices that contains
 // all the pieces for a certain index.
-func (sf *SiaFile) Pieces(chunkIndex uint64) ([][]Piece, error) {
+func (sf *SiaFile) Pieces(chunkIndex uint64) ([][]skymodules.Piece, error) {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
 
@@ -763,18 +756,18 @@ func (sf *SiaFile) Pieces(chunkIndex uint64) ([][]Piece, error) {
 	if chunkIndex >= uint64(sf.numChunks) {
 		err := fmt.Errorf("index %v out of bounds (%v)", chunkIndex, sf.numChunks)
 		build.Critical(err)
-		return [][]Piece{}, err
+		return [][]skymodules.Piece{}, err
 	}
 	chunk, err := sf.chunk(int(chunkIndex))
 	if err != nil {
 		return nil, err
 	}
 	// Resolve pieces to Pieces.
-	pieces := make([][]Piece, len(chunk.Pieces))
+	pieces := make([][]skymodules.Piece, len(chunk.Pieces))
 	for pieceIndex := range pieces {
-		pieces[pieceIndex] = make([]Piece, len(chunk.Pieces[pieceIndex]))
+		pieces[pieceIndex] = make([]skymodules.Piece, len(chunk.Pieces[pieceIndex]))
 		for i, piece := range chunk.Pieces[pieceIndex] {
-			pieces[pieceIndex][i] = Piece{
+			pieces[pieceIndex][i] = skymodules.Piece{
 				HostPubKey: sf.hostKey(piece.HostTableOffset).PublicKey,
 				MerkleRoot: piece.MerkleRoot,
 			}

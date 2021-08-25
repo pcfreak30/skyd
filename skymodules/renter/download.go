@@ -17,7 +17,6 @@ import (
 
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
-	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
 )
 
 type (
@@ -63,17 +62,17 @@ type (
 
 	// downloadParams is the set of parameters to use when downloading a file.
 	downloadParams struct {
-		destination       downloadDestination // The place to write the downloaded data.
-		destinationType   string              // "file", "buffer", "http stream", etc.
-		destinationString string              // The string to report to the user for the destination.
-		disableLocalFetch bool                // Whether or not the file can be fetched from disk if available.
-		file              *siafile.Snapshot   // The file to download.
-		latencyTarget     time.Duration       // Workers above this latency will be automatically put on standby initially.
-		length            uint64              // Length of download. Cannot be 0.
-		needsMemory       bool                // Whether new memory needs to be allocated to perform the download.
-		offset            uint64              // Offset within the file to start the download. Must be less than the total filesize.
-		overdrive         int                 // How many extra pieces to download to prevent slow hosts from being a bottleneck.
-		priority          uint64              // Files with a higher priority will be downloaded first.
+		destination       downloadDestination              // The place to write the downloaded data.
+		destinationType   string                           // "file", "buffer", "http stream", etc.
+		destinationString string                           // The string to report to the user for the destination.
+		disableLocalFetch bool                             // Whether or not the file can be fetched from disk if available.
+		file              skymodules.DownloadMetadataStore // The file to download.
+		latencyTarget     time.Duration                    // Workers above this latency will be automatically put on standby initially.
+		length            uint64                           // Length of download. Cannot be 0.
+		needsMemory       bool                             // Whether new memory needs to be allocated to perform the download.
+		offset            uint64                           // Offset within the file to start the download. Must be less than the total filesize.
+		overdrive         int                              // How many extra pieces to download to prevent slow hosts from being a bottleneck.
+		priority          uint64                           // Files with a higher priority will be downloaded first.
 
 		staticMemoryManager *memoryManager
 
@@ -311,7 +310,7 @@ func (r *Renter) managedDownload(p skymodules.RenterDownloadParameters) (_ *down
 	}
 
 	// Prepare snapshot.
-	snap, err := entry.SnapshotRange(p.SiaPath, p.Offset, p.Length)
+	snap, err := entry.DownloadStore(p.SiaPath, p.Offset, p.Length)
 	if err != nil {
 		return nil, err
 	}

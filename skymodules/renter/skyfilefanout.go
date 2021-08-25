@@ -14,8 +14,8 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
-	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
 	"go.sia.tech/siad/crypto"
 )
 
@@ -33,7 +33,7 @@ func skyfileEncodeFanoutFromFileNode(fileNode *filesystem.FileNode, onePiece boo
 	// non-empty piece in the set. If the set is empty, or every piece in the
 	// set is empty, then the emptyHash is returned.
 	var emptyHash crypto.Hash
-	findPieceInPieceSet := func(pieceSet []siafile.Piece) crypto.Hash {
+	findPieceInPieceSet := func(pieceSet []skymodules.Piece) crypto.Hash {
 		for _, piece := range pieceSet {
 			if piece.MerkleRoot != emptyHash {
 				return piece.MerkleRoot

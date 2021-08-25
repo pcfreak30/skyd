@@ -56,16 +56,23 @@ type (
 
 		// fields that differ between copies of the same node.
 		threadUID threadUID // unique ID of a copy of a node
+
+		staticFS *FileSystem
 	}
 	threadUID uint64
 )
 
 // newNode is a convenience function to initialize a node.
 func newNode(parent *DirNode, path, name string, uid threadUID, wal *writeaheadlog.WAL, log *persist.Logger) node {
+	var fs *FileSystem
+	if parent != nil {
+		fs = parent.staticFS
+	}
 	return node{
 		path:      &path,
 		parent:    parent,
 		name:      &name,
+		staticFS:  fs,
 		staticLog: log,
 		staticUID: newInode(),
 		staticWal: wal,
@@ -158,6 +165,8 @@ func New(root string, log *persist.Logger, wal *writeaheadlog.WAL) (*FileSystem,
 			lazySiaDir:  new(*siadir.SiaDir),
 		},
 	}
+	fs.staticFS = fs
+
 	// Prepare root folder.
 	err := fs.NewSiaDir(skymodules.RootSiaPath(), skymodules.DefaultDirPerm)
 	if err != nil && !errors.Contains(err, ErrExists) {

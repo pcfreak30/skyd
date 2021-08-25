@@ -13,7 +13,6 @@ import (
 	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/SkynetLabs/skyd/skymodules"
-	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -33,7 +32,7 @@ type unfinishedUploadChunk struct {
 	// is known not to exist locally.
 	ctx       context.Context
 	id        uploadChunkID
-	fileEntry *filesystem.FileNode
+	fileEntry skymodules.UploadMetadataStore
 
 	// Information about the chunk, namely where it exists within the file.
 	fileRecentlySuccessful bool // indicates if the file the chunk is from had a recent successful repair
@@ -326,7 +325,11 @@ func (r *Renter) managedDownloadLogicalChunkDataFromSiaFile(chunk *unfinishedUpl
 	// the download from trying to load the chunk from disk. This field is set
 	// because the local fetch version of the download call does not perform an
 	// integrity check.
-	snap, err := chunk.fileEntry.SnapshotRange(r.staticFileSystem.FileSiaPath(chunk.fileEntry), uint64(chunk.offset), downloadLength)
+	sp, ok := chunk.fileEntry.SiaPath()
+	if !ok {
+		return nil, errors.New("can't download logical chunk data from siafile - siapath not available")
+	}
+	snap, err := chunk.fileEntry.DownloadStore(sp, uint64(chunk.offset), downloadLength)
 	if err != nil {
 		return nil, err
 	}
@@ -384,7 +387,7 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	// Update the access time when the download is done.
 	defer func() {
 		// Update the access time when the download is done.
-		if err := chunk.fileEntry.SiaFile.UpdateAccessTime(); err != nil {
+		if err := chunk.fileEntry.UpdateAccessTime(); err != nil {
 			r.staticLog.Println("failed to update siafile's access time", err)
 		}
 	}()
@@ -897,7 +900,10 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 		// Add file to the successful stuck repair stack if there are still
 		// stuck chunks to repair
 		if uc.fileEntry.NumStuckChunks() > 0 {
-			r.staticStuckStack.managedPush(r.staticFileSystem.FileSiaPath(uc.fileEntry))
+			sp, ok := uc.fileEntry.SiaPath()
+			if ok {
+				r.staticStuckStack.managedPush(sp)
+			}
 		}
 		// Signal the stuck loop that the chunk was successfully repaired
 		select {

@@ -1726,3 +1726,52 @@ func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice, baseColla
 	hostPayout = hostCollateral.Add(host.ContractPrice).Add(basePrice)
 	return
 }
+
+type (
+	// Piece describes an uploaded piece of a chunk.
+	Piece struct {
+		HostPubKey types.SiaPublicKey // public key of the host the piece was uploaded to.
+		MerkleRoot crypto.Hash        // merkle root of the piece
+	}
+)
+
+// commonMetadataStore contains methods for fetching metadata relevant to both
+// uploads and downloads.
+type commonMetadataStore interface {
+	ChunkSize() uint64
+	ErasureCode() ErasureCoder
+	LocalPath() string
+	NumChunks() uint64
+	MasterKey() crypto.CipherKey
+	PieceSize() uint64
+	Size() uint64
+}
+
+// DownloadMetadataStore is the interface for an object that contains all
+// information relevant to downloading data from the network.
+type DownloadMetadataStore interface {
+	commonMetadataStore
+
+	ChunkIndexByOffset(offset uint64) (chunkIndex uint64, off uint64)
+	Pieces(chunkIndex uint64) [][]Piece
+	SiaPath() SiaPath
+}
+
+// UploadMetadataStore is the interface for an object that contains all
+// information relevant to uploading data to the network.
+type UploadMetadataStore interface {
+	io.Closer
+	commonMetadataStore
+
+	AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64, merkleRoot crypto.Hash) (err error)
+	NumStuckChunks() uint64
+	Pieces(chunkIndex uint64) ([][]Piece, error)
+	SetFileSize(fileSize uint64) (err error)
+	SetLocalPath(path string) (err error)
+	SetStuck(index uint64, stuck bool) (err error)
+	SiaFilePath() string
+	SiaPath() (SiaPath, bool)
+	DownloadStore(sp SiaPath, offset, length uint64) (DownloadMetadataStore, error)
+	UpdateAccessTime() (err error)
+	UpdateMetadata(offlineMap, goodForRenew map[string]bool, contracts map[string]RenterContract, used []types.SiaPublicKey) error
+}

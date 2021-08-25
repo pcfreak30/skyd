@@ -9,7 +9,6 @@ import (
 
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
-	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
 	"go.sia.tech/siad/crypto"
 )
 
@@ -80,7 +79,7 @@ type unfinishedDownloadChunk struct {
 	mu             sync.Mutex
 
 	// The SiaFile from which data is being downloaded.
-	renterFile *siafile.Snapshot
+	renterFile skymodules.DownloadMetadataStore
 }
 
 // fail will set the chunk status to failed. The physical chunk memory will be

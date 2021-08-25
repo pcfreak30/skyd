@@ -310,7 +310,7 @@ func (r *Renter) v137FileToSiaFile(f *file, repairPath string, oldContracts []sk
 	}
 	chunks := make([]siafile.FileChunk, f.numChunks())
 	for i := 0; i < len(chunks); i++ {
-		chunks[i].Pieces = make([][]siafile.Piece, f.erasureCode.NumPieces())
+		chunks[i].Pieces = make([][]skymodules.Piece, f.erasureCode.NumPieces())
 	}
 	for _, contract := range f.contracts {
 		pk, exists := idToPk[contract.ID]
@@ -333,7 +333,7 @@ func (r *Renter) v137FileToSiaFile(f *file, repairPath string, oldContracts []sk
 			if duplicate {
 				continue
 			}
-			chunks[piece.Chunk].Pieces[piece.Piece] = append(chunks[piece.Chunk].Pieces[piece.Piece], siafile.Piece{
+			chunks[piece.Chunk].Pieces[piece.Piece] = append(chunks[piece.Chunk].Pieces[piece.Piece], skymodules.Piece{
 				HostPubKey: pk,
 				MerkleRoot: piece.MerkleRoot,
 			})
