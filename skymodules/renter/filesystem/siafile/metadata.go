@@ -19,17 +19,13 @@ import (
 )
 
 type (
-	// SiafileUID is a unique identifier for siafile which is used to track
-	// siafiles even after renaming them.
-	SiafileUID string
-
 	// Metadata is the metadata of a SiaFile and is JSON encoded.
 	// Note: Methods which update the metadata and can potentially fail after
 	// doing so and before persisting the change should use backup() and
 	// restore() to restore the metadata before returning the error. Also
 	// changes to Metadata require backup() and restore() to be updated as well.
 	Metadata struct {
-		UniqueID SiafileUID `json:"uniqueid"` // unique identifier for file
+		UniqueID skymodules.SiafileUID `json:"uniqueid"` // unique identifier for file
 
 		StaticPagesPerChunk uint8    `json:"pagesperchunk"` // number of pages reserved for storing a chunk.
 		StaticVersion       [16]byte `json:"version"`       // version of the sia file format used
@@ -167,7 +163,7 @@ type (
 		Size                uint64
 		StuckBytes          uint64
 		StuckHealth         float64
-		UID                 SiafileUID
+		UID                 skymodules.SiafileUID
 		Unrecoverable       bool
 	}
 )
@@ -198,6 +194,11 @@ func (sf *SiaFile) AddSkylink(s skymodules.Skylink) (err error) {
 		return err
 	}
 	return sf.createAndApplyTransaction(updates...)
+}
+
+// Skylinks returns the Siafile's skylinks.
+func (sf *SiaFile) Skylinks() []string {
+	return append([]string{}, sf.staticMetadata.Skylinks...)
 }
 
 // ChangeTime returns the ChangeTime timestamp of the file.
@@ -575,7 +576,7 @@ func (sf *SiaFile) staticMasterKey() crypto.CipherKey {
 	return sk
 }
 
-// uniqueID creates a random unique SiafileUID.
-func uniqueID() SiafileUID {
-	return SiafileUID(persist.UID())
+// uniqueID creates a random unique skymodules.SiafileUID.
+func uniqueID() skymodules.SiafileUID {
+	return skymodules.SiafileUID(persist.UID())
 }

@@ -167,7 +167,7 @@ func (r *Renter) managedInitUploadStream(up skymodules.FileUploadParams) (*files
 // callUploadStreamFromReader will return as soon as all data to upload is read
 // from the reader and passed on to the upload code but before the data is
 // available on the network.
-func (r *Renter) callUploadStreamFromReaderWithFileNodeNoBlock(ctx context.Context, fileNode *filesystem.FileNode, reader skymodules.ChunkReader, offset int64) (_ []*unfinishedUploadChunk, n int64, err error) {
+func (r *Renter) callUploadStreamFromReaderWithFileNodeNoBlock(ctx context.Context, fileNode skymodules.UploadMetadataStore, reader skymodules.ChunkReader, offset int64) (_ []*unfinishedUploadChunk, n int64, err error) {
 	// Sanity check offset.
 	if offset%int64(fileNode.ChunkSize()) != 0 {
 		return nil, 0, fmt.Errorf("callUploadStreamFromReaderWithFileNode called with invalid offset %v mod %v != 0", offset, fileNode.ChunkSize())
@@ -213,7 +213,7 @@ func (r *Renter) callUploadStreamFromReaderWithFileNodeNoBlock(ctx context.Conte
 		}
 		// Grow the SiaFile to the right size. Otherwise buildUnfinishedChunk
 		// won't realize that there are pieces which haven't been repaired yet.
-		if err = fileNode.SiaFile.GrowNumChunks(chunkIndex + 1); err != nil {
+		if err = fileNode.GrowNumChunks(chunkIndex + 1); err != nil {
 			return nil, n, err
 		}
 

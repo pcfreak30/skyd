@@ -14,7 +14,6 @@ import (
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
-	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/persist"
@@ -209,7 +208,7 @@ func testManagedBuildChunkHeap(t *testing.T) {
 // addChunksOfDifferentHealth is a helper function for TestUploadHeap to add
 // numChunks number of chunks that each have different healths to the uploadHeap
 func addChunksOfDifferentHealth(r *Renter, numChunks int, priority, fileRecentlySuccessful, stuck, remote bool) error {
-	var UID siafile.SiafileUID
+	var UID skymodules.SiafileUID
 	if priority {
 		UID = "priority"
 	} else if fileRecentlySuccessful {
@@ -776,7 +775,7 @@ func testUploadHeapMaps(t *testing.T) {
 		stuck := i%2 == 0
 		chunk := &unfinishedUploadChunk{
 			id: uploadChunkID{
-				fileUID: siafile.SiafileUID(fmt.Sprintf("chunk - %v", i)),
+				fileUID: skymodules.SiafileUID(fmt.Sprintf("chunk - %v", i)),
 				index:   i,
 			},
 			fileEntry:                 sf.Copy(),
@@ -909,7 +908,7 @@ func testChunkSwitchStuckStatus(t *testing.T) {
 	// Create minimum chunk
 	chunk := &unfinishedUploadChunk{
 		id: uploadChunkID{
-			fileUID: siafile.SiafileUID("chunk"),
+			fileUID: skymodules.SiafileUID("chunk"),
 			index:   0,
 		},
 		staticMemoryManager: rt.renter.staticRepairMemoryManager,
@@ -1151,7 +1150,7 @@ func testManagedTryUpdate(t *testing.T) {
 		// Initialize chunks and heap based on test parameters
 		existingChunk := &unfinishedUploadChunk{
 			id: uploadChunkID{
-				fileUID: siafile.SiafileUID(test.name),
+				fileUID: skymodules.SiafileUID(test.name),
 				index:   uint64(i),
 			},
 			fileEntry:           entry.Copy(),

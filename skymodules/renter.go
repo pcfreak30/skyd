@@ -1756,6 +1756,11 @@ type DownloadMetadataStore interface {
 	Pieces(chunkIndex uint64) [][]Piece
 	SiaPath() SiaPath
 }
+type (
+	// SiafileUID is a unique identifier for siafile which is used to track
+	// siafiles even after renaming them.
+	SiafileUID string
+)
 
 // UploadMetadataStore is the interface for an object that contains all
 // information relevant to uploading data to the network.
@@ -1764,14 +1769,22 @@ type UploadMetadataStore interface {
 	commonMetadataStore
 
 	AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64, merkleRoot crypto.Hash) (err error)
+	AddSkylink(sl Skylink) error
+	Copy() UploadMetadataStore
+	GrowNumChunks(numChunks uint64) (err error)
+	HostPublicKeys() (spks []types.SiaPublicKey)
 	NumStuckChunks() uint64
 	Pieces(chunkIndex uint64) ([][]Piece, error)
 	SetFileSize(fileSize uint64) (err error)
 	SetLocalPath(path string) (err error)
 	SetStuck(index uint64, stuck bool) (err error)
+	Shrink(numChunks uint64) error
+	Skylinks() []string
 	SiaFilePath() string
 	SiaPath() (SiaPath, bool)
+	StuckChunkByIndex(chunkIndex uint64) (bool, error)
 	DownloadStore(sp SiaPath, offset, length uint64) (DownloadMetadataStore, error)
+	UID() SiafileUID
 	UpdateAccessTime() (err error)
 	UpdateMetadata(offlineMap, goodForRenew map[string]bool, contracts map[string]RenterContract, used []types.SiaPublicKey) error
 }

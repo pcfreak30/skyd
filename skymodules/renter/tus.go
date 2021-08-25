@@ -15,7 +15,6 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
-	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/persist"
@@ -68,7 +67,7 @@ type (
 
 		// large upload related fields.
 		fanout   []byte
-		fileNode *filesystem.FileNode
+		fileNode skymodules.UploadMetadataStore
 		staticUP skymodules.FileUploadParams
 		chunks   []*unfinishedUploadChunk
 

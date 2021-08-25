@@ -953,7 +953,7 @@ func (sf *SiaFile) StuckChunkByIndex(index uint64) (bool, error) {
 }
 
 // UID returns a unique identifier for this file.
-func (sf *SiaFile) UID() SiafileUID {
+func (sf *SiaFile) UID() skymodules.SiafileUID {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
 	return sf.staticMetadata.UniqueID

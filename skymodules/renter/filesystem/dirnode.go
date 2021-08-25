@@ -382,7 +382,7 @@ func (n *DirNode) managedNewSiaFileFromLegacyData(fileName string, fd siafile.Fi
 // uniquePrefix returns a new path for the siafile with the given path
 // and uid by adding a suffix to the current path and incrementing it as long as
 // the resulting path is already taken.
-func (n *DirNode) uniquePrefix(path string, uid siafile.SiafileUID) (string, bool) {
+func (n *DirNode) uniquePrefix(path string, uid skymodules.SiafileUID) (string, bool) {
 	suffix := 0
 	currentPath := path
 	for {

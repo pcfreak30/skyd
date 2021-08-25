@@ -89,7 +89,7 @@ func (n *FileNode) Close() error {
 }
 
 // Copy copies a file node and returns the copy.
-func (n *FileNode) Copy() *FileNode {
+func (n *FileNode) Copy() skymodules.UploadMetadataStore {
 	return n.managedCopy()
 }
 

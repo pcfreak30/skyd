@@ -9,6 +9,7 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/types"
 )
 
@@ -48,7 +49,7 @@ func TestBackupRestoreMetadata(t *testing.T) {
 		}(sf.staticMetadata.backup()) // NOTE: this needs to be passed in like that to work
 
 		// Change all fields that are not static.
-		sf.staticMetadata.UniqueID = SiafileUID(fmt.Sprint(fastrand.Intn(100)))
+		sf.staticMetadata.UniqueID = skymodules.SiafileUID(fmt.Sprint(fastrand.Intn(100)))
 		sf.staticMetadata.FileSize = int64(fastrand.Intn(100))
 		sf.staticMetadata.LocalPath = string(fastrand.Bytes(100))
 		sf.staticMetadata.ModTime = time.Now()

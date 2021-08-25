@@ -25,7 +25,7 @@ type (
 		PieceSize   uint64
 		Mode        os.FileMode
 		Deleted     bool
-		UID         SiafileUID
+		UID         skymodules.SiafileUID
 		Chunks      []FileChunk
 	}
 	// FileChunk is a helper struct that contains data about a chunk.
@@ -67,7 +67,7 @@ func NewFromLegacyData(fd FileData, siaFilePath string, wal *writeaheadlog.WAL) 
 			StaticErasureCodeParams: ecParams,
 			StaticPagesPerChunk:     numChunkPagesRequired(fd.ErasureCode.NumPieces()),
 			StaticPieceSize:         fd.PieceSize,
-			UniqueID:                SiafileUID(fd.UID),
+			UniqueID:                skymodules.SiafileUID(fd.UID),
 		},
 		deps:        modules.ProdDependencies,
 		deleted:     fd.Deleted,

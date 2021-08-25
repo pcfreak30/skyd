@@ -254,7 +254,7 @@ func (r *Renter) CreateSkylinkFromSiafile(sup skymodules.SkyfileUploadParameters
 // The name needs to be passed in explicitly because a file node does not track
 // its own name, which allows the file to be renamed concurrently without
 // causing any race conditions.
-func (r *Renter) managedCreateSkylinkFromFileNode(ctx context.Context, sup skymodules.SkyfileUploadParameters, skyfileMetadata skymodules.SkyfileMetadata, fileNode *filesystem.FileNode, fanoutBytes []byte) (skymodules.Skylink, error) {
+func (r *Renter) managedCreateSkylinkFromFileNode(ctx context.Context, sup skymodules.SkyfileUploadParameters, skyfileMetadata skymodules.SkyfileMetadata, fileNode skymodules.UploadMetadataStore, fanoutBytes []byte) (skymodules.Skylink, error) {
 	// Check if the given metadata is valid
 	err := skymodules.ValidateSkyfileMetadata(skyfileMetadata)
 	if err != nil {
@@ -1259,8 +1259,8 @@ func (r *Renter) UploadSkyfile(ctx context.Context, sup skymodules.SkyfileUpload
 
 // managedIsFileNodeBlocked checks if any of the skylinks associated with the
 // siafile are blocked
-func (r *Renter) managedIsFileNodeBlocked(fileNode *filesystem.FileNode) bool {
-	skylinkstrs := fileNode.Metadata().Skylinks
+func (r *Renter) managedIsFileNodeBlocked(fileNode skymodules.UploadMetadataStore) bool {
+	skylinkstrs := fileNode.Skylinks()
 	for _, skylinkstr := range skylinkstrs {
 		var skylink skymodules.Skylink
 		err := skylink.LoadString(skylinkstr)

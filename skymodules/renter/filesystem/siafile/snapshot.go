@@ -27,7 +27,7 @@ type (
 		staticPubKeyTable []HostPublicKey
 		staticSiaPath     skymodules.SiaPath
 		staticLocalPath   string
-		staticUID         SiafileUID
+		staticUID         skymodules.SiafileUID
 	}
 )
 
@@ -151,7 +151,7 @@ func (s *Snapshot) Size() uint64 {
 }
 
 // UID returns the UID of the file.
-func (s *Snapshot) UID() SiafileUID {
+func (s *Snapshot) UID() skymodules.SiafileUID {
 	return s.staticUID
 }
 
