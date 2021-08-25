@@ -70,7 +70,6 @@ type (
 		fanout   []byte
 		fileNode *filesystem.FileNode
 		staticUP skymodules.FileUploadParams
-		chunks   []*unfinishedUploadChunk
 
 		// small upload related fields.
 		isSmall bool
@@ -281,26 +280,6 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 	defer u.mu.Unlock()
 	uploader := u.staticUploader
 
-	// Quickly scan past chunks for errors and remove the ones that are done
-	// already.
-	i := 0
-	for _, chunk := range u.chunks {
-		select {
-		case <-chunk.staticAvailableChan:
-			chunk.mu.Lock()
-			err = chunk.err
-			chunk.mu.Unlock()
-			if err != nil {
-				return
-			}
-		default:
-			// keep the chunks that are not yet done.
-			u.chunks[i] = chunk
-			i++
-		}
-	}
-	u.chunks = u.chunks[:i]
-
 	// Update the lastWrite time if more than 0 bytes were written.
 	defer func() {
 		if n > 0 {
@@ -393,10 +372,21 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 		return 0, err
 	}
 
+	// Wait for chunks to become available.
+	for _, chunk := range chunks {
+		select {
+		case <-ctx.Done():
+			return 0, errors.New("reached timeout before chunks became available")
+		case <-chunk.staticAvailableChan:
+		}
+		if chunk.err != nil {
+			return 0, errors.AddContext(err, "failed to upload chunk")
+		}
+	}
+
 	// Increment offset and append fanout.
 	u.fi.Offset += n
 	u.fanout = append(u.fanout, cr.Fanout()...)
-	u.chunks = append(u.chunks, chunks...)
 	return n, err
 }
 
@@ -461,40 +451,23 @@ func (u *skynetTUSUpload) FinishUpload(ctx context.Context) (err error) {
 	}()
 
 	u.mu.Lock()
-	chunks := u.chunks
 
 	// Update the last write before starting to wait for the chunks to avoid
 	// having the chunk pruned. This mostly happens in testing but won't
 	// hurt now that we no longer wait for every chunk to become available
 	// right away.
 	u.lastWrite = time.Now()
-	u.mu.Unlock()
 
-	// Wait for potentially unfinished chunks to finish.
-	for _, chunk := range chunks {
-		select {
-		case <-ctx.Done():
-			err = errors.New("upload timed out")
-		case <-chunk.staticAvailableChan:
-			// Update the last write time every time a chunk becomes
-			// available for some extra time before pruning.
-			u.mu.Lock()
-			u.lastWrite = time.Now()
-			u.mu.Unlock()
-			chunk.mu.Lock()
-			err = chunk.err
-			chunk.mu.Unlock()
-		}
-		if err != nil {
-			return err
-		}
+	// If the upload is a partial upload we are done. We don't need to
+	// upload the metadata or create a skylink.
+	if u.fi.IsPartial {
+		u.mu.Unlock()
+		return nil
 	}
+	u.mu.Unlock()
 
 	u.mu.Lock()
 	defer u.mu.Unlock()
-
-	// Clear the chunks.
-	u.chunks = nil
 
 	var skylink skymodules.Skylink
 	if u.isSmall || u.fi.Size == 0 {
