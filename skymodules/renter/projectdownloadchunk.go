@@ -295,7 +295,7 @@ func (pdc *projectDownloadChunk) updateWorkerHeap(h *pdcWorkerHeap) {
 			// duration of the read and the pieces might have
 			// changed due to the worker resolving.
 			w.completeTime = time.Now().Add(readDuration)
-			w.pieces = pdc.availablePiecesByWorker[w.worker.staticHostPubKeyStr]
+			w.pieces = append([]uint64{}, pdc.availablePiecesByWorker[w.worker.staticHostPubKeyStr]...)
 		}
 
 		// Update fields which are the same for resolved and unresolved
@@ -325,8 +325,8 @@ func (pdc *projectDownloadChunk) updateAvailablePiecesOld() {
 				worker: resp.worker,
 			}
 			pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], pd)
-			pdc.availablePiecesByWorker[hpk] = append(pdc.availablePiecesByWorker[hpk], pieceIndex)
 		}
+		pdc.availablePiecesByWorker[hpk] = resp.pieceIndices
 	}
 	pdc.workersConsideredIndex = len(ws.resolvedWorkers)
 	pdc.unresolvedWorkersRemaining = len(ws.unresolvedWorkers)

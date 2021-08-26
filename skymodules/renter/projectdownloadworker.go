@@ -22,18 +22,13 @@ type (
 
 		// distribution returns the worker's read distribution, for an already
 		// launched worker the distribution will have been shifted by the amount
-		// of time since it was launched. If the worker has already been
-		// launched, its distribution will have been shifted by the time since
-		// it was launched.
+		// of time since it was launched.
 		distribution() *skymodules.Distribution
 
-		// pieces returns all piece indices this worker can resolve, chimera
-		// workers return nil since we don't know yet what pieces they can
-		// resolve
+		// pieces returns all piece indices this worker can resolve
 		pieces() []uint64
 
-		// worker returns the underlying worker, chimera workers return nil
-		// since it's comprised of multiple workers
+		// worker returns the underlying worker
 		worker() *worker
 	}
 
@@ -47,6 +42,12 @@ type (
 		// cached meaning it will only be calculated the first time the
 		// distribution is requested after the chimera worker was finalized.
 		cachedDistribution *skymodules.Distribution
+
+		// remaining keeps track of how much "chance" is remaining until the
+		// chimeraworker is comprised of enough to workers to be able to resolve
+		// a piece. This is a helper field that avoids calculating
+		// 1-SUM(weights) over and over again
+		remaining float64
 
 		distributions []*skymodules.Distribution
 		weights       []float64
@@ -96,21 +97,13 @@ func (w workerArray) Split() (resolved, unresolved []*individualWorker) {
 
 // NewChimeraWorker returns a new chimera worker object.
 func NewChimeraWorker() *chimeraWorker {
-	return &chimeraWorker{
-		distributions: make([]*skymodules.Distribution, 0),
-		weights:       make([]float64, 0),
-		workers:       make([]*worker, 0),
-	}
+	return &chimeraWorker{remaining: 1}
 }
 
 // addWorker adds the given worker to the chimera worker.
-func (cw *chimeraWorker) addWorker(w *individualWorker) (remainder *individualWorker) {
+func (cw *chimeraWorker) addWorker(w *individualWorker) *individualWorker {
 	// calculate the remaining chance this chimera worker needs to be complete
-	remaining := float64(1)
-	for _, weight := range cw.weights {
-		remaining -= weight
-	}
-	if remaining == 0 {
+	if cw.remaining == 0 {
 		return w
 	}
 
@@ -118,15 +111,19 @@ func (cw *chimeraWorker) addWorker(w *individualWorker) (remainder *individualWo
 	// chimera worker, in that case we have to split the worker in a part we
 	// want to add, and a remainder we'll use to build the next chimera with
 	toAdd := w
-	if w.resolveChance > remaining {
-		toAdd, remainder = w.split(remaining)
+	var remainder *individualWorker
+	if w.resolveChance > cw.remaining {
+		toAdd, remainder = w.split(cw.remaining)
 	}
+
+	// update the remaining chance
+	cw.remaining -= toAdd.resolveChance
 
 	// add the worker to the chimera
 	cw.distributions = append(cw.distributions, toAdd.staticReadDistribution)
 	cw.weights = append(cw.weights, toAdd.resolveChance)
 	cw.workers = append(cw.workers, toAdd.staticWorker)
-	return
+	return remainder
 }
 
 // cost implements the downloadWorker interface.
@@ -145,13 +142,14 @@ func (cw *chimeraWorker) cost(length uint64) types.Currency {
 
 // distribution implements the downloadWorker interface.
 func (cw *chimeraWorker) distribution() *skymodules.Distribution {
-	if cw.remaining() != 0 {
+	if cw.remaining != 0 {
 		build.Critical("developer error, chimera is not complete")
+		return nil
 	}
 
-	if cw.cachedDistribution == nil {
-		dt := skymodules.NewDistributionTrackerStandard()
-		cw.cachedDistribution = dt.Distribution(0)
+	if cw.cachedDistribution == nil && len(cw.distributions) > 0 {
+		halfLife := cw.distributions[0].HalfLife()
+		cw.cachedDistribution = skymodules.NewDistribution(halfLife)
 		for i, distribution := range cw.distributions {
 			cw.cachedDistribution.MergeWith(distribution, cw.weights[i])
 		}
@@ -159,22 +157,14 @@ func (cw *chimeraWorker) distribution() *skymodules.Distribution {
 	return cw.cachedDistribution
 }
 
-// pieces implements the downloadWorker interface.
+// pieces implements the downloadWorker interface, chimera workers return nil
+// since we don't know yet what pieces they can resolve
 func (cw *chimeraWorker) pieces() []uint64 {
 	return nil
 }
 
-// remaining returns the remaining chance this chimera worker needs to be
-// complete and to have a 100% chance of resolving a piece
-func (cw *chimeraWorker) remaining() float64 {
-	remaining := float64(1)
-	for _, weight := range cw.weights {
-		remaining -= weight
-	}
-	return remaining
-}
-
-// worker implements the downloadWorker interface.
+// worker implements the downloadWorker interface, chimera workers return nil
+// since it's comprised of multiple workers
 func (cw *chimeraWorker) worker() *worker {
 	return nil
 }
@@ -205,7 +195,7 @@ func (iw *individualWorker) distribution() *skymodules.Distribution {
 
 // isLaunched returns true when this workers has been launched.
 func (iw *individualWorker) isLaunched() bool {
-	return iw.launchedAt != (time.Time{})
+	return !iw.launchedAt.IsZero()
 }
 
 // pieces implements the downloadWorker interface.

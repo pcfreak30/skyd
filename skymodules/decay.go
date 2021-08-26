@@ -54,7 +54,7 @@ func NewDecay(halfLife time.Duration) *GenericDecay {
 	}
 }
 
-// Clone returns a clone of the generic decay
+// Clone returns a clone of the decay
 func (d *GenericDecay) Clone() *GenericDecay {
 	return &GenericDecay{
 		staticHalfLife:  d.staticHalfLife,

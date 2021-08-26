@@ -711,7 +711,7 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	workers = workers[:numRegistryWorkers]
 	// If there are no workers remaining, fail early.
 	if len(workers) < MinUpdateRegistrySuccesses {
-		return errors.AddContext(skymodules.ErrNotEnoughWorkersInWorkerPool, "cannot performa UpdateRegistry")
+		return errors.AddContext(skymodules.ErrNotEnoughWorkersInWorkerPool, "cannot perform UpdateRegistry")
 	}
 
 	workersLeft := len(workers)
