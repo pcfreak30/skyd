@@ -580,9 +580,9 @@ func testTUSUploaderConcat(t *testing.T, r *siatest.TestNode) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	var urlFull string
-	var err error
 	go func() {
 		defer wg.Done()
+		var err error
 		urlFull, err = upload(modules.SectorSize)
 		if err != nil {
 			t.Error(err)
@@ -598,6 +598,7 @@ func testTUSUploaderConcat(t *testing.T, r *siatest.TestNode) {
 	var urlPartial string
 	go func() {
 		defer wg.Done()
+		var err error
 		urlPartial, err = upload(1)
 		if err != nil {
 			t.Error(err)
