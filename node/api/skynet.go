@@ -580,6 +580,9 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// Set the common Header fields
 	//
 	// Set the Skylink response header
+	if !streamer.Skylink().IsSkylinkV1() {
+		build.Critical("skylink attached in skynet-skylink header is not v1")
+	}
 	w.Header().Set(SkynetSkylinkHeader, streamer.Skylink().String())
 	w.Header().Set(SkynetRequestedSkylinkHeader, params.skylink.String())
 
@@ -1524,6 +1527,9 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 	}()
 
 	// Set the Skylink response header
+	if !resolvedLink.IsSkylinkV1() {
+		build.Critical("skylink attached in skynet-skylink header is not v1")
+	}
 	w.Header().Set(SkynetSkylinkHeader, resolvedLink.String())
 	w.Header().Set(SkynetRequestedSkylinkHeader, skylink.String())
 
