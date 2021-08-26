@@ -50,12 +50,9 @@ func NewChimeraWorker() *chimeraWorker {
 }
 
 // addWorker adds the given worker to the chimera worker.
-func (cw *chimeraWorker) addWorker(w *individualWorker) (remainder *individualWorker) {
+func (cw *chimeraWorker) addWorker(w *individualWorker) *individualWorker {
 	// calculate the remaining chance this chimera worker needs to be complete
-	remaining := float64(1)
-	for _, weight := range cw.weights {
-		remaining -= weight
-	}
+	remaining := cw.remaining()
 	if remaining == 0 {
 		return w
 	}
@@ -64,6 +61,7 @@ func (cw *chimeraWorker) addWorker(w *individualWorker) (remainder *individualWo
 	// chimera worker, in that case we have to split the worker in a part we
 	// want to add, and a remainder we'll use to build the next chimera with
 	toAdd := w
+	var remainder *individualWorker
 	if w.staticResolveChance > remaining {
 		toAdd, remainder = w.split(remaining)
 	}
@@ -72,7 +70,7 @@ func (cw *chimeraWorker) addWorker(w *individualWorker) (remainder *individualWo
 	cw.distributions = append(cw.distributions, toAdd.staticReadDistribution)
 	cw.weights = append(cw.weights, toAdd.staticResolveChance)
 	cw.workers = append(cw.workers, toAdd.staticWorker)
-	return
+	return remainder
 }
 
 // cost implements the downloadWorker interface.
@@ -93,9 +91,10 @@ func (cw *chimeraWorker) cost(length uint64) types.Currency {
 func (cw *chimeraWorker) distribution() *skymodules.Distribution {
 	if cw.remaining() != 0 {
 		build.Critical("developer error, chimera is not complete")
+		return nil
 	}
 
-	if cw.cachedDistribution == nil {
+	if cw.cachedDistribution == nil && len(cw.distributions) > 0 {
 		halfLife := cw.distributions[0].HalfLife()
 		cw.cachedDistribution = skymodules.NewDistribution(halfLife)
 		for i, distribution := range cw.distributions {
@@ -151,7 +150,7 @@ func (iw *individualWorker) distribution() *skymodules.Distribution {
 
 // isLaunched returns true when this workers has been launched.
 func (iw *individualWorker) isLaunched() bool {
-	return iw.staticLaunchedAt != (time.Time{})
+	return !iw.staticLaunchedAt.IsZero()
 }
 
 // pieces implements the downloadWorker interface.

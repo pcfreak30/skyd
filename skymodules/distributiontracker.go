@@ -179,7 +179,7 @@ func indexForDuration(duration time.Duration) (int, float64) {
 	return distributionTrackerTotalBuckets - 1, 1
 }
 
-// addDecay will decay the distribution.
+// addDecay will decay the data in the distribution.
 func (d *Distribution) addDecay() {
 	d.Decay(func(decay float64) {
 		for i := 0; i < len(d.timings); i++ {
@@ -362,21 +362,23 @@ func (d *Distribution) Shift(dur time.Duration) {
 		return
 	}
 
-	// Determine the index of the bucket for given duration, we want to nullify
-	// all buckets up until that index.
-	index, fraction := indexForDuration(dur)
-	for i := 0; i < index; i++ {
-		d.timings[i] = 0
-	}
-
 	// Get the value at index
+	index, fraction := indexForDuration(dur)
 	value := d.timings[index]
 
+	// Calculate the fraction we want to keep and update the bucket
 	keep := (1 - fraction) * value
+	d.timings[index] = keep
+
+	// If we're at index 0 we are done because there's no buckets preceding it.
+	if index == 0 {
+		return
+	}
+
+	// Otherwise we calculate the remainder and smear it over all buckets
+	// up until we reach index
 	remainder := fraction * value
 	smear := remainder / float64(index)
-
-	d.timings[index] = keep
 	for i := 0; i < index; i++ {
 		d.timings[i] = smear
 	}
