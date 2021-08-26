@@ -5,8 +5,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -54,6 +56,9 @@ func TestSkynetTUSUploader(t *testing.T) {
 	})
 	t.Run("Options", func(t *testing.T) {
 		testOptionsHandler(t, tg.Renters()[0])
+	})
+	t.Run("Concat", func(t *testing.T) {
+		testTUSUploaderConcat(t, tg.Renters()[0])
 	})
 	t.Run("TooLarge", func(t *testing.T) {
 		testTUSUploaderTooLarge(t, tg.Renters()[0])
@@ -483,5 +488,175 @@ func testTUSUploaderConnectionDropped(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if !bytes.Equal(uploadedData, downloadedData) {
 		t.Fatal("data doesn't match")
+	}
+}
+
+// testTUSUploaderConcat tests the concatenation capabilities of tus uploads.
+func testTUSUploaderConcat(t *testing.T, r *siatest.TestNode) {
+	tusEndpoint := "/skynet/tus"
+
+	// request is a helper function to send a http request, check for an
+	// error and return the response header.
+	request := func(req *http.Request) (http.Header, error) {
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode <= 200 || resp.StatusCode > 299 {
+			return nil, fmt.Errorf("error status code: %v", resp.StatusCode)
+		}
+		return resp.Header, nil
+	}
+
+	// upload is a helper function to create a new upload of a certain size.
+	upload := func(size uint64) (string, error) {
+		req, err := r.NewRequest("POST", tusEndpoint, bytes.NewReader(nil))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Tus-Resumable", "1.0.0")
+		req.Header.Set("SkynetMaxUploadSize", fmt.Sprint(10*modules.SectorSize))
+		req.Header.Set("Upload-Length", fmt.Sprint(size))
+		req.Header.Set("Upload-Concat", "partial")
+
+		h, err := request(req)
+		return h.Get("Location"), err
+	}
+
+	// path is a helper function to upload data of a certain length at a
+	// specific offset to an upload.
+	patch := func(uploadURL string, data []byte, offset, length int) error {
+		req, err := http.NewRequest("PATCH", uploadURL, bytes.NewReader(data))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Tus-Resumable", "1.0.0")
+		req.Header.Set("Upload-Offset", fmt.Sprint(offset))
+		req.Header.Set("Content-Type", "application/offset+octet-stream")
+
+		_, err = request(req)
+		return err
+	}
+
+	// concat is a helper function to concatenate 2 uploads by their upload
+	// urls.
+	concat := func(urlFileA, urlFileB string) (string, error) {
+		req, err := r.NewRequest("POST", tusEndpoint, bytes.NewReader(nil))
+		if err != nil {
+			t.Fatal(err)
+		}
+		urlA, err := url.Parse(urlFileA)
+		if err != nil {
+			t.Fatal(err)
+		}
+		urlB, err := url.Parse(urlFileB)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Tus-Resumable", "1.0.0")
+		req.Header.Set("Upload-Concat", fmt.Sprintf("final;%s %s", urlA.Path, urlB.Path))
+		req.Header.Set("SkynetMaxUploadSize", fmt.Sprint(10*modules.SectorSize))
+
+		h, err := request(req)
+		return h.Get("Location"), err
+	}
+
+	// skylink is a helper function to get a skylink from an upload url.
+	skylink := func(urlFile string) (string, error) {
+		c, err := r.SkynetTUSClient(int64(modules.SectorSize))
+		if err != nil {
+			return "", err
+		}
+		return client.SkylinkFromTUSURL(c, urlFile)
+	}
+
+	// Prepare the data.
+	fullData := fastrand.Bytes(int(modules.SectorSize))
+	partialData := fastrand.Bytes(1)
+
+	// Upload 1 - full sector
+	var wg sync.WaitGroup
+	wg.Add(1)
+	var urlFull string
+	var err error
+	go func() {
+		defer wg.Done()
+		urlFull, err = upload(modules.SectorSize)
+		if err != nil {
+			t.Error(err)
+		}
+		err = patch(urlFull, fullData, 0, len(fullData))
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	// Upload 2 - partial sector
+	wg.Add(1)
+	var urlPartial string
+	go func() {
+		defer wg.Done()
+		urlPartial, err = upload(1)
+		if err != nil {
+			t.Error(err)
+		}
+		err = patch(urlPartial, partialData, 0, len(partialData))
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+	wg.Wait()
+
+	// Skip remaining test if we already failed.
+	if t.Failed() {
+		t.SkipNow()
+	}
+
+	// Concat them.
+	urlConcat, err := concat(urlFull, urlPartial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sl, err := skylink(urlConcat)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download the skylink.
+	downloaded, err := r.SkynetSkylinkGet(sl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := append(fullData, partialData...)
+	if !bytes.Equal(downloaded, expected) {
+		t.Fatal("data mismatch", len(downloaded), len(expected))
+	}
+
+	// Concat them the wrong way round. This should not work.
+	urlConcat, err = concat(urlPartial, urlFull)
+	if err == nil {
+		t.Fatal("shouldn't work")
+	}
+
+	// Concat only the small file. This should work.
+	urlConcat, err = concat(urlPartial, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sl, err = skylink(urlConcat)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download the skylink.
+	downloaded, err = r.SkynetSkylinkGet(sl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected = partialData
+	if !bytes.Equal(downloaded, expected) {
+		t.Fatal("data mismatch", len(downloaded), len(expected))
 	}
 }

@@ -93,6 +93,10 @@ func (r *Renter) SkynetTUSUploader() skymodules.SkynetTUSDataStore {
 	return r.staticSkynetTUSUploader
 }
 
+func (stu *skynetTUSUploader) AsConcatableUpload(upload handler.Upload) handler.ConcatableUpload {
+	return upload.(*skynetTUSUpload)
+}
+
 // NewUpload creates a new upload from fileinfo.
 func (stu *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileInfo) (handler.Upload, error) {
 	stu.mu.Lock()
@@ -293,9 +297,11 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 		if err != nil {
 			return 0, err
 		}
-		// If it is a small file we are done.
+		// If it is a small file we are done. Unless it's a partial
+		// upload. In that case we still upload it the same way as a
+		// large upload to receive a fanout.
 		n = int64(len(buf))
-		if smallFile {
+		if smallFile && !u.fi.IsPartial {
 			u.fi.Offset += n
 			return n, nil
 		}
@@ -309,7 +315,7 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 	}
 	// If we get to this point with a small file, something is wrong.
 	// Theoretically this is not possible but return an error for extra safety.
-	if u.isSmall {
+	if u.isSmall && !u.fi.IsPartial {
 		return 0, errors.New("can't upload another chunk to a small file upload")
 	}
 
@@ -407,7 +413,7 @@ func (u *skynetTUSUpload) GetReader(ctx context.Context) (io.Reader, error) {
 }
 
 // finishUploadLarge handles finishing up a large upload.
-func (u *skynetTUSUpload) finishUploadLarge(ctx context.Context) (skylink skymodules.Skylink, err error) {
+func (u *skynetTUSUpload) finishUploadLarge(ctx context.Context, masterKey crypto.CipherKey, ec skymodules.ErasureCoder) (skylink skymodules.Skylink, err error) {
 	// Finish metadata and check its validity.
 	r := u.staticUploader.staticRenter
 	sup := u.staticSUP
@@ -421,12 +427,9 @@ func (u *skynetTUSUpload) finishUploadLarge(ctx context.Context) (skylink skymod
 		return skymodules.Skylink{}, errors.AddContext(err, "metadata is invalid")
 	}
 
-	// Get fanout.
-	fanout := u.fanout
-
 	// Convert the new siafile we just uploaded into a skyfile using the
 	// convert function.
-	return r.managedCreateSkylinkFromFileNode(ctx, sup, sm, u.fileNode, fanout)
+	return r.managedCreateSkylink(ctx, sup, sm, u.fanout, uint64(u.fi.Size), masterKey, ec)
 }
 
 // finishUploadSmall handles finishing up a small upload.
@@ -473,7 +476,7 @@ func (u *skynetTUSUpload) FinishUpload(ctx context.Context) (err error) {
 	if u.isSmall || u.fi.Size == 0 {
 		skylink, err = u.finishUploadSmall(ctx)
 	} else {
-		skylink, err = u.finishUploadLarge(ctx)
+		skylink, err = u.finishUploadLarge(ctx, u.fileNode.MasterKey(), u.fileNode.ErasureCode())
 	}
 	if err != nil {
 		return errors.AddContext(err, "failed to finish upload")
@@ -542,6 +545,52 @@ func TUSPreUploadCreateCallback(hook handler.HookEvent) error {
 	if hook.Upload.Size > maxSize {
 		err = fmt.Errorf("upload exceeds maximum size: %v > %v", hook.Upload.Size, maxSize)
 		return handler.NewHTTPError(err, http.StatusRequestEntityTooLarge)
+	}
+	return nil
+}
+
+func (u *skynetTUSUpload) ConcatUploads(ctx context.Context, partialUploads []handler.Upload) error {
+	// Concatenate the uploads by combining their fanouts. Concatenated
+	// uploads may never consist of small uploads except for the last
+	// upload.
+	sup := partialUploads[0].(*skynetTUSUpload).staticSUP
+	ec := partialUploads[0].(*skynetTUSUpload).fileNode.ErasureCode()
+	masterKey := partialUploads[0].(*skynetTUSUpload).fileNode.MasterKey()
+	for i := range partialUploads {
+		pu := partialUploads[i].(*skynetTUSUpload)
+		if i < len(partialUploads)-1 && pu.isSmall {
+			return errors.New("only last upload is allowed to be small")
+		}
+		if pu.fileNode.ErasureCode().Identifier() != ec.Identifier() {
+			return errors.New("all partial uploads need to use the same erasure coding")
+		}
+		if pu.fileNode.MasterKey().Type() != masterKey.Type() {
+			return errors.New("all masterkeys need to have the same type")
+		}
+		if !bytes.Equal(pu.fileNode.MasterKey().Key(), masterKey.Key()) {
+			return errors.New("all masterkeys need to be the same")
+		}
+		u.fanout = append(u.fanout, pu.fanout...)
+	}
+	u.staticSUP = sup
+	skylink, err := u.finishUploadLarge(ctx, masterKey, ec)
+	if err != nil {
+		return err
+	}
+
+	// Set the skylink in the metadata.
+	u.sl = skylink
+	u.fi.MetaData["Skylink"] = skylink.String()
+
+	// Associate all partial upload siafiles with this skylink.
+	// TODO: Once we have the ability to upload without siafiles, we should
+	// create a single siafile here and associate it with the skylink.
+	for i := range partialUploads {
+		pu := partialUploads[i].(*skynetTUSUpload)
+		err = pu.fileNode.AddSkylink(skylink)
+		if err != nil {
+			return errors.AddContext(err, "failed to add skylink to partial uploads")
+		}
 	}
 	return nil
 }
