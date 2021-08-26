@@ -160,6 +160,9 @@ func (api *API) buildHTTPRoutes() {
 		// uploading a file with a known size in chunks.
 		storeComposer.UseCore(sds)
 
+		// Enable locking the upload.
+		storeComposer.UseLocker(sds)
+
 		// Check if the maxsize can be read from the environment.  Otherwise
 		// it's unlimited.
 		maxSize, ok := build.TUSMaxSize()

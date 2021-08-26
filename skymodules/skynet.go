@@ -260,6 +260,7 @@ type (
 	// the renter implements for skynet.
 	SkynetTUSDataStore interface {
 		handler.DataStore
+		handler.Locker
 
 		// Skylink returns the Skylink for an upload with a given ID.  If the
 		// upload can't be found or isn't finished, "false" will be returned
