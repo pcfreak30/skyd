@@ -5525,6 +5525,7 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The skynet-skylink header should report the v1 skylink.
 	if sl := mdH.Get(api.SkynetSkylinkHeader); sl != skylink.String() {
 		t.Fatalf("wrong skylink %v != %v", sl, skylink.String())
 	}
