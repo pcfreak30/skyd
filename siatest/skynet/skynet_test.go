@@ -183,6 +183,9 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	if skylink != h.Get(api.SkynetSkylinkHeader) {
 		t.Fatal("skylink mismatch")
 	}
+	if skylink != h.Get(api.SkynetRequestedSkylinkHeader) {
+		t.Fatal("skylink mismatch")
+	}
 
 	// Fetch the links metadata and compare it. Should match.
 	h2, metadata2, err := r.SkynetMetadataGet(skylink)
@@ -195,6 +198,9 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("metadata doesn't match")
 	}
 	if skylink != h2.Get(api.SkynetSkylinkHeader) {
+		t.Fatal("skylink mismatch")
+	}
+	if skylink != h2.Get(api.SkynetRequestedSkylinkHeader) {
 		t.Fatal("skylink mismatch")
 	}
 
@@ -436,6 +442,9 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Unexpected metadata")
 	}
 	if emptySkylink != h3.Get(api.SkynetSkylinkHeader) {
+		t.Fatal("skylink mismatch")
+	}
+	if emptySkylink != h2.Get(api.SkynetRequestedSkylinkHeader) {
 		t.Fatal("skylink mismatch")
 	}
 
@@ -5511,6 +5520,19 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("data doesn't match")
 	}
 
+	// Fetch the metadata and confirm the headers.
+	mdH, _, err := r.SkynetMetadataGet(recursiveLink.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sl := mdH.Get(api.SkynetSkylinkHeader); sl != skylink.String() {
+		t.Fatalf("wrong skylink %v != %v", sl, skylink.String())
+	}
+	// The skynet-requested-skylink should report the v2 skylink.
+	if sl := mdH.Get(api.SkynetRequestedSkylinkHeader); sl != recursiveLink.String() {
+		t.Fatalf("wrong skylink %v != %v", sl, recursiveLink.String())
+	}
+
 	// Fetch the header.
 	_, h, err := r.SkynetSkylinkHead(recursiveLink.String())
 	if err != nil {
@@ -5519,6 +5541,10 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 	// The skynet-skylink header should report the v1 skylink.
 	if sl := h.Get(api.SkynetSkylinkHeader); sl != skylink.String() {
 		t.Fatalf("wrong skylink %v != %v", sl, skylink.String())
+	}
+	// The skynet-requested-skylink should report the v2 skylink.
+	if sl := h.Get(api.SkynetRequestedSkylinkHeader); sl != recursiveLink.String() {
+		t.Fatalf("wrong skylink %v != %v", sl, recursiveLink.String())
 	}
 	// It should contain a valid proof.
 	var proof []api.RegistryHandlerGET
