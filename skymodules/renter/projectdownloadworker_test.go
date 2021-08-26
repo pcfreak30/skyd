@@ -103,7 +103,7 @@ func TestChimeraWorker(t *testing.T) {
 	if !consideredEqual(remainder.staticResolveChance, 0.25) {
 		t.Fatal("bad")
 	}
-	if !consideredEqual(cw.remaining, 0) {
+	if cw.remaining != 0 {
 		t.Fatal("bad")
 	}
 
@@ -113,18 +113,14 @@ func TestChimeraWorker(t *testing.T) {
 
 	// check the distribution's chance of resolving after 100ms, due to the
 	// large weight of the 3rd worker that has a distribution with datapoints
-	// over a second, this should be less than 50%
+	// over a second, this should be over than 50%
 	distribution := cw.distribution()
 	if distribution.ChanceAfter(100*time.Millisecond) > .5 {
 		t.Fatal("bad")
 	}
 
 	// check that the chimera worker implements the download worker interface
-	var i interface{} = cw
-	_, ok := i.(downloadWorker)
-	if !ok {
-		t.Fatal("bad")
-	}
+	var _ downloadWorker = (*individualWorker)(nil)
 }
 
 // TestIndividualWorker runs a series of unit tests that probe the methods on

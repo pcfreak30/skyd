@@ -19,18 +19,13 @@ type (
 
 		// distribution returns the worker's read distribution, for an already
 		// launched worker the distribution will have been shifted by the amount
-		// of time since it was launched. If the worker has already been
-		// launched, its distribution will have been shifted by the time since
-		// it was launched.
+		// of time since it was launched.
 		distribution() *skymodules.Distribution
 
-		// pieces returns all piece indices this worker can resolve, chimera
-		// workers return nil since we don't know yet what pieces they can
-		// resolve
+		// pieces returns all piece indices this worker can resolve
 		pieces() []uint64
 
-		// worker returns the underlying worker, chimera workers return nil
-		// since it's comprised of multiple workers
+		// worker returns the underlying worker
 		worker() *worker
 	}
 
@@ -133,12 +128,14 @@ func (cw *chimeraWorker) distribution() *skymodules.Distribution {
 	return cw.cachedDistribution
 }
 
-// pieces implements the downloadWorker interface.
+// pieces implements the downloadWorker interface, chimera workers return nil
+// since we don't know yet what pieces they can resolve
 func (cw *chimeraWorker) pieces() []uint64 {
 	return nil
 }
 
-// worker implements the downloadWorker interface.
+// worker implements the downloadWorker interface, chimera workers return nil
+// since it's comprised of multiple workers
 func (cw *chimeraWorker) worker() *worker {
 	return nil
 }
