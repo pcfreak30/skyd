@@ -9,6 +9,31 @@ import (
 )
 
 type (
+	// downloadWorker is an interface implemented by both the individual and
+	// chimera workers that represents a worker that can be used for downloads.
+	downloadWorker interface {
+		// cost returns the expected job cost for downloading a piece of data
+		// with given length from the worker. If the worker has already been
+		// launched, its cost will be zero.
+		cost(length uint64) types.Currency
+
+		// distribution returns the worker's read distribution, for an already
+		// launched worker the distribution will have been shifted by the amount
+		// of time since it was launched. If the worker has already been
+		// launched, its distribution will have been shifted by the time since
+		// it was launched.
+		distribution() *skymodules.Distribution
+
+		// pieces returns all piece indices this worker can resolve, chimera
+		// workers return nil since we don't know yet what pieces they can
+		// resolve
+		pieces() []uint64
+
+		// worker returns the underlying worker, chimera workers return nil
+		// since it's comprised of multiple workers
+		worker() *worker
+	}
+
 	// chimeraWorker is a worker that's built from unresolved workers until the
 	// chance it has a piece is exactly 1. At that point we can treat a chimera
 	// worker exactly the same as a resolved worker in the download algorithm
