@@ -24,7 +24,7 @@ func TestChimeraWorker(t *testing.T) {
 	}
 
 	// create a chimera and assert its initial state
-	cw := &chimeraWorker{}
+	cw := NewChimeraWorker()
 	if !cw.cost(randLength).IsZero() {
 		t.Fatal("bad")
 	}
@@ -32,6 +32,9 @@ func TestChimeraWorker(t *testing.T) {
 		t.Fatal("bad")
 	}
 	if cw.pieces() != nil {
+		t.Fatal("bad")
+	}
+	if cw.remaining != 1 {
 		t.Fatal("bad")
 	}
 
@@ -53,7 +56,7 @@ func TestChimeraWorker(t *testing.T) {
 	if remainder != nil {
 		t.Fatal("bad")
 	}
-	if !consideredEqual(cw.remaining(), 0.8) {
+	if !consideredEqual(cw.remaining, 0.8) {
 		t.Fatal("bad")
 	}
 
@@ -75,8 +78,8 @@ func TestChimeraWorker(t *testing.T) {
 	if remainder != nil {
 		t.Fatal("bad")
 	}
-	if !consideredEqual(cw.remaining(), 0.6) {
-		t.Fatal("bad", cw.remaining())
+	if !consideredEqual(cw.remaining, 0.6) {
+		t.Fatal("bad", cw.remaining)
 	}
 
 	// add a third individual worker w/distribution that has data points >1s
@@ -100,7 +103,7 @@ func TestChimeraWorker(t *testing.T) {
 	if !consideredEqual(remainder.staticResolveChance, 0.25) {
 		t.Fatal("bad")
 	}
-	if !consideredEqual(cw.remaining(), 0) {
+	if !consideredEqual(cw.remaining, 0) {
 		t.Fatal("bad")
 	}
 
@@ -113,6 +116,13 @@ func TestChimeraWorker(t *testing.T) {
 	// over a second, this should be less than 50%
 	distribution := cw.distribution()
 	if distribution.ChanceAfter(100*time.Millisecond) > .5 {
+		t.Fatal("bad")
+	}
+
+	// check that the chimera worker implements the download worker interface
+	var i interface{} = cw
+	_, ok := i.(downloadWorker)
+	if !ok {
 		t.Fatal("bad")
 	}
 }
