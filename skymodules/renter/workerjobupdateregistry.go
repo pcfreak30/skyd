@@ -301,6 +301,41 @@ func (w *worker) UpdateRegistry(ctx context.Context, spk types.SiaPublicKey, rv 
 	return resp.staticErr
 }
 
+// callLaunchUpdateRegistry launches an UpdateRegistry job and conducts
+// necessary checks like price gouging and version verification. Returns true if
+// the job was launched successfully and false otherwise.
+func (w *worker) callLaunchUpdateRegistry(span opentracing.Span, spk types.SiaPublicKey, srv modules.SignedRegistryValue, responseChan chan *jobUpdateRegistryResponse) bool {
+	cache := w.staticCache()
+	if build.VersionCmp(cache.staticHostVersion, minRegistryVersion) < 0 {
+		return false
+	}
+	r := w.staticRenter
+
+	// Skip !goodForUpload workers.
+	if !cache.staticContractUtility.GoodForUpload {
+		return false
+	}
+
+	// check for price gouging
+	// TODO: use upload gouging for some basic protection. Should be
+	// replaced as part of the gouging overhaul.
+	host, ok, err := r.staticHostDB.Host(w.staticHostPubKey)
+	if !ok || err != nil {
+		return false
+	}
+	err = checkUploadGouging(cache.staticRenterAllowance, host.HostExternalSettings)
+	if err != nil {
+		r.staticLog.Debugf("price gouging detected in worker %v, err: %v\n", w.staticHostPubKeyStr, err)
+		return false
+	}
+
+	// Create the job. We purposefully use the renter's ctx here to make
+	// sure the jobs can finish in the background instead of being killed
+	// when the timeout channel is closed.
+	jrr := w.newJobUpdateRegistry(r.tg.StopCtx(), span, responseChan, spk, srv)
+	return w.staticJobUpdateRegistryQueue.callAdd(jrr)
+}
+
 // updateRegistryUpdateJobExpectedBandwidth is a helper function that returns
 // the expected bandwidth consumption of a UpdateRegistry job. This helper
 // function enables getting at the expected bandwidth without having to

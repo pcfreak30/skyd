@@ -233,6 +233,10 @@ type Renter struct {
 	staticStuckStack    stuckStack
 	staticUploadHeap    uploadHeap
 
+	// Registry repair related fields.
+	ongoingRegistryRepairs   map[modules.RegistryEntryID]struct{}
+	ongoingRegistryRepairsMu sync.Mutex
+
 	// Cache the hosts from the last price estimation result.
 	lastEstimationHosts []skymodules.HostDBEntry
 

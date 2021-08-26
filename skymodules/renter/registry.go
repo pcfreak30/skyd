@@ -172,6 +172,11 @@ func (rrs *readResponseSet) responsesLeft() int {
 // stick to the best. That way we get the fastest response for the best entry
 // even if an update caused a slow worker to be considered best at first.
 func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentracing.Span, startTime time.Time, rrs *readResponseSet, l *persist.Logger) {
+	if err := r.tg.Add(); err != nil {
+		return
+	}
+	defer r.tg.Done()
+
 	responseCtx, responseCancel := context.WithTimeout(ctx, ReadRegistryBackgroundTimeout)
 	defer responseCancel()
 
@@ -515,11 +520,15 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 		return skymodules.RegistryEntry{}, errors.AddContext(skymodules.ErrNotEnoughWorkersInWorkerPool, "cannot perform ReadRegistry")
 	}
 
-	// Add the response set to the stats after this method is done.
 	defer func() {
 		_ = r.tg.Launch(func() {
+			defer backgroundCancel()
+
+			// Add the response set to the stats after this method is done.
 			r.threadedAddResponseSet(r.tg.StopCtx(), span, startTime, responseSet, r.staticLog)
-			backgroundCancel()
+
+			// Handle registry repairs.
+			r.threadedHandleRegistryRepairs(r.tg.StopCtx(), span, responseSet)
 		})
 	}()
 
@@ -797,4 +806,117 @@ func isBetterReadRegistryResponse(resp1, resp2 *jobReadRegistryResponse) bool {
 
 	// Otherwise we return the result
 	return shouldUpdate
+}
+
+// threadedHandleRegistryRepairs waits for all provided read registry programs
+// to finish and updates all workers from responses which either didn't provide
+// the highest revision number, or didn't have the entry at all.
+func (r *Renter) threadedHandleRegistryRepairs(ctx context.Context, parentSpan opentracing.Span, responseSet *readResponseSet) {
+	if err := r.tg.Add(); err != nil {
+		return
+	}
+	defer r.tg.Done()
+
+	span := opentracing.StartSpan("threadedHandleRegistryRepairs", opentracing.ChildOf(parentSpan.Context()))
+	defer span.Finish()
+
+	// Collect all responses.
+	ctx, cancel := context.WithTimeout(ctx, ReadRegistryBackgroundTimeout)
+	defer cancel()
+	resps := responseSet.collect(ctx)
+	if resps == nil {
+		return // nothing to do
+	}
+
+	// Find the best response.
+	var best *jobReadRegistryResponse
+	for _, resp := range resps {
+		if isBetterReadRegistryResponse(best, resp) {
+			best = resp
+		}
+	}
+
+	// If no entry was found we can't do anything.
+	if best == nil || best.staticSignedRegistryValue == nil {
+		return
+	}
+	bestSRV := best.staticSignedRegistryValue
+
+	// Register the update to make sure we don't try again if a value is rapidly
+	// polled before this update is done.
+	rid := modules.DeriveRegistryEntryID(bestSRV.PubKey, bestSRV.Tweak)
+	r.ongoingRegistryRepairsMu.Lock()
+	_, exists := r.ongoingRegistryRepairs[rid]
+	if !exists {
+		r.ongoingRegistryRepairs[rid] = struct{}{}
+	}
+	r.ongoingRegistryRepairsMu.Unlock()
+	if exists {
+		return // ongoing update found
+	}
+
+	// Unregister the update once done.
+	defer func() {
+		r.ongoingRegistryRepairsMu.Lock()
+		delete(r.ongoingRegistryRepairs, rid)
+		r.ongoingRegistryRepairsMu.Unlock()
+	}()
+
+	if true {
+		panic("stopped here")
+	}
+
+	// Filter out the workers that didn't fail and find the highest revision
+	// response.
+	var srv *skymodules.RegistryEntry
+	numSuccesses := 0
+	for _, resp := range resps {
+		if resp.staticErr != nil {
+			continue
+		}
+		resps[numSuccesses] = resp
+		numSuccesses++
+
+		// Check if host knew registry value.
+		if resp.staticSignedRegistryValue == nil {
+			continue
+		}
+		// Otherwise remember the highest success response.
+		if srv == nil || resp.staticSignedRegistryValue.Revision > srv.Revision {
+			srv = resp.staticSignedRegistryValue
+		}
+	}
+
+	// If none reported a value, there is nothing we can do.
+	if srv == nil {
+		return
+	}
+
+	// Otherwise we update all workers, that didn't have the latest revision.
+	numRegistryWorkers := 0
+	staticResponseChan := make(chan *jobUpdateRegistryResponse, len(resps))
+	for _, resp := range resps {
+		// Ignore workers that already had the latest version.
+		if resp.staticSignedRegistryValue != nil && resp.staticSignedRegistryValue.Revision == srv.Revision {
+			continue
+		}
+		if !resp.staticWorker.callLaunchUpdateRegistry(span, bestSRV.PubKey, srv.SignedRegistryValue, staticResponseChan) {
+			// This will filter out any workers that are on cooldown or
+			// otherwise can't participate in the project.
+			continue
+		}
+		numRegistryWorkers++
+	}
+
+	// Wait for all of them to be updated.
+	for i := 0; i < numRegistryWorkers; i++ {
+		select {
+		case <-r.tg.StopChan():
+			return // shutdown
+		case _ = <-staticResponseChan:
+		}
+		// Ignore the response for now. In the future we might want some special
+		// handling here.
+	}
+	return
 }
