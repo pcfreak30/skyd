@@ -4261,8 +4261,11 @@ func TestRegistryHealth(t *testing.T) {
 	}()
 	r := tg.Renters()[0]
 
-	// Get one of the hosts' pubkey.
-	hpk, err := tg.Hosts()[0].HostPublicKey()
+	// Get one of the hosts' pubkey and choose one of the existing hosts to
+	// be stopped later. They can't be the same host.
+	allHosts := tg.Hosts()
+	stoppedHost := allHosts[0]
+	hpk, err := allHosts[1].HostPublicKey()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4321,9 +4324,6 @@ func TestRegistryHealth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Choose one of the existing hosts to be stopped later.
-	stoppedHost := tg.Hosts()[0]
 
 	// Add a new host.
 	_, err = tg.AddNodeN(node.HostTemplate, 1)
