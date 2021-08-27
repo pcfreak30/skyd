@@ -733,6 +733,12 @@ func (tg *TestGroup) StartNode(tn *TestNode) error {
 	if err := fullyConnectNodes(tg.Nodes()); err != nil {
 		return err
 	}
+	// Mine a block before the synchronization check to guarantee that the
+	// restarted node will receive a consensus change with `cc.Synced ==
+	// true`.
+	if err := tg.Miners()[0].MineBlock(); err != nil {
+		return err
+	}
 	return synchronizationCheck(tg.nodes)
 }
 
