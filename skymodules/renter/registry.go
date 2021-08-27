@@ -755,7 +755,8 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 
 	// Check if we ran out of workers.
 	if successfulResponses == 0 {
-		r.staticLog.Print("RegistryUpdate failed with 0 successful responses: ", respErrs, len(workers))
+		r.staticLog.Print("RegistryUpdate failed with 0 successful responses: ", respErrs)
+		fmt.Println("workers total", len(workers))
 		return errors.Compose(err, ErrRegistryUpdateNoSuccessfulUpdates)
 	}
 	if successfulResponses < MinUpdateRegistrySuccesses {
