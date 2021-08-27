@@ -284,20 +284,22 @@ func (j *jobReadRegistry) callExecute() {
 		j.staticSpan.SetTag("success", false)
 		return
 	}
+	var signedValue *modules.SignedRegistryValue
+	if srv != nil {
+		signedValue = &srv.SignedRegistryValue
+	}
 
 	// Check if we have a cached version of the looked up entry. If the new entry
 	// has a higher revision number we update it. If it has a lower one we know that
 	// the host should be punished for losing it or trying to cheat us.
-	if srv != nil {
-		errCheating := w.managedCheckHostCheating(j.staticRegistryEntryID, srv.SignedRegistryValue, true)
-		if errCheating != nil {
-			sendResponse(nil, errCheating)
-			j.staticQueue.callReportFailure(errCheating)
-			span.LogKV("error", errCheating)
-			j.staticSpan.SetTag("success", false)
-			w.staticRegistryCache.Set(j.staticRegistryEntryID, srv.SignedRegistryValue, true) // adjust the cache
-			return
-		}
+	errCheating := w.managedCheckHostCheating(j.staticRegistryEntryID, signedValue, true)
+	if errCheating != nil {
+		sendResponse(nil, errCheating)
+		j.staticQueue.callReportFailure(errCheating)
+		span.LogKV("error", errCheating)
+		j.staticSpan.SetTag("success", false)
+		w.staticRegistryCache.Set(j.staticRegistryEntryID, srv.SignedRegistryValue, true) // adjust the cache
+		return
 	}
 
 	// Success.
