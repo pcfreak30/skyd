@@ -4271,9 +4271,6 @@ func TestRegistryHealth(t *testing.T) {
 	}
 	hpkh := crypto.HashObject(hpk)
 
-	hpkstopped, _ := stoppedHost.HostPublicKey()
-	fmt.Println("stopping", hpkstopped.String())
-
 	// Create an entry that's a primary entry on one host but not the other.
 	sk, pk := crypto.GenerateKeyPair()
 	var dataKey crypto.Hash
@@ -4312,7 +4309,6 @@ func TestRegistryHealth(t *testing.T) {
 	srv := modules.NewRegistryValue(dataKey, hpkh[:], revision, modules.RegistryTypeWithoutPubkey).Sign(sk)
 
 	// Update the registry.
-	fmt.Println("UPDATE")
 	err = r.RegistryUpdateWithEntry(spk, srv)
 	if err != nil {
 		t.Fatal(err)
@@ -4336,7 +4332,6 @@ func TestRegistryHealth(t *testing.T) {
 	}
 
 	// Stop the existing host.
-	fmt.Println("STOP")
 	if err := tg.StopNode(stoppedHost); err != nil {
 		t.Fatal(err)
 	}
@@ -4345,7 +4340,6 @@ func TestRegistryHealth(t *testing.T) {
 	revision++
 	srv.Revision = revision
 	srv = srv.Sign(sk)
-	fmt.Println("UPDATE2")
 	err = r.RegistryUpdateWithEntry(spk, srv)
 	if err != nil {
 		t.Fatal(err)
@@ -4363,7 +4357,6 @@ func TestRegistryHealth(t *testing.T) {
 	}
 
 	// Restart the stopped host.
-	fmt.Println("START")
 	if err := tg.StartNode(stoppedHost); err != nil {
 		t.Fatal(err)
 	}
