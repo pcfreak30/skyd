@@ -444,8 +444,8 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	if emptySkylink != h3.Get(api.SkynetSkylinkHeader) {
 		t.Fatal("skylink mismatch")
 	}
-	if emptySkylink != h2.Get(api.SkynetRequestedSkylinkHeader) {
-		t.Fatal("skylink mismatch")
+	if emptySkylink != h3.Get(api.SkynetRequestedSkylinkHeader) {
+		t.Fatal("skylink mismatch", emptySkylink)
 	}
 
 	// Upload another skyfile, this time ensure that the skyfile is more than
