@@ -757,7 +757,7 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 	ctx = opentracing.ContextWithSpan(ctx, span)
 
 	// Fetch the data
-	data, err := r.managedDownloadByRoot(ctx, root, offset, length, pricePerMS)
+	data, _, err := r.managedDownloadByRoot(ctx, root, offset, length, pricePerMS)
 	if errors.Contains(err, ErrProjectTimedOut) {
 		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
 	}
@@ -841,7 +841,7 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 	}
 
 	// Download the base sector
-	baseSector, err := r.managedDownloadByRoot(ctx, link.MerkleRoot(), offset, fetchSize, pricePerMS)
+	baseSector, _, err := r.managedDownloadByRoot(ctx, link.MerkleRoot(), offset, fetchSize, pricePerMS)
 	return StreamerFromSlice(baseSector), srvs, err
 }
 
@@ -1431,7 +1431,7 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 	}
 
 	// Get base sector.
-	baseSector, err := r.managedDownloadByRoot(ctx, sl.MerkleRoot(), offset, fetchSize, ppms)
+	baseSector, ws, err := r.managedDownloadByRoot(ctx, sl.MerkleRoot(), offset, fetchSize, ppms)
 	if err != nil {
 		return skymodules.SkylinkHealth{}, errors.AddContext(err, "unable to download base sector")
 	}
@@ -1452,7 +1452,7 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 	}
 
 	// Prepare the list of roots to ask the hosts for.
-	roots := []crypto.Hash{sl.MerkleRoot()}
+	var roots []crypto.Hash
 
 	// If the file has a fanout, ask the hosts for the fanout as well.
 	rootIndexToChunkIndex := make(map[int]int)
@@ -1469,8 +1469,7 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 
 		for chunkIndex, chunk := range fanoutChunks {
 			for _, root := range chunk {
-				// -1 to exclude the base sector
-				rootIndexToChunkIndex[len(roots)-1] = chunkIndex
+				rootIndexToChunkIndex[len(roots)] = chunkIndex
 				roots = append(roots, root)
 			}
 		}
@@ -1502,19 +1501,8 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 				continue // ignore
 			}
 
-			// TODO: This is not accurate. There might be a better
-			// solution.
-			var pieces int
-			if numPieces == 0 {
-				// No fanout.
-				pieces = int(SkyfileDefaultBaseChunkRedundancy)
-			} else {
-				// Has fanout.
-				pieces = numPieces
-			}
-
 			// Add job to worker.
-			jhs := worker.newJobHasSector(ctx, responseChan, pieces, batch...)
+			jhs := worker.newJobHasSector(ctx, responseChan, numPieces, batch...)
 			if !worker.staticJobHasSectorQueue.callAdd(jhs) {
 				continue // ignore
 			}
@@ -1548,7 +1536,6 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 				}
 
 				if resp.staticErr != nil {
-					fmt.Println("err", resp.staticErr)
 					continue
 				}
 				// Add the result to the totals.
@@ -1563,8 +1550,18 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 	}
 	wg.Wait()
 
-	// First index is the base sector.
-	baseSectorRedundancy, rootTotals := rootTotals[0], rootTotals[1:]
+	// Wait for the worker state results for the base sector.
+	resps := ws.WaitForResults(ctx)
+	var baseSectorRedundancy uint64
+	for _, resp := range resps {
+		if resp.err != nil {
+			continue
+		}
+		// Check > 0 because base sector only has 1 piece.
+		if len(resp.pieceIndices) > 0 {
+			baseSectorRedundancy++
+		}
+	}
 
 	// Create a slice of good pieces for each chunk. A chunk has a good
 	// piece if a root belonging to the chunk exists >0 times on the

@@ -219,7 +219,7 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 }
 
 // managedDownloadByRoot will fetch data using the merkle root of that data.
-func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, offset, length uint64, pricePerMS types.Currency) ([]byte, error) {
+func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, offset, length uint64, pricePerMS types.Currency) ([]byte, *pcwsWorkerState, error) {
 	// Create a context that dies when the function ends, this will cancel all
 	// of the worker jobs that get created by this function.
 	ctx, cancel := context.WithCancel(ctx)
@@ -239,11 +239,11 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 	ptec := skymodules.NewPassthroughErasureCoder()
 	tpsk, err := crypto.NewSiaKey(crypto.TypePlain, nil)
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to create plain skykey")
+		return nil, nil, errors.AddContext(err, "unable to create plain skykey")
 	}
 	pcws, err := r.newPCWSByRoots(ctx, []crypto.Hash{root}, ptec, tpsk, 0)
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to create the worker set for this skylink")
+		return nil, nil, errors.AddContext(err, "unable to create the worker set for this skylink")
 	}
 
 	// Download the base sector. The base sector contains the metadata, without
@@ -253,18 +253,18 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 	// on the download request, this will fire if it takes too long.
 	respChan, err := pcws.managedDownload(ctx, pricePerMS, offset, length, false, false)
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to start download")
+		return nil, nil, errors.AddContext(err, "unable to start download")
 	}
 	resp := <-respChan
 	if resp.err != nil {
-		return nil, errors.AddContext(resp.err, "base sector download did not succeed")
+		return nil, nil, errors.AddContext(resp.err, "base sector download did not succeed")
 	}
 	baseSector := resp.data
 	if len(baseSector) < skymodules.SkyfileLayoutSize {
-		return nil, errors.New("download did not fetch enough data, layout cannot be decoded")
+		return nil, nil, errors.New("download did not fetch enough data, layout cannot be decoded")
 	}
 
-	return baseSector, nil
+	return baseSector, pcws.managedWorkerState(), nil
 }
 
 // managedSkylinkDataSource will create a streamBufferDataSource for the data
@@ -289,7 +289,7 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, skylink skymodule
 	//
 	// NOTE: we pass in the provided context here, if the user imposed a timeout
 	// on the download request, this will fire if it takes too long.
-	baseSector, err := r.managedDownloadByRoot(ctx, skylink.MerkleRoot(), offset, fetchSize, pricePerMS)
+	baseSector, _, err := r.managedDownloadByRoot(ctx, skylink.MerkleRoot(), offset, fetchSize, pricePerMS)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to download base sector")
 	}

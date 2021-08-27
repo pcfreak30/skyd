@@ -163,6 +163,9 @@ func (api *API) buildHTTPRoutes() {
 		// Enable concatenating uploads.
 		storeComposer.UseConcater(sds)
 
+		// Enable locking the upload.
+		storeComposer.UseLocker(sds)
+
 		// Check if the maxsize can be read from the environment.  Otherwise
 		// it's unlimited.
 		maxSize, ok := build.TUSMaxSize()
