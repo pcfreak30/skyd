@@ -437,7 +437,6 @@ func (r *Renter) managedRegistryEntryHealth(ctx context.Context, rid modules.Reg
 	resps := responseSet.collect(ctx)
 	for _, resp := range resps {
 		if resp.staticErr != nil {
-			fmt.Println("resp2", resp.staticWorker.staticHostPubKeyStr, resp.staticErr)
 			continue
 		}
 		if isBetterReadRegistryResponse(best, resp) {
@@ -749,7 +748,6 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 				return resp.staticErr
 			}
 			respErrs = errors.Compose(respErrs, resp.staticErr)
-			fmt.Println(resp.staticWorker.staticHostPubKeyStr, "resp.staticErr", resp.staticErr)
 			continue
 		}
 
@@ -760,7 +758,6 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	// Check if we ran out of workers.
 	if successfulResponses == 0 {
 		r.staticLog.Print("RegistryUpdate failed with 0 successful responses: ", respErrs)
-		fmt.Println("workers total", len(workers))
 		return errors.Compose(err, ErrRegistryUpdateNoSuccessfulUpdates)
 	}
 	if successfulResponses < MinUpdateRegistrySuccesses {
