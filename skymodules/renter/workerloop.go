@@ -181,7 +181,7 @@ func (w *worker) externLaunchAsyncJob(job workerJob) bool {
 func (w *worker) managedAsyncReady() bool {
 	// A valid price table is required to perform async tasks.
 	if wpt := w.staticPriceTable(); !wpt.staticValid() {
-		fmt.Println("expiry time", wpt.staticExpiryTime, time.Until(wpt.staticExpiryTime))
+		fmt.Println("expiry time", w.staticHostPubKeyStr, time.Until(wpt.staticExpiryTime))
 		w.managedDiscardAsyncJobs(errors.New("price table with host is no longer valid"))
 		return false
 	}
