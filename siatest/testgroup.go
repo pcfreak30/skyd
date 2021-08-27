@@ -561,13 +561,18 @@ func waitForContracts(miner *TestNode, renters map[*TestNode]struct{}, hosts map
 					expectedContracts, contracts)
 			}
 			// Make sure the workerpool contains one worker for each
-			// contract.
+			// contract and has only valid pricetables.
 			rwg, err := renter.RenterWorkersGet()
 			if err != nil {
 				return err
 			}
 			if uint64(rwg.NumWorkers) != contracts {
 				return fmt.Errorf("not enough workers %v != %v", rwg.NumWorkers, contracts)
+			}
+			for _, w := range rwg.Workers {
+				if w.PriceTableStatus.Active {
+					return fmt.Errorf("worker's (%v) pricetable is not active yet", w.HostPubKey.String())
+				}
 			}
 			return nil
 		})
