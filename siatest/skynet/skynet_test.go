@@ -4345,6 +4345,17 @@ func TestRegistryHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Check the health.
+	err = assertHealth(skymodules.RegistryEntryHealth{
+		RevisionNumber:        revision,
+		NumEntries:            uint64(len(tg.Hosts())) - 1,
+		NumBestEntries:        uint64(len(tg.Hosts())) - 1,
+		NumBestPrimaryEntries: 0,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Restart the stopped host.
 	if err := tg.StartNode(stoppedHost); err != nil {
 		t.Fatal(err)
