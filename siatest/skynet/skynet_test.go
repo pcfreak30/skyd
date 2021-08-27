@@ -4271,6 +4271,9 @@ func TestRegistryHealth(t *testing.T) {
 	}
 	hpkh := crypto.HashObject(hpk)
 
+	hpkstopped, _ := stoppedHost.HostPublicKey()
+	fmt.Println("stopping", hpkstopped.String())
+
 	// Create an entry that's a primary entry on one host but not the other.
 	sk, pk := crypto.GenerateKeyPair()
 	var dataKey crypto.Hash
@@ -4357,6 +4360,7 @@ func TestRegistryHealth(t *testing.T) {
 	}
 
 	// Restart the stopped host.
+	fmt.Println("START")
 	if err := tg.StartNode(stoppedHost); err != nil {
 		t.Fatal(err)
 	}

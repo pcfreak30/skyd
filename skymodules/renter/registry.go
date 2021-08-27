@@ -437,7 +437,6 @@ func (r *Renter) managedRegistryEntryHealth(ctx context.Context, rid modules.Reg
 	resps := responseSet.collect(ctx)
 	for _, resp := range resps {
 		if resp.staticErr != nil {
-			fmt.Println("resp2", resp.staticErr)
 			continue
 		}
 		if isBetterReadRegistryResponse(best, resp) {
@@ -749,7 +748,7 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 				return resp.staticErr
 			}
 			respErrs = errors.Compose(respErrs, resp.staticErr)
-			fmt.Println("resp.staticErr", resp.staticErr)
+			fmt.Println(resp.staticWorker.staticHostPubKeyStr, "resp.staticErr", resp.staticErr)
 			continue
 		}
 

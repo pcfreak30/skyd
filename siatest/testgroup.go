@@ -735,7 +735,8 @@ func (tg *TestGroup) StartNode(tn *TestNode) error {
 	}
 	// Mine a block before the synchronization check to guarantee that the
 	// restarted node will receive a consensus change with `cc.Synced ==
-	// true`.
+	// true`. Otherwise some functionality might be disabled on the node.
+	// e.g. a host won't accept EA withdrawals.
 	if err := tg.Miners()[0].MineBlock(); err != nil {
 		return err
 	}
