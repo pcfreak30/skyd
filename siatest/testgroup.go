@@ -765,7 +765,42 @@ func (tg *TestGroup) StopNode(tn *TestNode) error {
 		return errors.New("cannot stop node that's not part of the group")
 	}
 	tg.stopped[tn] = struct{}{}
-	return tn.StopNode()
+
+	// Stop the node.
+	if err := tn.StopNode(); err != nil {
+		return err
+	}
+
+	// If the node wasn't a host we are done.
+	if tn.params.Host == nil && !tn.params.CreateHost {
+		return nil
+	}
+
+	// Get the host's key.
+	hpk, err := tn.HostPublicKey()
+	if err != nil {
+		return err
+	}
+
+	// Wait until no renter got any workers left for the stopped node.
+	return build.Retry(600, 100*time.Millisecond, func() error {
+		// If the node wasn't a host we are done.
+		for _, node := range tg.Nodes() {
+			if node.params.Renter == nil && !node.params.CreateRenter {
+				continue // not a renter
+			}
+			rwg, err := node.RenterWorkersGet()
+			if err != nil {
+				return err
+			}
+			for _, worker := range rwg.Workers {
+				if worker.HostPubKey.Equals(hpk) {
+					return fmt.Errorf("node still has a worker for key %v", hpk.String())
+				}
+			}
+		}
+		return nil
+	})
 }
 
 // Sync makes sure that the test group's nodes are synchronized
