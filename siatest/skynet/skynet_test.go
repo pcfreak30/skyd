@@ -5681,7 +5681,7 @@ func TestSkynetSkylinkHealth(t *testing.T) {
 		}
 		sh, err := r.SkylinkHealthGET(sl)
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 		if sh.BaseSectorRedundancy != baseSectorRedundancy {
 			return fmt.Errorf("wrong base sector redundancy %v != %v", sh.BaseSectorRedundancy, baseSectorRedundancy)
