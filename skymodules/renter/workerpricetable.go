@@ -242,7 +242,7 @@ func (w *worker) staticUpdatePriceTable() {
 		cd := w.managedTrackPriceTableUpdateErr(err)
 
 		if err != nil {
-			fmt.Println("pt update failed", err)
+			fmt.Println(w.staticHostPubKeyStr, "pt update failed", err)
 		}
 
 		// If there was no error, return.
