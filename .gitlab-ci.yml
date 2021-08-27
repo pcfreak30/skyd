@@ -163,7 +163,24 @@ lint:
       - .cache
   script:
     - export GOCACHE=$CI_PROJECT_DIR/.cache/gocache
-    - make test-long pkgs=./siatest/skynet run=TestRegistryHealth count=100 
+    - make vet
+    - make lint
+    - make markdown-spellcheck
+    - make test
+
+#################
+# Build Stage
+#################
+build:
+  stage: lint
+  ## go 1.13 is the minimum accepted version for building Sia.
+  image: nebulouslabs/sia-ci
+  artifacts:
+    name: "Binaries"
+    paths:
+      - $CI_PROJECT_DIR/artifacts
+  script:
+    - ./check-builds.sh
 
 #################
 # Deploy Stage
