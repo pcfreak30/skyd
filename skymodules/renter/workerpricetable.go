@@ -162,7 +162,11 @@ func (w *worker) staticTryForcePriceTableUpdate() {
 // before the current time, and the price table expiry defaults to the zero
 // time.
 func (wpt *workerPriceTable) staticValid() bool {
-	return time.Now().Before(wpt.staticExpiryTime)
+	valid := time.Now().Before(wpt.staticExpiryTime)
+	if !valid {
+		fmt.Println("expiry time", wpt.staticExpiryTime, time.Until(wpt.staticExpiryTime))
+	}
+	return valid
 }
 
 // staticValidFor is a helper that returns true if the price table is valid
