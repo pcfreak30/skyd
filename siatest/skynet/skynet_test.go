@@ -4312,6 +4312,7 @@ func TestRegistryHealth(t *testing.T) {
 	srv := modules.NewRegistryValue(dataKey, hpkh[:], revision, modules.RegistryTypeWithoutPubkey).Sign(sk)
 
 	// Update the registry.
+	fmt.Println("UPDATE")
 	err = r.RegistryUpdateWithEntry(spk, srv)
 	if err != nil {
 		t.Fatal(err)
@@ -4335,6 +4336,7 @@ func TestRegistryHealth(t *testing.T) {
 	}
 
 	// Stop the existing host.
+	fmt.Println("STOP")
 	if err := tg.StopNode(stoppedHost); err != nil {
 		t.Fatal(err)
 	}
@@ -4343,6 +4345,7 @@ func TestRegistryHealth(t *testing.T) {
 	revision++
 	srv.Revision = revision
 	srv = srv.Sign(sk)
+	fmt.Println("UPDATE2")
 	err = r.RegistryUpdateWithEntry(spk, srv)
 	if err != nil {
 		t.Fatal(err)
