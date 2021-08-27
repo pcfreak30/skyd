@@ -745,6 +745,7 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 				return resp.staticErr
 			}
 			respErrs = errors.Compose(respErrs, resp.staticErr)
+			fmt.Println("resp.staticErr", resp.staticErr)
 			continue
 		}
 
