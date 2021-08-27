@@ -4361,23 +4361,8 @@ func TestRegistryHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Reannounce it to make sure its new ports are known.
-	err = stoppedHost.HostAnnouncePost()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = tg.Miners()[0].MineBlock()
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// Use a retry since the node might take a while to start.
 	err = build.Retry(60, time.Second, func() error {
-		// Mine a block for the announcement.
-		err = tg.Miners()[0].MineBlock()
-		if err != nil {
-			t.Fatal(err)
-		}
 		// Force a refresh of the worker pool for testing.
 		_, err = r.RenterWorkersGet()
 		if err != nil {

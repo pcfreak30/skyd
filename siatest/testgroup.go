@@ -560,6 +560,15 @@ func waitForContracts(miner *TestNode, renters map[*TestNode]struct{}, hosts map
 				return fmt.Errorf("renter hasn't formed enough contracts: expected %v got %v",
 					expectedContracts, contracts)
 			}
+			// Make sure the workerpool contains one worker for each
+			// contract.
+			rwg, err := renter.RenterWorkersGet()
+			if err != nil {
+				return err
+			}
+			if uint64(rwg.NumWorkers) != contracts {
+				return fmt.Errorf("not enough workers %v != %v", rwg.NumWorkers, contracts)
+			}
 			return nil
 		})
 		if err != nil {
