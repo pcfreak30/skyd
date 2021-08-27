@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -179,7 +180,8 @@ func (w *worker) externLaunchAsyncJob(job workerJob) bool {
 // worker is ready for async work.
 func (w *worker) managedAsyncReady() bool {
 	// A valid price table is required to perform async tasks.
-	if !w.staticPriceTable().staticValid() {
+	if wpt := w.staticPriceTable(); !wpt.staticValid() {
+		fmt.Println("expiry time", wpt.staticExpiryTime, time.Until(wpt.staticExpiryTime))
 		w.managedDiscardAsyncJobs(errors.New("price table with host is no longer valid"))
 		return false
 	}

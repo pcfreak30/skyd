@@ -162,11 +162,7 @@ func (w *worker) staticTryForcePriceTableUpdate() {
 // before the current time, and the price table expiry defaults to the zero
 // time.
 func (wpt *workerPriceTable) staticValid() bool {
-	valid := time.Now().Before(wpt.staticExpiryTime)
-	if !valid {
-		fmt.Println("expiry time", wpt.staticExpiryTime, time.Until(wpt.staticExpiryTime))
-	}
-	return valid
+	return time.Now().Before(wpt.staticExpiryTime)
 }
 
 // staticValidFor is a helper that returns true if the price table is valid
@@ -244,6 +240,10 @@ func (w *worker) staticUpdatePriceTable() {
 		// reset the cooldown, depending on whether the other maintenance tasks
 		// were completed successfully.
 		cd := w.managedTrackPriceTableUpdateErr(err)
+
+		if err != nil {
+			fmt.Println("pt update failed", err)
+		}
 
 		// If there was no error, return.
 		if err == nil {
