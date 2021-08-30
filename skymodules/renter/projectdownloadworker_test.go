@@ -365,18 +365,9 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 		t.Fatal("bad")
 	}
 
-	// make the 3rd worker able to resolve a piece, should still return nil
-	// because it can't replace an existing worker
+	// make the 3rd worker able to resolve a piece, should now return a cheaper
+	// set because we will have thrown out w2 in favor of w3
 	cw.pieceIndices = append(cw.pieceIndices, 3)
-	cheaperSet = ws.cheaperSetFromCandidate(cw)
-	if cheaperSet != nil {
-		t.Fatal("bad")
-	}
-
-	// make the 1st worker able to resolve the same piece, assert that worker
-	// was swapped, we intentionally use w1 because it is not the most expensive
-	// worker in the set currently, w2 is.
-	iw1.pieceIndices = append(cw.pieceIndices, 3)
 	cheaperSet = ws.cheaperSetFromCandidate(cw)
 	if cheaperSet == nil {
 		t.Fatal("bad")
@@ -384,20 +375,20 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 	if len(cheaperSet.workers) != 2 {
 		t.Fatal("bad")
 	}
-	if cheaperSet.workers[0].worker().staticHostPubKeyStr != "w3" && cheaperSet.workers[1].worker().staticHostPubKeyStr != "w2" {
+	if cheaperSet.workers[0].worker().staticHostPubKeyStr != "w1" && cheaperSet.workers[1].worker().staticHostPubKeyStr != "w3" {
 		t.Fatal("bad")
 	}
 
 	// continue with the cheaper set as working set
 	ws = cheaperSet
 
-	// make the 2nd worker resolve piece '2', and present a candidate worker
-	// that is capable of resolving both piece '2' and '3', to ensure we replace
+	// make the 1nd worker resolve piece '1', and present a candidate worker
+	// that is capable of resolving both piece '1' and '3', to ensure we replace
 	// the most expensive one of the two
-	iw2.pieceIndices = append(iw2.pieceIndices, 2)
+	iw1.pieceIndices = append(iw1.pieceIndices, 1)
 	cw = newTestIndivualWorker(.1, 10*time.Millisecond)
 	cw.worker().staticHostPubKeyStr = "w4"
-	cw.pieceIndices = append(cw.pieceIndices, 2, 3)
+	cw.pieceIndices = append(cw.pieceIndices, 1, 3)
 	cheaperSet = ws.cheaperSetFromCandidate(cw)
 	if cheaperSet == nil {
 		t.Fatal("bad")
@@ -405,8 +396,8 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 	if len(cheaperSet.workers) != 2 {
 		t.Fatal("bad")
 	}
-	if cheaperSet.workers[0].worker().staticHostPubKeyStr != "w3" && cheaperSet.workers[1].worker().staticHostPubKeyStr != "w4" {
-		t.Fatal("bad")
+	if cheaperSet.workers[0].worker().staticHostPubKeyStr != "w4" && cheaperSet.workers[1].worker().staticHostPubKeyStr != "w3" {
+		t.Fatal("bad", cheaperSet.workers[0].worker().staticHostPubKeyStr)
 	}
 
 	// continue with the cheaper set as working set
@@ -416,7 +407,7 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 	// expensive than the workers we have currently
 	cw = newTestIndivualWorker(.1, 10*time.Millisecond)
 	cw.worker().staticHostPubKeyStr = "w4"
-	cw.pieceIndices = append(cw.pieceIndices, 2, 3)
+	cw.pieceIndices = append(cw.pieceIndices, 1, 3)
 
 	pt3 := newDefaultPriceTable()
 	pt3.ReadLengthCost = pt1.ReadLengthCost.Mul64(5)

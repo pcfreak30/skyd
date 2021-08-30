@@ -272,8 +272,8 @@ LOOP:
 		// contribute pieces to the worker set for which we don't already have
 		// another worker
 		for _, piece := range candidate.pieces() {
-			existingWorkerKey := pieces[piece]
-			if existingWorkerKey == expensiveWorkerKey {
+			existingWorkerKey, exists := pieces[piece]
+			if !exists || existingWorkerKey == expensiveWorkerKey {
 				swapIndex = indices[expensiveWorkerKey]
 				break LOOP
 			}
