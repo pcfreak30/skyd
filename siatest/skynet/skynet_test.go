@@ -3323,7 +3323,7 @@ func testSkynetRequestTimeout(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Verify timeout on pin request
-	err = r.SkynetSkylinkPinPostWithTimeout(skylink, pinLUP, 2)
+	err = r.SkynetSkylinkPinPostWithTimeout(skylink, pinLUP, 2*time.Second)
 	if errors.Contains(err, renter.ErrProjectTimedOut) {
 		t.Fatal("Expected pin request to time out")
 	}
