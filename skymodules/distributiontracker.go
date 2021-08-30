@@ -119,7 +119,8 @@ type (
 	}
 )
 
-// DistributionDurationForBucketIndex converts the index of a timing bucket into a timing.
+// DistributionDurationForBucketIndex converts the index of a timing bucket into
+// a timing.
 func DistributionDurationForBucketIndex(index int) time.Duration {
 	if index < 0 || index > DistributionTrackerTotalBuckets-1 {
 		build.Critical("distribution duration index out of bounds:", index)
