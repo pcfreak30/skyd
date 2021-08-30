@@ -449,6 +449,9 @@ func (r *Renter) managedRegistryEntryHealth(ctx context.Context, rid modules.Reg
 	var best *jobReadRegistryResponse
 	resps := responseSet.collect(ctx)
 	for _, resp := range resps {
+		if resp.staticErr != nil {
+			continue
+		}
 		if isBetterReadRegistryResponse(best, resp) {
 			best = resp
 		}

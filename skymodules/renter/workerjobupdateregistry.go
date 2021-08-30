@@ -52,8 +52,9 @@ type (
 
 	// jobUpdateRegistryResponse contains the result of a UpdateRegistry query.
 	jobUpdateRegistryResponse struct {
-		srv       *modules.SignedRegistryValue // only sent on ErrLowerRevNum and ErrSameRevNum
-		staticErr error
+		srv          *modules.SignedRegistryValue // only sent on ErrLowerRevNum and ErrSameRevNum
+		staticErr    error
+		staticWorker *worker
 	}
 )
 
@@ -80,8 +81,9 @@ func (j *jobUpdateRegistry) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
 	errLaunch := w.staticRenter.tg.Launch(func() {
 		response := &jobUpdateRegistryResponse{
-			srv:       nil,
-			staticErr: errors.Extend(err, ErrJobDiscarded),
+			srv:          nil,
+			staticErr:    errors.Extend(err, ErrJobDiscarded),
+			staticWorker: j.staticQueue.staticWorker(),
 		}
 		select {
 		case j.staticResponseChan <- response:
@@ -111,8 +113,9 @@ func (j *jobUpdateRegistry) callExecute() {
 	sendResponse := func(srv *modules.SignedRegistryValue, err error) {
 		errLaunch := w.staticRenter.tg.Launch(func() {
 			response := &jobUpdateRegistryResponse{
-				srv:       srv,
-				staticErr: err,
+				srv:          srv,
+				staticErr:    err,
+				staticWorker: j.staticQueue.staticWorker(),
 			}
 			select {
 			case j.staticResponseChan <- response:
@@ -153,7 +156,7 @@ func (j *jobUpdateRegistry) callExecute() {
 		}
 		// If the entry is valid and the revision is also valid, check if we
 		// have a higher revision number in the cache than the provided one.
-		errCheating := w.managedCheckHostCheating(rid, rv, true)
+		errCheating := w.managedCheckHostCheating(rid, &rv, true)
 		if errCheating != nil {
 			sendResponse(nil, errCheating)
 			j.staticQueue.callReportFailure(errCheating)
