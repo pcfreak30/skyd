@@ -280,7 +280,6 @@ func (ws *workerSet) cheaperSetFromCandidate(candidate downloadWorker) *workerSe
 LOOP:
 	for _, expensiveWorker := range byCostDesc {
 		expensiveWorkerKey := expensiveWorker.worker().staticHostPubKeyStr
-		fmt.Println(expensiveWorkerKey)
 
 		// if the candidate is not cheaper than this worker we can stop looking
 		// to build a cheaper set since the workers are sorted by cost
@@ -639,8 +638,8 @@ func (pdc *projectDownloadChunk) createWorkerSet(allWorkers workerArray, maxOver
 	resolvedWorkers, unresolvedWorkers := allWorkers.Split()
 
 	// verify we have enough workers to complete the download
-	if len(resolvedWorkers)+len(unresolvedWorkers) < minPieces {
-		return nil, errors.Compose(ErrRootNotFound, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v", len(resolvedWorkers)+len(unresolvedWorkers), minPieces)))
+	if len(allWorkers) < minPieces {
+		return nil, errors.Compose(ErrRootNotFound, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v", len(allWorkers), minPieces)))
 	}
 
 	// sort unresolved workers by expected resolve time
@@ -655,16 +654,19 @@ func (pdc *projectDownloadChunk) createWorkerSet(allWorkers workerArray, maxOver
 	current := NewChimeraWorker()
 	for _, uw := range unresolvedWorkers {
 		remainder := current.addWorker(uw)
-		if remainder != nil {
-			if remainder.resolveChance == 0 {
-				build.Critical("it's in the remainder")
-			}
-			// add the current chimera worker to the slice and reset
-			chimeraWorkers = append(chimeraWorkers, current)
-			current = NewChimeraWorker()
-			current.addWorker(remainder)
+		if remainder == nil {
+			// chimera is not complete yet
+			continue
 		}
+
+		// chimera is complete, so we add it and reset the "current" worker
+		// using the remainder worker
+		chimeraWorkers = append(chimeraWorkers, current)
+		current = NewChimeraWorker()
+		current.addWorker(remainder)
 	}
+
+	// note that we ignore the "current" worker as it is not complete
 
 	// combine all workers
 	workers := make([]downloadWorker, len(resolvedWorkers)+len(chimeraWorkers))

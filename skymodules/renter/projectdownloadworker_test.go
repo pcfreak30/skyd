@@ -277,11 +277,11 @@ func testIndividualWorker_split(t *testing.T) {
 func TestWorkerSet(t *testing.T) {
 	t.Parallel()
 
-	// t.Run("AdjustedDuration", testWorkerSetAdjustedDuration)
+	t.Run("AdjustedDuration", testWorkerSetAdjustedDuration)
 	t.Run("CheaperSetFromCandidate", testWorkerSetCheaperSetFromCandidate)
-	// t.Run("Clone", testWorkerSetClone)
-	// t.Run("GreaterThanHalf", testWorkerSetGreaterThanHalf)
-	// t.Run("NumOverdriveWorkers", testWorkerSetNumOverdriveWorkers)
+	t.Run("Clone", testWorkerSetClone)
+	t.Run("GreaterThanHalf", testWorkerSetGreaterThanHalf)
+	t.Run("NumOverdriveWorkers", testWorkerSetNumOverdriveWorkers)
 }
 
 // testWorkerSetAdjustedDuration is a unit test that verifies the functionality
