@@ -880,16 +880,13 @@ func TestAttachRegistryEntryProof(t *testing.T) {
 		t.Fatal("proof doesn't match expectation")
 	}
 
-	// Attach an empty proof. Should result in '[]'.
+	// Attach an empty proof. Shouldn't set the header.
 	w = newTestHTTPWriter()
 	header = w.Header()
 	attachRegistryEntryProof(w, []skymodules.RegistryEntry{})
-	headerFields, set := header["Skynet-Proof"]
-	if !set {
-		t.Fatal("not set")
-	}
-	if headerFields[0] != "[]" {
-		t.Fatal("empty proof expected", headerFields[0])
+	_, set := header["Skynet-Proof"]
+	if set {
+		t.Fatal("set")
 	}
 }
 

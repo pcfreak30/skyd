@@ -57,8 +57,12 @@ const (
 	SkynetProofHeader = "Skynet-Proof"
 
 	// SkynetSkylinkHeader is a string representation of the base64 encoded
-	// Skylink that was requested.
+	// v1 Skylink that was served.
 	SkynetSkylinkHeader = "Skynet-Skylink"
+
+	// SkynetRequestedSkylinkHeader is a string representation of the base64 encoded
+	// Skylink that was requested.
+	SkynetRequestedSkylinkHeader = "Skynet-Requested-Skylink"
 )
 
 var (
@@ -268,7 +272,7 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 	}
 
 	// Fetch the skyfile's streamer to serve the basesector of the file
-	streamer, srvs, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
+	streamer, srvs, _, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
 	if err != nil {
 		handleSkynetError(w, "failed to fetch base sector", err)
 		return
@@ -576,7 +580,11 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// Set the common Header fields
 	//
 	// Set the Skylink response header
-	w.Header().Set(SkynetSkylinkHeader, params.skylink.String())
+	if !streamer.Skylink().IsSkylinkV1() {
+		build.Critical("skylink attached in skynet-skylink header is not v1")
+	}
+	w.Header().Set(SkynetSkylinkHeader, streamer.Skylink().String())
+	w.Header().Set(SkynetRequestedSkylinkHeader, params.skylink.String())
 
 	// Set the ETag response header
 	//
@@ -1506,11 +1514,8 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 		}
 	}
 
-	// Set the Skylink response header
-	w.Header().Set(SkynetSkylinkHeader, skylink.String())
-
 	// Fetch the skyfile's streamer to serve the basesector of the file
-	streamer, srvs, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
+	streamer, srvs, resolvedLink, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
 	if err != nil {
 		handleSkynetError(w, "failed to fetch base sector", err)
 		return
@@ -1520,6 +1525,13 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 		// error here.
 		_ = streamer.Close()
 	}()
+
+	// Set the Skylink response header
+	if !resolvedLink.IsSkylinkV1() {
+		build.Critical("skylink attached in skynet-skylink header is not v1")
+	}
+	w.Header().Set(SkynetSkylinkHeader, resolvedLink.String())
+	w.Header().Set(SkynetRequestedSkylinkHeader, skylink.String())
 
 	// Attach proof.
 	err = attachRegistryEntryProof(w, srvs)
