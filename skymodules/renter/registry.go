@@ -68,7 +68,7 @@ var (
 	RegistryEntryRepairThreshold = build.Select(build.Var{
 		Dev:      10,
 		Standard: 20,
-		Testing:  3,
+		Testing:  4,
 	}).(int)
 
 	// ReadRegistryBackgroundTimeout is the amount of time a read registry job
@@ -745,7 +745,7 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	successfulResponses := 0
 
 	var respErrs error
-	for successfulResponses < MinUpdateRegistrySuccesses && workersLeft+successfulResponses >= MinUpdateRegistrySuccesses {
+	for successfulResponses < minUpdates && workersLeft+successfulResponses >= minUpdates {
 		// Check deadline.
 		var resp *jobUpdateRegistryResponse
 		select {
@@ -783,8 +783,8 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 		r.staticLog.Print("RegistryUpdate failed with 0 successful responses: ", respErrs)
 		return errors.Compose(err, ErrRegistryUpdateNoSuccessfulUpdates)
 	}
-	if successfulResponses < MinUpdateRegistrySuccesses {
-		r.staticLog.Printf("RegistryUpdate failed with %v < %v successful responses: %v", successfulResponses, MinUpdateRegistrySuccesses, respErrs)
+	if successfulResponses < minUpdates {
+		r.staticLog.Printf("RegistryUpdate failed with %v < %v successful responses: %v", successfulResponses, minUpdates, respErrs)
 		return errors.Compose(err, ErrRegistryUpdateInsufficientRedundancy)
 	}
 	r.staticRegWriteStats.AddDataPoint(time.Since(start))
@@ -897,7 +897,7 @@ func (r *Renter) threadedHandleRegistryRepairs(ctx context.Context, parentSpan o
 	}
 
 	// Update the registry.
-	err := r.managedUpdateRegistry(ctx, *best.staticSPK, best.staticSignedRegistryValue.SignedRegistryValue, upToDateHosts, RegistryEntryRepairThreshold)
+	err := r.managedUpdateRegistry(ctx, *best.staticSPK, best.staticSignedRegistryValue.SignedRegistryValue, upToDateHosts, RegistryEntryRepairThreshold-len(upToDateHosts))
 	if err != nil {
 		r.staticLog.Debugln("threadedHandleRegistryRepairs: failed to update registry", err)
 	}

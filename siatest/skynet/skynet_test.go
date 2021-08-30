@@ -5765,3 +5765,94 @@ func TestSkynetSkylinkHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestRegistryReadRepair tests if reading a registry entry repair the entry on
+// the network.
+func TestRegistryReadRepair(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	testDir := skynetTestDir(t.Name())
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   renter.MinUpdateRegistrySuccesses,
+		Renters: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	r := tg.Renters()[0]
+
+	// Create a random skylink.
+	skylink, err := skymodules.NewSkylinkV1(crypto.HashBytes(fastrand.Bytes(100)), 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a signed registry value.
+	sk, pk := crypto.GenerateKeyPair()
+	var dataKey crypto.Hash
+	fastrand.Read(dataKey[:])
+	data := skylink.Bytes()
+	srv := modules.NewRegistryValue(dataKey, data, 0, modules.RegistryTypeWithoutPubkey).Sign(sk) // rev 0
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+
+	// Update the regisry.
+	err = r.RegistryUpdate(spk, dataKey, srv.Revision, srv.Signature, skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check the health of the entry.
+	reh, err := r.RegistryEntryHealth(spk, dataKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reh.NumBestEntries != uint64(renter.MinUpdateRegistrySuccesses) {
+		t.Fatal("wrong number of entries", reh.NumBestEntries, renter.MinUpdateRegistrySuccesses)
+	}
+
+	// Add another host. This host won't have the entry.
+	_, err = tg.AddNodeN(node.HostTemplate, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Read the entry. This should work and also repair the new host.
+	readSRV, err := r.RegistryRead(spk, dataKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(srv, readSRV) {
+		t.Log(srv)
+		t.Log(readSRV)
+		t.Fatal("srvs don't match")
+	}
+
+	// Check the health of the entry again. Should find 1 more entry.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		reh, err = r.RegistryEntryHealth(spk, dataKey)
+		if err != nil {
+			return err
+		}
+		if reh.NumBestEntries != uint64(renter.MinUpdateRegistrySuccesses)+1 {
+			return fmt.Errorf("wrong number of entries %v != %v", reh.NumBestEntries, renter.MinUpdateRegistrySuccesses+1)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
