@@ -112,10 +112,11 @@ type NodeParams struct {
 	PrimarySeed string
 
 	// The following fields are used to skip parts of the node set up
-	SkipSetAllowance     bool
-	SkipHostDiscovery    bool
-	SkipHostAnnouncement bool
-	SkipWalletInit       bool
+	SkipActivePriceTableCheck bool
+	SkipSetAllowance          bool
+	SkipHostDiscovery         bool
+	SkipHostAnnouncement      bool
+	SkipWalletInit            bool
 
 	// CreatePortal is used to set PaymentContractInitialFunding allowance field
 	// for the node
