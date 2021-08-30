@@ -41,6 +41,12 @@ var (
 	// errRangeSetTwice is the error returned when the range is set twice,
 	// once in the Header and once in the query params
 	errRangeSetTwice = errors.New("range request should use either the Header or the query params but not both")
+
+	// errTimeoutTooHigh is returned when a parsed timeout exceeds the max.
+	errTimeoutTooHigh = errors.New("'timeout' parameter too high")
+
+	// errZeroTimeout is returned if the timeout is explicitly set to 0.
+	errZeroTimeout = errors.New("can't specify a zero timeout")
 )
 
 type (
@@ -315,8 +321,11 @@ func parseTimeout(queryForm url.Values) (time.Duration, error) {
 	if err != nil {
 		return 0, errors.AddContext(err, "unable to parse 'timeout'")
 	}
-	if timeoutInt > MaxSkynetRequestTimeout {
-		return 0, errors.AddContext(err, fmt.Sprintf("'timeout' parameter too high, maximum allowed timeout is %ds", MaxSkynetRequestTimeout))
+	if timeoutInt > int(MaxSkynetRequestTimeout.Seconds()) {
+		return 0, errors.AddContext(errTimeoutTooHigh, fmt.Sprintf("'timeout' parameter too high, maximum allowed timeout is %ds", MaxSkynetRequestTimeout))
+	}
+	if timeoutInt == 0 {
+		return 0, errZeroTimeout
 	}
 	return time.Duration(timeoutInt) * time.Second, nil
 }
@@ -334,7 +343,10 @@ func parseRegistryTimeout(queryForm url.Values) (time.Duration, error) {
 		return 0, errors.AddContext(err, "unable to parse 'timeout'")
 	}
 	if timeoutInt > int(renter.MaxRegistryReadTimeout.Seconds()) {
-		return 0, errors.AddContext(err, fmt.Sprintf("'timeout' parameter too high, maximum allowed timeout is %ds", MaxSkynetRequestTimeout))
+		return 0, errors.AddContext(errTimeoutTooHigh, fmt.Sprintf("maximum allowed timeout is %ds", MaxSkynetRequestTimeout))
+	}
+	if timeoutInt == 0 {
+		return 0, errZeroTimeout
 	}
 	return time.Duration(timeoutInt) * time.Second, nil
 }

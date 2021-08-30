@@ -39,7 +39,7 @@ const (
 	// request timeout. This to prevent an attack vector where the attacker
 	// could cause a go-routine leak by creating a bunch of requests with very
 	// high timeouts.
-	MaxSkynetRequestTimeout = 15 * 60 // in seconds
+	MaxSkynetRequestTimeout = 15 * time.Minute // in seconds
 
 	// SkynetDisableForceHeader allows disabling the force-update feature.
 	SkynetDisableForceHeader = "Skynet-Disable-Force"
