@@ -1106,6 +1106,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 		staticSubscriptionManager: newSubscriptionManager(),
 
+		ongoingRegistryRepairs: make(map[modules.RegistryEntryID]struct{}),
+
 		staticConsensusSet:   cs,
 		staticDeps:           deps,
 		staticGateway:        g,

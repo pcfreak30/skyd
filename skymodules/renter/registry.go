@@ -63,6 +63,14 @@ var (
 		Testing:  3,
 	}).(int)
 
+	// RegistryEntryRepairThreshold is the minimum amount of success
+	// responses we require from a registry repair.
+	RegistryEntryRepairThreshold = build.Select(build.Var{
+		Dev:      10,
+		Standard: 20,
+		Testing:  3,
+	}).(int)
+
 	// ReadRegistryBackgroundTimeout is the amount of time a read registry job
 	// can stay active in the background before being cancelled.
 	ReadRegistryBackgroundTimeout = build.Select(build.Var{
@@ -383,7 +391,7 @@ func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegist
 	defer r.staticRegistryMemoryManager.Return(updateRegistryMemory)
 
 	// Start the UpdateRegistry jobs.
-	err := r.managedUpdateRegistry(ctx, spk, srv)
+	err := r.managedUpdateRegistry(ctx, spk, srv, make(map[string]struct{}), MinUpdateRegistrySuccesses)
 	if errors.Contains(err, ErrRegistryUpdateTimeout) {
 		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
 	}
@@ -656,7 +664,7 @@ func (r *Renter) managedLaunchReadRegistryWorkers(ctx context.Context, span open
 // NOTE: the input ctx only unblocks the call if it fails to hit the threshold
 // before the timeout. It doesn't stop the update jobs. That's because we want
 // to always make sure we update as many hosts as possble.
-func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicKey, srv modules.SignedRegistryValue) (err error) {
+func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicKey, srv modules.SignedRegistryValue, skipHosts map[string]struct{}, minUpdates int) (err error) {
 	// Start tracing.
 	start := time.Now()
 	tracer := opentracing.GlobalTracer()
@@ -689,6 +697,12 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	// Filter out hosts that don't support the registry.
 	numRegistryWorkers := 0
 	for _, worker := range workers {
+		_, skip := skipHosts[worker.staticHostPubKeyStr]
+		if skip {
+			continue
+		}
+
+		// Check version.
 		cache := worker.staticCache()
 		if build.VersionCmp(cache.staticHostVersion, minRegistryVersion) < 0 {
 			continue
@@ -719,7 +733,7 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	}
 	workers = workers[:numRegistryWorkers]
 	// If there are no workers remaining, fail early.
-	if len(workers) < MinUpdateRegistrySuccesses {
+	if len(workers) < minUpdates {
 		return errors.AddContext(skymodules.ErrNotEnoughWorkersInWorkerPool, "cannot perform UpdateRegistry")
 	}
 
@@ -862,61 +876,26 @@ func (r *Renter) threadedHandleRegistryRepairs(ctx context.Context, parentSpan o
 		r.ongoingRegistryRepairsMu.Unlock()
 	}()
 
-	if true {
-		panic("stopped here")
-	}
-
-	// Filter out the workers that didn't fail and find the highest revision
-	// response.
-	var srv *skymodules.RegistryEntry
-	numSuccesses := 0
+	// Figure out how many entries with the highest revision are out there.
+	upToDateHosts := make(map[string]struct{})
 	for _, resp := range resps {
-		if resp.staticErr != nil {
+		if resp == nil || resp.staticSignedRegistryValue == nil || resp.staticErr != nil {
 			continue
 		}
-		resps[numSuccesses] = resp
-		numSuccesses++
-
-		// Check if host knew registry value.
-		if resp.staticSignedRegistryValue == nil {
+		if resp.staticSignedRegistryValue.Revision != best.staticSignedRegistryValue.Revision {
 			continue
 		}
-		// Otherwise remember the highest success response.
-		if srv == nil || resp.staticSignedRegistryValue.Revision > srv.Revision {
-			srv = resp.staticSignedRegistryValue
-		}
+		upToDateHosts[resp.staticWorker.staticHostPubKeyStr] = struct{}{}
 	}
 
-	// If none reported a value, there is nothing we can do.
-	if srv == nil {
+	// Check if the entry requires repairing.
+	if len(upToDateHosts) >= RegistryEntryRepairThreshold {
 		return
 	}
 
-	// Otherwise we update all workers, that didn't have the latest revision.
-	numRegistryWorkers := 0
-	staticResponseChan := make(chan *jobUpdateRegistryResponse, len(resps))
-	for _, resp := range resps {
-		// Ignore workers that already had the latest version.
-		if resp.staticSignedRegistryValue != nil && resp.staticSignedRegistryValue.Revision == srv.Revision {
-			continue
-		}
-		if !resp.staticWorker.callLaunchUpdateRegistry(span, bestSRV.PubKey, srv.SignedRegistryValue, staticResponseChan) {
-			// This will filter out any workers that are on cooldown or
-			// otherwise can't participate in the project.
-			continue
-		}
-		numRegistryWorkers++
+	// Update the registry.
+	err := r.managedUpdateRegistry(ctx, *best.staticSPK, best.staticSignedRegistryValue.SignedRegistryValue, upToDateHosts, RegistryEntryRepairThreshold)
+	if err != nil {
+		r.staticLog.Debugln("threadedHandleRegistryRepairs: failed to update registry", err)
 	}
-
-	// Wait for all of them to be updated.
-	for i := 0; i < numRegistryWorkers; i++ {
-		select {
-		case <-r.tg.StopChan():
-			return // shutdown
-		case _ = <-staticResponseChan:
-		}
-		// Ignore the response for now. In the future we might want some special
-		// handling here.
-	}
-	return
 }
