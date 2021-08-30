@@ -35,7 +35,7 @@ func testDistributionBucketing(t *testing.T) {
 	d := NewDistribution(time.Minute * 100)
 
 	// Get a distribution with no data collected.
-	if d.PStat(0.55) != durationForIndex(distributionTrackerTotalBuckets-1) {
+	if d.PStat(0.55) != DistributionDurationForBucketIndex(DistributionTrackerTotalBuckets-1) {
 		t.Error("expecting a distribution with no data to return the max possible value")
 	}
 
@@ -61,7 +61,7 @@ func testDistributionBucketing(t *testing.T) {
 			t.Error("bad", i, pstat, total)
 		}
 		pstat = d.PStat(0.5)
-		if pstat != durationForIndex((i+1)/2) {
+		if pstat != DistributionDurationForBucketIndex((i+1)/2) {
 			t.Error("bad", i, pstat, total)
 		}
 	}
@@ -83,7 +83,7 @@ func testDistributionBucketing(t *testing.T) {
 			t.Error("bad", i, pstat, total)
 		}
 		pstat = d.PStat(0.5)
-		if pstat != durationForIndex((i+1)/2) {
+		if pstat != DistributionDurationForBucketIndex((i+1)/2) {
 			t.Error("bad", i, pstat, total)
 		}
 	}
@@ -105,7 +105,7 @@ func testDistributionBucketing(t *testing.T) {
 			t.Error("bad", i, pstat, total)
 		}
 		pstat = d.PStat(0.5)
-		if pstat != durationForIndex((i+1)/2) {
+		if pstat != DistributionDurationForBucketIndex((i+1)/2) {
 			t.Error("bad", i, pstat, total)
 		}
 	}
@@ -127,7 +127,7 @@ func testDistributionBucketing(t *testing.T) {
 			t.Error("bad", i, pstat, total)
 		}
 		pstat = d.PStat(0.5)
-		if pstat != durationForIndex((i+1)/2) {
+		if pstat != DistributionDurationForBucketIndex((i+1)/2) {
 			t.Error("bad", i, pstat, total)
 		}
 	}
@@ -149,7 +149,7 @@ func testDistributionBucketing(t *testing.T) {
 			t.Error("bad", i, pstat, total)
 		}
 		pstat = d.PStat(0.5)
-		if pstat != durationForIndex((i+1)/2) {
+		if pstat != DistributionDurationForBucketIndex((i+1)/2) {
 			t.Error("bad", i, pstat, total)
 		}
 	}
@@ -171,7 +171,7 @@ func testDistributionBucketing(t *testing.T) {
 			t.Error("bad", i, pstat, total)
 		}
 		pstat = d.PStat(0.5)
-		if pstat != durationForIndex((i+1)/2) {
+		if pstat != DistributionDurationForBucketIndex((i+1)/2) {
 			t.Error("bad", i, pstat, total)
 		}
 	}
@@ -193,7 +193,7 @@ func testDistributionBucketing(t *testing.T) {
 			t.Error("bad", i, pstat, total)
 		}
 		pstat = d.PStat(0.5)
-		if pstat != durationForIndex((i+1)/2) {
+		if pstat != DistributionDurationForBucketIndex((i+1)/2) {
 			t.Error("bad", i, pstat, total)
 		}
 	}
@@ -215,7 +215,7 @@ func testDistributionBucketing(t *testing.T) {
 			t.Error("bad", i, pstat, total)
 		}
 		pstat = d.PStat(0.5)
-		if pstat != durationForIndex((i+1)/2) {
+		if pstat != DistributionDurationForBucketIndex((i+1)/2) {
 			t.Error("bad", i, pstat, total)
 		}
 	}
@@ -233,8 +233,8 @@ func testDistributionBucketing(t *testing.T) {
 		t.Error("bad", i, pstat, total)
 	}
 	pstat = d.PStat(0.5)
-	if pstat != durationForIndex(distributionTrackerTotalBuckets/2) {
-		t.Error("bad", pstat, durationForIndex(distributionTrackerTotalBuckets/2))
+	if pstat != DistributionDurationForBucketIndex(DistributionTrackerTotalBuckets/2) {
+		t.Error("bad", pstat, DistributionDurationForBucketIndex(DistributionTrackerTotalBuckets/2))
 	}
 }
 
@@ -431,7 +431,7 @@ func testDistributionExpectedDuration(t *testing.T) {
 
 	// check whether we default to the worst case if we have 0 data points
 	expected := d.ExpectedDuration()
-	if expected != durationForIndex(len(d.timings)-1) {
+	if expected != DistributionDurationForBucketIndex(len(d.timings)-1) {
 		t.Error("bad")
 	}
 
@@ -468,8 +468,8 @@ func testDistributionExpectedDuration(t *testing.T) {
 
 	// add one datapoint to every bucket and keep track of the total duration
 	var totalDuration int64
-	for i := 0; i < distributionTrackerTotalBuckets; i++ {
-		point := durationForIndex(i)
+	for i := 0; i < DistributionTrackerTotalBuckets; i++ {
+		point := DistributionDurationForBucketIndex(i)
 		totalDuration += point.Nanoseconds()
 		d.AddDataPoint(point)
 	}
@@ -477,16 +477,16 @@ func testDistributionExpectedDuration(t *testing.T) {
 	// the expected duration is the sum of the duration of all buckets
 	// multiplied by the % chance a datapoint is in that bucket, because we
 	// added exactly one datapoint to every bucket, the pct chance will be
-	// the same across all buckets, namely 1/distributionTrackerTotalBuckets
-	pctChance := float64(1) / float64(distributionTrackerTotalBuckets)
+	// the same across all buckets, namely 1/DistributionTrackerTotalBuckets
+	pctChance := float64(1) / float64(DistributionTrackerTotalBuckets)
 	expected = time.Duration(pctChance * float64(totalDuration))
 	if d.ExpectedDuration() != expected {
 		t.Error("bad", d.ExpectedDuration(), expected)
 	}
 
 	// add 100 datapoints to the first and last bucket
-	firstBucketDur := durationForIndex(0)
-	lastBucketDur := durationForIndex(distributionTrackerTotalBuckets - 1)
+	firstBucketDur := DistributionDurationForBucketIndex(0)
+	lastBucketDur := DistributionDurationForBucketIndex(DistributionTrackerTotalBuckets - 1)
 	for i := 0; i < 100; i++ {
 		d.AddDataPoint(firstBucketDur)
 		d.AddDataPoint(lastBucketDur)
@@ -690,14 +690,14 @@ func testDistributionMergeWith(t *testing.T) {
 	d2 := NewDistribution(time.Minute * 100)
 
 	// add a datapoint in every bucket
-	for i := 0; i < distributionTrackerTotalBuckets; i++ {
-		d1.AddDataPoint(durationForIndex(i))
-		d2.AddDataPoint(durationForIndex(i))
+	for i := 0; i < DistributionTrackerTotalBuckets; i++ {
+		d1.AddDataPoint(DistributionDurationForBucketIndex(i))
+		d2.AddDataPoint(DistributionDurationForBucketIndex(i))
 	}
-	if d1.DataPoints() != distributionTrackerTotalBuckets {
+	if d1.DataPoints() != DistributionTrackerTotalBuckets {
 		t.Fatal("unexpected")
 	}
-	if d2.DataPoints() != distributionTrackerTotalBuckets {
+	if d2.DataPoints() != DistributionTrackerTotalBuckets {
 		t.Fatal("unexpected")
 	}
 	if d1.ExpectedDuration() != d2.ExpectedDuration() {
@@ -707,10 +707,10 @@ func testDistributionMergeWith(t *testing.T) {
 
 	// merge the two distributions using a weight of .5
 	d1.MergeWith(d2, .5)
-	if d1.DataPoints() != 1.5*distributionTrackerTotalBuckets {
+	if d1.DataPoints() != 1.5*DistributionTrackerTotalBuckets {
 		t.Fatal("unexpected")
 	}
-	if d2.DataPoints() != distributionTrackerTotalBuckets {
+	if d2.DataPoints() != DistributionTrackerTotalBuckets {
 		t.Fatal("unexpected")
 	}
 
@@ -727,13 +727,13 @@ func testDistributionMergeWith(t *testing.T) {
 	d4 := NewDistribution(time.Minute * 100)
 	var totalDurFirstHalf int64
 	var totalDurSecondHalf int64
-	for i := 0; i < distributionTrackerTotalBuckets; i++ {
-		point := durationForIndex(i)
-		if i < distributionTrackerTotalBuckets/2 {
+	for i := 0; i < DistributionTrackerTotalBuckets; i++ {
+		point := DistributionDurationForBucketIndex(i)
+		if i < DistributionTrackerTotalBuckets/2 {
 			d3.AddDataPoint(point)
 			totalDurFirstHalf += point.Nanoseconds()
 		} else {
-			d4.AddDataPoint(durationForIndex(i))
+			d4.AddDataPoint(DistributionDurationForBucketIndex(i))
 			totalDurSecondHalf += point.Nanoseconds()
 		}
 	}
@@ -851,22 +851,22 @@ func testDistributionShift(t *testing.T) {
 	d = NewDistribution(time.Minute * 100)
 
 	// add one datapoint in every bucket
-	for i := 0; i < distributionTrackerTotalBuckets; i++ {
-		d.AddDataPoint(durationForIndex(i))
+	for i := 0; i < DistributionTrackerTotalBuckets; i++ {
+		d.AddDataPoint(DistributionDurationForBucketIndex(i))
 	}
 
 	// shift it by 100 buckets and assert all buckets are completely empty,
 	// there was no smear because the shift aligned perfectly with a bucket
-	d.Shift(durationForIndex(100))
+	d.Shift(DistributionDurationForBucketIndex(100))
 	for i := 0; i < 100; i++ {
-		if d.ChanceAfter(durationForIndex(i)) != 0 {
+		if d.ChanceAfter(DistributionDurationForBucketIndex(i)) != 0 {
 			t.Fatal("bad")
 		}
 	}
 
 	// shift it again but now make sure we shift at a fraction of a bucket so we
 	// should see a remainder value smeared out across all preceding buckets
-	shiftAt := durationForIndex(200) + (256/2)*ms
+	shiftAt := DistributionDurationForBucketIndex(200) + (256/2)*ms
 
 	// quickly assert that we're shifting at the exact point we want to shift,
 	// namely at bucket index 200 and we want to make sure we're at exactly 50%
@@ -896,8 +896,8 @@ func testDistributionShift(t *testing.T) {
 	// floating point precision errors up until 1e-9
 	for i := 1; i < 200; i++ {
 		chance = smear * float64(i) / d.DataPoints()
-		if math.Abs(chance-d.ChanceAfter(durationForIndex(i))) > 1e-9 {
-			t.Fatal("bad", i, chance, d.ChanceAfter(durationForIndex(i)))
+		if math.Abs(chance-d.ChanceAfter(DistributionDurationForBucketIndex(i))) > 1e-9 {
+			t.Fatal("bad", i, chance, d.ChanceAfter(DistributionDurationForBucketIndex(i)))
 		}
 	}
 }
