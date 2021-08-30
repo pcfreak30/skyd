@@ -325,24 +325,35 @@ func testWorkerSetAdjustedDuration(t *testing.T) {
 func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 	t.Parallel()
 
-	// create some workers and tag them with a recognisable host key
-	iw1 := newTestIndivualWorker(.1, 10*time.Millisecond)
-	iw1.worker().staticHostPubKeyStr = "w1"
-	iw2 := newTestIndivualWorker(.1, 10*time.Millisecond)
-	iw2.worker().staticHostPubKeyStr = "w2"
+	// updateReadCostWithFactor is a helper function that enables to alter a
+	// worker's cost by multiplying the read length cost of the worker's price
+	// table with the given factor
+	updateReadCostWithFactor := func(w *individualWorker, factor uint64) {
+		pt := w.worker().staticPriceTable().staticPriceTable
+		pt.ReadLengthCost = pt.ReadLengthCost.Mul64(factor)
+		w.worker().staticPriceTable().staticPriceTable = pt
+	}
+
+	// workerAt is a small helper function that returns the worker's identifier
+	// at the given index
+	workerAt := func(ws *workerSet, index int) string {
+		if index >= len(ws.workers) {
+			t.Fatal("developer error")
+		}
+		return ws.workers[index].worker().staticHostPubKeyStr
+	}
+
+	// create some workers
+	iw1 := newTestIndivualWorker("w1", 1, 10*time.Millisecond)
+	iw2 := newTestIndivualWorker("w2", 1, 10*time.Millisecond)
 
 	// make both workers more expensive than the default
-	pt1 := newDefaultPriceTable()
-	pt1.ReadLengthCost = pt1.ReadLengthCost.Mul64(2)
-	iw1.worker().staticPriceTable().staticPriceTable = pt1
-
-	pt2 := newDefaultPriceTable()
-	pt2.ReadLengthCost = pt2.ReadLengthCost.Mul64(3)
-	iw2.worker().staticPriceTable().staticPriceTable = pt2
+	updateReadCostWithFactor(iw1, 2)
+	updateReadCostWithFactor(iw2, 3)
 
 	// assert the workers are increasingly more expensive
-	sl := modules.SectorSize
-	if !(iw1.cost(sl).Cmp(iw2.cost(sl)) < 0) {
+	length := modules.SectorSize
+	if !(iw1.cost(length).Cmp(iw2.cost(length)) < 0) {
 		t.Fatal("bad")
 	}
 
@@ -350,44 +361,41 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 	ws := &workerSet{
 		workers:                []downloadWorker{iw1, iw2},
 		staticExpectedDuration: 100 * time.Millisecond,
-		staticLength:           modules.SectorSize,
+		staticLength:           length,
 		staticMinPieces:        1,
 	}
 
-	// create a candidate worker
-	cw := newTestIndivualWorker(.1, 10*time.Millisecond)
-	cw.worker().staticHostPubKeyStr = "w3"
-
-	// try and build a cheaper set, should return nil because the workers can't
-	// resolve a single piece
-	cheaperSet := ws.cheaperSetFromCandidate(cw)
-	if cheaperSet != nil {
+	// create a candidate worker and try and build a cheaper set, should return
+	// nil because the workers can't resolve a single piece
+	cw := newTestIndivualWorker("w3", 1, 10*time.Millisecond)
+	if ws.cheaperSetFromCandidate(cw) != nil {
 		t.Fatal("bad")
 	}
 
-	// make the 3rd worker able to resolve a piece, should now return a cheaper
-	// set because we will have thrown out w2 in favor of w3
+	// make the candidate worker able to resolve a piece, should now return a
+	// cheaper set because we will have thrown out the most expensive worker
+	// (w2) in favor of w3
 	cw.pieceIndices = append(cw.pieceIndices, 3)
-	cheaperSet = ws.cheaperSetFromCandidate(cw)
+	cheaperSet := ws.cheaperSetFromCandidate(cw)
 	if cheaperSet == nil {
 		t.Fatal("bad")
 	}
 	if len(cheaperSet.workers) != 2 {
 		t.Fatal("bad")
 	}
-	if cheaperSet.workers[0].worker().staticHostPubKeyStr != "w1" && cheaperSet.workers[1].worker().staticHostPubKeyStr != "w3" {
+	if workerAt(cheaperSet, 0) != "w1" && workerAt(cheaperSet, 1) != "w3" {
 		t.Fatal("bad")
 	}
 
 	// continue with the cheaper set as working set
 	ws = cheaperSet
 
-	// make the 1nd worker resolve piece '1', and present a candidate worker
-	// that is capable of resolving both piece '1' and '3', to ensure we replace
-	// the most expensive one of the two
+	// make the 1st worker resolve piece '1'
 	iw1.pieceIndices = append(iw1.pieceIndices, 1)
-	cw = newTestIndivualWorker(.1, 10*time.Millisecond)
-	cw.worker().staticHostPubKeyStr = "w4"
+
+	// make a new candidate worker that is capable of resolving both piece '1'
+	// and '3', to ensure we replace the most expensive one of the two
+	cw = newTestIndivualWorker("w4", 1, 10*time.Millisecond)
 	cw.pieceIndices = append(cw.pieceIndices, 1, 3)
 	cheaperSet = ws.cheaperSetFromCandidate(cw)
 	if cheaperSet == nil {
@@ -396,8 +404,8 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 	if len(cheaperSet.workers) != 2 {
 		t.Fatal("bad")
 	}
-	if cheaperSet.workers[0].worker().staticHostPubKeyStr != "w4" && cheaperSet.workers[1].worker().staticHostPubKeyStr != "w3" {
-		t.Fatal("bad", cheaperSet.workers[0].worker().staticHostPubKeyStr)
+	if workerAt(cheaperSet, 0) != "w4" && workerAt(cheaperSet, 1) != "w3" {
+		t.Fatal("bad")
 	}
 
 	// continue with the cheaper set as working set
@@ -405,13 +413,45 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 
 	// present a worker that is capable of resolving a piece but is more
 	// expensive than the workers we have currently
-	cw = newTestIndivualWorker(.1, 10*time.Millisecond)
-	cw.worker().staticHostPubKeyStr = "w4"
+	cw = newTestIndivualWorker("w5", .1, 10*time.Millisecond)
 	cw.pieceIndices = append(cw.pieceIndices, 1, 3)
+	updateReadCostWithFactor(cw, 3)
+	cheaperSet = ws.cheaperSetFromCandidate(cw)
+	if cheaperSet != nil {
+		t.Fatal("bad")
+	}
 
-	pt3 := newDefaultPriceTable()
-	pt3.ReadLengthCost = pt1.ReadLengthCost.Mul64(5)
-	cw.worker().staticPriceTable().staticPriceTable = pt3
+	// now make it cheaper and try and build a cheaper set from it, assert we
+	// now have replaced w4 for w5
+	updateReadCostWithFactor(cw, 0)
+	cheaperSet = ws.cheaperSetFromCandidate(cw)
+	if cheaperSet == nil {
+		t.Fatal("bad")
+	}
+	if len(cheaperSet.workers) != 2 {
+		t.Fatal("bad")
+	}
+	if workerAt(cheaperSet, 0) != "w5" && workerAt(cheaperSet, 1) != "w3" {
+		t.Fatal("bad")
+	}
+
+	// now do the same thing but set a launch time for w4 to ensure its cost is
+	// treated at 0, this should make it so the cheaper worker replaces w3
+	ws.workers[0].(*individualWorker).launchedAt = time.Now()
+	cheaperSet = ws.cheaperSetFromCandidate(cw)
+	if cheaperSet == nil {
+		t.Fatal("bad")
+	}
+	if len(cheaperSet.workers) != 2 {
+		t.Fatal("bad")
+	}
+	if workerAt(cheaperSet, 0) != "w4" && workerAt(cheaperSet, 1) != "w5" {
+		t.Fatal("bad")
+	}
+
+	// now do the same thing again but launch w3, this should have as a result
+	// we can't build a cheaper set
+	ws.workers[1].(*individualWorker).launchedAt = time.Now()
 	cheaperSet = ws.cheaperSetFromCandidate(cw)
 	if cheaperSet != nil {
 		t.Fatal("bad")
@@ -424,9 +464,9 @@ func testWorkerSetClone(t *testing.T) {
 	t.Parallel()
 
 	// create some workers
-	iw1 := newTestIndivualWorker(.1, 100*time.Millisecond)
-	iw2 := newTestIndivualWorker(.1, 100*time.Millisecond)
-	iw3 := newTestIndivualWorker(.1, 100*time.Millisecond)
+	iw1 := newTestIndivualWorker("w1", .1, 100*time.Millisecond)
+	iw2 := newTestIndivualWorker("w2", .1, 100*time.Millisecond)
+	iw3 := newTestIndivualWorker("w3", .1, 100*time.Millisecond)
 
 	// build a worker set
 	ws := &workerSet{
@@ -453,11 +493,11 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 	distributionTotalBuckets := skymodules.DistributionTrackerTotalBuckets
 
 	// create some workers
-	iw1 := newTestIndivualWorker(.1, 100*time.Millisecond)
-	iw2 := newTestIndivualWorker(.1, 100*time.Millisecond)
-	iw3 := newTestIndivualWorker(.1, 100*time.Millisecond)
-	iw4 := newTestIndivualWorker(.1, 100*time.Millisecond)
-	iw5 := newTestIndivualWorker(.1, 100*time.Millisecond)
+	iw1 := newTestIndivualWorker("w1", .1, 100*time.Millisecond)
+	iw2 := newTestIndivualWorker("w2", .1, 100*time.Millisecond)
+	iw3 := newTestIndivualWorker("w3", .1, 100*time.Millisecond)
+	iw4 := newTestIndivualWorker("w4", .1, 100*time.Millisecond)
+	iw5 := newTestIndivualWorker("w5", .1, 100*time.Millisecond)
 
 	// populate their distributions in a way that the output of the distribution
 	// becomes predictable by adding a single datapoint to every bucket
@@ -603,9 +643,9 @@ func testWorkerSetNumOverdriveWorkers(t *testing.T) {
 	t.Parallel()
 
 	// create some workers
-	iw1 := newTestIndivualWorker(.1, 100*time.Millisecond)
-	iw2 := newTestIndivualWorker(.1, 100*time.Millisecond)
-	iw3 := newTestIndivualWorker(.1, 100*time.Millisecond)
+	iw1 := newTestIndivualWorker("w1", .1, 100*time.Millisecond)
+	iw2 := newTestIndivualWorker("w2", .1, 100*time.Millisecond)
+	iw3 := newTestIndivualWorker("w3", .1, 100*time.Millisecond)
 
 	// create an empty worker set and assert the basic case
 	ws := &workerSet{staticMinPieces: 1}
@@ -632,11 +672,13 @@ func testWorkerSetNumOverdriveWorkers(t *testing.T) {
 
 // newTestIndivualWorker is a helper function that returns an individualWorker
 // for testing purposes.
-func newTestIndivualWorker(resolveChance float64, readDuration time.Duration) *individualWorker {
+func newTestIndivualWorker(hostPubKeyStr string, resolveChance float64, readDuration time.Duration) *individualWorker {
+	w := mockWorker(readDuration)
+	w.staticHostPubKeyStr = hostPubKeyStr
 	return &individualWorker{
 		resolveChance: resolveChance,
 
 		staticReadDistribution: skymodules.NewDistribution(15 * time.Minute),
-		staticWorker:           mockWorker(readDuration),
+		staticWorker:           w,
 	}
 }
