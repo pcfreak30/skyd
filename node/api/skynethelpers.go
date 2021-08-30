@@ -744,6 +744,11 @@ func attachRegistryEntryProof(w http.ResponseWriter, srvs []skymodules.RegistryE
 			Type:      srv.Type,
 		})
 	}
+	// If the proof is empty, don't set the header.
+	if len(proofChain) == 0 {
+		return nil
+	}
+	// Otherwise marshal the header and attach it.
 	b, err := json.Marshal(proofChain)
 	if err != nil {
 		return err
