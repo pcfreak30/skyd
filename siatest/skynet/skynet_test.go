@@ -4261,8 +4261,11 @@ func TestRegistryHealth(t *testing.T) {
 	}()
 	r := tg.Renters()[0]
 
-	// Get one of the hosts' pubkey.
-	hpk, err := tg.Hosts()[0].HostPublicKey()
+	// Get one of the hosts' pubkey and choose one of the existing hosts to
+	// be stopped later. They can't be the same host.
+	allHosts := tg.Hosts()
+	stoppedHost := allHosts[0]
+	hpk, err := allHosts[1].HostPublicKey()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4322,9 +4325,6 @@ func TestRegistryHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Choose one of the existing hosts to be stopped later.
-	stoppedHost := tg.Hosts()[0]
-
 	// Add a new host.
 	_, err = tg.AddNodeN(node.HostTemplate, 1)
 	if err != nil {
@@ -4345,28 +4345,24 @@ func TestRegistryHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Check the health.
+	err = assertHealth(skymodules.RegistryEntryHealth{
+		RevisionNumber:        revision,
+		NumEntries:            uint64(len(tg.Hosts())) - 1,
+		NumBestEntries:        uint64(len(tg.Hosts())) - 1,
+		NumBestPrimaryEntries: 0,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Restart the stopped host.
 	if err := tg.StartNode(stoppedHost); err != nil {
 		t.Fatal(err)
 	}
 
-	// Reannounce it to make sure its new ports are known.
-	err = stoppedHost.HostAnnouncePost()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = tg.Miners()[0].MineBlock()
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// Use a retry since the node might take a while to start.
 	err = build.Retry(60, time.Second, func() error {
-		// Mine a block for the announcement.
-		err = tg.Miners()[0].MineBlock()
-		if err != nil {
-			t.Fatal(err)
-		}
 		// Force a refresh of the worker pool for testing.
 		_, err = r.RenterWorkersGet()
 		if err != nil {
@@ -5685,7 +5681,7 @@ func TestSkynetSkylinkHealth(t *testing.T) {
 		}
 		sh, err := r.SkylinkHealthGET(sl)
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 		if sh.BaseSectorRedundancy != baseSectorRedundancy {
 			return fmt.Errorf("wrong base sector redundancy %v != %v", sh.BaseSectorRedundancy, baseSectorRedundancy)
