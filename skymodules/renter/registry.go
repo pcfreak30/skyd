@@ -23,7 +23,7 @@ var (
 	MaxRegistryReadTimeout = build.Select(build.Var{
 		Dev:      30 * time.Second,
 		Standard: 5 * time.Minute,
-		Testing:  10 * time.Second,
+		Testing:  30 * time.Second,
 	}).(time.Duration)
 
 	// DefaultRegistryHealthTimeout is the default timeout used when
@@ -31,7 +31,7 @@ var (
 	DefaultRegistryHealthTimeout = build.Select(build.Var{
 		Dev:      30 * time.Second,
 		Standard: 30 * time.Second,
-		Testing:  3 * time.Second,
+		Testing:  10 * time.Second,
 	}).(time.Duration)
 
 	// DefaultRegistryUpdateTimeout is the default timeout used when updating
