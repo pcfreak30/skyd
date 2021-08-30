@@ -317,12 +317,13 @@ func parseTimeout(queryForm url.Values) (time.Duration, error) {
 		return DefaultSkynetRequestTimeout, nil
 	}
 
-	timeoutInt, err := strconv.Atoi(timeoutStr)
+	var timeoutInt uint64
+	_, err := fmt.Sscan(timeoutStr, &timeoutInt)
 	if err != nil {
 		return 0, errors.AddContext(err, "unable to parse 'timeout'")
 	}
-	if timeoutInt > int(MaxSkynetRequestTimeout.Seconds()) {
-		return 0, errors.AddContext(errTimeoutTooHigh, fmt.Sprintf("'timeout' parameter too high, maximum allowed timeout is %ds", MaxSkynetRequestTimeout))
+	if timeoutInt > uint64(MaxSkynetRequestTimeout.Seconds()) {
+		return 0, errors.AddContext(errTimeoutTooHigh, fmt.Sprintf("maximum allowed timeout is %ds", MaxSkynetRequestTimeout))
 	}
 	if timeoutInt == 0 {
 		return 0, errZeroTimeout
@@ -338,11 +339,12 @@ func parseRegistryTimeout(queryForm url.Values) (time.Duration, error) {
 		return renter.DefaultRegistryHealthTimeout, nil
 	}
 
-	timeoutInt, err := strconv.Atoi(timeoutStr)
+	var timeoutInt uint64
+	_, err := fmt.Sscan(timeoutStr, &timeoutInt)
 	if err != nil {
 		return 0, errors.AddContext(err, "unable to parse 'timeout'")
 	}
-	if timeoutInt > int(renter.MaxRegistryReadTimeout.Seconds()) {
+	if timeoutInt > uint64(renter.MaxRegistryReadTimeout.Seconds()) {
 		return 0, errors.AddContext(errTimeoutTooHigh, fmt.Sprintf("maximum allowed timeout is %ds", MaxSkynetRequestTimeout))
 	}
 	if timeoutInt == 0 {
