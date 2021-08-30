@@ -535,7 +535,7 @@ func (w *worker) initJobHasSectorQueue() {
 	w.staticJobHasSectorQueue = &jobHasSectorQueue{
 		availabilityMetrics: newAvailabilityMetrics(availabilityMetricsDefaultHalfLife),
 		jobGenericQueue:     newJobGenericQueue(w),
-		staticDT: skymodules.NewDistributionTrackerStandard(),
+		staticDT:            skymodules.NewDistributionTrackerStandard(),
 	}
 }
 

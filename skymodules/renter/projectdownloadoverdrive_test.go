@@ -12,6 +12,10 @@ import (
 
 // TestAddCostPenalty is a unit test that covers the `addCostPenalty` helper
 // function.
+//
+// NOTE: should this file get removed due to introducing a new version of the
+// overdrive, this test has to move to projectdownloadworker_test as the
+// `addCostPenalty` function is used there as well.
 func TestAddCostPenalty(t *testing.T) {
 	t.Parallel()
 

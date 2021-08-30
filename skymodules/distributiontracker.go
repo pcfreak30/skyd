@@ -54,6 +54,10 @@ const (
 // distriubtionTrackerBucketsPerStepChange needs to be:
 // 		distributionTrackerInitialBuckets - (distributionTrackerInitialBuckets/distributionTrackerStepChangeMultiple)
 const (
+	// DistributionTrackerTotalBuckets is a shortcut defining one of the
+	// commonly used relationships between the other consts.
+	DistributionTrackerTotalBuckets = distributionTrackerInitialBuckets + distributionTrackerBucketsPerStepChange*distributionTrackerNumIncrements
+
 	// bucketsPerStepChange defines the number of buckets that are used in the
 	// first step. It has a mathematical relationship to
 	// distributoinTrackerBucketsPerStepChange, because we want every step range
@@ -72,10 +76,6 @@ const (
 	// can cover a greater range of data in fewer buckets at the cost of
 	// granularity. This saves computation and memory.
 	distributionTrackerStepChangeMultiple = 4
-
-	// distributionTrackerTotalBuckets is a shortcut defining one of the
-	// commonly used relationships between the other consts.
-	distributionTrackerTotalBuckets = distributionTrackerInitialBuckets + distributionTrackerBucketsPerStepChange*distributionTrackerNumIncrements
 )
 
 type (
@@ -119,9 +119,9 @@ type (
 	}
 )
 
-// durationForIndex converts the index of a timing bucket into a timing.
-func durationForIndex(index int) time.Duration {
-	if index < 0 || index > distributionTrackerTotalBuckets-1 {
+// DistributionDurationForBucketIndex converts the index of a timing bucket into a timing.
+func DistributionDurationForBucketIndex(index int) time.Duration {
+	if index < 0 || index > DistributionTrackerTotalBuckets-1 {
 		build.Critical("distribution duration index out of bounds:", index)
 	}
 
@@ -130,7 +130,7 @@ func durationForIndex(index int) time.Duration {
 		return stepSize * time.Duration(index)
 	}
 	prevMax := stepSize * distributionTrackerInitialBuckets
-	for i := distributionTrackerInitialBuckets; i <= distributionTrackerTotalBuckets; i += distributionTrackerBucketsPerStepChange {
+	for i := distributionTrackerInitialBuckets; i <= DistributionTrackerTotalBuckets; i += distributionTrackerBucketsPerStepChange {
 		stepSize *= distributionTrackerStepChangeMultiple
 		if index < i+distributionTrackerBucketsPerStepChange {
 			return stepSize*time.Duration(index-i) + prevMax
@@ -165,7 +165,7 @@ func indexForDuration(duration time.Duration) (int, float64) {
 	}
 
 	// range over all buckets and see whether the given duration falls into it
-	for i := distributionTrackerInitialBuckets; i < distributionTrackerTotalBuckets; i += distributionTrackerBucketsPerStepChange {
+	for i := distributionTrackerInitialBuckets; i < DistributionTrackerTotalBuckets; i += distributionTrackerBucketsPerStepChange {
 		stepSize *= distributionTrackerStepChangeMultiple
 		max *= distributionTrackerStepChangeMultiple
 		if duration < max {
@@ -176,7 +176,7 @@ func indexForDuration(duration time.Duration) (int, float64) {
 	}
 
 	// if we haven't found the index, return the last one
-	return distributionTrackerTotalBuckets - 1, 1
+	return DistributionTrackerTotalBuckets - 1, 1
 }
 
 // addDecay will decay the data in the distribution.
@@ -268,7 +268,7 @@ func (d *Distribution) DataPoints() float64 {
 
 // DurationForIndex converts the index of a bucket into a duration.
 func (d *Distribution) DurationForIndex(index int) time.Duration {
-	return durationForIndex(index)
+	return DistributionDurationForBucketIndex(index)
 }
 
 // ExpectedDuration returns the estimated duration based upon the current
@@ -278,7 +278,7 @@ func (d *Distribution) ExpectedDuration() time.Duration {
 	total := d.DataPoints()
 	if total == 0 {
 		// No data collected, just return the worst case.
-		return durationForIndex(len(d.timings) - 1)
+		return DistributionDurationForBucketIndex(len(d.timings) - 1)
 	}
 
 	// Across all buckets, multiply the pct chance times the bucket's duration.
@@ -286,7 +286,7 @@ func (d *Distribution) ExpectedDuration() time.Duration {
 	var expected float64
 	for i := 0; i < len(d.timings); i++ {
 		pct := d.timings[i] / total
-		expected += pct * float64(durationForIndex(i))
+		expected += pct * float64(DistributionDurationForBucketIndex(i))
 	}
 	return time.Duration(expected)
 }
@@ -335,19 +335,19 @@ func (d *Distribution) PStat(p float64) time.Duration {
 	}
 	if total == 0 {
 		// No data collected, just return the worst case.
-		return durationForIndex(distributionTrackerTotalBuckets - 1)
+		return DistributionDurationForBucketIndex(DistributionTrackerTotalBuckets - 1)
 	}
 
 	// Count up until we reach p.
 	var run float64
 	var index int
-	for run/total < p && index < distributionTrackerTotalBuckets-1 {
+	for run/total < p && index < DistributionTrackerTotalBuckets-1 {
 		run += d.timings[index]
 		index++
 	}
 
 	// Convert i into a duration.
-	return durationForIndex(index)
+	return DistributionDurationForBucketIndex(index)
 }
 
 // Shift shifts the distribution by a certain duration. The shift operation will

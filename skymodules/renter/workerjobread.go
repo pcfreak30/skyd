@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -285,7 +286,7 @@ func (jrs *jobReadStats) expectedJobTime(length uint64) time.Duration {
 // job with the given length.
 func (jq *jobReadQueue) callExpectedJobCost(length uint64) types.Currency {
 	pt := &jq.staticWorker().staticPriceTable().staticPriceTable
-
+	fmt.Println(pt.ReadLengthCost)
 	// Calculate init cost. The program we use has a 48 byte program data and 1
 	// instruction. 48 = 8 bytes length + 8 bytes offset + 32 bytes merkle root
 	cost := modules.MDMInitCost(pt, 48, 1)

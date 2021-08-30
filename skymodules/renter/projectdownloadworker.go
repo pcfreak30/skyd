@@ -280,6 +280,7 @@ func (ws *workerSet) cheaperSetFromCandidate(candidate downloadWorker) *workerSe
 LOOP:
 	for _, expensiveWorker := range byCostDesc {
 		expensiveWorkerKey := expensiveWorker.worker().staticHostPubKeyStr
+		fmt.Println(expensiveWorkerKey)
 
 		// if the candidate is not cheaper than this worker we can stop looking
 		// to build a cheaper set since the workers are sorted by cost
@@ -291,8 +292,8 @@ LOOP:
 		// contribute pieces to the worker set for which we don't already have
 		// another worker
 		for _, piece := range candidate.pieces() {
-			existingWorkerKey, exists := pieces[piece]
-			if !exists || existingWorkerKey == expensiveWorkerKey {
+			existingWorkerKey := pieces[piece]
+			if existingWorkerKey == expensiveWorkerKey {
 				swapIndex = indices[expensiveWorkerKey]
 				break LOOP
 			}
@@ -372,11 +373,13 @@ func (ws workerSet) chanceGreaterThanHalf(dur time.Duration) bool {
 		// chance each possible coin pair becomes the only tails
 		numCoins := len(coinflips)
 		for i := 0; i < numCoins-1; i++ {
-			chanceITails := 1 - coinflips[i]
-			chanceOnlyITails := chanceAllHeads / coinflips[i] * chanceITails
+			chanceIHeads := coinflips[i]
+			chanceITails := 1 - chanceIHeads
+			chanceOnlyITails := chanceAllHeads / chanceIHeads * chanceITails
 			for jj := i + 1; jj < numCoins; jj++ {
-				chanceJTails := 1 - coinflips[jj]
-				chanceOnlyIAndJJTails := chanceOnlyITails / coinflips[jj] * chanceJTails
+				chanceJHeads := coinflips[jj]
+				chanceJTails := 1 - chanceJHeads
+				chanceOnlyIAndJJTails := chanceOnlyITails / chanceJHeads * chanceJTails
 				totalChance += chanceOnlyIAndJJTails
 			}
 		}
@@ -429,7 +432,8 @@ func (pdc *projectDownloadChunk) updateWorkers(workers workerArray) {
 
 		index, exists := unresolved[rw.worker.staticHostPubKeyStr]
 		if !exists {
-			build.Critical("unresolved worker not found")
+			// this might happen when a worker is not part of the worker array
+			// because it was deemed unfit for downloading
 			continue
 		}
 		if cap(workers[index].pieceIndices) != cap(rw.pieceIndices) {
@@ -558,7 +562,7 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) {
 			continue // in progress (this ensures we can re-use a worker)
 		}
 
-		fmt.Printf("worker %v has %v pieces to launch", worker.staticHostPubKeyStr[:46], w.pieces())
+		fmt.Printf("worker %v has %v pieces to launch\n", worker.staticHostPubKeyStr[:46], w.pieces())
 		for _, pieceIndex := range w.pieces() {
 			if pdc.workerIsLaunched(worker, pieceIndex) {
 				fmt.Println("worker already launched for piece", pieceIndex)
