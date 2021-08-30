@@ -26,6 +26,14 @@ var (
 		Testing:  10 * time.Second,
 	}).(time.Duration)
 
+	// DefaultRegistryHealthTimeout is the default timeout used when
+	// requesting a registry entry's health.
+	DefaultRegistryHealthTimeout = build.Select(build.Var{
+		Dev:      30 * time.Second,
+		Standard: 30 * time.Second,
+		Testing:  3 * time.Second,
+	}).(time.Duration)
+
 	// DefaultRegistryUpdateTimeout is the default timeout used when updating
 	// the registry.
 	DefaultRegistryUpdateTimeout = build.Select(build.Var{

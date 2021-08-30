@@ -326,7 +326,7 @@ func parseTimeout(queryForm url.Values) (time.Duration, error) {
 func parseRegistryTimeout(queryForm url.Values) (time.Duration, error) {
 	timeoutStr := queryForm.Get("timeout")
 	if timeoutStr == "" {
-		return renter.MaxRegistryReadTimeout, nil
+		return renter.DefaultRegistryHealthTimeout, nil
 	}
 
 	timeoutInt, err := strconv.Atoi(timeoutStr)
