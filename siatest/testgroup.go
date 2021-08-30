@@ -793,10 +793,7 @@ func (tg *TestGroup) StopNode(tn *TestNode) error {
 	// Wait until no renter got any workers left for the stopped node.
 	return build.Retry(600, 100*time.Millisecond, func() error {
 		// If the node wasn't a host we are done.
-		for _, node := range tg.Nodes() {
-			if node.params.Renter == nil && !node.params.CreateRenter {
-				continue // not a renter
-			}
+		for _, node := range tg.Renters() {
 			rwg, err := node.RenterWorkersGet()
 			if err != nil {
 				return err
