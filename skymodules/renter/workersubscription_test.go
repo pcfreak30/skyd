@@ -1357,8 +1357,10 @@ func TestCheckHostCheating(t *testing.T) {
 	hpk := types.Ed25519PublicKey(pk)
 	hpkh := crypto.HashObject(hpk)
 
-	// Prepare 2 signed registry values for testing.
-	plainSRV := modules.NewSignedRegistryValue(crypto.Hash{}, nil, 0, crypto.Signature{}, modules.RegistryTypeWithoutPubkey).Sign(sk)
+	// Prepare 2 signed registry values for testing. They are exactly the
+	// same except that one of them is a primary entry.
+	emptyHash := crypto.Hash{}
+	plainSRV := modules.NewSignedRegistryValue(crypto.Hash{}, emptyHash[:], 0, crypto.Signature{}, modules.RegistryTypeWithPubkey).Sign(sk)
 	plainSRVPrimary := plainSRV
 	plainSRVPrimary.Type = modules.RegistryTypeWithPubkey
 	plainSRVPrimary.Data = hpkh[:]

@@ -4908,7 +4908,7 @@ func testSkynetMonetization(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Connect it to the renter.
-	err = monetizer.GatewayConnectPost(r.GatewayAddress())
+	err = r.GatewayConnectPost(monetizer.GatewayAddress())
 	if err != nil {
 		t.Fatal(err)
 	}
