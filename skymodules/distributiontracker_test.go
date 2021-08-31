@@ -11,6 +11,9 @@ import (
 // TestDistributionTracker is a collection of unit test that verify the
 // functionality of the distribution tracker.
 func TestDistributionTracker(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
 	t.Parallel()
 
 	t.Run("Bucketing", testDistributionBucketing)
