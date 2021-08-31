@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -774,5 +775,304 @@ func TestAttachRegistryEntryProof(t *testing.T) {
 	_, set := header["Skynet-Proof"]
 	if set {
 		t.Fatal("set")
+	}
+}
+
+// TestUnmarshalErrorPages ensures that we properly handle all string inputs.
+func TestUnmarshalErrorPages(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   string
+		out  map[int]string
+		err  string
+	}{
+		{
+			name: "empty",
+			in:   "",
+			out:  map[int]string{},
+			err:  "",
+		},
+		{
+			name: "404",
+			in:   "{\"404\":\"notfound.html\"}",
+			out:  map[int]string{404: "notfound.html"},
+			err:  "",
+		},
+		{
+			name: "404,403",
+			in:   "{\"404\":\"notfound.html\",\"403\":\"bla.html\"}",
+			out: map[int]string{
+				404: "notfound.html",
+				403: "bla.html",
+			},
+			err: "",
+		},
+		{
+			name: "not a json",
+			in:   "this is not a JSON",
+			out:  map[int]string{},
+			err:  "invalid errorpages value",
+		},
+	}
+
+	for _, tt := range tests {
+		out, err := UnmarshalErrorPages(tt.in)
+		if err != nil && tt.err == "" {
+			t.Log("Failing test:", tt.name)
+			t.Fatal("Unexpected error", err)
+		}
+		if tt.err != "" && (err == nil || !strings.Contains(err.Error(), tt.err)) {
+			t.Log("Failing test:", tt.name)
+			t.Fatalf("Expected error '%s', got '%s'\n", tt.err, err.Error())
+		}
+		// only compare outputs if we expect to not encounter an error
+		if tt.err == "" && !reflect.DeepEqual(out, tt.out) {
+			t.Log("Failing test:", tt.name)
+			t.Logf("Expected: %+v\n", tt.out)
+			t.Logf("Actual  : %+v\n", out)
+			t.Fatal("Unexpected output.")
+		}
+	}
+}
+
+// TestUnmarshalTryFiles ensures that we properly handle all string inputs.
+func TestUnmarshalTryFiles(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   string
+		out  []string
+		err  string
+	}{
+		{
+			name: "empty",
+			in:   "",
+			out:  []string{},
+			err:  "",
+		},
+		{
+			name: "empty arr",
+			in:   "[]",
+			out:  []string{},
+			err:  "",
+		},
+		{
+			name: "index",
+			in:   "[\"index.html\"]",
+			out:  []string{"index.html"},
+			err:  "",
+		},
+		{
+			name: "index, bla",
+			in:   "[\"index.html\",\"bla.info\"]",
+			out:  []string{"index.html", "bla.info"},
+			err:  "",
+		},
+		{
+			name: "not a json",
+			in:   "this is not a JSON",
+			out:  nil,
+			err:  "invalid tryfiles value",
+		},
+	}
+
+	for _, tt := range tests {
+		out, err := UnmarshalTryFiles(tt.in)
+		if err != nil && tt.err == "" {
+			t.Log("Failing test:", tt.name)
+			t.Fatal("Unexpected error", err)
+		}
+		if tt.err != "" && (err == nil || !strings.Contains(err.Error(), tt.err)) {
+			t.Log("Failing test:", tt.name)
+			t.Fatalf("Expected error '%s', got '%s'\n", tt.err, err.Error())
+		}
+		// only compare outputs if we expect to not encounter an error
+		if tt.err == "" && !reflect.DeepEqual(out, tt.out) {
+			t.Log("Failing test:", tt.name)
+			t.Logf("Expected: %+v\n", tt.out)
+			t.Logf("Actual  : %+v\n", out)
+			t.Fatal("Unexpected output.")
+		}
+	}
+}
+
+// TestCustomErrorWriter ensures that customErrorWriter responds with the right
+// content.
+func TestCustomErrorWriter(t *testing.T) {
+	t.Parallel()
+
+	subfiles := skymodules.SkyfileSubfiles{
+		"400.html": skymodules.SkyfileSubfileMetadata{
+			Filename:    "400.html",
+			ContentType: "text/html",
+			Offset:      0,
+			Len:         14,
+		},
+		"404.html": skymodules.SkyfileSubfileMetadata{
+			Filename:    "404.html",
+			ContentType: "text/html",
+			Offset:      14,
+			Len:         14,
+		},
+		"418.html": skymodules.SkyfileSubfileMetadata{
+			Filename:    "418.html",
+			ContentType: "text/html",
+			Offset:      28,
+			Len:         14,
+		},
+		"500.html": skymodules.SkyfileSubfileMetadata{
+			Filename:    "500.html",
+			ContentType: "text/html",
+			Offset:      42,
+			Len:         14,
+		},
+		"502.html": skymodules.SkyfileSubfileMetadata{
+			Filename:    "502.html",
+			ContentType: "text/html",
+			Offset:      56,
+			Len:         14,
+		},
+	}
+	eps := map[int]string{
+		400: "/400.html",
+		404: "/404.html",
+		418: "/418.html",
+		500: "/500.html",
+		502: "/502.html",
+	}
+	meta := skymodules.SkyfileMetadata{
+		Filename:   t.Name(),
+		Length:     60,
+		Subfiles:   subfiles,
+		ErrorPages: eps,
+	}
+	data := []byte("FileContent400FileContent404FileContent418FileContent500FileContent502")
+	rawMD, err := json.Marshal(meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	streamer := renter.SkylinkStreamerFromSlice(data, meta, rawMD, skymodules.Skylink{}, skymodules.SkyfileLayout{})
+
+	ew := newCustomErrorWriter(meta, streamer)
+	w := newTestHTTPWriter()
+
+	// test all errorpage codes
+	for code := range eps {
+		codeStr := strconv.Itoa(code)
+		ew.WriteError(w, Error{"This is an error with status " + codeStr}, code)
+		sf, exists := subfiles[codeStr+".html"]
+		if !exists {
+			t.Fatalf("Expected to find a subfile with name %s", codeStr+".html")
+		}
+		expectedData := data[sf.Offset : sf.Offset+sf.Len]
+		if !reflect.DeepEqual(expectedData, w.WrittenContent()) {
+			t.Fatalf("Expected content '%s', got '%s'", string(expectedData), string(w.WrittenContent()))
+		}
+	}
+
+	// test a non-errorpages code
+	errmsg := "we want to see this"
+	ew.WriteError(w, Error{errmsg}, 401)
+	if !strings.Contains(string(w.WrittenContent()), errmsg) {
+		t.Fatalf("Expected content to contain '%s', got '%s'", errmsg, string(w.WrittenContent()))
+	}
+}
+
+// TestParseTimeout is a unit test for parseTimeout and parseRegistryTimeout.
+func TestParseTimeout(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		timeout     string
+		timeoutFunc func(url.Values) (time.Duration, error)
+
+		result time.Duration
+		err    error
+	}{
+		{
+			name:        "SkynetTimeout/Default",
+			timeout:     "",
+			timeoutFunc: parseTimeout,
+
+			result: DefaultSkynetRequestTimeout,
+			err:    nil,
+		},
+		{
+			name:        "SkynetTimeout/Zero",
+			timeout:     "0",
+			timeoutFunc: parseTimeout,
+
+			result: 0,
+			err:    errZeroTimeout,
+		},
+		{
+			name:        "SkynetTimeout/Max",
+			timeout:     fmt.Sprint(MaxSkynetRequestTimeout.Seconds()),
+			timeoutFunc: parseTimeout,
+
+			result: MaxSkynetRequestTimeout,
+			err:    nil,
+		},
+		{
+			name:        "SkynetTimeout/AboveMax",
+			timeout:     fmt.Sprint(MaxSkynetRequestTimeout.Seconds() + 1),
+			timeoutFunc: parseTimeout,
+
+			result: 0,
+			err:    errTimeoutTooHigh,
+		},
+		{
+			name:        "RegistryTimeout/Default",
+			timeout:     "",
+			timeoutFunc: parseRegistryTimeout,
+
+			result: renter.DefaultRegistryHealthTimeout,
+			err:    nil,
+		},
+		{
+			name:        "RegistryTimeout/Zero",
+			timeout:     "0",
+			timeoutFunc: parseRegistryTimeout,
+
+			result: 0,
+			err:    errZeroTimeout,
+		},
+		{
+			name:        "RegistryTimeout/Max",
+			timeout:     fmt.Sprint(renter.MaxRegistryReadTimeout.Seconds()),
+			timeoutFunc: parseRegistryTimeout,
+
+			result: renter.MaxRegistryReadTimeout,
+			err:    nil,
+		},
+		{
+			name:        "RegistryTimeout/AboveMax",
+			timeout:     fmt.Sprint(renter.MaxRegistryReadTimeout.Seconds() + 1),
+			timeoutFunc: parseRegistryTimeout,
+
+			result: 0,
+			err:    errTimeoutTooHigh,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			values := url.Values{}
+			values.Set("timeout", test.timeout)
+
+			d, err := test.timeoutFunc(values)
+			if test.err != nil && !errors.Contains(err, test.err) {
+				t.Fatal(err)
+			}
+			if test.err == nil && err != nil {
+				t.Fatal(err)
+			}
+			if d != test.result {
+				t.Fatalf("%v != %v", d, test.result)
+			}
+		})
 	}
 }

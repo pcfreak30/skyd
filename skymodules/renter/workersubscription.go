@@ -528,7 +528,8 @@ func (w *worker) managedCheckHostCheating(rid modules.RegistryEntryID, srv *modu
 	}
 
 	// If it is not better, we expect it to be at least equal to our own.
-	if errors.Contains(err, modules.ErrSameRevNum) {
+	sameRevNum := errors.Contains(err, modules.ErrSameRevNum)
+	if sameRevNum && ce.IsPrimaryEntry(w.staticHostPubKey) == srv.IsPrimaryEntry(w.staticHostPubKey) {
 		return nil
 	}
 
