@@ -1458,6 +1458,13 @@ func (api *API) skylinkResolveGET(w http.ResponseWriter, req *http.Request, ps h
 		return
 	}
 
+	// Set the Skylink response headers.
+	if !slV1.IsSkylinkV1() {
+		build.Critical("skylink attached in skynet-skylink header is not v1")
+	}
+	w.Header().Set(SkynetSkylinkHeader, slV1.String())
+	w.Header().Set(SkynetRequestedSkylinkHeader, sl.String())
+
 	// Send response.
 	WriteJSON(w, SkylinkResolveGET{
 		Skylink: slV1.String(),
