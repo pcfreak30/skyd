@@ -79,12 +79,6 @@ var (
 	// request from the memory manager.
 	readRegistryMemory = uint64(20 * (1 << 10)) // 20kib
 
-	// useHighestRevDefaultTimeout is the amount of time before ReadRegistry
-	// will stop waiting for additional responses from hosts and accept the
-	// response with the highest rev number. The timer starts when we get the
-	// first response and doesn't reset afterwards.
-	useHighestRevDefaultTimeout = 100 * time.Millisecond
-
 	// updateRegistryBackgroundTimeout is the time an update registry job on a
 	// worker stays active in the background after managedUpdateRegistry returns
 	// successfully.
@@ -535,36 +529,13 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	ctx, cancel := context.WithTimeout(ctx, estimate)
 	defer cancel()
 
-	// Prepare a context which will be overwritten by a child context with a timeout
-	// when we receive the first response. useHighestRevDefaultTimeout after
-	// receiving the first response, this will be closed to abort the search for
-	// the highest rev number and return the highest one we have so far.
-	var useHighestRevCtx context.Context
-
 	var best *jobReadRegistryResponse
 	responses := 0
 	for responseSet.responsesLeft() > 0 {
 		// Check cancel condition and block for more responses.
-		var resp *jobReadRegistryResponse
-		if best != nil && best.staticSignedRegistryValue != nil {
-			// If we have a successful response already, we wait on the highest
-			// rev ctx.
-			resp = responseSet.next(useHighestRevCtx)
-		} else {
-			// Otherwise we don't wait on the usehighestRevCtx since we need a
-			// successful response to abort.
-			resp = responseSet.next(ctx)
-		}
+		resp := responseSet.next(ctx)
 		if resp == nil {
 			break // context triggered
-		}
-
-		// When we get the first response, we initialize the highest rev
-		// timeout.
-		if responses == 0 {
-			c, cancel := context.WithTimeout(ctx, useHighestRevDefaultTimeout)
-			defer cancel()
-			useHighestRevCtx = c
 		}
 
 		// Increment responses.
