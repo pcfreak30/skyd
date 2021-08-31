@@ -552,14 +552,14 @@ func (c *Client) SkynetSkylinkZipReaderGet(skylink string) (http.Header, io.Read
 // SkynetSkylinkPinPost uses the /skynet/pin endpoint to pin the file at the
 // given skylink.
 func (c *Client) SkynetSkylinkPinPost(skylink string, spp skymodules.SkyfilePinParameters) error {
-	return c.SkynetSkylinkPinPostWithTimeout(skylink, spp, -1)
+	return c.SkynetSkylinkPinPostWithTimeout(skylink, spp, api.DefaultSkynetRequestTimeout)
 }
 
 // SkynetSkylinkPinPostWithTimeout uses the /skynet/pin endpoint to pin the file
 // at the given skylink, specifying the given timeout.
-func (c *Client) SkynetSkylinkPinPostWithTimeout(skylink string, spp skymodules.SkyfilePinParameters, timeout int) error {
+func (c *Client) SkynetSkylinkPinPostWithTimeout(skylink string, spp skymodules.SkyfilePinParameters, timeout time.Duration) error {
 	values := urlValuesFromSkyfilePinParameters(spp)
-	values.Set("timeout", fmt.Sprintf("%d", timeout))
+	values.Set("timeout", fmt.Sprintf("%d", uint64(timeout.Seconds())))
 
 	query := fmt.Sprintf("/skynet/pin/%s?%s", skylink, values.Encode())
 	_, _, err := c.postRawResponse(query, nil)

@@ -794,9 +794,9 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 
 // DownloadSkylinkBaseSector will take a link and turn it into the data of
 // a basesector without any decoding of the metadata, fanout, or decryption.
-func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time.Duration, pricePerMS types.Currency) (skymodules.Streamer, []skymodules.RegistryEntry, error) {
+func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time.Duration, pricePerMS types.Currency) (skymodules.Streamer, []skymodules.RegistryEntry, skymodules.Skylink, error) {
 	if err := r.tg.Add(); err != nil {
-		return nil, nil, err
+		return nil, nil, link, err
 	}
 	defer r.tg.Done()
 
@@ -819,18 +819,18 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 	// Check if link needs to be resolved from V2 to V1.
 	link, srvs, err := r.managedTryResolveSkylinkV2(ctx, link, true)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, link, err
 	}
 
 	// Find the fetch size.
 	offset, fetchSize, err := link.OffsetAndFetchSize()
 	if err != nil {
-		return nil, nil, errors.AddContext(err, "unable to get offset and fetch size")
+		return nil, nil, link, errors.AddContext(err, "unable to get offset and fetch size")
 	}
 
 	// Download the base sector
 	baseSector, _, err := r.managedDownloadByRoot(ctx, link.MerkleRoot(), offset, fetchSize, pricePerMS)
-	return StreamerFromSlice(baseSector), srvs, err
+	return StreamerFromSlice(baseSector), srvs, link, err
 }
 
 // managedDownloadSkylink will take a link and turn it into the metadata and
@@ -1438,6 +1438,7 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 	if err != nil {
 		return skymodules.SkylinkHealth{}, errors.AddContext(err, "error parsing skyfile metadata")
 	}
+	numPieces := int(layout.FanoutDataPieces + layout.FanoutParityPieces)
 
 	// Prepare the list of roots to ask the hosts for.
 	var roots []crypto.Hash
@@ -1445,7 +1446,6 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 	// If the file has a fanout, ask the hosts for the fanout as well.
 	rootIndexToChunkIndex := make(map[int]int)
 	numChunks := 0
-	numPieces := int(layout.FanoutDataPieces + layout.FanoutParityPieces)
 	if len(fanoutBytes) > 0 {
 		// Create the list of chunks from the fanout. Since we want to
 		// give an overview of the health of the file on the network, we

@@ -384,6 +384,11 @@ func (d *Distribution) Shift(dur time.Duration) {
 	}
 }
 
+// HalfLife returns this distribution's half file.
+func (d *Distribution) HalfLife() time.Duration {
+	return d.staticHalfLife
+}
+
 // AddDataPoint will add a data point to each of the distributions in the
 // tracker.
 func (dt *DistributionTracker) AddDataPoint(dur time.Duration) {
