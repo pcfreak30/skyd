@@ -5596,12 +5596,20 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Resolve using resolve endpoint.
-	resolvedSkylink, err := r.ResolveSkylinkV2(skylinkV2.String())
+	resolvedSkylink, h, err := r.ResolveSkylinkV2Custom(skylinkV2.String(), api.DefaultSkynetRequestTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if resolvedSkylink != skylink.String() {
 		t.Fatal("skylink resolved wrong", resolvedSkylink, skylink.String())
+	}
+	skynetSkylink := h.Get(api.SkynetSkylinkHeader)
+	if skynetSkylink != resolvedSkylink {
+		t.Fatalf("wrong skylink header %v != %v", skynetSkylink, resolvedSkylink)
+	}
+	skynetRequestedSkylink := h.Get(api.SkynetRequestedSkylinkHeader)
+	if skynetRequestedSkylink != skylinkV2.String() {
+		t.Fatalf("wrong requested skylink header %v != %v", skynetRequestedSkylink, skylinkV2)
 	}
 
 	// Update entry to empty skylink.
