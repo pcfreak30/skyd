@@ -66,8 +66,6 @@ type (
 		staticCompleteTime        time.Time
 		staticExecuteTime         time.Time
 		staticEID                 modules.RegistryEntryID
-		staticSPK                 types.SiaPublicKey
-		staticTweak               crypto.Hash
 		staticWorker              *worker
 	}
 )
@@ -233,8 +231,6 @@ func (j *jobReadRegistry) callExecute() {
 				staticErr:                 err,
 				staticExecuteTime:         start,
 				staticEID:                 j.staticRegistryEntryID,
-				staticSPK:                 srv.PubKey,
-				staticTweak:               srv.Tweak,
 				staticWorker:              w,
 			}
 			select {

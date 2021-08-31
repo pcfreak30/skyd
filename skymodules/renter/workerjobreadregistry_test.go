@@ -119,10 +119,10 @@ func TestReadRegistryJobManual(t *testing.T) {
 	}
 
 	// The worker, eid, spk and tweak should be set.
-	if resp.staticTweak != rv.Tweak {
+	if resp.staticSignedRegistryValue.Tweak != rv.Tweak {
 		t.Fatal("wrong tweak")
 	}
-	if !resp.staticSPK.Equals(spk) {
+	if !resp.staticSignedRegistryValue.PubKey.Equals(spk) {
 		t.Fatal("wrong spk")
 	}
 	if resp.staticEID != eid {
@@ -152,11 +152,11 @@ func TestReadRegistryJobManual(t *testing.T) {
 
 	// The worker and eid should be set.
 	emptyHash := crypto.Hash{}
-	if resp.staticTweak == emptyHash {
+	if resp.staticSignedRegistryValue.Tweak == emptyHash {
 		t.Fatal("wrong tweak")
 	}
 	emptyKey := types.SiaPublicKey{}
-	if reflect.DeepEqual(resp.staticSPK, emptyKey) {
+	if reflect.DeepEqual(resp.staticSignedRegistryValue.PubKey, emptyKey) {
 		t.Fatal("wrong spk")
 	}
 	if resp.staticEID != eid {

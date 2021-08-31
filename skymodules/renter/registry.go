@@ -256,7 +256,7 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 	var d2 time.Duration
 	for _, resp := range goodResps {
 		// Otherwise look up the same entry.
-		srv, err := resp.staticWorker.ReadRegistry(secondBestCtx, span, resp.staticSPK, resp.staticTweak)
+		srv, err := resp.staticWorker.ReadRegistry(secondBestCtx, span, resp.staticSignedRegistryValue.PubKey, resp.staticSignedRegistryValue.Tweak)
 		// Ignore responses with errors and without revision.
 		if err != nil {
 			l.Printf("threadedAddResponseSet: worker that successfully retrieved a registry value failed to retrieve it again: %v", err)
@@ -289,7 +289,8 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 		// Add eid
 		logStr += fmt.Sprintf(" - eid: %v", best.staticEID)
 		// Add spk and tweak
-		logStr += fmt.Sprintf(" - spk: %v - tweak: %v", best.staticSPK.String(), best.staticTweak.String())
+		bestSRV := best.staticSignedRegistryValue
+		logStr += fmt.Sprintf(" - spk: %v - tweak: %v", bestSRV.PubKey.String(), bestSRV.Tweak.String())
 		// Add number of good/total responses.
 		logStr += fmt.Sprintf(" - goodResps: %v/%v", len(goodResps), len(resps))
 		// Log string.
@@ -897,7 +898,7 @@ func (r *Renter) threadedHandleRegistryRepairs(ctx context.Context, parentSpan o
 	}
 
 	// Update the registry.
-	err := r.managedUpdateRegistry(ctx, best.staticSPK, best.staticSignedRegistryValue.SignedRegistryValue, upToDateHosts, RegistryEntryRepairThreshold-len(upToDateHosts))
+	err := r.managedUpdateRegistry(ctx, bestSRV.PubKey, best.staticSignedRegistryValue.SignedRegistryValue, upToDateHosts, RegistryEntryRepairThreshold-len(upToDateHosts))
 	if err != nil {
 		r.staticLog.Debugln("threadedHandleRegistryRepairs: failed to update registry", err)
 	}
