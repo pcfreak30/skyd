@@ -297,14 +297,14 @@ func testDistributionChanceAfter(t *testing.T) {
 
 	// reset the distribution and add a datapoint in every bucket
 	d = NewDistribution(time.Minute * 100)
-	for i := 0; i < distributionTrackerTotalBuckets; i++ {
-		d.AddDataPoint(durationForIndex(i))
+	for i := 0; i < DistributionTrackerTotalBuckets; i++ {
+		d.AddDataPoint(DistributionDurationForBucketIndex(i))
 	}
 
 	// assert the chance at every bucket equals the sum of all data points in
 	// buckets up until then divided by the total amount of data points
-	for i := 0; i < distributionTrackerTotalBuckets; i++ {
-		if d.ChanceAfter(durationForIndex(i)) != float64(i)/d.DataPoints() {
+	for i := 0; i < DistributionTrackerTotalBuckets; i++ {
+		if d.ChanceAfter(DistributionDurationForBucketIndex(i)) != float64(i)/d.DataPoints() {
 			t.Fatal("bad", i)
 		}
 	}
