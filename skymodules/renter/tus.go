@@ -529,9 +529,10 @@ func (u *skynetTUSUpload) ConcatUploads(ctx context.Context, partialUploads []ha
 	// Concatenate the uploads by combining their fanouts. Concatenated
 	// uploads may never consist of small uploads except for the last
 	// upload.
-	sup := partialUploads[0].(*skynetTUSUpload).staticSUP
-	ec := partialUploads[0].(*skynetTUSUpload).fileNode.ErasureCode()
-	masterKey := partialUploads[0].(*skynetTUSUpload).fileNode.MasterKey()
+	pu := partialUploads[0].(*skynetTUSUpload)
+	sup := pu.staticSUP
+	ec := pu.fileNode.ErasureCode()
+	masterKey := pu.fileNode.MasterKey()
 	for i := range partialUploads {
 		pu := partialUploads[i].(*skynetTUSUpload)
 		if i < len(partialUploads)-1 && pu.isSmall {

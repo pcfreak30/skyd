@@ -504,6 +504,13 @@ func testTUSUploaderConnectionDropped(t *testing.T, tg *siatest.TestGroup) {
 func testTUSUploaderConcat(t *testing.T, r *siatest.TestNode) {
 	tusEndpoint := "/skynet/tus"
 
+	// Get the number of files at the beginning of the test.
+	dir, err := r.RenterDirRootGet(skymodules.SkynetFolder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nFiles := dir.Directories[0].AggregateNumFiles
+
 	// request is a helper function to send a http request, check for an
 	// error and return the response header.
 	request := func(req *http.Request) (http.Header, error) {
@@ -668,5 +675,18 @@ func testTUSUploaderConcat(t *testing.T, r *siatest.TestNode) {
 	expected = partialData
 	if !bytes.Equal(downloaded, expected) {
 		t.Fatal("data mismatch", len(downloaded), len(expected))
+	}
+
+	// Wait for two full pruning intervals to make sure pruning ran at least
+	// once.
+	time.Sleep(2 * renter.PruneTUSUploadTimeout)
+
+	dir, err = r.RenterDirRootGet(skymodules.SkynetFolder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nFilesAfter := dir.Directories[0].AggregateNumFiles
+	if nFilesAfter-nFiles != 4 {
+		t.Fatal("expected 4 .sia files to be created for the 2 parts but got", nFilesAfter-nFiles)
 	}
 }
