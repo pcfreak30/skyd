@@ -183,6 +183,9 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	if skylink != h.Get(api.SkynetSkylinkHeader) {
 		t.Fatal("skylink mismatch")
 	}
+	if skylink != h.Get(api.SkynetRequestedSkylinkHeader) {
+		t.Fatal("skylink mismatch")
+	}
 
 	// Fetch the links metadata and compare it. Should match.
 	h2, metadata2, err := r.SkynetMetadataGet(skylink)
@@ -195,6 +198,9 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("metadata doesn't match")
 	}
 	if skylink != h2.Get(api.SkynetSkylinkHeader) {
+		t.Fatal("skylink mismatch")
+	}
+	if skylink != h2.Get(api.SkynetRequestedSkylinkHeader) {
 		t.Fatal("skylink mismatch")
 	}
 
@@ -437,6 +443,9 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if emptySkylink != h3.Get(api.SkynetSkylinkHeader) {
 		t.Fatal("skylink mismatch")
+	}
+	if emptySkylink != h3.Get(api.SkynetRequestedSkylinkHeader) {
+		t.Fatal("skylink mismatch", emptySkylink)
 	}
 
 	// Upload another skyfile, this time ensure that the skyfile is more than
@@ -3323,7 +3332,7 @@ func testSkynetRequestTimeout(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Verify timeout on pin request
-	err = r.SkynetSkylinkPinPostWithTimeout(skylink, pinLUP, 2)
+	err = r.SkynetSkylinkPinPostWithTimeout(skylink, pinLUP, 2*time.Second)
 	if errors.Contains(err, renter.ErrProjectTimedOut) {
 		t.Fatal("Expected pin request to time out")
 	}
@@ -4261,8 +4270,11 @@ func TestRegistryHealth(t *testing.T) {
 	}()
 	r := tg.Renters()[0]
 
-	// Get one of the hosts' pubkey.
-	hpk, err := tg.Hosts()[0].HostPublicKey()
+	// Get one of the hosts' pubkey and choose one of the existing hosts to
+	// be stopped later. They can't be the same host.
+	allHosts := tg.Hosts()
+	stoppedHost := allHosts[0]
+	hpk, err := allHosts[1].HostPublicKey()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4322,9 +4334,6 @@ func TestRegistryHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Choose one of the existing hosts to be stopped later.
-	stoppedHost := tg.Hosts()[0]
-
 	// Add a new host.
 	_, err = tg.AddNodeN(node.HostTemplate, 1)
 	if err != nil {
@@ -4345,28 +4354,24 @@ func TestRegistryHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Check the health.
+	err = assertHealth(skymodules.RegistryEntryHealth{
+		RevisionNumber:        revision,
+		NumEntries:            uint64(len(tg.Hosts())) - 1,
+		NumBestEntries:        uint64(len(tg.Hosts())) - 1,
+		NumBestPrimaryEntries: 0,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Restart the stopped host.
 	if err := tg.StartNode(stoppedHost); err != nil {
 		t.Fatal(err)
 	}
 
-	// Reannounce it to make sure its new ports are known.
-	err = stoppedHost.HostAnnouncePost()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = tg.Miners()[0].MineBlock()
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// Use a retry since the node might take a while to start.
 	err = build.Retry(60, time.Second, func() error {
-		// Mine a block for the announcement.
-		err = tg.Miners()[0].MineBlock()
-		if err != nil {
-			t.Fatal(err)
-		}
 		// Force a refresh of the worker pool for testing.
 		_, err = r.RenterWorkersGet()
 		if err != nil {
@@ -4912,7 +4917,7 @@ func testSkynetMonetization(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Connect it to the renter.
-	err = monetizer.GatewayConnectPost(r.GatewayAddress())
+	err = r.GatewayConnectPost(monetizer.GatewayAddress())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5511,10 +5516,32 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("data doesn't match")
 	}
 
+	// Fetch the metadata and confirm the headers.
+	mdH, _, err := r.SkynetMetadataGet(recursiveLink.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The skynet-skylink header should report the v1 skylink.
+	if sl := mdH.Get(api.SkynetSkylinkHeader); sl != skylink.String() {
+		t.Fatalf("wrong skylink %v != %v", sl, skylink.String())
+	}
+	// The skynet-requested-skylink should report the v2 skylink.
+	if sl := mdH.Get(api.SkynetRequestedSkylinkHeader); sl != recursiveLink.String() {
+		t.Fatalf("wrong skylink %v != %v", sl, recursiveLink.String())
+	}
+
 	// Fetch the header.
 	_, h, err := r.SkynetSkylinkHead(recursiveLink.String())
 	if err != nil {
 		t.Fatal(err)
+	}
+	// The skynet-skylink header should report the v1 skylink.
+	if sl := h.Get(api.SkynetSkylinkHeader); sl != skylink.String() {
+		t.Fatalf("wrong skylink %v != %v", sl, skylink.String())
+	}
+	// The skynet-requested-skylink should report the v2 skylink.
+	if sl := h.Get(api.SkynetRequestedSkylinkHeader); sl != recursiveLink.String() {
+		t.Fatalf("wrong skylink %v != %v", sl, recursiveLink.String())
 	}
 	// It should contain a valid proof.
 	var proof []api.RegistryHandlerGET
@@ -5569,12 +5596,20 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Resolve using resolve endpoint.
-	resolvedSkylink, err := r.ResolveSkylinkV2(skylinkV2.String())
+	resolvedSkylink, h, err := r.ResolveSkylinkV2Custom(skylinkV2.String(), api.DefaultSkynetRequestTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if resolvedSkylink != skylink.String() {
 		t.Fatal("skylink resolved wrong", resolvedSkylink, skylink.String())
+	}
+	skynetSkylink := h.Get(api.SkynetSkylinkHeader)
+	if skynetSkylink != resolvedSkylink {
+		t.Fatalf("wrong skylink header %v != %v", skynetSkylink, resolvedSkylink)
+	}
+	skynetRequestedSkylink := h.Get(api.SkynetRequestedSkylinkHeader)
+	if skynetRequestedSkylink != skylinkV2.String() {
+		t.Fatalf("wrong requested skylink header %v != %v", skynetRequestedSkylink, skylinkV2)
 	}
 
 	// Update entry to empty skylink.
@@ -5685,7 +5720,7 @@ func TestSkynetSkylinkHealth(t *testing.T) {
 		}
 		sh, err := r.SkylinkHealthGET(sl)
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
 		if sh.BaseSectorRedundancy != baseSectorRedundancy {
 			return fmt.Errorf("wrong base sector redundancy %v != %v", sh.BaseSectorRedundancy, baseSectorRedundancy)

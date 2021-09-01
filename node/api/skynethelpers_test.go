@@ -880,16 +880,13 @@ func TestAttachRegistryEntryProof(t *testing.T) {
 		t.Fatal("proof doesn't match expectation")
 	}
 
-	// Attach an empty proof. Should result in '[]'.
+	// Attach an empty proof. Shouldn't set the header.
 	w = newTestHTTPWriter()
 	header = w.Header()
 	attachRegistryEntryProof(w, []skymodules.RegistryEntry{})
-	headerFields, set := header["Skynet-Proof"]
-	if !set {
-		t.Fatal("not set")
-	}
-	if headerFields[0] != "[]" {
-		t.Fatal("empty proof expected", headerFields[0])
+	_, set := header["Skynet-Proof"]
+	if set {
+		t.Fatal("set")
 	}
 }
 
@@ -1093,5 +1090,101 @@ func TestCustomErrorWriter(t *testing.T) {
 	ew.WriteError(w, Error{errmsg}, 401)
 	if !strings.Contains(string(w.WrittenContent()), errmsg) {
 		t.Fatalf("Expected content to contain '%s', got '%s'", errmsg, string(w.WrittenContent()))
+	}
+}
+
+// TestParseTimeout is a unit test for parseTimeout and parseRegistryTimeout.
+func TestParseTimeout(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		timeout     string
+		timeoutFunc func(url.Values) (time.Duration, error)
+
+		result time.Duration
+		err    error
+	}{
+		{
+			name:        "SkynetTimeout/Default",
+			timeout:     "",
+			timeoutFunc: parseTimeout,
+
+			result: DefaultSkynetRequestTimeout,
+			err:    nil,
+		},
+		{
+			name:        "SkynetTimeout/Zero",
+			timeout:     "0",
+			timeoutFunc: parseTimeout,
+
+			result: 0,
+			err:    errZeroTimeout,
+		},
+		{
+			name:        "SkynetTimeout/Max",
+			timeout:     fmt.Sprint(MaxSkynetRequestTimeout.Seconds()),
+			timeoutFunc: parseTimeout,
+
+			result: MaxSkynetRequestTimeout,
+			err:    nil,
+		},
+		{
+			name:        "SkynetTimeout/AboveMax",
+			timeout:     fmt.Sprint(MaxSkynetRequestTimeout.Seconds() + 1),
+			timeoutFunc: parseTimeout,
+
+			result: 0,
+			err:    errTimeoutTooHigh,
+		},
+		{
+			name:        "RegistryTimeout/Default",
+			timeout:     "",
+			timeoutFunc: parseRegistryTimeout,
+
+			result: renter.DefaultRegistryHealthTimeout,
+			err:    nil,
+		},
+		{
+			name:        "RegistryTimeout/Zero",
+			timeout:     "0",
+			timeoutFunc: parseRegistryTimeout,
+
+			result: 0,
+			err:    errZeroTimeout,
+		},
+		{
+			name:        "RegistryTimeout/Max",
+			timeout:     fmt.Sprint(renter.MaxRegistryReadTimeout.Seconds()),
+			timeoutFunc: parseRegistryTimeout,
+
+			result: renter.MaxRegistryReadTimeout,
+			err:    nil,
+		},
+		{
+			name:        "RegistryTimeout/AboveMax",
+			timeout:     fmt.Sprint(renter.MaxRegistryReadTimeout.Seconds() + 1),
+			timeoutFunc: parseRegistryTimeout,
+
+			result: 0,
+			err:    errTimeoutTooHigh,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			values := url.Values{}
+			values.Set("timeout", test.timeout)
+
+			d, err := test.timeoutFunc(values)
+			if test.err != nil && !errors.Contains(err, test.err) {
+				t.Fatal(err)
+			}
+			if test.err == nil && err != nil {
+				t.Fatal(err)
+			}
+			if d != test.result {
+				t.Fatalf("%v != %v", d, test.result)
+			}
+		})
 	}
 }

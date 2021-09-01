@@ -552,14 +552,14 @@ func (c *Client) SkynetSkylinkZipReaderGet(skylink string) (http.Header, io.Read
 // SkynetSkylinkPinPost uses the /skynet/pin endpoint to pin the file at the
 // given skylink.
 func (c *Client) SkynetSkylinkPinPost(skylink string, spp skymodules.SkyfilePinParameters) error {
-	return c.SkynetSkylinkPinPostWithTimeout(skylink, spp, -1)
+	return c.SkynetSkylinkPinPostWithTimeout(skylink, spp, api.DefaultSkynetRequestTimeout)
 }
 
 // SkynetSkylinkPinPostWithTimeout uses the /skynet/pin endpoint to pin the file
 // at the given skylink, specifying the given timeout.
-func (c *Client) SkynetSkylinkPinPostWithTimeout(skylink string, spp skymodules.SkyfilePinParameters, timeout int) error {
+func (c *Client) SkynetSkylinkPinPostWithTimeout(skylink string, spp skymodules.SkyfilePinParameters, timeout time.Duration) error {
 	values := urlValuesFromSkyfilePinParameters(spp)
-	values.Set("timeout", fmt.Sprintf("%d", timeout))
+	values.Set("timeout", fmt.Sprintf("%d", uint64(timeout.Seconds())))
 
 	query := fmt.Sprintf("/skynet/pin/%s?%s", skylink, values.Encode())
 	_, _, err := c.postRawResponse(query, nil)
@@ -868,6 +868,12 @@ func (c *Client) ResolveSkylinkV2(skylink string) (string, error) {
 // ResolveSkylinkV2WithTimeout queries the /skynet/resolve/:skylink [GET]
 // endpoint.
 func (c *Client) ResolveSkylinkV2WithTimeout(skylink string, timeout time.Duration) (string, error) {
+	sl, _, err := c.ResolveSkylinkV2Custom(skylink, timeout)
+	return sl, err
+}
+
+// ResolveSkylinkV2Custom queries the /skynet/resolve/:skylink [GET] endpoint.
+func (c *Client) ResolveSkylinkV2Custom(skylink string, timeout time.Duration) (string, http.Header, error) {
 	// Set the values.
 	values := url.Values{}
 	if timeout > 0 {
@@ -875,9 +881,16 @@ func (c *Client) ResolveSkylinkV2WithTimeout(skylink string, timeout time.Durati
 	}
 
 	// Send request.
+	h, b, err := c.getRawResponse(fmt.Sprintf("/skynet/resolve/%v?%v", skylink, values.Encode()))
+	if err != nil {
+		return "", nil, err
+	}
 	var srg api.SkylinkResolveGET
-	err := c.get(fmt.Sprintf("/skynet/resolve/%v?%v", skylink, values.Encode()), &srg)
-	return srg.Skylink, err
+	err = json.Unmarshal(b, &srg)
+	if err != nil {
+		return "", nil, err
+	}
+	return srg.Skylink, h, err
 }
 
 // RegistryReadWithTimeout queries the /skynet/registry [GET] endpoint with the

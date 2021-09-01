@@ -52,8 +52,9 @@ type (
 
 	// jobUpdateRegistryResponse contains the result of a UpdateRegistry query.
 	jobUpdateRegistryResponse struct {
-		srv       *modules.SignedRegistryValue // only sent on ErrLowerRevNum and ErrSameRevNum
-		staticErr error
+		srv          *modules.SignedRegistryValue // only sent on ErrLowerRevNum and ErrSameRevNum
+		staticErr    error
+		staticWorker *worker
 	}
 )
 
@@ -80,8 +81,9 @@ func (j *jobUpdateRegistry) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
 	errLaunch := w.staticRenter.tg.Launch(func() {
 		response := &jobUpdateRegistryResponse{
-			srv:       nil,
-			staticErr: errors.Extend(err, ErrJobDiscarded),
+			srv:          nil,
+			staticErr:    errors.Extend(err, ErrJobDiscarded),
+			staticWorker: j.staticQueue.staticWorker(),
 		}
 		select {
 		case j.staticResponseChan <- response:
@@ -111,8 +113,9 @@ func (j *jobUpdateRegistry) callExecute() {
 	sendResponse := func(srv *modules.SignedRegistryValue, err error) {
 		errLaunch := w.staticRenter.tg.Launch(func() {
 			response := &jobUpdateRegistryResponse{
-				srv:       srv,
-				staticErr: err,
+				srv:          srv,
+				staticErr:    err,
+				staticWorker: j.staticQueue.staticWorker(),
 			}
 			select {
 			case j.staticResponseChan <- response:

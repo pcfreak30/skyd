@@ -11,6 +11,9 @@ import (
 // TestDistributionTracker is a collection of unit test that verify the
 // functionality of the distribution tracker.
 func TestDistributionTracker(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
 	t.Parallel()
 
 	t.Run("Bucketing", testDistributionBucketing)
@@ -271,7 +274,7 @@ func testDistributionChanceAfter(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		randomDur := time.Duration(fastrand.Intn(100)) * ms
 		chance = d.ChanceAfter(randomDur)
-		if !(chance >= 0 && chance < 1) {
+		if !(chance >= 0 && chance <= 1) {
 			t.Fatal("bad", chance, randomDur)
 		}
 	}
@@ -290,6 +293,20 @@ func testDistributionChanceAfter(t *testing.T) {
 	randomDur := time.Duration(fastrand.Intn(100)) * ms
 	if d.ChanceAfter(randomDur) != d.ChanceAfter(randomDur) {
 		t.Fatal("bad")
+	}
+
+	// reset the distribution and add a datapoint in every bucket
+	d = NewDistribution(time.Minute * 100)
+	for i := 0; i < distributionTrackerTotalBuckets; i++ {
+		d.AddDataPoint(durationForIndex(i))
+	}
+
+	// assert the chance at every bucket equals the sum of all data points in
+	// buckets up until then divided by the total amount of data points
+	for i := 0; i < distributionTrackerTotalBuckets; i++ {
+		if d.ChanceAfter(durationForIndex(i)) != float64(i)/d.DataPoints() {
+			t.Fatal("bad", i)
+		}
 	}
 }
 
