@@ -15,28 +15,6 @@ import (
 	"go.sia.tech/siad/types"
 )
 
-// TestCreateWorkerSet is a unit test that verifies the functionality of the
-// create worker set method on the pdc.
-func TestCreateWorkerSet(t *testing.T) {
-	now := time.Now()
-	in50MS := now.Add(50 * time.Millisecond)
-	in70MS := now.Add(70 * time.Millisecond)
-	in90MS := now.Add(90 * time.Millisecond)
-
-	pdc := newTestPDC()
-	pdc.workerState.unresolvedWorkers = map[string]*pcwsUnresolvedWorker{
-		"w1": {staticExpectedResolvedTime: in50MS},
-		"w2": {staticExpectedResolvedTime: in70MS},
-		"w3": {staticExpectedResolvedTime: in90MS},
-	}
-
-	workers := []downloadWorker{
-		&individualWorker{resolveChance: .05},
-	}
-
-	pdc.createWorkerSet(workers, 1)
-}
-
 // TestChimeraWorker is a unit test that verifies the functionality of a chimera
 // worker.
 func TestChimeraWorker(t *testing.T) {
@@ -51,7 +29,7 @@ func TestChimeraWorker(t *testing.T) {
 	}
 
 	// create a chimera and assert its initial state
-	cw := NewChimeraWorker()
+	cw := NewChimeraWorker(1)
 	if !cw.cost(randLength).IsZero() {
 		t.Fatal("bad")
 	}

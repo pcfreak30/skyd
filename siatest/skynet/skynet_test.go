@@ -90,13 +90,105 @@ func TestSkynetSuite(t *testing.T) {
 	}
 
 	// TODO: remove
-	// subTests = []siatest.SubTest{
-	// 	{Name: "Basic", Test: testSkynetBasic},
-	// }
+	subTests = []siatest.SubTest{
+		{Name: "MultipartUpload", Test: testSkynetMultipartUpload},
+		// {Name: "DryRunUpload", Test: testSkynetDryRunUpload},
+		// {Name: "MetadataMonetization", Test: testSkynetMetadataMonetizers},
+	}
 
 	// Run tests
 	if err := siatest.RunSubTests(t, groupParams, groupDir, subTests); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testSkynetBasic provides basic end-to-end testing for uploading skyfiles and
+// downloading the resulting skylinks.
+func testSkynetSuperBasic(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Create some data to upload as a skyfile.
+	data := fastrand.Bytes(100 + siatest.Fuzz())
+	// Need it to be a reader.
+	reader := bytes.NewReader(data)
+	// Call the upload skyfile client call.
+	filename := "testSmall"
+	uploadSiaPath, err := skymodules.NewSiaPath("testSmallPath")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Quick fuzz on the force value so that sometimes it is set, sometimes it
+	// is not.
+	var force bool
+	if fastrand.Intn(2) == 0 {
+		force = true
+	}
+	sup := skymodules.SkyfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		Force:               force,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+		Filename:            filename,
+		Mode:                0640, // Intentionally does not match any defaults.
+		Reader:              reader,
+	}
+	skylink, rshp, err := r.SkynetSkyfilePost(sup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var realSkylink skymodules.Skylink
+	err = realSkylink.LoadString(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rshp.MerkleRoot != realSkylink.MerkleRoot() {
+		t.Fatal("mismatch")
+	}
+	if rshp.Bitfield != realSkylink.Bitfield() {
+		t.Fatal("mismatch")
+	}
+
+	// Check the redundancy on the file.
+	skynetUploadPath, err := skymodules.SkynetFolder.Join(uploadSiaPath.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = build.Retry(25, 250*time.Millisecond, func() error {
+		uploadedFile, err := r.RenterFileRootGet(skynetUploadPath)
+		if err != nil {
+			return err
+		}
+		if uploadedFile.File.Redundancy != 2 {
+			return fmt.Errorf("bad redundancy: %v", uploadedFile.File.Redundancy)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to download the file behind the skylink.
+	fetchedData, err := r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, metadata, err := r.SkynetMetadataGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(fetchedData, data) {
+		t.Error("upload and download doesn't match")
+		t.Log(data)
+		t.Log(fetchedData)
+	}
+	if metadata.Mode != 0640 {
+		t.Error("bad mode")
+	}
+	if metadata.Filename != filename {
+		t.Error("bad filename")
+	}
+	if skylink != h.Get(api.SkynetSkylinkHeader) {
+		t.Fatal("skylink mismatch")
 	}
 }
 
