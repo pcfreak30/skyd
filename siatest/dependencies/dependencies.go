@@ -369,6 +369,12 @@ func NewDependencyHostLosePriceTable() *DependencyWithDisableAndEnable {
 	return newDependencywithDisableAndEnable("HostLosePriceTable")
 }
 
+// NewDependencyReadRegistryNoEntry creates a new dependency that can be used to
+// simulate a host losing a registry entry.
+func NewDependencyReadRegistryNoEntry() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("ReadRegistryNoEntry")
+}
+
 // NewDependencyRegistryUpdateNoOp creates a dependency, that causes
 // RegistryUpdate to be a no-op.
 func NewDependencyRegistryUpdateNoOp() *DependencyWithDisableAndEnable {
