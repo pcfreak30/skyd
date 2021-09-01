@@ -20,6 +20,13 @@ import (
 	"go.sia.tech/siad/types"
 )
 
+// TestProjectDownloadChunk_workers is a unit test for the 'workers' method on
+// the pdc.
+func TestProjectDownloadChunk_workers(t *testing.T) {
+	t.Parallel()
+
+	
+}
 // TestProjectDownloadChunk_finalize is a unit test for the 'finalize' function
 // on the pdc. It verifies whether the returned data is properly offset to
 // include only the pieces requested by the user.

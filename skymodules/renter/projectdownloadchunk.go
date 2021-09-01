@@ -360,7 +360,6 @@ func (pdc *projectDownloadChunk) managedUnresolvedWorkers() ([]*pcwsUnresolvedWo
 // handleJobReadResponse will take a jobReadResponse from a worker job
 // and integrate it into the set of pieces.
 func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
-	fmt.Println("handle JRR", jrr.staticErr)
 	// Prevent a production panic.
 	if jrr == nil {
 		pdc.workerSet.staticRenter.staticLog.Critical("received nil job read response in handleJobReadResponse")
@@ -420,9 +419,9 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 		}
 	}
 
-	// TODO: should we add this check? 
+	// TODO: should we add this check?
 	if !pieceFound {
-		build.Critical("COULD NOT MARK PIECE AS COMPLETED")
+		fmt.Println("CRITICAL: COULD NOT MARK PIECE AS COMPLETED")
 	}
 }
 
@@ -522,8 +521,7 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 	// potential downloads.
 	completedPieces := 0
 	hopefulPieces := 0
-	for pI, piece := range pdc.availablePieces {
-		fmt.Println("avail piece", pI)
+	for _, piece := range pdc.availablePieces {
 		// Only count one piece as hopeful per set.
 		hopeful := false
 		for _, pieceDownload := range piece {
@@ -532,7 +530,6 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 			if pieceDownload.successful() {
 				hopeful = true
 				completedPieces++
-				fmt.Println("successful download", completedPieces)
 				break
 			}
 			// If this piece has not yet failed, it is hopeful. Keep looking
@@ -544,7 +541,6 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 		}
 		if hopeful {
 			hopefulPieces++
-			fmt.Println("hopeful", hopefulPieces)
 		}
 	}
 	if completedPieces >= ec.MinPieces() {

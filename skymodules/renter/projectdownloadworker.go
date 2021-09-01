@@ -15,6 +15,8 @@ type (
 	// downloadWorker is an interface implemented by both the individual and
 	// chimera workers that represents a worker that can be used for downloads.
 	downloadWorker interface {
+		launched() time.Time
+		chimera() bool
 		// cost returns the expected job cost for downloading a piece of data
 		// with given length from the worker. If the worker has already been
 		// launched, its cost will be zero.
@@ -84,6 +86,8 @@ type (
 	}
 )
 
+// Split will split the worker array into an array that contains resolved
+// workers and one that contains unresolved workers.
 func (w workerArray) Split() (resolved, unresolved []*individualWorker) {
 	for _, iw := range w {
 		if iw.resolveChance == 1 {
@@ -93,6 +97,20 @@ func (w workerArray) Split() (resolved, unresolved []*individualWorker) {
 		}
 	}
 	return
+}
+
+func (iw *individualWorker) chimera() bool {
+	return false
+}
+func (cw *chimeraWorker) chimera() bool {
+	return true
+}
+
+func (iw *individualWorker) launched() time.Time {
+	return iw.launchedAt
+}
+func (cw *chimeraWorker) launched() time.Time {
+	return time.Time{}
 }
 
 // NewChimeraWorker returns a new chimera worker object.
@@ -405,17 +423,18 @@ func (ws workerSet) numOverdriveWorkers() int {
 	return numWorkers - ws.staticMinPieces
 }
 
+// updateWorkers
 func (pdc *projectDownloadChunk) updateWorkers(workers workerArray) {
 	ws := pdc.workerState
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 
 	// create two maps to help update the workers
-	resolved := make(map[string]struct{})
+	resolved := make(map[string]int)
 	unresolved := make(map[string]int)
 	for i, w := range workers {
 		if w.resolveChance == 1 {
-			resolved[w.staticWorker.staticHostPubKeyStr] = struct{}{}
+			resolved[w.staticWorker.staticHostPubKeyStr] = i
 		} else {
 			unresolved[w.staticWorker.staticHostPubKeyStr] = i
 		}
@@ -424,7 +443,8 @@ func (pdc *projectDownloadChunk) updateWorkers(workers workerArray) {
 	// now iterate over all resolved workers, if we did not have that worker as
 	// resolved before, it became resolved and we want to update it
 	for _, rw := range ws.resolvedWorkers {
-		_, known := resolved[rw.worker.staticHostPubKeyStr]
+		index, known := resolved[rw.worker.staticHostPubKeyStr]
+		workers[index].launchedAt = pdc.launchedAt(rw.worker)
 		if known {
 			continue
 		}
@@ -439,17 +459,13 @@ func (pdc *projectDownloadChunk) updateWorkers(workers workerArray) {
 			fmt.Printf("CAP WRONG %v != %v\n", cap(workers[index].pieceIndices), cap(rw.pieceIndices))
 		}
 
-		fmt.Println("before", workers[index].pieceIndices)
-		fmt.Println("setting", rw.pieceIndices)
-		workers[index].launchedAt = pdc.launchedAt(rw.worker)
 		workers[index].pieceIndices = rw.pieceIndices
-		fmt.Println("after", workers[index].pieceIndices)
 		workers[index].resolveChance = 1
 	}
 }
 
 // workers returns the resolved and unresolved workers as separate slices
-func (pdc *projectDownloadChunk) workers() (workerArray, <-chan struct{}) {
+func (pdc *projectDownloadChunk) workers() workerArray {
 	ws := pdc.workerState
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
@@ -460,27 +476,27 @@ func (pdc *projectDownloadChunk) workers() (workerArray, <-chan struct{}) {
 	ec := pdc.workerSet.staticErasureCoder
 	length := pdc.pieceLength
 
+	// add all resolved workers that are deemed good for downloading
 	for _, rw := range ws.resolvedWorkers {
-		// exclude workers that are not useful
 		if !isGoodForDownload(rw.worker) {
 			continue
 		}
 
-		w := rw.worker
-		stats := w.staticJobReadQueue.staticStats
+		stats := rw.worker.staticJobReadQueue.staticStats
 		rdt := stats.distributionTrackerForLength(length)
-		ldt := w.staticJobHasSectorQueue.staticDT
+		ldt := rw.worker.staticJobHasSectorQueue.staticDT
 		workers = append(workers, &individualWorker{
-			launchedAt:    pdc.launchedAt(w),
+			launchedAt:    pdc.launchedAt(rw.worker),
 			pieceIndices:  rw.pieceIndices,
 			resolveChance: 1,
 
 			staticLookupDistribution: ldt.Distribution(0),
 			staticReadDistribution:   rdt.Distribution(0),
-			staticWorker:             w,
+			staticWorker:             rw.worker,
 		})
 	}
 
+	// add all unresolved workers that are deemed good for downloading
 	for _, uw := range ws.unresolvedWorkers {
 		w := uw.staticWorker
 		stats := w.staticJobReadQueue.staticStats
@@ -508,7 +524,7 @@ func (pdc *projectDownloadChunk) workers() (workerArray, <-chan struct{}) {
 		})
 	}
 
-	return workers, ws.registerForWorkerUpdate()
+	return workers
 }
 
 // launchedAt returns the time at which this worker was launched.
@@ -537,7 +553,7 @@ func (pdc *projectDownloadChunk) workerIsLaunched(w *worker, pieceIndex uint64) 
 func (pdc *projectDownloadChunk) workerIsDownloading(w *worker) bool {
 	for _, lw := range pdc.launchedWorkers {
 		lwKey := lw.staticWorker.staticHostPubKeyStr
-		if lwKey == w.staticHostPubKeyStr && lw.completeTime == (time.Time{}) {
+		if lwKey == w.staticHostPubKeyStr && lw.completeTime.IsZero() {
 			return true
 		}
 	}
@@ -561,14 +577,14 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) {
 			continue // in progress (this ensures we can re-use a worker)
 		}
 
-		fmt.Printf("worker %v has %v pieces to launch\n", worker.staticHostPubKeyStr[:46], w.pieces())
+		fmt.Printf("worker %v has %v pieces to launch\n", worker.staticHostPubKey.ShortString(), w.pieces())
 		for _, pieceIndex := range w.pieces() {
 			if pdc.workerIsLaunched(worker, pieceIndex) {
 				fmt.Println("worker already launched for piece", pieceIndex)
 				continue
 			}
 			isOverdrive := len(pdc.launchedWorkers) >= minPieces
-			fmt.Println("launch worker for piece", pieceIndex)
+			fmt.Printf("launch worker %v for piece %v\n", worker.staticHostPubKey.ShortString(), pieceIndex)
 			_, launched := pdc.launchWorker(worker, pieceIndex, isOverdrive)
 			if launched {
 				fmt.Println("LAUNCHED", pieceIndex)
@@ -584,9 +600,19 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) {
 // that can be launched from that set. Every iteration we check whether the
 // download was finished.
 func (pdc *projectDownloadChunk) launchWorkers() {
+	// register for a worker update chan
+	ws := pdc.workerState
+	ws.mu.Lock()
+	workerUpdateChan := ws.registerForWorkerUpdate()
+	ws.mu.Unlock()
+
+	// update the available pieces
 	pdc.updateAvailablePieces()
 
-	workers, workerUpdateChan := pdc.workers()
+	// grab the workers, this set of workers will not change but rather get
+	// updated to avoid needless performing gouging checks on every iteration
+	workers := pdc.workers()
+
 	for {
 		// create a worker set and launch it
 		workerSet, err := pdc.createWorkerSet(workers, maxOverdriveWorkers)
@@ -600,11 +626,17 @@ func (pdc *projectDownloadChunk) launchWorkers() {
 
 		// iterate
 		select {
-		case <-time.After(20 * time.Millisecond):
+		case <-time.After(time.Second): // TODO update to 20 * time.Millisecond
 			// recreate the workerset every 20ms
 		case <-workerUpdateChan:
 			// update the available pieces list
 			pdc.updateAvailablePieces()
+
+			// register for another update chan
+			ws := pdc.workerState
+			ws.mu.Lock()
+			workerUpdateChan = ws.registerForWorkerUpdate()
+			ws.mu.Unlock()
 		case jrr := <-pdc.workerResponseChan:
 			pdc.handleJobReadResponse(jrr)
 
@@ -618,6 +650,12 @@ func (pdc *projectDownloadChunk) launchWorkers() {
 				pdc.fail(err)
 				return
 			}
+		case <-pdc.ctx.Done():
+			pdc.fail(errors.New("download timed out"))
+			return
+		case <-time.After(time.Minute):
+			build.Critical("download timed out after 1m, a download should always have a reasonable timeout")
+			return
 		}
 
 		// update the workers on every iteration
@@ -693,7 +731,7 @@ OUTER:
 		workersNeeded := minPieces + numOverdrive
 		for bI := 0; bI < distribution.NumBuckets(); bI++ {
 			bDur := distribution.DurationForIndex(bI)
-
+			fmt.Printf("duration in focus %v \n", bDur)
 			// exit early if ppms in combination with the bucket duration
 			// already exceeds the adjusted cost of the current best set,
 			// workers would be too slow by definition
@@ -708,6 +746,17 @@ OUTER:
 				chanceJ := workers[j].distribution().ChanceAfter(bDur)
 				return chanceI > chanceJ
 			})
+
+			msg := "\nsortedWorkers:\n"
+			for i, w := range workers {
+				workerKey := "chimera"
+				if w.worker() != nil {
+					workerKey = w.worker().staticHostPubKey.ShortString()
+				}
+
+				msg += fmt.Sprintf("%d) %v datapoints: %v chance: %v cost: %v chimera: %t launched: %t pieces: %v\n", i+1, workerKey, w.distribution().DataPoints(), w.distribution().ChanceAfter(bDur), w.cost(length), w.chimera(), w.launched().IsZero(), w.pieces())
+			}
+			fmt.Println(msg)
 
 			// group the most likely workers to complete in the current duration
 			// in a way that we ensure no two workers are going after the same
@@ -740,6 +789,12 @@ OUTER:
 				staticMinPieces:        minPieces,
 			}
 
+			msg = "\nmostLikely:\n"
+			for _, w := range mostLikelySet.workers {
+				msg += w.worker().staticHostPubKey.ShortString() + " "
+			}
+			fmt.Println(msg)
+
 			// if the chance of the most likely set does not exceed 50%, it is
 			// not high enough to continue, no need to continue this iteration,
 			// we need to try a slower and thus more likely bucket
@@ -757,6 +812,11 @@ OUTER:
 				if !cheaperSet.chanceGreaterThanHalf(bDur) {
 					break
 				}
+				msg := "cheaperSet: "
+				for _, w := range mostLikelySet.workers {
+					msg += w.worker().staticHostPubKey.ShortString() + ", "
+				}
+				fmt.Println(msg)
 				mostLikelySet = cheaperSet
 			}
 
@@ -770,6 +830,14 @@ OUTER:
 				}
 			}
 		}
+	}
+
+	if bestSet != nil {
+		msg := "bestSet: "
+		for _, w := range bestSet.workers {
+			msg += w.worker().staticHostPubKey.ShortString() + ", "
+		}
+		fmt.Println(msg)
 	}
 
 	return bestSet, nil

@@ -13,16 +13,17 @@ import (
 func TestDistributionTracker(t *testing.T) {
 	t.Parallel()
 
-	t.Run("Bucketing", testDistributionBucketing)
-	t.Run("ChanceAfter", testDistributionChanceAfter)
-	t.Run("Clone", testDistributionClone)
-	t.Run("Decay", testDistributionDecay)
-	t.Run("DecayedLifetime", testDistributionDecayedLifetime)
-	t.Run("ExpectedDuration", testDistributionExpectedDuration)
-	t.Run("FullTestLong", testDistributionTrackerFullTestLong)
-	t.Run("Helpers", testDistributionHelpers)
-	t.Run("MergeWith", testDistributionMergeWith)
-	t.Run("Shift", testDistributionShift)
+	// t.Run("Bucketing", testDistributionBucketing)
+	// t.Run("ChanceAfter", testDistributionChanceAfter)
+	t.Run("ChanceAfterShift", testDistributionChanceAfterShift)
+	// t.Run("Clone", testDistributionClone)
+	// t.Run("Decay", testDistributionDecay)
+	// t.Run("DecayedLifetime", testDistributionDecayedLifetime)
+	// t.Run("ExpectedDuration", testDistributionExpectedDuration)
+	// t.Run("FullTestLong", testDistributionTrackerFullTestLong)
+	// t.Run("Helpers", testDistributionHelpers)
+	// t.Run("MergeWith", testDistributionMergeWith)
+	// t.Run("Shift", testDistributionShift)
 }
 
 // testDistributionBucketing will check that the distribution is placing timings
@@ -290,6 +291,28 @@ func testDistributionChanceAfter(t *testing.T) {
 	randomDur := time.Duration(fastrand.Intn(100)) * ms
 	if d.ChanceAfter(randomDur) != d.ChanceAfter(randomDur) {
 		t.Fatal("bad")
+	}
+}
+
+// testDistributionChanceAfterShift will test the `ChanceAfter` method on the
+// distribution tracker after a `Shift` has been applied to the distribution.
+func testDistributionChanceAfterShift(t *testing.T) {
+	t.Parallel()
+
+	d := NewDistribution(time.Minute * 100)
+	for i := 0; i < 100; i++ {
+		d.AddDataPoint(time.Duration(i) * time.Millisecond)
+	}
+
+	if d.ChanceAfter(90*time.Millisecond) != .9 {
+		t.Fatal("bad")
+	}
+
+	d.Shift(80 * time.Millisecond)
+
+	chanceAfter := d.ChanceAfter(90 * time.Millisecond)
+	if chanceAfter != 0.1 {
+		t.Fatal("bad", chanceAfter)
 	}
 }
 
