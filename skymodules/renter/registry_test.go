@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io/ioutil"
 	"strings"
 	"testing"
 	"time"
@@ -315,21 +316,25 @@ func TestIsBetterReadRegistryResponse(t *testing.T) {
 		existing *jobReadRegistryResponse
 		new      *jobReadRegistryResponse
 		result   bool
+		equal    bool
 	}{
 		{
 			existing: nil,
 			new:      &jobReadRegistryResponse{},
 			result:   true,
+			equal:    false,
 		},
 		{
 			existing: &jobReadRegistryResponse{},
 			new:      nil,
 			result:   false,
+			equal:    false,
 		},
 		{
 			existing: nil,
 			new:      nil,
 			result:   false,
+			equal:    true,
 		},
 		{
 			existing: &jobReadRegistryResponse{
@@ -339,6 +344,7 @@ func TestIsBetterReadRegistryResponse(t *testing.T) {
 				staticSignedRegistryValue: &skymodules.RegistryEntry{},
 			},
 			result: true,
+			equal:  false,
 		},
 		{
 			existing: &jobReadRegistryResponse{
@@ -348,6 +354,7 @@ func TestIsBetterReadRegistryResponse(t *testing.T) {
 				staticSignedRegistryValue: nil,
 			},
 			result: false,
+			equal:  false,
 		},
 		{
 			existing: &jobReadRegistryResponse{
@@ -357,6 +364,7 @@ func TestIsBetterReadRegistryResponse(t *testing.T) {
 				staticSignedRegistryValue: nil,
 			},
 			result: false,
+			equal:  true,
 		},
 		{
 			existing: &jobReadRegistryResponse{
@@ -366,6 +374,7 @@ func TestIsBetterReadRegistryResponse(t *testing.T) {
 				staticSignedRegistryValue: registryEntry(1, crypto.Hash{}),
 			},
 			result: true,
+			equal:  false,
 		},
 		{
 			existing: &jobReadRegistryResponse{
@@ -375,6 +384,7 @@ func TestIsBetterReadRegistryResponse(t *testing.T) {
 				staticSignedRegistryValue: registryEntry(0, crypto.Hash{}),
 			},
 			result: false,
+			equal:  false,
 		},
 		{
 			existing: &jobReadRegistryResponse{
@@ -384,6 +394,7 @@ func TestIsBetterReadRegistryResponse(t *testing.T) {
 				staticSignedRegistryValue: registryEntry(0, crypto.Hash{3, 2, 1}),
 			},
 			result: true,
+			equal:  false,
 		},
 		{
 			existing: &jobReadRegistryResponse{
@@ -393,6 +404,7 @@ func TestIsBetterReadRegistryResponse(t *testing.T) {
 				staticSignedRegistryValue: registryEntry(0, crypto.Hash{1, 2, 3}),
 			},
 			result: false,
+			equal:  false,
 		},
 		{
 			existing: &jobReadRegistryResponse{
@@ -402,6 +414,7 @@ func TestIsBetterReadRegistryResponse(t *testing.T) {
 				staticSignedRegistryValue: registryEntry(1, crypto.Hash{}),
 			},
 			result: false,
+			equal:  true,
 		},
 	}
 
@@ -409,9 +422,183 @@ func TestIsBetterReadRegistryResponse(t *testing.T) {
 		if test.new != nil {
 			test.new.staticWorker = &worker{}
 		}
-		result := isBetterReadRegistryResponse(test.existing, test.new)
+		result, equal := isBetterReadRegistryResponse(test.existing, test.new)
 		if result != test.result {
 			t.Errorf("%v: wrong result expected %v but was %v", i, test.result, result)
 		}
+		if equal != test.equal {
+			t.Errorf("%v: wrong result expected %v but was %v", i, test.result, result)
+		}
+	}
+}
+
+// TestThreadedAddResponseSetBestHostIndex makes sure that we always use the 5th
+// best worker response for our metrics in threadedAddResponseSet.
+func TestThreadedAddResponseSetBestHostIndex(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a renter.
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Add some hosts.
+	nHosts := bestWorkerIndexForResponseSet + 2
+	var hosts []modules.Host
+	for i := 0; i < nHosts; i++ {
+		h, err := rt.addHost(fmt.Sprintf("host%v", i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		hosts = append(hosts, h)
+	}
+
+	// Set an allowance.
+	a := skymodules.DefaultAllowance
+	a.Hosts = uint64(nHosts)
+	err = rt.renter.staticHostContractor.SetAllowance(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait until we got workers in the pool.
+	numRetries := 0
+	var workers []*worker
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if numRetries%10 == 0 {
+			_, err = rt.miner.AddBlock()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		numRetries++
+		workers = rt.renter.staticWorkerPool.callWorkers()
+		if len(workers) != nHosts {
+			return fmt.Errorf("%v != %v", len(workers), nHosts)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a random entry.
+	srv, spk, _ := randomRegistryValue()
+	entry := skymodules.NewRegistryEntry(spk, srv)
+
+	// Create a fake response set with 1 response.
+	startTime := time.Now()
+	c := make(chan *jobReadRegistryResponse)
+	close(c)
+	rrs := &readResponseSet{
+		c:    c,
+		left: 0,
+		readResps: []*jobReadRegistryResponse{
+			// 2s response.
+			{
+				staticSPK:                 &spk,
+				staticTweak:               &srv.Tweak,
+				staticCompleteTime:        startTime.Add(2 * time.Second),
+				staticSignedRegistryValue: &entry,
+				staticWorker:              workers[0],
+			},
+		},
+	}
+
+	// Prepare a helper to create a faster (1s) response.
+	faster := func() *jobReadRegistryResponse {
+		return &jobReadRegistryResponse{
+			staticSPK:                 &spk,
+			staticTweak:               &srv.Tweak,
+			staticCompleteTime:        startTime.Add(time.Second),
+			staticSignedRegistryValue: &entry,
+			staticWorker:              workers[len(rrs.readResps)],
+		}
+	}
+
+	// Create a logger.
+	log, err := persist.NewLogger(ioutil.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Call threadedAddResponseSet in a loop. At the end of the loop we
+	// append the faster response to the set.
+	for i := 0; i < bestWorkerIndexForResponseSet+1; i++ {
+		// Reset the stats collector.
+		dt := skymodules.NewDistributionTrackerStandard()
+		rt.renter.staticRegReadStats = dt
+
+		// Add the response set.
+		rt.renter.threadedAddResponseSet(context.Background(), testSpan(), startTime, rrs, log)
+
+		// Check p99. The winning timing should be 2s which results in an estimate
+		// of 2048ms.
+		allNines := rt.renter.staticRegReadStats.Percentiles()
+		p99 := allNines[0][2]
+		if p99 != 2048*time.Millisecond {
+			t.Fatal("wrong p99", p99)
+		}
+
+		// Append another response.
+		rrs.readResps = append(rrs.readResps, faster())
+	}
+
+	// Run one more test. Now that we have pushed BestWorkerIndexForResponseSet+1
+	// elements to rrs, the slowest timing should have been pushed out of the top 5
+	// best responses. So the estimate should be faster now.
+	// Reset the stats collector.
+	dt := skymodules.NewDistributionTrackerStandard()
+	rt.renter.staticRegReadStats = dt
+
+	// Add the response set.
+	rt.renter.threadedAddResponseSet(context.Background(), testSpan(), startTime, rrs, log)
+
+	// Check p99. The winning timing should be 1s now since the bad timing
+	// was pushed out of the bests set.
+	allNines := rt.renter.staticRegReadStats.Percentiles()
+	p99 := allNines[0][2]
+	if p99 != 1008*time.Millisecond {
+		t.Fatal("wrong p99", p99)
+	}
+
+	// Set the entry on all hosts. That way we test the secondBests code as
+	// well.
+	for _, worker := range workers {
+		err = worker.UpdateRegistry(context.Background(), spk, srv)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// We shrink the response set again to make sure the slow response will
+	// end up in the 5th place again. We also set the entry after the
+	// slowest one to be slightly faster than it but slower than the 3 other
+	// ones.
+	rrs.readResps = rrs.readResps[:bestWorkerIndexForResponseSet+1]
+	rrs.readResps[1].staticCompleteTime = rrs.readResps[1].staticCompleteTime.Add(500 * time.Millisecond)
+
+	// Reset and run.
+	dt = skymodules.NewDistributionTrackerStandard()
+	rt.renter.staticRegReadStats = dt
+	rt.renter.threadedAddResponseSet(context.Background(), testSpan(), startTime, rrs, log)
+
+	// Check p99. This time we don't add the slowest response. That's
+	// because after finding the best response, we ask all the faster
+	// responses' hosts again until we have 5 secondBests. The 5th best of
+	// the secondBests will be the slightly slower worker that took 1.5s.
+	allNines = rt.renter.staticRegReadStats.Percentiles()
+	p99 = allNines[0][2]
+	if p99 != 1536*time.Millisecond {
+		t.Fatal("wrong p99", p99)
 	}
 }
