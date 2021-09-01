@@ -524,7 +524,7 @@ func TUSPreUploadCreateCallback(hook handler.HookEvent) error {
 }
 
 // ConcatUploads implements the handler.ConcatableUpload interface. It combines
-// the provded partial uploads into a single one.
+// the provided partial uploads into a single one.
 func (u *skynetTUSUpload) ConcatUploads(ctx context.Context, partialUploads []handler.Upload) error {
 	// Concatenate the uploads by combining their fanouts. Concatenated
 	// uploads may never consist of small uploads except for the last

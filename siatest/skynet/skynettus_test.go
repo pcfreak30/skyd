@@ -51,6 +51,9 @@ func TestSkynetTUSUploader(t *testing.T) {
 	}()
 
 	// Run tests.
+	t.Run("PruneIdle", func(t *testing.T) {
+		testTUSUploaderPruneIdle(t, tg.Renters()[0]) // first to avoid ndf
+	})
 	t.Run("Basic", func(t *testing.T) {
 		testTUSUploaderBasic(t, tg.Renters()[0])
 	})
@@ -62,9 +65,6 @@ func TestSkynetTUSUploader(t *testing.T) {
 	})
 	t.Run("TooLarge", func(t *testing.T) {
 		testTUSUploaderTooLarge(t, tg.Renters()[0])
-	})
-	t.Run("PruneIdle", func(t *testing.T) {
-		testTUSUploaderPruneIdle(t, tg.Renters()[0])
 	})
 	t.Run("UnstableConnection", func(t *testing.T) {
 		testTUSUploaderUnstableConnection(t, tg)
@@ -297,6 +297,9 @@ func testTUSUploaderPruneIdle(t *testing.T, r *siatest.TestNode) {
 		t.Fatal(err)
 	}
 	nFilesBefore := dir.Directories[0].AggregateNumFiles
+	if nFilesBefore != 0 {
+		t.Fatal("test should start with 0 files")
+	}
 
 	// upload a 100 byte file in chunks of 10 bytes.
 	chunkSize := 2 * int64(skymodules.ChunkSize(crypto.TypePlain, uint64(skymodules.RenterDefaultDataPieces)))
@@ -344,8 +347,8 @@ func testTUSUploaderPruneIdle(t *testing.T, r *siatest.TestNode) {
 		t.Fatal(err)
 	}
 	nFiles := dir.Directories[0].AggregateNumFiles
-	if nFiles-nFilesBefore != 0 {
-		t.Fatal("expected 0 new files but got", nFiles-nFilesBefore)
+	if nFiles != 0 {
+		t.Fatal("expected 0 new files but got", nFiles)
 	}
 }
 
