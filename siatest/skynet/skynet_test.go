@@ -5804,3 +5804,56 @@ func TestSkynetSkylinkHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestHostLosingRegistryEntry tests the edge case where a host forgets about a
+// registry entry that we have fetched before.
+func TestHostLosingRegistryEntry(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	testDir := skynetTestDir(t.Name())
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Miners: 1,
+		Hosts:  renter.MinUpdateRegistrySuccesses,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Add renter with a special dependency.
+	deps := dependencies.NewDependencyReadRegistryNoEntry()
+	deps.Disable()
+	params := node.RenterTemplate
+	params.RenterDeps = deps
+	_, err = tg.AddNodes(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set an entry.
+	r := tg.Renters()[0]
+	sk, pk := crypto.GenerateKeyPair()
+	spk := types.Ed25519PublicKey(pk)
+	srv := modules.NewRegistryValue(crypto.Hash{}, []byte{}, 0, modules.RegistryTypeWithoutPubkey).Sign(sk)
+	err = r.RegistryUpdateWithEntry(spk, srv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Enable the dependency and try to read it. Should fail for all
+	// workers and therefore error out.
+	deps.Enable()
+	_, err = r.RegistryRead(spk, srv.Tweak)
+	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryEntryNotFound.Error()) {
+		t.Fatal(err)
+	}
+}
