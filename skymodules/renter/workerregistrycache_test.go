@@ -13,27 +13,6 @@ import (
 	"go.sia.tech/siad/types"
 )
 
-// Delete deltes an entry from the cache without replacing it. Should only be
-// used in testing.
-func (rc *registryRevisionCache) Delete(sid modules.RegistryEntryID) {
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
-
-	entry, exists := rc.entryMap[sid]
-	if !exists {
-		return
-	}
-	delete(rc.entryMap, sid)
-	for idx := range rc.entryList {
-		if rc.entryList[idx] != entry {
-			continue
-		}
-		rc.entryList[idx] = rc.entryList[len(rc.entryList)-1]
-		rc.entryList = rc.entryList[:len(rc.entryList)-1]
-		break
-	}
-}
-
 // TestRegistryCache tests the in-memory registry type.
 func TestRegistryCache(t *testing.T) {
 	numEntries := uint64(100)
