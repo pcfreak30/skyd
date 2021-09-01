@@ -41,7 +41,7 @@ import (
 
 // TestSkynetSuite verifies the functionality of Skynet, a decentralized CDN and
 // sharing platform.
-func TestSkynetSuite(t *testing.T) {
+func TestSkynetSuiteOne(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -57,27 +57,53 @@ func TestSkynetSuite(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
-		//		{Name: "Basic", Test: testSkynetBasic},
-		//		{Name: "SkylinkV2Download", Test: testSkylinkV2Download},
-		//		{Name: "ConvertSiaFile", Test: testConvertSiaFile},
-		//		{Name: "LargeMetadata", Test: testSkynetLargeMetadata},
-		//		{Name: "MultipartUpload", Test: testSkynetMultipartUpload},
-		//		{Name: "InvalidFilename", Test: testSkynetInvalidFilename},
-		//		{Name: "SubDirDownload", Test: testSkynetSubDirDownload},
-		//		{Name: "DisableForce", Test: testSkynetDisableForce},
-		//		{Name: "Portals", Test: testSkynetPortals},
-		//		{Name: "IncludeLayout", Test: testSkynetIncludeLayout},
-		//		{Name: "RequestTimeout", Test: testSkynetRequestTimeout},
-		//		{Name: "DryRunUpload", Test: testSkynetDryRunUpload},
-		//	{Name: "RegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
-		//	{Name: "RenameSiaPath", Test: testRenameSiaPath},
-		//	{Name: "NoWorkers", Test: testSkynetNoWorkers},
-		//	{Name: "DefaultPath", Test: testSkynetDefaultPath},
-		//	{Name: "DefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
-		//	{Name: "TryFiles", Test: testSkynetTryFiles},
-		//	{Name: "TryFiles_TableTests", Test: testTryFiles_TableTests},
-		//	{Name: "SingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
-		//	{Name: "DownloadFormats", Test: testSkynetDownloadFormats},
+		{Name: "Basic", Test: testSkynetBasic},
+		{Name: "SkylinkV2Download", Test: testSkylinkV2Download},
+		{Name: "ConvertSiaFile", Test: testConvertSiaFile},
+		{Name: "LargeMetadata", Test: testSkynetLargeMetadata},
+		{Name: "MultipartUpload", Test: testSkynetMultipartUpload},
+		{Name: "InvalidFilename", Test: testSkynetInvalidFilename},
+		{Name: "SubDirDownload", Test: testSkynetSubDirDownload},
+		{Name: "DisableForce", Test: testSkynetDisableForce},
+		{Name: "Portals", Test: testSkynetPortals},
+		{Name: "IncludeLayout", Test: testSkynetIncludeLayout},
+		{Name: "RequestTimeout", Test: testSkynetRequestTimeout},
+		{Name: "DryRunUpload", Test: testSkynetDryRunUpload},
+		{Name: "RegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
+		{Name: "RenameSiaPath", Test: testRenameSiaPath},
+		{Name: "NoWorkers", Test: testSkynetNoWorkers},
+	}
+
+	// Run tests
+	if err := siatest.RunSubTests(t, groupParams, groupDir, subTests); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestSkynetSuite verifies the functionality of Skynet, a decentralized CDN and
+// sharing platform.
+func TestSkynetSuiteTwo(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   3,
+		Miners:  1,
+		Portals: 1,
+	}
+	groupDir := skynetTestDir(t.Name())
+
+	// Specify subtests to run
+	subTests := []siatest.SubTest{
+		{Name: "DefaultPath", Test: testSkynetDefaultPath},
+		{Name: "DefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
+		{Name: "TryFiles", Test: testSkynetTryFiles},
+		{Name: "TryFiles_TableTests", Test: testTryFiles_TableTests},
+		{Name: "SingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
+		{Name: "DownloadFormats", Test: testSkynetDownloadFormats},
 		{Name: "DownloadBaseSector", Test: testSkynetDownloadBaseSectorNoEncryption},
 		{Name: "DownloadBaseSectorEncrypted", Test: testSkynetDownloadBaseSectorEncrypted},
 		{Name: "FanoutRegression", Test: testSkynetFanoutRegression},
@@ -85,8 +111,8 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
 		{Name: "MetadataMonetization", Test: testSkynetMetadataMonetizers},
 		{Name: "Monetization", Test: testSkynetMonetization},
-		//	{Name: "Registry", Test: testSkynetRegistryReadWrite},
-		//	{Name: "Stats", Test: testSkynetStats},
+		{Name: "Registry", Test: testSkynetRegistryReadWrite},
+		{Name: "Stats", Test: testSkynetStats},
 	}
 
 	// Run tests
