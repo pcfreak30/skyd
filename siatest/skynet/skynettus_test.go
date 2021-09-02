@@ -334,13 +334,19 @@ func testTUSUploaderPruneIdle(t *testing.T, r *siatest.TestNode) {
 
 	// Check that the number of files didn't increase since the new files were
 	// purged.
-	dir, err = r.RenterDirRootGet(skymodules.SkynetFolder)
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		dir, err = r.RenterDirRootGet(skymodules.SkynetFolder)
+		if err != nil {
+			return err
+		}
+		nFiles := dir.Directories[0].AggregateNumFiles
+		if nFiles-nFilesBefore != 0 {
+			return fmt.Errorf("expected 0 new files but got %v", nFiles-nFilesBefore)
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	nFiles := dir.Directories[0].AggregateNumFiles
-	if nFiles-nFilesBefore != 0 {
-		t.Fatal("expected 0 new files but got", nFiles-nFilesBefore)
 	}
 }
 

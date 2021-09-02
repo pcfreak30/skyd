@@ -268,6 +268,11 @@ func TestReadRegistryCachedUpdated(t *testing.T) {
 	if cached {
 		t.Fatal("value wasn't removed")
 	}
+	wt.staticRegistryCache.mu.Lock()
+	if len(wt.staticRegistryCache.entryList) != 0 {
+		t.Fatal("value wasn't removed")
+	}
+	wt.staticRegistryCache.mu.Unlock()
 
 	// Read the registry value.
 	readRV, err := wt.ReadRegistry(context.Background(), testSpan(), spk, rv.Tweak)

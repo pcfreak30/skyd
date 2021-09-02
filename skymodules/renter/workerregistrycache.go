@@ -42,6 +42,26 @@ func newRegistryCache(size uint64, hpk types.SiaPublicKey) *registryRevisionCach
 	}
 }
 
+// Delete deletes an entry from the cache without replacing it.
+func (rc *registryRevisionCache) Delete(sid modules.RegistryEntryID) {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
+
+	entry, exists := rc.entryMap[sid]
+	if !exists {
+		return
+	}
+	delete(rc.entryMap, sid)
+	for idx := range rc.entryList {
+		if rc.entryList[idx] != entry {
+			continue
+		}
+		rc.entryList[idx] = rc.entryList[len(rc.entryList)-1]
+		rc.entryList = rc.entryList[:len(rc.entryList)-1]
+		break
+	}
+}
+
 // Get fetches an entry from the cache.
 func (rc *registryRevisionCache) Get(sid modules.RegistryEntryID) (modules.RegistryValue, bool) {
 	rc.mu.Lock()
