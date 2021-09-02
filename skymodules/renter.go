@@ -1324,6 +1324,10 @@ type Renter interface {
 	// Host provides the DB entry and score breakdown for the requested host.
 	Host(pk types.SiaPublicKey) (HostDBEntry, bool, error)
 
+	// HostsForRegistryUpdate returns a list of hosts that the renter would be using
+	// for updating the registry.
+	HostsForRegistryUpdate() ([]types.SiaPublicKey, error)
+
 	// InitialScanComplete returns a boolean indicating if the initial scan of the
 	// hostdb is completed.
 	InitialScanComplete() (bool, error)

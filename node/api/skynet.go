@@ -73,6 +73,12 @@ var (
 )
 
 type (
+	// HostsForRegistryUpdateGET is the response that the api returns after
+	// a request to /skynet/registry/hosts.
+	HostsForRegistryUpdateGET struct {
+		Pubkeys []types.SiaPublicKey `json:"pubkeys"`
+	}
+
 	// SkynetSkyfileHandlerPOST is the response that the api returns after the
 	// /skynet/ POST endpoint has been used.
 	SkynetSkyfileHandlerPOST struct {
@@ -1667,4 +1673,17 @@ func (api *API) skynetSkylinkUnpinHandlerPOST(w http.ResponseWriter, req *http.R
 		return
 	}
 	WriteSuccess(w)
+}
+
+// skynetHostsForRegistryUpdateGET is the handler for the /skynet/registry/hosts
+// GET endpoint.
+func (api *API) skynetHostsForRegistryUpdateGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	hosts, err := api.renter.HostsForRegistryUpdate()
+	if err != nil {
+		handleSkynetError(w, "failed to fetch hosts for registry update", err)
+		return
+	}
+	WriteJSON(w, HostsForRegistryUpdateGET{
+		Pubkeys: hosts,
+	})
 }
