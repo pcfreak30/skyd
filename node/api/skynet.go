@@ -1332,6 +1332,13 @@ func (api *API) registryMultiHandlerPOST(w http.ResponseWriter, req *http.Reques
 			return
 		}
 		srv := modules.NewSignedRegistryValue(rhp.DataKey, rhp.Data, rhp.Revision, rhp.Signature, rhp.Type)
+
+		// Each update should be for a different host.
+		_, exists := srvs[rhp.HostKey.String()]
+		if exists {
+			WriteError(w, Error{"Updating multiple entries on one host is not supported"}, http.StatusBadRequest)
+			return
+		}
 		srvs[rhp.HostKey.String()] = skymodules.NewRegistryEntry(rhp.PublicKey, srv)
 	}
 
