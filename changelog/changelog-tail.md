@@ -1,3 +1,8 @@
+## Sep 2, 2021:
+### v1.5.8
+**Other**
+- Add download overdrive stats to the '/skynet/stats' endpoint
+
 ## Aug 10, 2021:
 ### v1.5.7
 **Key Updates**
