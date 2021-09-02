@@ -630,21 +630,70 @@ func (r *Renter) managedLaunchReadRegistryWorkers(ctx context.Context, span open
 // before the timeout. It doesn't stop the update jobs. That's because we want
 // to always make sure we update as many hosts as possble.
 func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicKey, srv modules.SignedRegistryValue) (err error) {
+	workers := r.staticWorkerPool.callWorkers()
+	srvs := make(map[string]modules.SignedRegistryValue, len(workers))
+	for _, w := range workers {
+		srvs[w.staticHostPubKeyStr] = srv
+	}
+	return r.managedUpdateRegistryMulti(ctx, workers, spk, srvs)
+}
+
+// isBetterReadRegistryResponse returns true if resp2 is a better response than
+// resp1 and false otherwise. Better means that the response either has a higher
+// revision number, more work or was faster.
+func isBetterReadRegistryResponse(resp1, resp2 *jobReadRegistryResponse) bool {
+	// Check for nil response.
+	if resp2 == nil {
+		// A nil entry never replaces an existing entry.
+		return false
+	} else if resp1 == nil {
+		// A non-nil entry always replaces a nil entry.
+		return true
+	}
+	// Same but with the entries.
+	srv1 := resp1.staticSignedRegistryValue
+	srv2 := resp2.staticSignedRegistryValue
+	if srv2 == nil {
+		return false
+	} else if srv1 == nil {
+		return true
+	}
+	// Compare entries. We pass the empty key here since we don't care about
+	// whether the entry is a primary or secondary one.
+	shouldUpdate, updateErr := srv1.ShouldUpdateWith(&srv2.RegistryValue, types.SiaPublicKey{})
+
+	// If the entry is not capable of updating the existing one and both entries
+	// have the same revision number, use the time.
+	if !shouldUpdate && errors.Contains(updateErr, modules.ErrSameRevNum) {
+		return resp2.staticCompleteTime.Before(resp1.staticCompleteTime)
+	}
+
+	// Otherwise we return the result
+	return shouldUpdate
+}
+
+// managedUpdateRegistry updates the registries on all workers with the given
+// registry value.
+// NOTE: the input ctx only unblocks the call if it fails to hit the threshold
+// before the timeout. It doesn't stop the update jobs. That's because we want
+// to always make sure we update as many hosts as possble.
+func (r *Renter) managedUpdateRegistryMulti(ctx context.Context, workers []*worker, spk types.SiaPublicKey, srvs map[string]modules.SignedRegistryValue) (err error) {
 	// Start tracing.
 	start := time.Now()
 	tracer := opentracing.GlobalTracer()
-	span := tracer.StartSpan("managedUpdateRegistry")
+	span := tracer.StartSpan("managedUpdateRegistryMulti")
 	defer span.Finish()
 
-	// Verify the signature before updating the hosts.
-	if err := srv.Verify(spk.ToPublicKey()); err != nil {
-		return errors.AddContext(err, "managedUpdateRegistry: failed to verify signature of entry")
+	// Verify the signatures before updating the hosts.
+	for _, srv := range srvs {
+		if err := srv.Verify(spk.ToPublicKey()); err != nil {
+			return errors.AddContext(err, "managedUpdateRegistry: failed to verify signature of entry")
+		}
 	}
-	// Get the full list of workers and create a channel to receive all of the
+	// Create a channel to receive all of the
 	// results from the workers. The channel is buffered with one slot per
 	// worker, so that the workers do not have to block when returning the
 	// result of the job, even if this thread is not listening.
-	workers := r.staticWorkerPool.callWorkers()
 	staticResponseChan := make(chan *jobUpdateRegistryResponse, len(workers))
 	span.LogKV("workers", len(workers))
 
@@ -662,6 +711,13 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	// Filter out hosts that don't support the registry.
 	numRegistryWorkers := 0
 	for _, worker := range workers {
+		// Filter out workers that we don't have an srv for.
+		srv, exists := srvs[worker.staticHostPubKeyStr]
+		if !exists {
+			continue
+		}
+
+		// Filter out workers with a low version.
 		cache := worker.staticCache()
 		if build.VersionCmp(cache.staticHostVersion, minRegistryVersion) < 0 {
 			continue
@@ -745,38 +801,4 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	}
 	r.staticRegWriteStats.AddDataPoint(time.Since(start))
 	return nil
-}
-
-// isBetterReadRegistryResponse returns true if resp2 is a better response than
-// resp1 and false otherwise. Better means that the response either has a higher
-// revision number, more work or was faster.
-func isBetterReadRegistryResponse(resp1, resp2 *jobReadRegistryResponse) bool {
-	// Check for nil response.
-	if resp2 == nil {
-		// A nil entry never replaces an existing entry.
-		return false
-	} else if resp1 == nil {
-		// A non-nil entry always replaces a nil entry.
-		return true
-	}
-	// Same but with the entries.
-	srv1 := resp1.staticSignedRegistryValue
-	srv2 := resp2.staticSignedRegistryValue
-	if srv2 == nil {
-		return false
-	} else if srv1 == nil {
-		return true
-	}
-	// Compare entries. We pass the empty key here since we don't care about
-	// whether the entry is a primary or secondary one.
-	shouldUpdate, updateErr := srv1.ShouldUpdateWith(&srv2.RegistryValue, types.SiaPublicKey{})
-
-	// If the entry is not capable of updating the existing one and both entries
-	// have the same revision number, use the time.
-	if !shouldUpdate && errors.Contains(updateErr, modules.ErrSameRevNum) {
-		return resp2.staticCompleteTime.Before(resp1.staticCompleteTime)
-	}
-
-	// Otherwise we return the result
-	return shouldUpdate
 }
