@@ -1,1 +1,0 @@
-- Add V2 skylinks which are static skylinks that point to registry entries instead of a sector roots to allow for updating content without changing the link
