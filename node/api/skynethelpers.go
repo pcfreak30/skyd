@@ -817,6 +817,10 @@ func handleSkynetError(w http.ResponseWriter, prefix string, err error) {
 		WriteError(w, httpErr, http.StatusNotFound)
 		return
 	}
+	if errors.Contains(err, renter.ErrRegistryUpdateTimeout) {
+		WriteError(w, httpErr, http.StatusRequestTimeout)
+		return
+	}
 	if errors.Contains(err, renter.ErrRegistryLookupTimeout) {
 		WriteError(w, httpErr, http.StatusNotFound)
 		return

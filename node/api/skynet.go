@@ -223,6 +223,13 @@ type (
 		Type      modules.RegistryEntryType `json:"type"`
 	}
 
+	// RegistryHandlerMultiRequestPOST is the expected format of the json request for
+	// /skynet/registry [POST].
+	RegistryHandlerMultiRequestPOST struct {
+		RegistryHandlerRequestPOST
+		HostKey types.SiaPublicKey `json:"hostkey"`
+	}
+
 	// SkylinkResolveGET is the response returned by the /skylink/resolve
 	// endpoint.
 	SkylinkResolveGET struct {
@@ -1284,11 +1291,58 @@ func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 		return
 	}
 
+	// Prepare a context for the timeout.
+	ctx, cancel := context.WithTimeout(req.Context(), renter.DefaultRegistryUpdateTimeout)
+	defer cancel()
+
 	// Update the registry.
 	srv := modules.NewSignedRegistryValue(rhp.DataKey, rhp.Data, rhp.Revision, rhp.Signature, rhp.Type)
-	err = api.renter.UpdateRegistry(rhp.PublicKey, srv, renter.DefaultRegistryUpdateTimeout)
+	err = api.renter.UpdateRegistry(ctx, rhp.PublicKey, srv)
 	if err != nil {
-		WriteError(w, Error{"Unable to update the registry: " + err.Error()}, http.StatusBadRequest)
+		handleSkynetError(w, "Unable to update the registry", err)
+		return
+	}
+	WriteSuccess(w)
+}
+
+// registryMultiHandlerPOST handles the POST calls to /skynet/registrymulti.
+func (api *API) registryMultiHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Decode request.
+	dec := json.NewDecoder(req.Body)
+	var rhps []RegistryHandlerMultiRequestPOST
+	err := dec.Decode(&rhps)
+	if err != nil {
+		WriteError(w, Error{"Failed to decode request: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Check request and combine them into a map from host to entry.
+	srvs := make(map[string]skymodules.RegistryEntry, len(rhps))
+	for i, rhp := range rhps {
+		// If the type wasn't set, default to no pubkey to preserve
+		// compatibility.
+		if rhp.Type == modules.RegistryTypeInvalid {
+			rhps[i].Type = modules.RegistryTypeWithoutPubkey
+		}
+
+		// Check data length here to be able to offer a better and faster error
+		// message than when the hosts return it.
+		if len(rhp.Data) > modules.RegistryDataSize {
+			WriteError(w, Error{fmt.Sprintf("Registry data is too big: %v > %v", len(rhp.Data), modules.RegistryDataSize)}, http.StatusBadRequest)
+			return
+		}
+		srv := modules.NewSignedRegistryValue(rhp.DataKey, rhp.Data, rhp.Revision, rhp.Signature, rhp.Type)
+		srvs[rhp.HostKey.String()] = skymodules.NewRegistryEntry(rhp.PublicKey, srv)
+	}
+
+	// Prepare a context for the timeout.
+	ctx, cancel := context.WithTimeout(req.Context(), renter.DefaultRegistryUpdateTimeout)
+	defer cancel()
+
+	// Update the registry.
+	err = api.renter.UpdateRegistryMulti(ctx, srvs)
+	if err != nil {
+		handleSkynetError(w, "Unable to update the registry", err)
 		return
 	}
 	WriteSuccess(w)

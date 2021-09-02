@@ -94,6 +94,10 @@ func TestHandleSkynetError(t *testing.T) {
 			statusCode: http.StatusBadRequest,
 		},
 		{
+			err:        renter.ErrRegistryUpdateTimeout,
+			statusCode: http.StatusRequestTimeout,
+		},
+		{
 			err:        errors.New("other"),
 			statusCode: http.StatusInternalServerError,
 		},

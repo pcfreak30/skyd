@@ -361,16 +361,7 @@ func (r *Renter) ReadRegistryRID(ctx context.Context, rid modules.RegistryEntryI
 
 // UpdateRegistry updates the registries on all workers with the given
 // registry value.
-func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegistryValue, timeout time.Duration) error {
-	// Create a context. If the timeout is greater than zero, have the context
-	// expire when the timeout triggers.
-	ctx := r.tg.StopCtx()
-	if timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
-		defer cancel()
-	}
-
+func (r *Renter) UpdateRegistry(ctx context.Context, spk types.SiaPublicKey, srv modules.SignedRegistryValue) error {
 	// Block until there is memory available, and then ensure the memory gets
 	// returned.
 	// Since registry entries are very small we use a fairly generous multiple.
@@ -380,11 +371,23 @@ func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegist
 	defer r.staticRegistryMemoryManager.Return(updateRegistryMemory)
 
 	// Start the UpdateRegistry jobs.
-	err := r.managedUpdateRegistry(ctx, spk, srv)
-	if errors.Contains(err, ErrRegistryUpdateTimeout) {
-		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
+	return r.managedUpdateRegistry(ctx, spk, srv)
+}
+
+// UpdateRegistryMulti updates the registries on the given workers with the
+// corresponding registry values.
+func (r *Renter) UpdateRegistryMulti(ctx context.Context, srvs map[string]skymodules.RegistryEntry) error {
+	// Block until there is memory available, and then ensure the memory gets
+	// returned.
+	// Since registry entries are very small we use a fairly generous multiple.
+	if !r.staticRegistryMemoryManager.Request(ctx, updateRegistryMemory, memoryPriorityHigh) {
+		return errors.New("timeout while waiting in job queue - server is busy")
 	}
-	return err
+	defer r.staticRegistryMemoryManager.Return(updateRegistryMemory)
+
+	// Start the UpdateRegistry jobs.
+	workers := r.staticWorkerPool.callWorkers()
+	return r.managedUpdateRegistryMulti(ctx, workers, srvs)
 }
 
 // managedRegistryEntryHealth reads an entry from all hosts on the network until
@@ -631,11 +634,11 @@ func (r *Renter) managedLaunchReadRegistryWorkers(ctx context.Context, span open
 // to always make sure we update as many hosts as possble.
 func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicKey, srv modules.SignedRegistryValue) (err error) {
 	workers := r.staticWorkerPool.callWorkers()
-	srvs := make(map[string]modules.SignedRegistryValue, len(workers))
+	srvs := make(map[string]skymodules.RegistryEntry, len(workers))
 	for _, w := range workers {
-		srvs[w.staticHostPubKeyStr] = srv
+		srvs[w.staticHostPubKeyStr] = skymodules.NewRegistryEntry(spk, srv)
 	}
-	return r.managedUpdateRegistryMulti(ctx, workers, spk, srvs)
+	return r.managedUpdateRegistryMulti(ctx, workers, srvs)
 }
 
 // isBetterReadRegistryResponse returns true if resp2 is a better response than
@@ -677,7 +680,7 @@ func isBetterReadRegistryResponse(resp1, resp2 *jobReadRegistryResponse) bool {
 // NOTE: the input ctx only unblocks the call if it fails to hit the threshold
 // before the timeout. It doesn't stop the update jobs. That's because we want
 // to always make sure we update as many hosts as possble.
-func (r *Renter) managedUpdateRegistryMulti(ctx context.Context, workers []*worker, spk types.SiaPublicKey, srvs map[string]modules.SignedRegistryValue) (err error) {
+func (r *Renter) managedUpdateRegistryMulti(ctx context.Context, workers []*worker, srvs map[string]skymodules.RegistryEntry) (err error) {
 	// Start tracing.
 	start := time.Now()
 	tracer := opentracing.GlobalTracer()
@@ -686,7 +689,7 @@ func (r *Renter) managedUpdateRegistryMulti(ctx context.Context, workers []*work
 
 	// Verify the signatures before updating the hosts.
 	for _, srv := range srvs {
-		if err := srv.Verify(spk.ToPublicKey()); err != nil {
+		if err := srv.Verify(); err != nil {
 			return errors.AddContext(err, "managedUpdateRegistry: failed to verify signature of entry")
 		}
 	}
@@ -737,7 +740,7 @@ func (r *Renter) managedUpdateRegistryMulti(ctx context.Context, workers []*work
 		}
 
 		// Create the job.
-		jrr := worker.newJobUpdateRegistry(updateTimeoutCtx, span, staticResponseChan, spk, srv)
+		jrr := worker.newJobUpdateRegistry(updateTimeoutCtx, span, staticResponseChan, srv.PubKey, srv.SignedRegistryValue)
 		if !worker.staticJobUpdateRegistryQueue.callAdd(jrr) {
 			// This will filter out any workers that are on cooldown or
 			// otherwise can't participate in the project.
