@@ -560,6 +560,23 @@ func waitForContracts(miner *TestNode, renters map[*TestNode]struct{}, hosts map
 				return fmt.Errorf("renter hasn't formed enough contracts: expected %v got %v",
 					expectedContracts, contracts)
 			}
+			// Make sure the workerpool contains one worker for each
+			// contract and has only valid pricetables.
+			rwg, err := renter.RenterWorkersGet()
+			if err != nil {
+				return err
+			}
+			if uint64(rwg.NumWorkers) != contracts {
+				return fmt.Errorf("not enough workers %v != %v", rwg.NumWorkers, contracts)
+			}
+			for _, w := range rwg.Workers {
+				if renter.params.SkipActivePriceTableCheck {
+					break
+				}
+				if !w.PriceTableStatus.Active {
+					return fmt.Errorf("worker's (%v) pricetable is not active yet", w.HostPubKey.String())
+				}
+			}
 			return nil
 		})
 		if err != nil {
@@ -724,6 +741,13 @@ func (tg *TestGroup) StartNode(tn *TestNode) error {
 	if err := fullyConnectNodes(tg.Nodes()); err != nil {
 		return err
 	}
+	// Mine a block before the synchronization check to guarantee that the
+	// restarted node will receive a consensus change with `cc.Synced ==
+	// true`. Otherwise some functionality might be disabled on the node.
+	// e.g. a host won't accept EA withdrawals.
+	if err := tg.Miners()[0].MineBlock(); err != nil {
+		return err
+	}
 	return synchronizationCheck(tg.nodes)
 }
 
@@ -749,7 +773,39 @@ func (tg *TestGroup) StopNode(tn *TestNode) error {
 		return errors.New("cannot stop node that's not part of the group")
 	}
 	tg.stopped[tn] = struct{}{}
-	return tn.StopNode()
+
+	// Stop the node.
+	if err := tn.StopNode(); err != nil {
+		return err
+	}
+
+	// If the node wasn't a host we are done.
+	if tn.params.Host == nil && !tn.params.CreateHost {
+		return nil
+	}
+
+	// Get the host's key.
+	hpk, err := tn.HostPublicKey()
+	if err != nil {
+		return err
+	}
+
+	// Wait until no renter got any workers left for the stopped node.
+	return build.Retry(600, 100*time.Millisecond, func() error {
+		// If the node wasn't a host we are done.
+		for _, node := range tg.Renters() {
+			rwg, err := node.RenterWorkersGet()
+			if err != nil {
+				return err
+			}
+			for _, worker := range rwg.Workers {
+				if worker.HostPubKey.Equals(hpk) {
+					return fmt.Errorf("node still has a worker for key %v", hpk.String())
+				}
+			}
+		}
+		return nil
+	})
 }
 
 // Sync makes sure that the test group's nodes are synchronized

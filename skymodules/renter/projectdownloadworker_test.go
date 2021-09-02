@@ -340,9 +340,6 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 	// workerAt is a small helper function that returns the worker's identifier
 	// at the given index
 	workerAt := func(ws *workerSet, index int) string {
-		if index >= len(ws.workers) {
-			t.Fatal("developer error")
-		}
 		return ws.workers[index].worker().staticHostPubKeyStr
 	}
 
@@ -670,6 +667,144 @@ func testWorkerSetNumOverdriveWorkers(t *testing.T) {
 	ws.workers = append(ws.workers, iw3)
 	if ws.numOverdriveWorkers() != 2 {
 		t.Fatal("bad")
+	}
+}
+
+// TestCoinflips wraps a set of unit tests that verify the functionality of the
+// coinflips type.
+func TestCoinflips(t *testing.T) {
+	t.Parallel()
+	t.Run("AllHeads", testCoinflipsAllHeads)
+	t.Run("HeadsAllowOneTails", testCoinflipsHeadsAllowOneTails)
+	t.Run("HeadsAllowTwoTails", testCoinflipsHeadsAllowTwoTails)
+	t.Run("Sum", testCoinflipsSum)
+}
+
+// testCoinflipsAllHeads is a unit test to verify the functionality of
+// 'chanceAllHeads' on the coinflips type.
+func testCoinflipsAllHeads(t *testing.T) {
+	t.Parallel()
+
+	// almost equal compares floats up until a precision threshold of 1e-9, this
+	// necessary due to floating point errors that arise when multiplying floats
+	almostEqual := func(a, b float64) bool {
+		return math.Abs(a-b) <= 1e-9
+	}
+
+	tests := []struct {
+		name   string
+		flips  coinflips
+		chance float64
+	}{
+		{"no_flips", []float64{}, 0},
+		{"one_pure_flip", []float64{.5}, .5},
+		{"two_pure_flips", []float64{.5, .5}, math.Pow(.5, 2)},
+		{"multiple_diff_flips", []float64{.1, .3, .2}, .1 * .2 * .3},
+		{"one_heads", []float64{1}, 1},
+		{"multiple_heads", []float64{1}, 1},
+	}
+
+	for _, test := range tests {
+		actual := test.flips.chanceAllHeads()
+		if !almostEqual(actual, test.chance) {
+			t.Error("bad", test.name, actual, test.chance)
+		}
+	}
+}
+
+// testCoinflipsHeadsAllowOneTails is a unit test to verify the functionality of
+// 'chanceHeadsAllowOneTails' on the coinflips type.
+func testCoinflipsHeadsAllowOneTails(t *testing.T) {
+	t.Parallel()
+
+	// almost equal compares floats up until a precision threshold of 1e-9, this
+	// necessary due to floating point errors that arise when multiplying floats
+	almostEqual := func(a, b float64) bool {
+		return math.Abs(a-b) <= 1e-9
+	}
+
+	tests := []struct {
+		name   string
+		flips  coinflips
+		chance float64
+	}{
+		{"no_flips", []float64{}, 0},
+		{"one_pure_flip", []float64{.5}, 1},
+		{"two_pure_flips", []float64{.5, .5}, 0.75},
+		{"multiple_diff_flips", []float64{.25, .5, .75}, (.25 * .5 * .75) + (0.75 * .5 * .75) + (.5 * .25 * .75) + (.25 * .25 * .5)},
+		{"one_heads", []float64{1}, 1},
+		{"multiple_heads", []float64{1, 1}, 1},
+	}
+
+	for _, test := range tests {
+		actual := test.flips.chanceHeadsAllowOneTails()
+		if !almostEqual(actual, test.chance) {
+			t.Error("bad", test.name, actual, test.chance)
+		}
+	}
+}
+
+// testCoinflipsHeadsAllowTwoTails is a unit test to verify the functionality of
+// 'chanceHeadsAllowTwoTails' on the coinflips type.
+func testCoinflipsHeadsAllowTwoTails(t *testing.T) {
+	t.Parallel()
+
+	// almost equal compares floats up until a precision threshold of 1e-9, this
+	// necessary due to floating point errors that arise when multiplying floats
+	almostEqual := func(a, b float64) bool {
+		return math.Abs(a-b) <= 1e-9
+	}
+
+	tests := []struct {
+		name   string
+		flips  coinflips
+		chance float64
+	}{
+		{"no_flips", []float64{}, 0},
+		{"one_pure_flip", []float64{.5}, 1},
+		{"two_pure_flips", []float64{.5, .5}, 1},
+		{"multiple_diff_flips", []float64{.25, .5, .75}, (.25 * .5 * .75) + (0.75 * .5 * .75) + (.5 * .25 * .75) + (.25 * .25 * .5) + (.75 * .5 * .75) + (.75 * .5 * .25) + (.25 * .5 * .25)},
+		{"one_heads", []float64{1}, 1},
+		{"multiple_heads", []float64{1, 1}, 1},
+	}
+
+	for _, test := range tests {
+		actual := test.flips.chanceHeadsAllowTwoTails()
+		if !almostEqual(actual, test.chance) {
+			t.Error("bad", test.name, actual, test.chance)
+		}
+	}
+}
+
+// testCoinflipsHeadsAllowTwoTails is a unit test to verify the functionality of
+// 'chanceSum' on the coinflips type.
+func testCoinflipsSum(t *testing.T) {
+	t.Parallel()
+
+	// almost equal compares floats up until a precision threshold of 1e-9, this
+	// necessary due to floating point errors that arise when multiplying floats
+	almostEqual := func(a, b float64) bool {
+		return math.Abs(a-b) <= 1e-9
+	}
+
+	tests := []struct {
+		name   string
+		flips  coinflips
+		chance float64
+	}{
+		{"no_flips", []float64{}, 0},
+		{"one_pure_flip", []float64{.5}, .5},
+		{"two_pure_flips", []float64{.5, .5}, 1},
+		{"multiple_diff_flips", []float64{.25, .5, .75}, 1.5},
+		{"one_heads", []float64{1}, 1},
+		{"multiple_heads", []float64{1, 1}, 2},
+	}
+
+	for _, test := range tests {
+		actual := test.flips.chanceSum()
+		if !almostEqual(actual, test.chance) {
+			t.Error("bad", test.name, actual, test.chance)
+		}
 	}
 }
 

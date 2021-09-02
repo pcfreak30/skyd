@@ -11,6 +11,10 @@ import (
 	"go.sia.tech/siad/types"
 )
 
+// NOTE: all of the following defined types are used by the PDC, which is
+// inherently thread un-safe, that means that these types don't not need to be
+// thread safe either. If fields are marked `static` it is meant to signal they
+// won't change after being set.
 type (
 	// downloadWorker is an interface implemented by both the individual and
 	// chimera workers that represents a worker that can be used for downloads.
@@ -94,6 +98,11 @@ type (
 		staticLength           uint64
 		staticMinPieces        int
 	}
+
+	// coinflips is a collection of chances where every item is the chance the
+	// coin will turn up heads. We use the concept of a coin because it allows
+	// to more easily reason about chance calculations.
+	coinflips []float64
 )
 
 // TODO: remove me (debugging)
@@ -383,6 +392,16 @@ func (ws *workerSet) adjustedDuration(ppms types.Currency) time.Duration {
 	return addCostPenalty(ws.staticExpectedDuration, totalCost, ppms)
 }
 
+// chancesAfter is a small helper function that returns a list of every worker's
+// chance it's completed after the given duration.
+func (ws workerSet) chancesAfter(dur time.Duration) coinflips {
+	chances := make(coinflips, len(ws.workers))
+	for i, w := range ws.workers {
+		chances[i] = w.distribution().ChanceAfter(dur)
+	}
+	return chances
+}
+
 // chanceGreaterThanHalf returns whether the total chance this worker set
 // completes the download before the given duration is more than 50%.
 //
@@ -391,70 +410,30 @@ func (ws *workerSet) adjustedDuration(ppms types.Currency) time.Duration {
 // that the workerset consists out of one or more overdrive workers.
 func (ws workerSet) chanceGreaterThanHalf(dur time.Duration) bool {
 	// convert every worker into a coinflip
-	coinflips := make([]float64, len(ws.workers))
-	for i, w := range ws.workers {
-		coinflips[i] = w.distribution().ChanceAfter(dur)
+	coinflips := ws.chancesAfter(dur)
+
+	var chance float64
+	switch ws.numOverdriveWorkers() {
+	case 0:
+		// if we don't have to consider any overdrive workers, the chance it's
+		// all heads is the chance that needs to be greater than half
+		chance = coinflips.chanceAllHeads()
+	case 1:
+		// if there is 1 overdrive worker, we can essentially have one of the
+		// coinflips come up as tails, as long as all the others are heads
+		chance = coinflips.chanceHeadsAllowOneTails()
+	case 2:
+		// if there are 2 overdrive workers, we can have two of them come up as
+		// tails, as long as all the others are heads
+		chance = coinflips.chanceHeadsAllowTwoTails()
+	default:
+		// if there are a lot of overdrive workers, we use an approximation by
+		// summing all coinflips to see whether we are expected to be able to
+		// download min pieces within the given duration
+		return coinflips.chanceSum() > float64(ws.staticMinPieces)
 	}
 
-	// calculate the chance of all heads
-	chanceAllHeads := float64(1)
-	for _, flip := range coinflips {
-		chanceAllHeads *= flip
-	}
-
-	// if we don't have to consider any overdrive workers, the chance it's all
-	// heads is the chance that needs to be greater than half
-	if ws.numOverdriveWorkers() == 0 {
-		return chanceAllHeads > 0.5
-	}
-
-	// if there is 1 overdrive worker, meaning that we have 1 worker that can
-	// come up as tails essentially, we have to consider the chance that one
-	// coin is tails and all others come up as heads as well, and add this to
-	// the chance that they're all heads
-	if ws.numOverdriveWorkers() == 1 {
-		totalChance := chanceAllHeads
-		for _, flip := range coinflips {
-			totalChance += (chanceAllHeads / flip * (1 - flip))
-		}
-		return totalChance > 0.5
-	}
-
-	// if there are 2 overdrive workers, meaning that we have 2 workers that can
-	// up as tails, we have to extend the previous case with the case where
-	// every possible coin pair comes up as being the only tails
-	if ws.numOverdriveWorkers() == 2 {
-		totalChance := chanceAllHeads
-
-		// chance each cone is the only tails
-		for _, flip := range coinflips {
-			totalChance += chanceAllHeads / flip * (1 - flip)
-		}
-
-		// chance each possible coin pair becomes the only tails
-		numCoins := len(coinflips)
-		for i := 0; i < numCoins-1; i++ {
-			chanceIHeads := coinflips[i]
-			chanceITails := 1 - chanceIHeads
-			chanceOnlyITails := chanceAllHeads / chanceIHeads * chanceITails
-			for jj := i + 1; jj < numCoins; jj++ {
-				chanceJHeads := coinflips[jj]
-				chanceJTails := 1 - chanceJHeads
-				chanceOnlyIAndJJTails := chanceOnlyITails / chanceJHeads * chanceJTails
-				totalChance += chanceOnlyIAndJJTails
-			}
-		}
-		return totalChance > 0.5
-	}
-
-	// if there are a lot of overdrive workers, we use an approximation by
-	// summing all coinflips to see whether we are expected to be able to
-	// download min pieces within the given duration
-	expected := float64(0)
-	for _, flip := range coinflips {
-		expected += flip
-	}
-	return expected > float64(ws.staticMinPieces)
+	return chance > 0.5
 }
 
 // numOverdriveWorkers returns the number of overdrive workers in the worker
@@ -465,6 +444,61 @@ func (ws workerSet) numOverdriveWorkers() int {
 		return 0
 	}
 	return numWorkers - ws.staticMinPieces
+}
+
+// chanceAllHeads returns the chance all coins show heads.
+func (cf coinflips) chanceAllHeads() float64 {
+	if len(cf) == 0 {
+		return 0
+	}
+
+	chanceAllHeads := float64(1)
+	for _, chanceHead := range cf {
+		chanceAllHeads *= chanceHead
+	}
+	return chanceAllHeads
+}
+
+// chanceHeadsAllowOneTails returns the chance at least n-1 coins show heads
+// where n is the amount of coins.
+func (cf coinflips) chanceHeadsAllowOneTails() float64 {
+	chanceAllHeads := cf.chanceAllHeads()
+
+	totalChance := chanceAllHeads
+	for _, chanceHead := range cf {
+		chanceTails := 1 - chanceHead
+		totalChance += (chanceAllHeads / chanceHead * chanceTails)
+	}
+	return totalChance
+}
+
+// chanceHeadsAllowTwoTails returns the chance at least n-2 coins show heads
+// where n is the amount of coins.
+func (cf coinflips) chanceHeadsAllowTwoTails() float64 {
+	chanceAllHeads := cf.chanceAllHeads()
+	totalChance := cf.chanceHeadsAllowOneTails()
+
+	for i := 0; i < len(cf)-1; i++ {
+		chanceIHeads := cf[i]
+		chanceITails := 1 - chanceIHeads
+		chanceOnlyITails := chanceAllHeads / chanceIHeads * chanceITails
+		for jj := i + 1; jj < len(cf); jj++ {
+			chanceJHeads := cf[jj]
+			chanceJTails := 1 - chanceJHeads
+			chanceOnlyIAndJJTails := chanceOnlyITails / chanceJHeads * chanceJTails
+			totalChance += chanceOnlyIAndJJTails
+		}
+	}
+	return totalChance
+}
+
+// chanceSum returns the sum of all chances
+func (cf coinflips) chanceSum() float64 {
+	var sum float64
+	for _, flip := range cf {
+		sum += flip
+	}
+	return sum
 }
 
 // updateWorkers
