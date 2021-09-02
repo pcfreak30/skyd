@@ -39,8 +39,8 @@ import (
 	"go.sia.tech/siad/types"
 )
 
-// TestSkynetSuite verifies the functionality of Skynet, a decentralized CDN and
-// sharing platform.
+// TestSkynetSuiteOne verifies the functionality of Skynet, a decentralized CDN
+// and sharing platform.
 func TestSkynetSuiteOne(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -80,8 +80,8 @@ func TestSkynetSuiteOne(t *testing.T) {
 	}
 }
 
-// TestSkynetSuite verifies the functionality of Skynet, a decentralized CDN and
-// sharing platform.
+// TestSkynetSuiteTwo verifies the functionality of Skynet, a decentralized CDN
+// and sharing platform.
 func TestSkynetSuiteTwo(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
