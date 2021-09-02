@@ -90,11 +90,11 @@ func TestSkynetSuite(t *testing.T) {
 	}
 
 	// TODO: remove
-	subTests = []siatest.SubTest{
-		{Name: "MultipartUpload", Test: testSkynetMultipartUpload},
-		// {Name: "DryRunUpload", Test: testSkynetDryRunUpload},
-		// {Name: "MetadataMonetization", Test: testSkynetMetadataMonetizers},
-	}
+	// subTests = []siatest.SubTest{
+	// 	{Name: "MultipartUpload", Test: testSkynetMultipartUpload},
+	// 	// {Name: "DryRunUpload", Test: testSkynetDryRunUpload},
+	// 	// {Name: "MetadataMonetization", Test: testSkynetMetadataMonetizers},
+	// }
 
 	// Run tests
 	if err := siatest.RunSubTests(t, groupParams, groupDir, subTests); err != nil {

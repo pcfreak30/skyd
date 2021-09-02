@@ -835,7 +835,7 @@ func (pdc *projectDownloadChunk) createWorkerSet(allWorkers []*individualWorker,
 	var bestSetFound bool
 
 OUTER:
-	for numOverdrive := 0; numOverdrive < maxOverdriveWorkers; numOverdrive++ {
+	for numOverdrive := 0; numOverdrive <= maxOverdriveWorkers; numOverdrive++ {
 		workersNeeded := minPieces + numOverdrive
 		for bI := 0; bI < skymodules.DistributionTrackerTotalBuckets; bI++ {
 			bDur := skymodules.DistributionDurationForBucketIndex(bI)
