@@ -687,6 +687,12 @@ func (r *Renter) managedUpdateRegistryMulti(ctx context.Context, workers []*work
 	span := tracer.StartSpan("managedUpdateRegistryMulti")
 	defer span.Finish()
 
+	// Check how many updates we expect at the very least.
+	minUpdates := MinUpdateRegistrySuccesses
+	if minUpdates > len(srvs) {
+		minUpdates = len(srvs)
+	}
+
 	// Verify the signatures before updating the hosts.
 	for _, srv := range srvs {
 		if err := srv.Verify(); err != nil {
@@ -751,7 +757,7 @@ func (r *Renter) managedUpdateRegistryMulti(ctx context.Context, workers []*work
 	}
 	workers = workers[:numRegistryWorkers]
 	// If there are no workers remaining, fail early.
-	if len(workers) < MinUpdateRegistrySuccesses {
+	if len(workers) < minUpdates {
 		return errors.AddContext(skymodules.ErrNotEnoughWorkersInWorkerPool, "cannot perform UpdateRegistry")
 	}
 
@@ -760,7 +766,7 @@ func (r *Renter) managedUpdateRegistryMulti(ctx context.Context, workers []*work
 	successfulResponses := 0
 
 	var respErrs error
-	for successfulResponses < MinUpdateRegistrySuccesses && workersLeft+successfulResponses >= MinUpdateRegistrySuccesses {
+	for successfulResponses < minUpdates && workersLeft+successfulResponses >= minUpdates {
 		// Check deadline.
 		var resp *jobUpdateRegistryResponse
 		select {
@@ -798,7 +804,7 @@ func (r *Renter) managedUpdateRegistryMulti(ctx context.Context, workers []*work
 		r.staticLog.Print("RegistryUpdate failed with 0 successful responses: ", respErrs)
 		return errors.Compose(err, ErrRegistryUpdateNoSuccessfulUpdates)
 	}
-	if successfulResponses < MinUpdateRegistrySuccesses {
+	if successfulResponses < minUpdates {
 		r.staticLog.Printf("RegistryUpdate failed with %v < %v successful responses: %v", successfulResponses, MinUpdateRegistrySuccesses, respErrs)
 		return errors.Compose(err, ErrRegistryUpdateInsufficientRedundancy)
 	}
