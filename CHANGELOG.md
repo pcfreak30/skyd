@@ -1,18 +1,67 @@
-Version Scheme
---------------
-Sia uses the following versioning scheme, vX.X.X
- - First Digit signifies a major (compatibility breaking) release
- - Second Digit signifies a major (non compatibility breaking) release
- - Third Digit signifies a minor or patch release
+## Version Scheme
 
-Version History
----------------
+skyd uses the following versioning scheme, vX.X.X
+
+- First Digit signifies a major (compatibility breaking) release
+- Second Digit signifies a major (non compatibility breaking) release
+- Third Digit signifies a minor or patch release
+
+## Version History
 
 Latest:
 
-## Apr 7, 2021:
-### v1.5.6
+## Aug 10, 2021:
+
+### v1.5.7
+
 **Key Updates**
+
+- Created Dockerfile for running tests locally in an environment that matches
+  the online CI.
+- dropped the performance stats struct from the /skynet/stats endpoint
+- Integrate V2 skylinks into the blocklist.
+- Add basic accounting information to the API with `/accounting`
+- batch together has sector lookups in single mdm program if possible
+- Create an `accounting` module for the Sia node to provide basic accounting information about the skymodules.
+- don't return the response metadata when downloading skylinks anymore
+- removed no-response-metadata query param
+- change priceperms to be set in hastings instead of a currency string
+- add code to automatically pay skynet fee every 24hours
+- Add range params to `/skynet/skylink [GET]` for use cases that cannot use the
+  Header field.
+- add read registry stats to API endpoint
+- set a minimum timeout of 800ms for read registry jobs
+- add dedicated endpoint for resolving v2 skylink to v1 skylink
+- add support for resumable uploads using the TUS protocol
+- Add parsing of module names to `skyd -M` and automatically enable the
+  `accounting`and `feemanager` modules if the `wallet` is enabled.
+- Add skyfile batch manager for batching of small skyfiles
+- Add V2 skylinks which are static skylinks that point to registry entries instead of a sector roots to allow for updating content without changing the link
+- Add `skyc skynet backup` and `skyc skynet restore` commands for backing up and restoring skyfiles.
+- Add endpoint to unpin skylinks from portals
+
+**Bugs Fixed**
+
+- Fix zero byte stream uploads
+- The 'skyc skynet upload' '-s' flag has been removed to fix a collision with the new global '-s' flag.
+
+**Other**
+
+- Remove the renter's `managedUpdateFileMetadata` method and add a siafile
+  `UpdateMetadata` method.
+- Have `PackFiles` return the total size of the packed files.
+- Add `NumLostFiles` to `siadir` metadata
+- Add `AddSuffixStr` `SiaPath` method
+- Refactor download heap into a subsystem to address lockcheck errors.
+- Refactor download history into a subsystem to address lockcheck errors.
+- Remove the batching and packing code as it is no longer viable for Skynet
+
+## Apr 7, 2021:
+
+### v1.5.6
+
+**Key Updates**
+
 - Add repair information to `FileInfo`
 - Add checking for duplicates when updating the skynet blocklist.
 - Remove the `wal` from the `.siadir`
@@ -23,25 +72,31 @@ Latest:
 - add license to monetization
 - remove rhp1 and rhp2 renew rpcs that don't clear the old contract upon renewal
 - Add parsing of module names to `siad -M` and automatically enable the
-    `accounting`and `feemanager` modules if the `wallet` is enabled.
+  `accounting`and `feemanager` modules if the `wallet` is enabled.
 - add ability to specify monetizers when uploading a skyfile
 - update contract size we consider large from 2TB to 10TB to allow for larger contracts before slowing down updates to them.
-- prevent large contracts from renewing if legacy renewal RPCs are used. 
+- prevent large contracts from renewing if legacy renewal RPCs are used.
 
 **Bugs Fixed**
-+ Changed the minimum acceptable version of gateway peers to 1.5.4 for the Foundation hardfork
-- Fixed panic condition in the repair loop for the unique refresh paths.
+
+- Changed the minimum acceptable version of gateway peers to 1.5.4 for the Foundation hardfork
+
+* Fixed panic condition in the repair loop for the unique refresh paths.
 
 **Other**
+
 - Update `.gitlab-ci.yml` and `Makefile` to fix Windows nightly tests.
-- adds a new endpoint /host/contracts/*contractID* that returns a single contract from the host's database
+- adds a new endpoint /host/contracts/_contractID_ that returns a single contract from the host's database
 - extend account persistence to include spending details fields
 - Add `FundAccountSpending` to the financial metrics in the Renter.
 - Add `MaintenanceSpending` to the financial metrics in the Renter.
 
 ## Feb 18, 2021:
+
 ### v1.5.5
+
 **Key Updates**
+
 - Add the ability to backup a skylink and restore it from disk
 - Add Skynet stats to the `.siadir` metadata.
 - Add repair information to `.siadir` metadata
@@ -52,40 +107,47 @@ Latest:
 - Add `/renter/bubble` route to be able to manually trigger bubble updates
 - siac breaks down memory consumption of the individual memory managers
 - Improve download speeds and consistency.
-- Add `skyc skynet backup` and `skyc skynet restore` commands for backing up and restoring skyfiles.
+- Add `siac skynet backup` and `siac skynet restore` commands for backing up and restoring skyfiles.
 - Update default redundancy to be 10-30 for Skyfiles that exceed a single sector
   in size.
 
 **Bugs Fixed**
-- The 'skyc skynet upload' '-s' flag has been removed to fix a collision with the new global '-s' flag.
+
+- The 'siac skynet upload' '-s' flag has been removed to fix a collision with the new global '-s' flag.
 - Introduce overflow file for sectors where the location counter has reached a value of >= 2^16 to fix uploads failing for all zero sectors
 
 **Other**
+
 - Add deletion of files that contain blocked skylinks in the bubble code.
 
 ## Jan 12, 2021:
+
 ### v1.5.4
+
 **Key Updates**
+
 - Adds `/skynet/root` GET request to allow downloading a specific sector of a skyfile
 - allow for migrating registry to custom path
 - extend `skyc renter` with optional currency conversion based on
-    SIA_EXCHANGE_RATE env variable
+  SIA_EXCHANGE_RATE env variable
 - Update health loop to batch bubbles by subtree instead of individual
-    directories
+  directories
 - add RHP3 RPC for atomic contract renewal
 - Add `/renter/clean` API route with `skyc renter clean` to remove lost files
- from renter. Also added `skyc renter lost` to view lost files that would be
- removed.
+  from renter. Also added `skyc renter lost` to view lost files that would be
+  removed.
 
 **Bugs Fixed**
+
 - Fixed `uploadHead` panic related to streaming caused by bad condition check.
 - Fixed debug code that checks for contract header corruption.
 - Fixed bug in skyfile fanout encoding that allowed for encoding empty piece root hashes.
 - Fix panic condition in siafile conversion when attempted with encryption.
 - Fixed bug in the skynet blocklist persist compat code where the compat code
-    was not being triggered.
+  was not being triggered.
 
 **Other**
+
 - Add worker groups to the bubble code
 - Add `Portals` to the `TestGroup` for skynet related testing.
 - Add 'no-response-metadata' query string parameter that allows hiding the
@@ -93,29 +155,40 @@ Latest:
 - Added a job to `.gitlab-ci.yml` to trigger Sia Antfarm version tests on Sia
   master updates and on Sia nightly executions.
 - Add `skyc skynet isblocked` command as a helper to check if a skylink is
-blocked since `skyc skynet blocklist` returns a list of hashed merkleroots, so
-the list cannot be visually verified.
+  blocked since `skyc skynet blocklist` returns a list of hashed merkleroots, so
+  the list cannot be visually verified.
 
 ## Nov 10, 2020:
+
 ### v1.5.3
+
 **Bugs Fixed**
+
 - Updated siafile snapshots to only store range of chunks needed for repair to
- address OOM during large file repairs
+  address OOM during large file repairs
 
 ## Nov 9, 2020:
+
 ### v1.5.2
+
 **Key Updates**
+
 - RHP3 Renewal RPC now only uses the Host's price table
 
 **Bugs Fixed**
+
 - Add missing error check in registry creation
 
 **Other**
+
 - Registry lookup to always return 404 even for timeouts
 
 ## Nov 2, 2020:
+
 ### v1.5.1
+
 **Key Updates**
+
 - Add basic watchdog to the feemanager
 - Add `/skynet/basesector` to the API.
 - Add `--portal` flag to `skyc skynet pin`
@@ -135,28 +208,28 @@ the list cannot be visually verified.
 - add root flag to download endpoints
 - add root flag to list downloads endpoint
 - Add support for skykey delete in siac.
-- Add support for uploading entire directories as skyfiles (e.g. `skyc skynet
-  upload dir skyfile_name`). The previous behavior of uploading all files
+- Add support for uploading entire directories as skyfiles (e.g. `skyc skynet upload dir skyfile_name`). The previous behavior of uploading all files
   individually is now available when the `--separately` flag is passed.
   Additional flags: `--defaultpath` and `--disabledefaultpath`. Those are full
-  equivalents to the flags with the same names on the `/skynet/skyfile/*siapath*
-  [POST]` endpoint.
-- Added feature to use pipes with 'skyc skynet upload'. e.g. 
+  equivalents to the flags with the same names on the `/skynet/skyfile/*siapath* [POST]` endpoint.
+- Added feature to use pipes with 'skyc skynet upload'. e.g.
   'dd if=/dev/zero bs=1M count=1000 | siac skynet upload 1GB.dat'
 
 **Bugs Fixed**
+
 - Fix unit of `EphemeralAccountExpiry` in the host persistence.
 - Fix bug in append only persist code that left a file handle open.
 - Ensure that only full paths are accepted when resolving skylinks.
 - Properly handle URL-encoded characters in `GET /skynet/skylink` route.
- - Fix bug in Filesystem list that duplicated directories returned for recursive
-     calls
+- Fix bug in Filesystem list that duplicated directories returned for recursive
+  calls
 - Fixed edge case with the health loop where it would not find the correct
   directory to call bubble on due to the metadatas being out of sync from
   a shutdown with pending bubbles.
 - Fix skykey default type in siac
 
 **Other**
+
 - Split out `skyc renter workers` download and upload info
 - Rename `skynetblacklist` to `skynetblocklist`
 - Add ETag response header
@@ -168,8 +241,11 @@ the list cannot be visually verified.
 - Add the ability to parse base32 encoded Skylinks
 
 ## Aug 5, 2020:
+
 ### v1.5.0
+
 **Key Updates**
+
 - Add `zip` download format and set it as default format.
 - add support for write MDM programs to host
 - Added `defaultpath` - a new optional path parameter when creating Skylinks. It
@@ -191,6 +267,7 @@ the list cannot be visually verified.
 - Added available and priority memory output to `skyc renter -v`
 
 **Bugs Fixed**
+
 - Set 'Content-Disposition' header for archives.
 - fixed bug in rotation of fingerprint buckets
 - fix issue where priority tasks could wait for low priority tasks to complete
@@ -207,6 +284,7 @@ the list cannot be visually verified.
   submitted as the last update in a set of updates.
 
 **Other**
+
 - Add `EphemeralAccountExpiry` and `MaxEphemeralAccountBalance` to the Host's
   ExternalSettings
 - Add testing infrastructure to validate the output of siac commands.
@@ -225,28 +303,39 @@ the list cannot be visually verified.
 - Update to bolt version with upstream fixes. This enables builds with Go 1.14.
 
 ## Jun 5, 2020:
+
 ### v1.4.11
+
 **Bugs Fixed**
+
 - Fixed bug where a Sia dir could be created with the same path as an already
-existing Sia dir and no error was returned.
+  existing Sia dir and no error was returned.
 - Fixed bug that prevented downloading from old hosts
 
 **Other**
+
 - persist/log.go has been extracted and is now a simple wrapper around the new
-log repo.
+  log repo.
 - Use external changelog generator v1.0.1.
 
 ## Jun 3, 2020:
+
 ### v1.4.10
+
 **Bugs Fixed**
+
 - fixed issue where workers would freeze for a bit after a new block appeared
 
 **Other**
+
 - Add Skykey Name and ID to skykey GET responses
 
 ## May 29, 2020:
+
 ### v1.4.9
+
 **Key Updates**
+
 - Add `FeeManager` to siad to allow for applications to charge a fee
 - Add start time for the API server for siad uptime
 - Add new `/consensus/subscribe/:id` endpoint to allow subscribing to consensus
@@ -255,10 +344,12 @@ log repo.
 - Updated skykey encoding and format
 
 **Bugs Fixed**
+
 - fix call to expensive operation in tight loop
 - fix an infinite loop which would block uploads from progressing
 
 **Other**
+
 - Optimize bandwidth consumption for RPC write calls
 - Extend `/daemon/alerts` with `criticalalerts`, `erroralerts` and
   `warningalerts` fields along with `alerts`.
@@ -272,8 +363,11 @@ log repo.
 - Update Cobra from v0.0.5 to v1.0.0.
 
 ## May 11, 2020:
+
 ### v1.4.8
+
 **Key Updates**
+
 - Enable FundEphemeralAccountRPC on the host
 - Enable UpdatePriceTableRPC on the host
 - Add `startheight` and `endheight` flags for `skyc wallet transactions`
@@ -302,11 +396,12 @@ log repo.
 - Allow for `wallet/verifypassword` endpoint to accept the primary seed as well
   as a password
 - Add `/renter/workers` API endpoint to get the current status of the workers.
-  This pulls it out of the log files as well. 
+  This pulls it out of the log files as well.
 - Add `skyc renter workers` command to siac
-- Add valid and missed proof outputs to StorageObligation for `/host/contracts` 
+- Add valid and missed proof outputs to StorageObligation for `/host/contracts`
 
 **Bugs Fixed**
+
 - Fix decode bug for the rpcResponse object
 - Fix bug in rotation of fingerprint buckets
 - fix hostdb log being incorrectly named
@@ -334,6 +429,7 @@ log repo.
 - renewed contracts must be marked as not good for upload and not good for renew
 
 **Other**
+
 - Add 'AccountFunding' to the Host's financial metrics
 - Support multiple changelog items in one changelog file.
 - Add updating changelog tail to changelog generator.
@@ -359,8 +455,11 @@ log repo.
 - Setup Windows runner for nightly test executions.
 
 ## Apr 2, 2020:
+
 ### v1.4.7
+
 **Key Updates**
+
 - Split up contract files into a .header and .roots file. Causes contract
   insertion to be ACID and fixes a rare panic when loading the contractset.
 - Add `--dry-run` parameter to Skynet upload
@@ -368,6 +467,7 @@ log repo.
   `MinDownloadBandwidthPrice`
 
 **Bugs Fixed**
+
 - Don't delete hosts the renter has a contract with from hostdb
 - Initiate a hostdb rescan on startup if a host the renter has a contract with
   isn't in the host tree
@@ -375,23 +475,30 @@ log repo.
 - Remove `build.Critical` and update to a metadata update
 
 **Other**
+
 - Add PaymentProcessor interface (host-side)
 - Move golangci-lint to `make lint` and remove `make lint-all`.
 - Add whitespace lint to catch extraneous whitespace and newlines.
 - Expand `SiaPath` unit testing to address more edge cases.
 
 ## Mar 25, 2020:
+
 ### v1.4.6
+
 **Bugs Fixed**
+
 - Fix panic when metadata of skyfile upload exceeds modules.SectorSize
 - Fix curl example for `/skynet/skyfile/` post
 
 ## Mar 24, 2020:
+
 ### v1.4.5
+
 **Key Updates**
+
 - Alerts returned by /daemon/alerts route are sorted by severity
 - Add `--fee-included` parameter to `skyc wallet send siacoins` that allows
-   sending an exact wallet balance with the fees included.
+  sending an exact wallet balance with the fees included.
 - Extend `skyc hostdb view` to include all the fields returned from the API.
 - `skyc renter delete` now accepts a list of files.
 - add pause and resume uploads to siac
@@ -401,14 +508,16 @@ log repo.
   prevent index-out-of-bounds panics after a `RenewAndClear`.
 
 **Bugs Fixed**
+
 - Fixed file health output of `skyc renter -v` not adding to 100% by adding
   parsePercentage function.
 - Fix `unlock of unlocked mutex` panic in the download destination writer.
-- Fix potential channel double closed panic in DownloadByRootProject 
+- Fix potential channel double closed panic in DownloadByRootProject
 - Fix divide by zero panic in `renterFileHealthSummary` for `skyc renter -v`
 - Fix negative currency panic in `skyc renter contracts view`
 
 **Other**
+
 - Add timeout parameter to Skylink pin route
 - Also apply timeout when fetching the individual chunks
 - Add SiaMux stream handler to the host
@@ -421,8 +530,11 @@ log repo.
 - Extract environment variables to constants and add to API docs.
 
 ## Mar 17, 2020:
+
 ### v1.4.4
+
 **Key Updates**
+
 - Add a delay when modifying large contracts on hosts to prevent hosts from
   becoming unresponsive due to massive disk i/o.
 - Add `--root` parameter to `skyc renter delete` that allows passing absolute
@@ -451,6 +563,7 @@ log repo.
 - Add bandwidth usage to `skyc gateway`
 
 **Bugs Fixed**
+
 - Fixed bug in startup where an error being returned by the renter's blocking
   startup process was being missed
 - Fix repair bug where unused hosts were not being properly updated for a
@@ -473,11 +586,11 @@ log repo.
   lock was not held
 
 **Other**
+
 - Split out renter siatests into 2 groups for faster pipelines.
-- Add README to the `siatest` package 
+- Add README to the `siatest` package
 - Bump golangci-lint version to v1.23.8
-- Add timeout parameter to Skylink route - Add `go get` command to `make
-  dependencies`.
+- Add timeout parameter to Skylink route - Add `go get` command to `make dependencies`.
 - Update repair loop to use `uniqueRefreshPaths` to reduce unnecessary bubble
   calls
 - Add Skynet-Disable-Force header to allow disabling the force update feature
@@ -485,8 +598,11 @@ log repo.
 - Create generator for Changelog to improve changelog update process
 
 ## Feb 2020:
+
 ### v1.4.3
+
 **Key Updates**
+
 - Introduced Skynet with initial feature set for portals, web portals, skyfiles,
   skylinks, uploads, downloads, and pinning
 - Add `data-pieces` and `parity-pieces` flags to `skyc renter upload`
@@ -498,8 +614,9 @@ log repo.
 - Add directory support to Skylinks.
 - Enabled Lockcheck code anaylzer
 - Added Bandwidth monitoring to the host module
- 
+
 **Bugs Fixed**
+
 - HostDB Data race fixed and documentation updated to explain the data race
   concern
 - `Name` and `Dir` methods of the Siapath used the `filepath` package when they
@@ -510,12 +627,16 @@ log repo.
   after the contractor had shutdown
 
 **Other**
+
 - Upgrade host metadata to v1.4.3
 - Removed stubs from testing
 
 ## Jan 2020:
+
 ### v1.4.2.1
+
 **Key Updates**
+
 - Wallet can generate an address before it finishes scanning the blockchain
 - FUSE folders can now be mounted with 'AllowOther' as an option
 - Added alerts for when contracts can't be renewed or refreshed
@@ -525,6 +646,7 @@ log repo.
   that corrupted / altered data is not used to perform repairs
 
 **Bugs Fixed**
+
 - Repair operations would sometimes perform useless and redundant repairs
 - Siafiles were not pruning hosts correctly
 - Unable to upload a new file if 'force' is set and no file exists to delete
@@ -535,8 +657,11 @@ log repo.
   while resizing a storage folder
 
 ## Dec 2019:
+
 ### v1.4.2.0
+
 **Key Updates**
+
 - Allowance in Backups
 - Wallet Password Reset
 - Bad Contract Utility Add
@@ -560,23 +685,26 @@ log repo.
 - Ability to pause uploads/repairs
 
 **Bugs Fixed**
+
 - Missing return statements in API (http: superfluous response.WriteHeader call)
 - Stuck Loop fixes (chunks not being added due to directory siapath never being set)
 - Rapid Cycle repair loop on start up
 - Wallet Init with force flag when no wallet exists previous would error
 
 **Other**
+
 - Module READMEs
 - staticcheck and gosec added
 - Security.md file created
 - Community images added for Built On Sia
-- JSON tag code analyzer 
+- JSON tag code analyzer
 - ResponseWriter code analyzer
 - boltdb added to gitlab.com/NebulousLabs
 
 Sep 2019:
 
 v1.4.1.2 (hotfix)
+
 - Fix memory leak
 - Add /tpool/transactions endpoint
 - Second fix to transaction propagation bug
@@ -584,18 +712,21 @@ v1.4.1.2 (hotfix)
 Aug 2019:
 
 v1.4.1.1 (hotfix)
+
 - Fix download corruption bug
 - Fix transaction propagation bug
 
 Jul 2019:
 
 v1.4.1 (minor release)
+
 - Support upload streaming
 - Enable seed-based snapshot backups
 
 Apr 2019:
 
 v1.4.0 (minor release)
+
 - Support "snapshot" backups
 - Switch to new renter-host protocol
 - Further scalability improvements
@@ -603,12 +734,15 @@ v1.4.0 (minor release)
 Oct 2018:
 
 v1.3.7 (patch release)
+
 - Adjust difficulty for ASIC hardfork
 
 v1.3.6 (patch release)
+
 - Enable ASIC hardfork
 
 v1.3.5 (patch release)
+
 - Add offline signing functionality
 - Overhaul hostdb weighting
 - Add siac utils
@@ -616,6 +750,7 @@ v1.3.5 (patch release)
 Sep 2018:
 
 v1.3.4 (patch release)
+
 - Fix contract spending metrics
 - Add /renter/contract/cancel endpoint
 - Move project to GitLab
@@ -623,6 +758,7 @@ v1.3.4 (patch release)
 May 2018:
 
 v1.3.3 (patch release)
+
 - Add Streaming API endpoints
 - Faster contract formation
 - Improved wallet scaling
@@ -630,6 +766,7 @@ v1.3.3 (patch release)
 March 2018:
 
 v1.3.2 (patch release)
+
 - Improve renter throughput and stability
 - Reduce host I/O when idle
 - Add /tpool/confirmed endpoint
@@ -637,6 +774,7 @@ v1.3.2 (patch release)
 December 2017:
 
 v1.3.1 (patch release)
+
 - Add new efficient, reliable contract format
 - Faster and smoother file repairs
 - Fix difficulty adjustment hardfork
@@ -644,6 +782,7 @@ v1.3.1 (patch release)
 July 2017:
 
 v1.3.0 (minor release)
+
 - Add remote file repair
 - Add wallet 'lookahead'
 - Introduce difficulty hardfork
@@ -651,18 +790,21 @@ v1.3.0 (minor release)
 May 2017:
 
 v1.2.2 (patch release)
+
 - Faster + smaller wallet database
 - Gracefully handle missing storage folders
-- >2500 lines of new testing + bug fixes
+- > 2500 lines of new testing + bug fixes
 
 April 2017:
 
 v1.2.1 (patch release)
+
 - Faster host upgrading
 - Fix wallet bugs
 - Add siac command to cancel allowance
 
 v1.2.0 (minor release)
+
 - Host overhaul
 - Wallet overhaul
 - Tons of bug fixes and efficiency improvements
@@ -670,12 +812,14 @@ v1.2.0 (minor release)
 March 2017:
 
 v1.1.2 (patch release)
+
 - Add async download endpoint
 - Fix host storage proof bug
 
 February 2017:
 
 v1.1.1 (patch release)
+
 - Renter now performs much better at scale
 - Myriad HostDB improvements
 - Add siac command to support storage leaderboard
@@ -683,6 +827,7 @@ v1.1.1 (patch release)
 January 2017:
 
 v1.1.0 (minor release)
+
 - Greatly improved upload/download speeds
 - Wallet now regularly "defragments"
 - Better contract metrics
@@ -694,6 +839,7 @@ v1.0.4 (LTS release)
 October 2016:
 
 v1.0.3 (patch release)
+
 - Greatly improved renter stability
 - Smarter HostDB
 - Numerous minor bug fixes
@@ -701,6 +847,7 @@ v1.0.3 (patch release)
 July 2016:
 
 v1.0.1 (patch release)
+
 - Restricted API address to localhost
 - Fixed renter/host desynchronization
 - Fixed host silently refusing new contracts
@@ -708,6 +855,7 @@ v1.0.1 (patch release)
 June 2016:
 
 v1.0.0 (major release)
+
 - Finalized API routes
 - Add optional API authentication
 - Improve automatic contract management
@@ -715,6 +863,7 @@ v1.0.0 (major release)
 May 2016:
 
 v0.6.0 (minor release)
+
 - Switched to long-form renter contracts
 - Added support for multiple hosting folders
 - Hosts are now identified by their public key
@@ -722,15 +871,18 @@ v0.6.0 (minor release)
 January 2016:
 
 v0.5.2 (patch release)
+
 - Faster initial blockchain download
 - Introduced headers-only broadcasting
 
 v0.5.1 (patch release)
+
 - Fixed bug severely impacting performance
 - Restored (but deprecated) some siac commands
 - Added modules flag, allowing modules to be disabled
 
 v0.5.0 (minor release)
+
 - Major API changes to most modules
 - Automatic contract renewal
 - Data on inactive hosts is reuploaded
@@ -740,24 +892,30 @@ v0.5.0 (minor release)
 October 2015:
 
 v0.4.8 (patch release)
+
 - Restored compatibility with v0.4.6
 
 v0.4.7 (patch release)
+
 - Dropped support for v0.3.3.x
 
 v0.4.6 (patch release)
+
 - Removed over-aggressive consistency check
 
 v0.4.5 (patch release)
+
 - Fixed last prominent bug in block database
 - Closed some dangling resource handles
 
 v0.4.4 (patch release)
+
 - Uploading is much more reliable
 - Price estimations are more accurate
 - Bumped filesize limit to 20 GB
 
 v0.4.3 (patch release)
+
 - Block database is now faster and more stable
 - Wallet no longer freezes when unlocked during IBD
 - Optimized block encoding/decoding
@@ -765,10 +923,12 @@ v0.4.3 (patch release)
 September 2015:
 
 v0.4.2 (patch release)
+
 - HostDB is now smarter
 - Tweaked renter contract creation
 
 v0.4.1 (patch release)
+
 - Added support for loading v0.3.3.x wallets
 - Better pruning of dead nodes
 - Improve database consistency
@@ -776,6 +936,7 @@ v0.4.1 (patch release)
 August 2015:
 
 v0.4.0: Second stable currency release.
+
 - Wallets are encrypted and generated from seed phrases
 - Files are erasure-coded and transferred in parallel
 - The blockchain is now fully on-disk
@@ -784,20 +945,24 @@ v0.4.0: Second stable currency release.
 June 2015:
 
 v0.3.3.3 (patch release)
+
 - Host announcements can be "forced"
 - Wallets can be merged
 - Unresponsive addresses are pruned from the node list
 
 v0.3.3.2 (patch release)
+
 - Siafunds can be loaded and sent
 - Added block explorer
 - Patched two critical security vulnerabilities
 
 v0.3.3.1 (hotfix)
+
 - Mining API sends headers instead of entire blocks
 - Slashed default hosting price
 
 v0.3.3: First stable currency release.
+
 - Set release target
 - Added progress bars to uploads
 - Rigorous testing of consensus code
@@ -805,11 +970,13 @@ v0.3.3: First stable currency release.
 May 2015:
 
 v0.3.2: Fourth open beta release.
+
 - Switched encryption from block cipher to stream cipher
 - Updates are now signed
 - Added API calls to support external miners
 
 v0.3.1: Third open beta release.
+
 - Blocks are now stored on-disk in a database
 - Files can be shared via .sia files or ASCII-encoded data
 - RPCs are now multiplexed over one physical connection
