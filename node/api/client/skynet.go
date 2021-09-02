@@ -868,6 +868,12 @@ func (c *Client) ResolveSkylinkV2(skylink string) (string, error) {
 // ResolveSkylinkV2WithTimeout queries the /skynet/resolve/:skylink [GET]
 // endpoint.
 func (c *Client) ResolveSkylinkV2WithTimeout(skylink string, timeout time.Duration) (string, error) {
+	sl, _, err := c.ResolveSkylinkV2Custom(skylink, timeout)
+	return sl, err
+}
+
+// ResolveSkylinkV2Custom queries the /skynet/resolve/:skylink [GET] endpoint.
+func (c *Client) ResolveSkylinkV2Custom(skylink string, timeout time.Duration) (string, http.Header, error) {
 	// Set the values.
 	values := url.Values{}
 	if timeout > 0 {
@@ -875,9 +881,16 @@ func (c *Client) ResolveSkylinkV2WithTimeout(skylink string, timeout time.Durati
 	}
 
 	// Send request.
+	h, b, err := c.getRawResponse(fmt.Sprintf("/skynet/resolve/%v?%v", skylink, values.Encode()))
+	if err != nil {
+		return "", nil, err
+	}
 	var srg api.SkylinkResolveGET
-	err := c.get(fmt.Sprintf("/skynet/resolve/%v?%v", skylink, values.Encode()), &srg)
-	return srg.Skylink, err
+	err = json.Unmarshal(b, &srg)
+	if err != nil {
+		return "", nil, err
+	}
+	return srg.Skylink, h, err
 }
 
 // RegistryReadWithTimeout queries the /skynet/registry [GET] endpoint with the
