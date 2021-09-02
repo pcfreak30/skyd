@@ -39,9 +39,9 @@ import (
 	"go.sia.tech/siad/types"
 )
 
-// TestSkynetSuite verifies the functionality of Skynet, a decentralized CDN and
-// sharing platform.
-func TestSkynetSuite(t *testing.T) {
+// TestSkynetSuiteOne verifies the functionality of Skynet, a decentralized CDN
+// and sharing platform.
+func TestSkynetSuiteOne(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -72,6 +72,32 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "RegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
 		{Name: "RenameSiaPath", Test: testRenameSiaPath},
 		{Name: "NoWorkers", Test: testSkynetNoWorkers},
+	}
+
+	// Run tests
+	if err := siatest.RunSubTests(t, groupParams, groupDir, subTests); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestSkynetSuiteTwo verifies the functionality of Skynet, a decentralized CDN
+// and sharing platform.
+func TestSkynetSuiteTwo(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   3,
+		Miners:  1,
+		Portals: 1,
+	}
+	groupDir := skynetTestDir(t.Name())
+
+	// Specify subtests to run
+	subTests := []siatest.SubTest{
 		{Name: "DefaultPath", Test: testSkynetDefaultPath},
 		{Name: "DefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
 		{Name: "TryFiles", Test: testSkynetTryFiles},
