@@ -2430,7 +2430,7 @@ func TestSkynetBlocklist(t *testing.T) {
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
-		Hosts:  3,
+		Hosts:  renter.MinUpdateRegistrySuccesses,
 		Miners: 1,
 	}
 	groupDir := skynetTestDir(t.Name())
