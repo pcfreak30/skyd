@@ -973,7 +973,7 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// File should not report any stuck chunks
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(600, 100*time.Millisecond, func() error {
 		fi, err := renterNode.File(remoteFile)
 		if err != nil {
 			return err
