@@ -1,16 +1,13 @@
 package renter
 
 import (
-	"context"
 	"math"
 	"reflect"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
-	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 )
@@ -818,41 +815,5 @@ func newTestIndivualWorker(hostPubKeyStr string, resolveChance float64, readDura
 
 		staticReadDistribution: skymodules.NewDistribution(15 * time.Minute),
 		staticWorker:           w,
-	}
-}
-
-func newTestPDC() *projectDownloadChunk {
-	// create an EC
-	ec, err := skymodules.NewRSCode(3, 9)
-	if err != nil {
-		build.Critical("developer error")
-	}
-
-	// create a passhtrough cipher key
-	ck, err := crypto.NewSiaKey(crypto.TypePlain, nil)
-	if err != nil {
-		build.Critical("developer error")
-	}
-
-	// create renter
-	renter := new(Renter)
-	renter.staticBaseSectorDownloadStats = skymodules.NewSectorDownloadStats()
-	renter.staticFanoutSectorDownloadStats = skymodules.NewSectorDownloadStats()
-
-	// create PCWS manually
-	pcws := &projectChunkWorkerSet{
-		staticChunkIndex:   0,
-		staticErasureCoder: ec,
-		staticMasterKey:    ck,
-		staticPieceRoots:   []crypto.Hash{},
-
-		staticCtx:    context.Background(),
-		staticRenter: renter,
-	}
-
-	// create PDC manually - only the essentials
-	return &projectDownloadChunk{
-		workerSet:   pcws,
-		workerState: &pcwsWorkerState{},
 	}
 }

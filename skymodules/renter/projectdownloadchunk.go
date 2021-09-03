@@ -311,6 +311,13 @@ func (pdc *projectDownloadChunk) updateWorkerHeap(h *pdcWorkerHeap) {
 
 // updateAvailablePiecesOld adds any new resolved workers to the pdc's list of
 // available pieces.
+//
+// NOTE: updateAvailablePieces is duplicated in the new download code and
+// therefore marked here as 'old' seeing as I don't want to remove the current
+// download code yet. The difference between this method and the new method has
+// to do with locking.
+//
+// TODO: remove me
 func (pdc *projectDownloadChunk) updateAvailablePiecesOld() {
 	ws := pdc.workerState
 

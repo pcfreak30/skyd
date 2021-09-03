@@ -19,8 +19,6 @@ type (
 	// downloadWorker is an interface implemented by both the individual and
 	// chimera workers that represents a worker that can be used for downloads.
 	downloadWorker interface {
-		identifier() string
-
 		// cost returns the expected job cost for downloading a piece of data
 		// with given length from the worker. If the worker has already been
 		// launched, its cost will be zero.
@@ -31,18 +29,29 @@ type (
 		// of time since it was launched.
 		distribution() *skymodules.Distribution
 
+		// getPieceForDownload returns the piece to download next for this
+		// worker, along with the piece index we return whether or not this is a
+		// chimera worker
+		getPieceForDownload() (uint64, bool)
+
+		// identifier returns a string identifying this download worker, note
+		// that this string is not unique as all chimera workers will be labeled
+		// the same
+		identifier() string
+
+		// markPieceForDownload allows specifying what piece to download for
+		// this worker in the case the worker resolved multiple pieces
+		markPieceForDownload(pieceIndex uint64)
+
 		// pieces returns all piece indices this worker can resolve
 		pieces() []uint64
 
 		// worker returns the underlying worker
 		worker() *worker
 
-		// markPieceForDownload marks a piece as the one to download
-		markPieceForDownload(pieceIndex uint64)
-
-		getPieceForDownload() (uint64, bool)
-
-		// TODO: remove me (debugging)
+		// TODO: remove me (added for debugging purposes and I'd like to keep
+		// them in there until the code is more finalised, they help give more
+		// information about the worker when logging information)
 		launched() bool
 		chimera() bool
 	}
@@ -64,10 +73,20 @@ type (
 		// 1-SUM(weights) over and over again
 		remaining float64
 
+		// distributions contains the read distribution for every worker that is
+		// part of the chimera worker
 		distributions []*skymodules.Distribution
-		weights       []float64
-		workers       []*worker
 
+		// weights contains the weight for every worker, the weight represents
+		// the chance the worker will resolve and influences how much each
+		// worker's distrubtion weighs through in the merged distribution
+		weights []float64
+
+		// workers contains all workers that make up the chimera worker
+		workers []*worker
+
+		// staticPieceIndices contains a list of piece indices, for a chimera
+		// worker this will be an array containing every piece index
 		staticPieceIndices []uint64
 	}
 
@@ -82,6 +101,9 @@ type (
 		pieceIndices  []uint64
 		resolveChance float64
 
+		// currentPiece is the piece that was marked by the download algorithm
+		// as the piece to download next, this is used to ensure that workers
+		// in the worker are not selected for duplicate piece indices.
 		currentPiece uint64
 
 		staticLookupDistribution *skymodules.Distribution
@@ -105,6 +127,18 @@ type (
 	coinflips []float64
 )
 
+// identifier returns a string that identiefies the worker, in the case of an
+// individual worker it's the short string version of the worker's host pubkey
+func (iw *individualWorker) identifier() string {
+	return iw.staticWorker.staticHostPubKey.ShortString()
+}
+
+// identifier returns a string that identifies the worker, in the case of a
+// chimera worker it simply returns "chimera" and is thus not unique
+func (cw *chimeraWorker) identifier() string {
+	return "chimera"
+}
+
 // TODO: remove me (debugging)
 func (iw *individualWorker) chimera() bool {
 	return false
@@ -113,16 +147,6 @@ func (iw *individualWorker) chimera() bool {
 // TODO: remove me (debugging)
 func (cw *chimeraWorker) chimera() bool {
 	return true
-}
-
-// TODO: remove me (debugging)
-func (iw *individualWorker) identifier() string {
-	return iw.staticWorker.staticHostPubKey.ShortString()
-}
-
-// TODO: remove me (debugging)
-func (cw *chimeraWorker) identifier() string {
-	return "chimera"
 }
 
 // TODO: remove me (debugging)
@@ -135,22 +159,29 @@ func (cw *chimeraWorker) launched() bool {
 	return false
 }
 
-// TODO: remove me (debugging)
+// markPieceForDownload takes a piece index and marks it as the piece to
+// download next for this worker.
 func (iw *individualWorker) markPieceForDownload(pieceIndex uint64) {
 	iw.currentPiece = pieceIndex
 }
 
-// TODO: remove me (debugging)
+// markPieceForDownload takes a piece index and marks it as the piece to
+// download for this worker. In the case of a chimera worker this method is
+// essentially a co-op since chimera workers are never launched
 func (cw *chimeraWorker) markPieceForDownload(pieceIndex uint64) {
 	// this is a no-op
 }
 
-// TODO: remove me (debugging)
+// getPieceForDownload returns the piece to download for this worker alongside a
+// boolean that indicates whether it's a chimera worker or not.
 func (iw *individualWorker) getPieceForDownload() (uint64, bool) {
 	return iw.currentPiece, false
 }
 
-// TODO: remove me (debugging)
+// getPieceForDownload returns the piece to download for this worker alongside a
+// boolean that indicates whether it's a chimera worker or not. For a chimera
+// worker the return values of this method are constant and will only be used to
+// prevent this worker from being launched.
 func (cw *chimeraWorker) getPieceForDownload() (uint64, bool) {
 	return 0, true
 }
@@ -501,7 +532,15 @@ func (cf coinflips) chanceSum() float64 {
 	return sum
 }
 
-// updateWorkers
+// updateWorkers will update the given set of workers in-place, we update the
+// workers instead of recreating them because we found that the process of
+// creating an individualWorker involves some cpu intensive steps, like gouging.
+// By updating them, rather than recreating them, we avoid doing these
+// computations in every iteration of the download algorithm.
+//
+// This method essentially transforms unresolved workers into resolved workers
+// and updates the state of a resolved worker in case it got launched or just
+// completed a download.
 func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker) {
 	ws := pdc.workerState
 	ws.mu.Lock()
@@ -626,6 +665,11 @@ func (pdc *projectDownloadChunk) launchedAt(w *worker) time.Time {
 	}
 	return time.Time{}
 }
+
+// filterCompletedPieceIndices will range over the given piece indices for the
+// worker and will remove all pieces which were already launched. By doing so
+// the worker essentially becomes eligible to download multiple pieces should
+// that be necessary.
 func (pdc *projectDownloadChunk) filterCompletedPieceIndices(w *worker, pieceIndices []uint64) []uint64 {
 	completed := make(map[uint64]struct{})
 	for _, lw := range pdc.launchedWorkers {
@@ -643,8 +687,8 @@ func (pdc *projectDownloadChunk) filterCompletedPieceIndices(w *worker, pieceInd
 	return filtered
 }
 
-// workerIsDownloading returns true if the given worker is launched and has not
-// returned yet.
+// isLaunched returns true if the given worker was already launched for the
+// given piece.
 func (pdc *projectDownloadChunk) isLaunched(w *worker, piece uint64) bool {
 	for _, lw := range pdc.launchedWorkers {
 		fmt.Printf("launched worker %v is downloading piece %v and is complete: %v\n", lw.staticWorker.staticHostPubKey.ShortString(), lw.staticPieceIndex, lw.completeTime)
@@ -661,7 +705,9 @@ func (pdc *projectDownloadChunk) isLaunched(w *worker, piece uint64) bool {
 	return false
 }
 
-// launchWorkerSet will try to launch every wo
+// launchWorkerSet will range over the workers in the given worker set and will
+// try to launch every worker that has not yet been launched and is ready to
+// launch.
 func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) {
 	fmt.Println("launching set")
 	// convenience variables
@@ -679,7 +725,7 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) {
 		worker := w.worker()
 		workerStr := w.identifier()
 
-		// continue if worker is still downloading
+		// continue if the worker is already launched
 		if pdc.isLaunched(worker, piece) {
 			fmt.Println("skip because downloading")
 			continue
