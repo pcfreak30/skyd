@@ -70,6 +70,8 @@ type (
 		defaultPath         string
 		convertPath         string
 		disableDefaultPath  bool
+		tryFiles            []string
+		errorPages          map[int]string
 		dryRun              bool
 		filename            string
 		force               bool
@@ -95,7 +97,7 @@ type writeReader struct {
 }
 
 // Read implements the io.Reader interface but returns 0 and EOF.
-func (wr *writeReader) Read(b []byte) (int, error) {
+func (wr *writeReader) Read(_ []byte) (int, error) {
 	build.Critical("Read method of the writeReader is not intended to be used")
 	return 0, io.EOF
 }
@@ -201,6 +203,67 @@ func (rw *monetizedWriter) Write(b []byte) (int, error) {
 		}
 	}
 	return n, nil
+}
+
+// newCustomErrorWriter creates a new customErrorWriter.
+func newCustomErrorWriter(meta skymodules.SkyfileMetadata, streamer io.ReadSeeker) *customErrorWriter {
+	if meta.ErrorPages == nil {
+		meta.ErrorPages = make(map[int]string)
+	}
+	return &customErrorWriter{
+		staticMetadata: meta,
+		staticStreamer: streamer,
+	}
+}
+
+// customErrorWriter responds to errors with custom content.
+type customErrorWriter struct {
+	staticMetadata skymodules.SkyfileMetadata
+	staticStreamer io.ReadSeeker
+}
+
+// WriteError checks whether there's custom content configured for the
+// given error code and writes it the writer, otherwise it sends the standard
+// error content.
+func (ew customErrorWriter) WriteError(w http.ResponseWriter, e Error, code int) {
+	// If we don't have a custom error page for this error code just serve the
+	// standard response.
+	if _, exist := ew.staticMetadata.ErrorPages[code]; !exist {
+		WriteError(w, e, code)
+		return
+	}
+	contentReader, contentType, err := ew.customContent(code)
+	if err != nil {
+		msg := fmt.Sprintf("Failed to fetch custom error content which should exist.\ntryfiles: %+v\nsubfiles: %+v\nerror: %+v\n", ew.staticMetadata.TryFiles, ew.staticMetadata.Subfiles, err)
+		build.Critical(msg)
+		WriteError(w, e, code)
+		return
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.WriteHeader(code)
+	_, err = io.Copy(w, contentReader)
+	if err != nil {
+		build.Critical("Failed to write custom error content:", err)
+	}
+}
+
+// customContent returns the custom error content that matches the given status
+// code, as well as its content type.
+func (ew *customErrorWriter) customContent(status int) (io.Reader, string, error) {
+	errpath, exists := ew.staticMetadata.ErrorPages[status]
+	if !exists {
+		return nil, "", os.ErrNotExist
+	}
+
+	metadataForPath, _, offset, size := ew.staticMetadata.ForPath(errpath)
+	if len(metadataForPath.Subfiles) == 0 {
+		return nil, "", fmt.Errorf("custom error page for status %d not found", status)
+	}
+	_, err := ew.staticStreamer.Seek(int64(offset), io.SeekStart)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to serve custom contents for status code %d, invalid offset, error '%s'", status, err.Error())
+	}
+	return io.LimitReader(ew.staticStreamer, int64(size)), metadataForPath.ContentType(), nil
 }
 
 // buildETag is a helper function that returns an ETag.
@@ -402,13 +465,13 @@ func parseDownloadRequestParameters(req *http.Request) (*skyfileDownloadParams, 
 }
 
 // parseUploadHeadersAndRequestParameters is a helper function that parses all
-// of the query parameters and headers from an upload request
+// the query parameters and headers from an upload request
 func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Params) (*skyfileUploadHeaders, *skyfileUploadParams, error) {
 	var err error
 
 	// parse 'Skynet-Disable-Force' request header
 	var disableForce bool
-	strDisableForce := req.Header.Get("Skynet-Disable-Force")
+	strDisableForce := req.Header.Get(SkynetDisableForceHeader)
 	if strDisableForce != "" {
 		disableForce, err = strconv.ParseBool(strDisableForce)
 		if err != nil {
@@ -454,6 +517,33 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		if err != nil {
 			return nil, nil, errors.AddContext(err, "unable to parse 'disabledefaultpath' parameter")
 		}
+	}
+
+	// parse 'tryfiles' query parameter
+	var tryFiles []string
+	// There is a difference between the tryfiles value being set to empty or
+	// not being set at all. If it's not set at all we'll use the default value
+	// but if it's set to empty we will leave it empty.
+	if _, isSet := queryForm["tryfiles"]; isSet {
+		tryFiles, err = UnmarshalTryFiles(queryForm.Get("tryfiles"))
+		if err != nil {
+			return nil, nil, errors.AddContext(err, "unable to parse 'tryfiles' parameter")
+		}
+		if (defaultPath != "" || disableDefaultPath) && len(tryFiles) > 0 {
+			return nil, nil, errors.New("defaultpath and disabledefaultpath are not compatible with tryfiles")
+		}
+	} else {
+		// If we don't have any tryfiles defined, and we don't have a defaultpath or
+		// disabledefaultpath, we want to default to tryfiles with index.html.
+		// This only happens if the tryfiles are not passed at all.
+		if defaultPath == "" && disableDefaultPath == false {
+			tryFiles = skymodules.DefaultTryFilesValue
+		}
+	}
+
+	errPages, err := UnmarshalErrorPages(queryForm.Get("errorpages"))
+	if err != nil {
+		return nil, nil, errors.AddContext(err, "invalid 'errorpages' parameter")
 	}
 
 	// parse 'dryrun' query parameter
@@ -582,6 +672,7 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		defaultPath:         defaultPath,
 		disableDefaultPath:  disableDefaultPath,
 		dryRun:              dryRun,
+		errorPages:          errPages,
 		filename:            filename,
 		force:               force,
 		mode:                mode,
@@ -590,6 +681,7 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		siaPath:             siaPath,
 		skyKeyID:            skykeyID,
 		skyKeyName:          skykeyName,
+		tryFiles:            tryFiles,
 	}
 	return headers, params, nil
 }
@@ -767,6 +859,32 @@ func attachRegistryEntryProof(w http.ResponseWriter, srvs []skymodules.RegistryE
 	if err != nil {
 		return err
 	}
-	w.Header().Set("Skynet-Proof", string(b))
+	w.Header().Set(SkynetProofHeader, string(b))
 	return nil
+}
+
+// UnmarshalErrorPages unmarshals an errorpages string into an map[int]string.
+func UnmarshalErrorPages(s string) (map[int]string, error) {
+	errPages := make(map[int]string)
+	if len(s) == 0 {
+		return errPages, nil
+	}
+	err := json.Unmarshal([]byte(s), &errPages)
+	if err != nil {
+		return nil, errors.AddContext(err, "invalid errorpages value")
+	}
+	return errPages, nil
+}
+
+// UnmarshalTryFiles unmarshals a tryfiles string.
+func UnmarshalTryFiles(s string) ([]string, error) {
+	if len(s) == 0 {
+		return []string{}, nil
+	}
+	var tf []string
+	err := json.Unmarshal([]byte(s), &tf)
+	if err != nil {
+		return nil, errors.AddContext(err, "invalid tryfiles value")
+	}
+	return tf, nil
 }

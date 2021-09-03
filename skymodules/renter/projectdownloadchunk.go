@@ -252,9 +252,9 @@ func (pdc *projectDownloadChunk) updateWorkerHeap(h *pdcWorkerHeap) {
 			// extend the already allocated pieces slice to its full
 			// size and reset it to reduce the number of
 			// allocations.
-			if cap(w.pieces) != pdc.workerSet.staticErasureCoder.MinPieces() {
+			if cap(w.pieces) != pdc.workerSet.staticErasureCoder.NumPieces() {
 				build.Critical("w.pieces has the wrong capacity for an unresolved worker")
-				w.pieces = make([]uint64, pdc.workerSet.staticErasureCoder.MinPieces())
+				w.pieces = make([]uint64, pdc.workerSet.staticErasureCoder.NumPieces())
 			} else {
 				w.pieces = w.pieces[:cap(w.pieces)]
 			}

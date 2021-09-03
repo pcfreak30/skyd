@@ -187,7 +187,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 		// resolve time and worker.
 		workerHeap = append(workerHeap, &pdcInitialWorker{
 			staticExpectedResolveTime: uw.staticExpectedResolvedTime,
-			pieces:                    make([]uint64, pdc.workerSet.staticErasureCoder.MinPieces()),
+			pieces:                    make([]uint64, pdc.workerSet.staticErasureCoder.NumPieces()),
 			worker:                    w,
 		})
 	}

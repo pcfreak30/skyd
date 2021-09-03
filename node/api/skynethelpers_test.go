@@ -9,18 +9,19 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
-	"go.sia.tech/siad/crypto"
-	"go.sia.tech/siad/modules"
-
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skykey"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
+
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 )
@@ -30,6 +31,11 @@ type testHTTPWriter struct {
 	statusCode int
 	write      []byte
 	header     http.Header
+}
+
+// WrittenContent is a helper for checking what was written to the writer
+func (tw *testHTTPWriter) WrittenContent() []byte {
+	return tw.write
 }
 
 // Header implements http.ResponseWriter.
@@ -325,16 +331,16 @@ func testParseUploadRequestParameters(t *testing.T) {
 
 	// parseRequest simply wraps 'parseUploadHeadersAndRequestParameters' to
 	// avoid handling the error for every case
-	parseRequest := func(req *http.Request, ps httprouter.Params) (*skyfileUploadHeaders, *skyfileUploadParams) {
+	parseRequest := func(req *http.Request, ps httprouter.Params) (*skyfileUploadHeaders, *skyfileUploadParams, error) {
 		// if content type is not set, default to a binary stream
 		if req.Header.Get("Content-Type") == "" {
 			req.Header.Set("Content-Type", "application/octet-stream")
 		}
 		headers, params, err := parseUploadHeadersAndRequestParameters(req, ps)
 		if err != nil {
-			t.Fatal("Unexpected error", err)
+			return nil, nil, err
 		}
-		return headers, params
+		return headers, params, nil
 	}
 
 	// create empty router params
@@ -345,9 +351,12 @@ func testParseUploadRequestParameters(t *testing.T) {
 	contentTypeStr := []string{"multipart/form-data; boundary=---------------------------9051914041544843365972754266"}
 
 	// verify 'Skynet-Disable-Force'
-	hdrs := http.Header{"Skynet-Disable-Force": trueStr}
+	hdrs := http.Header{SkynetDisableForceHeader: trueStr}
 	req := buildRequest(url.Values{}, hdrs)
-	headers, _ := parseRequest(req, defaultParams)
+	headers, _, err := parseRequest(req, defaultParams)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
 	if !headers.disableForce {
 		t.Fatal("Unexpected")
 	}
@@ -361,21 +370,30 @@ func testParseUploadRequestParameters(t *testing.T) {
 
 	// verify 'Content-Type'
 	req = buildRequest(url.Values{}, http.Header{"Content-Type": []string{"text/html"}})
-	headers, _ = parseRequest(req, defaultParams)
+	headers, _, err = parseRequest(req, defaultParams)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
 	if headers.mediaType != "text/html" {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'basechunkredundancy'
 	req = buildRequest(url.Values{"basechunkredundancy": []string{fmt.Sprintf("%v", 2)}}, http.Header{})
-	_, params := parseRequest(req, defaultParams)
+	_, params, err := parseRequest(req, defaultParams)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
 	if params.baseChunkRedundancy != uint8(2) {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'convertpath'
 	req = buildRequest(url.Values{"convertpath": []string{"/foo/bar"}}, http.Header{})
-	_, params = parseRequest(req, defaultParams)
+	_, params, err = parseRequest(req, defaultParams)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
 	if params.convertPath != "/foo/bar" {
 		t.Fatal("Unexpected")
 	}
@@ -389,7 +407,10 @@ func testParseUploadRequestParameters(t *testing.T) {
 
 	// verify 'defaultpath'
 	req = buildRequest(url.Values{"defaultpath": []string{"/foo/bar.txt"}}, http.Header{"Content-Type": contentTypeStr})
-	_, params = parseRequest(req, defaultParams)
+	_, params, err = parseRequest(req, defaultParams)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
 	if params.defaultPath != "/foo/bar.txt" {
 		t.Fatal("Unexpected")
 	}
@@ -403,7 +424,10 @@ func testParseUploadRequestParameters(t *testing.T) {
 
 	// verify 'disabledefaultpath'
 	req = buildRequest(url.Values{"disabledefaultpath": trueStr}, http.Header{"Content-Type": contentTypeStr})
-	_, params = parseRequest(req, defaultParams)
+	_, params, err = parseRequest(req, defaultParams)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
 	if !params.disableDefaultPath {
 		t.Fatal("Unexpected")
 	}
@@ -422,59 +446,142 @@ func testParseUploadRequestParameters(t *testing.T) {
 		t.Fatal("Unexpected")
 	}
 
+	// verify tryfiles
+	req = buildRequest(url.Values{"tryfiles": nil}, http.Header{})
+	_, params, err = parseRequest(req, defaultParams)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	if !reflect.DeepEqual(params.tryFiles, skymodules.DefaultTryFilesValue) {
+		t.Fatalf("Expected '%s', got '%s'\n", skymodules.DefaultTryFilesValue, params.tryFiles)
+	}
+	req = buildRequest(url.Values{"tryfiles": []string{}}, http.Header{})
+	_, params, err = parseRequest(req, defaultParams)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	if !reflect.DeepEqual(params.tryFiles, skymodules.DefaultTryFilesValue) {
+		t.Fatalf("Expected '%s', got '%s'\n", skymodules.DefaultTryFilesValue, params.tryFiles)
+	}
+	req = buildRequest(url.Values{"tryfiles": []string{""}}, http.Header{})
+	_, params, err = parseRequest(req, defaultParams)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	if !reflect.DeepEqual(params.tryFiles, []string{}) {
+		t.Fatalf("Expected '%s', got '%s'\n", []string{}, params.tryFiles)
+	}
+	req = buildRequest(url.Values{"tryfiles": []string{"[\"index.html\"]"}}, http.Header{})
+	_, params, err = parseRequest(req, defaultParams)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	if len(params.tryFiles) != 1 || params.tryFiles[0] != "index.html" {
+		t.Fatalf("Expected '%s', got '%s'\n", skymodules.DefaultTryFilesValue, params.tryFiles)
+	}
+
+	// verify errorpages
+	req = buildRequest(url.Values{"errorpages": []string{}}, http.Header{})
+	_, params, err = parseRequest(req, defaultParams)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	if len(params.errorPages) > 0 {
+		t.Fatal("Expected length of error pages to be zero, got", len(params.errorPages))
+	}
+	req = buildRequest(url.Values{"errorpages": []string{"{\"404\":\"notfound.html\"}"}}, http.Header{})
+	_, params, err = parseRequest(req, defaultParams)
+	if params.errorPages[404] != "notfound.html" {
+		t.Fatalf("Unexpected 404 errorpage - expected 'notfound.html', got %s\n", params.errorPages[404])
+	}
+
+	// verify that 'tryfiles' cannot be combined with 'defaultpath' or
+	// 'disabledefaultpath'
+	req = buildRequest(url.Values{"tryfiles": []string{"[\"index.html\"]"}, "defaultpath": skymodules.DefaultTryFilesValue}, http.Header{"Content-type": []string{"text/html"}})
+	_, params, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
+	if err == nil || !strings.Contains(err.Error(), "defaultpath and disabledefaultpath are not compatible with tryfiles") {
+		t.Fatal("Unexpected", err)
+	}
+	req = buildRequest(url.Values{"tryfiles": []string{"[\"index.html\"]"}, "disabledefaultpath": trueStr}, http.Header{"Content-type": []string{"text/html"}})
+	_, params, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
+	if err == nil || !strings.Contains(err.Error(), "defaultpath and disabledefaultpath are not compatible with tryfiles") {
+		t.Fatal("Unexpected", err)
+	}
+
 	// verify 'dryrun'
-	req = buildRequest(url.Values{"dryrun": trueStr}, http.Header{})
-	_, params = parseRequest(req, defaultParams)
+	req = buildRequest(url.Values{"dryrun": trueStr}, http.Header{"Content-type": []string{"text/html"}})
+	_, params, err = parseRequest(req, defaultParams)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
 	if !params.dryRun {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'filename'
-	req = buildRequest(url.Values{"filename": []string{"foo.txt"}}, http.Header{})
-	_, params = parseRequest(req, defaultParams)
+	req = buildRequest(url.Values{"filename": []string{"foo.txt"}}, http.Header{"Content-type": []string{"text/html"}})
+	_, params, err = parseRequest(req, defaultParams)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
 	if params.filename != "foo.txt" {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'force'
-	req = buildRequest(url.Values{"force": trueStr}, http.Header{})
-	_, params = parseRequest(req, defaultParams)
+	req = buildRequest(url.Values{"force": trueStr}, http.Header{"Content-type": []string{"text/html"}})
+	_, params, err = parseRequest(req, defaultParams)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
 	if !params.force {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'force' - combo with 'dryrun
-	req = buildRequest(url.Values{"force": trueStr, "dryrun": trueStr}, http.Header{})
+	req = buildRequest(url.Values{"force": trueStr, "dryrun": trueStr}, http.Header{"Content-type": []string{"text/html"}})
 	_, _, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
 	if err == nil {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'mode'
-	req = buildRequest(url.Values{"mode": []string{fmt.Sprintf("%o", os.FileMode(0644))}}, http.Header{})
-	_, params = parseRequest(req, defaultParams)
+	req = buildRequest(url.Values{"mode": []string{fmt.Sprintf("%o", os.FileMode(0644))}}, http.Header{"Content-type": []string{"text/html"}})
+	_, params, err = parseRequest(req, defaultParams)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
 	if params.mode != os.FileMode(0644) {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'root'
-	req = buildRequest(url.Values{"root": trueStr}, http.Header{})
-	_, params = parseRequest(req, defaultParams)
+	req = buildRequest(url.Values{"root": trueStr}, http.Header{"Content-type": []string{"text/html"}})
+	_, params, err = parseRequest(req, defaultParams)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
 	if !params.root {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'siapath' (no root)
-	req = buildRequest(url.Values{}, http.Header{})
-	_, params = parseRequest(req, defaultParams)
+	req = buildRequest(url.Values{}, http.Header{"Content-type": []string{"text/html"}})
+	_, params, err = parseRequest(req, defaultParams)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
 	expected, err := skymodules.SkynetFolder.Join(siapath.String())
 	if err != nil || params.siaPath != expected {
 		t.Fatal("Unexpected", err)
 	}
 
 	// verify 'siapath' (at root)
-	req = buildRequest(url.Values{"root": trueStr}, http.Header{})
-	_, params = parseRequest(req, defaultParams)
+	req = buildRequest(url.Values{"root": trueStr}, http.Header{"Content-type": []string{"text/html"}})
+	_, params, err = parseRequest(req, defaultParams)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
 	if params.siaPath != siapath {
 		t.Fatal("Unexpected")
 	}
@@ -491,21 +598,27 @@ func testParseUploadRequestParameters(t *testing.T) {
 	keyIdStr := key.ID().ToString()
 
 	// verify 'skykeyname'
-	req = buildRequest(url.Values{"skykeyname": []string{key.Name}}, http.Header{})
-	_, params = parseRequest(req, defaultParams)
+	req = buildRequest(url.Values{"skykeyname": []string{key.Name}}, http.Header{"Content-type": []string{"text/html"}})
+	_, params, err = parseRequest(req, defaultParams)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
 	if params.skyKeyName != key.Name {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'skykeyid'
-	req = buildRequest(url.Values{"skykeyid": []string{keyIdStr}}, http.Header{})
-	_, params = parseRequest(req, defaultParams)
+	req = buildRequest(url.Values{"skykeyid": []string{keyIdStr}}, http.Header{"Content-type": []string{"text/html"}})
+	_, params, err = parseRequest(req, defaultParams)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
 	if params.skyKeyID.ToString() != keyIdStr {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'skykeyid' - combo with 'skykeyname'
-	req = buildRequest(url.Values{"skykeyname": []string{key.Name}, "skykeyid": []string{key.ID().ToString()}}, http.Header{})
+	req = buildRequest(url.Values{"skykeyname": []string{key.Name}, "skykeyid": []string{key.ID().ToString()}}, http.Header{"Content-type": []string{"text/html"}})
 	_, _, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
 	if err == nil {
 		t.Fatal("Unexpected")
@@ -551,7 +664,7 @@ func testParseDownloadRequestParameters(t *testing.T) {
 	}
 
 	// Test base case of just skylink
-	req, err := buildRequest(url.Values{}, http.Header{})
+	req, err := buildRequest(url.Values{}, http.Header{"Content-type": []string{"text/html"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -568,7 +681,7 @@ func testParseDownloadRequestParameters(t *testing.T) {
 
 	// Test attachment
 	trueStr := []string{fmt.Sprintf("%t", true)}
-	req, err = buildRequest(url.Values{"attachment": trueStr}, http.Header{})
+	req, err = buildRequest(url.Values{"attachment": trueStr}, http.Header{"Content-type": []string{"text/html"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -586,7 +699,7 @@ func testParseDownloadRequestParameters(t *testing.T) {
 
 	// Test Format
 	formatTest := func(format skymodules.SkyfileFormat) error {
-		req, err := buildRequest(url.Values{"format": []string{string(format)}}, http.Header{})
+		req, err := buildRequest(url.Values{"format": []string{string(format)}}, http.Header{"Content-type": []string{"text/html"}})
 		if err != nil {
 			return err
 		}
@@ -612,7 +725,7 @@ func testParseDownloadRequestParameters(t *testing.T) {
 	}
 
 	// Test include layout
-	req, err = buildRequest(url.Values{"include-layout": trueStr}, http.Header{})
+	req, err = buildRequest(url.Values{"include-layout": trueStr}, http.Header{"Content-type": []string{"text/html"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -632,7 +745,7 @@ func testParseDownloadRequestParameters(t *testing.T) {
 	var timeoutInt int = 100
 	timeout := time.Duration(timeoutInt) * time.Second
 	timeoutStr := []string{fmt.Sprintf("%d", timeoutInt)}
-	req, err = buildRequest(url.Values{"timeout": timeoutStr}, http.Header{})
+	req, err = buildRequest(url.Values{"timeout": timeoutStr}, http.Header{"Content-type": []string{"text/html"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -655,7 +768,7 @@ func testParseDownloadRequestParameters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req, err = buildRequest(url.Values{"priceperms": []string{pricePerMSStr}}, http.Header{})
+	req, err = buildRequest(url.Values{"priceperms": []string{pricePerMSStr}}, http.Header{"Content-type": []string{"text/html"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -758,7 +871,7 @@ func TestAttachRegistryEntryProof(t *testing.T) {
 	attachRegistryEntryProof(w, entries)
 
 	// Get the attached proof.
-	proof := header.Get("Skynet-Proof")
+	proof := header.Get(SkynetProofHeader)
 
 	// Should match the expected proof.
 	if proof != string(expectedProof) {
@@ -774,6 +887,209 @@ func TestAttachRegistryEntryProof(t *testing.T) {
 	_, set := header["Skynet-Proof"]
 	if set {
 		t.Fatal("set")
+	}
+}
+
+// TestUnmarshalErrorPages ensures that we properly handle all string inputs.
+func TestUnmarshalErrorPages(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   string
+		out  map[int]string
+		err  string
+	}{
+		{
+			name: "empty",
+			in:   "",
+			out:  map[int]string{},
+			err:  "",
+		},
+		{
+			name: "404",
+			in:   "{\"404\":\"notfound.html\"}",
+			out:  map[int]string{404: "notfound.html"},
+			err:  "",
+		},
+		{
+			name: "404,403",
+			in:   "{\"404\":\"notfound.html\",\"403\":\"bla.html\"}",
+			out: map[int]string{
+				404: "notfound.html",
+				403: "bla.html",
+			},
+			err: "",
+		},
+		{
+			name: "not a json",
+			in:   "this is not a JSON",
+			out:  map[int]string{},
+			err:  "invalid errorpages value",
+		},
+	}
+
+	for _, tt := range tests {
+		out, err := UnmarshalErrorPages(tt.in)
+		if err != nil && tt.err == "" {
+			t.Log("Failing test:", tt.name)
+			t.Fatal("Unexpected error", err)
+		}
+		if tt.err != "" && (err == nil || !strings.Contains(err.Error(), tt.err)) {
+			t.Log("Failing test:", tt.name)
+			t.Fatalf("Expected error '%s', got '%s'\n", tt.err, err.Error())
+		}
+		// only compare outputs if we expect to not encounter an error
+		if tt.err == "" && !reflect.DeepEqual(out, tt.out) {
+			t.Log("Failing test:", tt.name)
+			t.Logf("Expected: %+v\n", tt.out)
+			t.Logf("Actual  : %+v\n", out)
+			t.Fatal("Unexpected output.")
+		}
+	}
+}
+
+// TestUnmarshalTryFiles ensures that we properly handle all string inputs.
+func TestUnmarshalTryFiles(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   string
+		out  []string
+		err  string
+	}{
+		{
+			name: "empty",
+			in:   "",
+			out:  []string{},
+			err:  "",
+		},
+		{
+			name: "empty arr",
+			in:   "[]",
+			out:  []string{},
+			err:  "",
+		},
+		{
+			name: "index",
+			in:   "[\"index.html\"]",
+			out:  []string{"index.html"},
+			err:  "",
+		},
+		{
+			name: "index, bla",
+			in:   "[\"index.html\",\"bla.info\"]",
+			out:  []string{"index.html", "bla.info"},
+			err:  "",
+		},
+		{
+			name: "not a json",
+			in:   "this is not a JSON",
+			out:  nil,
+			err:  "invalid tryfiles value",
+		},
+	}
+
+	for _, tt := range tests {
+		out, err := UnmarshalTryFiles(tt.in)
+		if err != nil && tt.err == "" {
+			t.Log("Failing test:", tt.name)
+			t.Fatal("Unexpected error", err)
+		}
+		if tt.err != "" && (err == nil || !strings.Contains(err.Error(), tt.err)) {
+			t.Log("Failing test:", tt.name)
+			t.Fatalf("Expected error '%s', got '%s'\n", tt.err, err.Error())
+		}
+		// only compare outputs if we expect to not encounter an error
+		if tt.err == "" && !reflect.DeepEqual(out, tt.out) {
+			t.Log("Failing test:", tt.name)
+			t.Logf("Expected: %+v\n", tt.out)
+			t.Logf("Actual  : %+v\n", out)
+			t.Fatal("Unexpected output.")
+		}
+	}
+}
+
+// TestCustomErrorWriter ensures that customErrorWriter responds with the right
+// content.
+func TestCustomErrorWriter(t *testing.T) {
+	t.Parallel()
+
+	subfiles := skymodules.SkyfileSubfiles{
+		"400.html": skymodules.SkyfileSubfileMetadata{
+			Filename:    "400.html",
+			ContentType: "text/html",
+			Offset:      0,
+			Len:         14,
+		},
+		"404.html": skymodules.SkyfileSubfileMetadata{
+			Filename:    "404.html",
+			ContentType: "text/html",
+			Offset:      14,
+			Len:         14,
+		},
+		"418.html": skymodules.SkyfileSubfileMetadata{
+			Filename:    "418.html",
+			ContentType: "text/html",
+			Offset:      28,
+			Len:         14,
+		},
+		"500.html": skymodules.SkyfileSubfileMetadata{
+			Filename:    "500.html",
+			ContentType: "text/html",
+			Offset:      42,
+			Len:         14,
+		},
+		"502.html": skymodules.SkyfileSubfileMetadata{
+			Filename:    "502.html",
+			ContentType: "text/html",
+			Offset:      56,
+			Len:         14,
+		},
+	}
+	eps := map[int]string{
+		400: "/400.html",
+		404: "/404.html",
+		418: "/418.html",
+		500: "/500.html",
+		502: "/502.html",
+	}
+	meta := skymodules.SkyfileMetadata{
+		Filename:   t.Name(),
+		Length:     60,
+		Subfiles:   subfiles,
+		ErrorPages: eps,
+	}
+	data := []byte("FileContent400FileContent404FileContent418FileContent500FileContent502")
+	rawMD, err := json.Marshal(meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	streamer := renter.SkylinkStreamerFromSlice(data, meta, rawMD, skymodules.Skylink{}, skymodules.SkyfileLayout{})
+
+	ew := newCustomErrorWriter(meta, streamer)
+	w := newTestHTTPWriter()
+
+	// test all errorpage codes
+	for code := range eps {
+		codeStr := strconv.Itoa(code)
+		ew.WriteError(w, Error{"This is an error with status " + codeStr}, code)
+		sf, exists := subfiles[codeStr+".html"]
+		if !exists {
+			t.Fatalf("Expected to find a subfile with name %s", codeStr+".html")
+		}
+		expectedData := data[sf.Offset : sf.Offset+sf.Len]
+		if !reflect.DeepEqual(expectedData, w.WrittenContent()) {
+			t.Fatalf("Expected content '%s', got '%s'", string(expectedData), string(w.WrittenContent()))
+		}
+	}
+
+	// test a non-errorpages code
+	errmsg := "we want to see this"
+	ew.WriteError(w, Error{errmsg}, 401)
+	if !strings.Contains(string(w.WrittenContent()), errmsg) {
+		t.Fatalf("Expected content to contain '%s', got '%s'", errmsg, string(w.WrittenContent()))
 	}
 }
 

@@ -1,1 +1,0 @@
-- add dedicated endpoint for resolving v2 skylink to v1 skylink
