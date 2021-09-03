@@ -17,6 +17,14 @@ import (
 	"go.sia.tech/siad/types"
 )
 
+const (
+	// bestWorkerIndexForResponseSet defines the rank of the worker we use
+	// for the metrics in threadedAddResponseSet. It means that out of all
+	// the workers that returned the best possible entry found on the
+	// network, we use the n-th fastest for the estimation.
+	bestWorkerIndexForResponseSet = 4 // 5th best worker
+)
+
 var (
 	// MaxRegistryReadTimeout is the default timeout used when reading from
 	// the registry.
@@ -105,14 +113,6 @@ var (
 		Standard: 2 * time.Second,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
-
-	// minRegistryReadTimeout is the minimum timeout we give a read registry
-	// request to finish.
-	minRegistryReadTimeout = build.Select(build.Var{
-		Dev:      200 * time.Millisecond,
-		Standard: 300 * time.Millisecond,
-		Testing:  20 * time.Millisecond,
-	}).(time.Duration)
 )
 
 // readResponseSet is a helper type which allows for returning a set of ongoing
@@ -187,7 +187,7 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 	}
 
 	// Find the fastest timing with the highest revision number.
-	var best *jobReadRegistryResponse
+	var bests []*jobReadRegistryResponse
 	var goodResps []*jobReadRegistryResponse
 	for _, resp := range resps {
 		if resp.staticErr != nil {
@@ -197,20 +197,50 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 		if resp.staticSignedRegistryValue != nil {
 			goodResps = append(goodResps, resp)
 		}
-		// If the new response is better, remember it.
-		if isBetterReadRegistryResponse(best, resp) {
-			best = resp
-			continue
+		// Grab the fastest best response we got.
+		var currentBest *jobReadRegistryResponse
+		if len(bests) > 0 {
+			currentBest = bests[0]
+		}
+		if isBetter, sameRev := isBetterReadRegistryResponse(currentBest, resp); isBetter && !sameRev {
+			// If the new response is better, empty the slice of best
+			// responses since its going to be better than any of them.
+			bests = []*jobReadRegistryResponse{resp}
+		} else if sameRev {
+			// If it is not necessarily better but has the same
+			// revision, remember it.
+			bests = append(bests, resp)
 		}
 	}
 
-	// No successful responses. We can't update the stats.
+	// No best response. Return early.
+	if len(bests) == 0 {
+		return
+	}
+
+	// Sort the best responses by completion time.
+	sort.Slice(bests, func(i, j int) bool {
+		return bests[i].staticCompleteTime.Before(bests[j].staticCompleteTime)
+	})
+
+	// Use the 5th best response for the metrics. If we don't have 5 best
+	// responses, use the last one.
+	bestIndex := len(bests) - 1
+	if bestIndex > bestWorkerIndexForResponseSet {
+		bestIndex = bestWorkerIndexForResponseSet
+	}
+	best := bests[bestIndex]
+
+	// Check if the best response got a value. If it doesn't, there is no need to
+	// continue. Trying the other responses in bests also won't work since they are
+	// all equally as good.
 	if best == nil || best.staticSignedRegistryValue == nil {
 		return
 	}
 	span.LogKV("revision", best.staticSignedRegistryValue.Revision)
 
-	// Drop any responses from goodResps that were slower or equal to best.
+	// Drop any responses from goodResps that were slower or equal to best
+	// and any that were previously ranked better than best in bests.
 	for i := 0; i < len(goodResps); i++ {
 		if goodResps[i].staticCompleteTime.Before(best.staticCompleteTime) {
 			continue // nothing to do for faster response
@@ -231,9 +261,8 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 	defer secondBestCancel()
 
 	// Determine the secondBest response by asking all workers with valid responses
-	// again, one-by-one. The secondBest is the first that returns a revision >= the
-	// best one.
-	var secondBest *skymodules.RegistryEntry
+	// again, one-by-one.
+	var secondBests []*jobReadRegistryResponse
 	var d2 time.Duration
 	for _, resp := range goodResps {
 		// Otherwise look up the same entry.
@@ -256,9 +285,27 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 		// If the revision is >= the best one, we are done.
 		if srv.Revision >= best.staticSignedRegistryValue.Revision {
 			d2 = resp.staticCompleteTime.Sub(startTime)
-			secondBest = srv
+			secondBests = append(secondBests, resp)
+		}
+		// Check if we got enough results.
+		if len(secondBests) > bestWorkerIndexForResponseSet+1 {
 			break
 		}
+	}
+
+	// Sort the secondBests by completion time and get the 5th best
+	// secondBest.
+	sort.Slice(secondBests, func(i, j int) bool {
+		return secondBests[i].staticCompleteTime.Before(secondBests[j].staticCompleteTime)
+	})
+	var secondBest *skymodules.RegistryEntry
+	if len(secondBests) > 0 {
+		secondBestIndex := len(secondBests) - 1
+		if secondBestIndex > bestWorkerIndexForResponseSet {
+			secondBestIndex = bestWorkerIndexForResponseSet
+		}
+		secondBest = secondBests[secondBestIndex].staticSignedRegistryValue
+		d2 = secondBests[secondBestIndex].staticCompleteTime.Sub(startTime)
 	}
 
 	// Get the duration of the best lookup.
@@ -441,7 +488,7 @@ func (r *Renter) managedRegistryEntryHealth(ctx context.Context, rid modules.Reg
 		if resp.staticErr != nil {
 			continue
 		}
-		if isBetterReadRegistryResponse(best, resp) {
+		if isBetter, _ := isBetterReadRegistryResponse(best, resp); isBetter {
 			best = resp
 		}
 	}
@@ -531,9 +578,6 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	// Use the p999 of the registry read stats to determine the timeout.
 	nines := r.staticRegReadStats.Percentiles()
 	estimate := nines[0][2]
-	if estimate < minRegistryReadTimeout {
-		estimate = minRegistryReadTimeout
-	}
 	ctx, cancel := context.WithTimeout(ctx, estimate)
 	defer cancel()
 
@@ -555,7 +599,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 		}
 
 		// Remember the best response.
-		if isBetterReadRegistryResponse(best, resp) {
+		if isBetter, _ := isBetterReadRegistryResponse(best, resp); isBetter {
 			best = resp
 		}
 	}
@@ -750,22 +794,22 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 // isBetterReadRegistryResponse returns true if resp2 is a better response than
 // resp1 and false otherwise. Better means that the response either has a higher
 // revision number, more work or was faster.
-func isBetterReadRegistryResponse(resp1, resp2 *jobReadRegistryResponse) bool {
+func isBetterReadRegistryResponse(resp1, resp2 *jobReadRegistryResponse) (bool, bool) {
 	// Check for nil response.
 	if resp2 == nil {
 		// A nil entry never replaces an existing entry.
-		return false
+		return false, resp1 == resp2
 	} else if resp1 == nil {
 		// A non-nil entry always replaces a nil entry.
-		return true
+		return true, resp1 == resp2
 	}
 	// Same but with the entries.
 	srv1 := resp1.staticSignedRegistryValue
 	srv2 := resp2.staticSignedRegistryValue
 	if srv2 == nil {
-		return false
+		return false, srv1 == srv2
 	} else if srv1 == nil {
-		return true
+		return true, srv1 == srv2
 	}
 	// Compare entries. We pass the empty key here since we don't care about
 	// whether the entry is a primary or secondary one.
@@ -774,9 +818,9 @@ func isBetterReadRegistryResponse(resp1, resp2 *jobReadRegistryResponse) bool {
 	// If the entry is not capable of updating the existing one and both entries
 	// have the same revision number, use the time.
 	if !shouldUpdate && errors.Contains(updateErr, modules.ErrSameRevNum) {
-		return resp2.staticCompleteTime.Before(resp1.staticCompleteTime)
+		return resp2.staticCompleteTime.Before(resp1.staticCompleteTime), true
 	}
 
 	// Otherwise we return the result
-	return shouldUpdate
+	return shouldUpdate, false
 }
