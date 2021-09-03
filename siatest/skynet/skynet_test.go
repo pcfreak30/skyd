@@ -5884,7 +5884,7 @@ func TestHostLosingRegistryEntry(t *testing.T) {
 	}
 }
 
-// TestRegistryReadRepair tests if reading a registry entry repair the entry on
+// TestRegistryReadRepair tests if reading a registry entry repairs the entry on
 // the network.
 func TestRegistryReadRepair(t *testing.T) {
 	if testing.Short() {
