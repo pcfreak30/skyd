@@ -299,10 +299,11 @@ type (
 	// RegistryEntryHealth contains information about a registry entry's
 	// health on the network.
 	RegistryEntryHealth struct {
-		NumBestEntries        uint64 `json:"numbestentries"`
-		NumBestPrimaryEntries uint64 `json:"numbestprimaryentries"`
-		NumEntries            uint64 `json:"numentries"`
-		RevisionNumber        uint64 `json:"revisionnumber"`
+		NumBestEntries             uint64 `json:"numbestentries"`
+		NumBestEntriesBeforeCutoff uint64 `json:"numbestentriesbeforecutoff"`
+		NumBestPrimaryEntries      uint64 `json:"numbestprimaryentries"`
+		NumEntries                 uint64 `json:"numentries"`
+		RevisionNumber             uint64 `json:"revisionnumber"`
 	}
 )
 

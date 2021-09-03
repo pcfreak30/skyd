@@ -4351,10 +4351,11 @@ func TestRegistryHealth(t *testing.T) {
 
 	// Check the health.
 	err = assertHealth(skymodules.RegistryEntryHealth{
-		NumBestEntries:        3,
-		NumEntries:            3,
-		NumBestPrimaryEntries: 0,
-		RevisionNumber:        srv.Revision,
+		NumBestEntries:             3,
+		NumBestEntriesBeforeCutoff: 3,
+		NumEntries:                 3,
+		NumBestPrimaryEntries:      0,
+		RevisionNumber:             srv.Revision,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -4382,10 +4383,11 @@ func TestRegistryHealth(t *testing.T) {
 
 	// Check the health.
 	err = assertHealth(skymodules.RegistryEntryHealth{
-		RevisionNumber:        revision,
-		NumEntries:            uint64(len(tg.Hosts())) - 1,
-		NumBestEntries:        uint64(len(tg.Hosts())) - 1,
-		NumBestPrimaryEntries: 0,
+		RevisionNumber:             revision,
+		NumEntries:                 uint64(len(tg.Hosts())) - 1,
+		NumBestEntries:             uint64(len(tg.Hosts())) - 1,
+		NumBestEntriesBeforeCutoff: uint64(len(tg.Hosts())) - 1,
+		NumBestPrimaryEntries:      0,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -4407,10 +4409,11 @@ func TestRegistryHealth(t *testing.T) {
 		// We expect len(hosts)-1 best entries since one entry is
 		// outdated and does therefore not count towards the health.
 		return assertHealth(skymodules.RegistryEntryHealth{
-			RevisionNumber:        revision,
-			NumEntries:            uint64(len(tg.Hosts())),
-			NumBestEntries:        uint64(len(tg.Hosts())) - 1,
-			NumBestPrimaryEntries: 0,
+			RevisionNumber:             revision,
+			NumEntries:                 uint64(len(tg.Hosts())),
+			NumBestEntries:             uint64(len(tg.Hosts())) - 1,
+			NumBestEntriesBeforeCutoff: uint64(len(tg.Hosts())) - 1,
+			NumBestPrimaryEntries:      0,
 		})
 	})
 	if err != nil {
