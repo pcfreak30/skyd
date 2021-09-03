@@ -736,6 +736,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		}
 		if !uc.staticAvailable() {
 			uc.err = errors.New("unable to upload file, file is not available on the network")
+			fmt.Println("uc", len(uc.unusedHosts), uc.workersRemaining, len(uc.workersStandby), uc.pieceUsage)
 			uc.chunkAvailableTime = time.Now()
 			close(uc.staticAvailableChan)
 		}
