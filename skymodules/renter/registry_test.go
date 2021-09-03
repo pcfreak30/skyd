@@ -216,48 +216,36 @@ func TestThreadedAddResponseSetRetry(t *testing.T) {
 		readResps: []*jobReadRegistryResponse{
 			// Super fast response but no response value.
 			{
-				staticSPK:                 &spk,
-				staticTweak:               &srvHigher.Tweak,
 				staticCompleteTime:        startTime.Add(time.Millisecond),
 				staticSignedRegistryValue: nil, // no response
 				staticWorker:              nil, // will be ignored
 			},
 			// Super fast response but error.
 			{
-				staticSPK:          &spk,
-				staticTweak:        &srvHigher.Tweak,
 				staticCompleteTime: startTime.Add(time.Millisecond),
 				staticErr:          errors.New("failed"),
 				staticWorker:       nil, // will be ignored
 			},
 			// Slow response with higher rev that will be the "best".
 			{
-				staticSPK:                 &spk,
-				staticTweak:               &srvHigher.Tweak,
 				staticCompleteTime:        startTime.Add(2 * time.Second),
 				staticSignedRegistryValue: &entryHigher,
 				staticWorker:              w1,
 			},
 			// Faster response.
 			{
-				staticSPK:                 &spk,
-				staticTweak:               &srvLower.Tweak,
 				staticCompleteTime:        startTime.Add(time.Second),
 				staticSignedRegistryValue: &entryLower,
 				staticWorker:              w2,
 			},
 			// Super fast response but won't know the entry later.
 			{
-				staticSPK:                 &spk,
-				staticTweak:               &srvLower.Tweak,
 				staticCompleteTime:        startTime.Add(time.Millisecond),
 				staticSignedRegistryValue: &entryLower,
 				staticWorker:              w3,
 			},
 			// Super fast response but will be offline later.
 			{
-				staticSPK:                 &spk,
-				staticTweak:               &srvLower.Tweak,
 				staticCompleteTime:        startTime.Add(time.Millisecond),
 				staticSignedRegistryValue: &entryLower,
 				staticWorker:              w4,
