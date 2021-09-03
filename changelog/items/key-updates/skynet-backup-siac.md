@@ -1,1 +1,0 @@
-- Add `skyc skynet backup` and `skyc skynet restore` commands for backing up and restoring skyfiles.
