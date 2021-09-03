@@ -493,8 +493,6 @@ func TestThreadedAddResponseSetBestHostIndex(t *testing.T) {
 		readResps: []*jobReadRegistryResponse{
 			// 2s response.
 			{
-				staticSPK:                 &spk,
-				staticTweak:               &srv.Tweak,
 				staticCompleteTime:        startTime.Add(2 * time.Second),
 				staticSignedRegistryValue: &entry,
 				staticWorker:              workers[0],
@@ -505,8 +503,6 @@ func TestThreadedAddResponseSetBestHostIndex(t *testing.T) {
 	// Prepare a helper to create a faster (1s) response.
 	faster := func() *jobReadRegistryResponse {
 		return &jobReadRegistryResponse{
-			staticSPK:                 &spk,
-			staticTweak:               &srv.Tweak,
 			staticCompleteTime:        startTime.Add(time.Second),
 			staticSignedRegistryValue: &entry,
 			staticWorker:              workers[len(rrs.readResps)],

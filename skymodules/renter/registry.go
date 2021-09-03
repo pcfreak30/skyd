@@ -864,7 +864,7 @@ func (r *Renter) threadedHandleRegistryRepairs(ctx context.Context, parentSpan o
 	// Find the best response.
 	var best *jobReadRegistryResponse
 	for _, resp := range resps {
-		if isBetterReadRegistryResponse(best, resp) {
+		if better, _ := isBetterReadRegistryResponse(best, resp); better {
 			best = resp
 		}
 	}
