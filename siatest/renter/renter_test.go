@@ -974,6 +974,11 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// File should not report any stuck chunks
 	err = build.Retry(600, 100*time.Millisecond, func() error {
+		// Make sure that the file system is updated
+		err = renterNode.RenterBubblePost(skymodules.RootSiaPath(), true)
+		if err != nil {
+			return err
+		}
 		fi, err := renterNode.File(remoteFile)
 		if err != nil {
 			return err
