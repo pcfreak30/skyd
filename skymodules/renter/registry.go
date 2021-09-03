@@ -284,6 +284,9 @@ func (r *Renter) managedRegistryEntryHealth(ctx context.Context, rid modules.Reg
 		if isBetter, _ := isBetterReadRegistryResponse(best, resp); isBetter {
 			best = resp
 		}
+		if r.staticDeps.Disrupt("DelayRegistryHealthResponses") {
+			resp.staticCompleteTime = resp.staticCompleteTime.Add(time.Hour)
+		}
 	}
 
 	// If no entry was found return all 0s.

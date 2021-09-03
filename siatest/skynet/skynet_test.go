@@ -4281,9 +4281,8 @@ func TestRegistryHealth(t *testing.T) {
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
-		Renters: 1,
-		Miners:  1,
-		Hosts:   renter.MinUpdateRegistrySuccesses,
+		Miners: 1,
+		Hosts:  renter.MinUpdateRegistrySuccesses,
 	}
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
@@ -4294,7 +4293,17 @@ func TestRegistryHealth(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	r := tg.Renters()[0]
+
+	// Add a renter with dependency.
+	params := node.RenterTemplate
+	deps := dependencies.NewDependencyDelayRegistryHealthResponses()
+	deps.Disable()
+	params.RenterDeps = deps
+	nodes, err := tg.AddNodes(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
 
 	// Get one of the hosts' pubkey and choose one of the existing hosts to
 	// be stopped later. They can't be the same host.
@@ -4415,6 +4424,20 @@ func TestRegistryHealth(t *testing.T) {
 			NumBestEntriesBeforeCutoff: uint64(len(tg.Hosts())) - 1,
 			NumBestPrimaryEntries:      0,
 		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Enable the delay dependency and test again. None of the lookups
+	// should return before the timeout.
+	deps.Enable()
+	err = assertHealth(skymodules.RegistryEntryHealth{
+		RevisionNumber:              revision,
+		NumEntries:                  uint64(len(tg.Hosts())),
+		NumBestEntries:              uint64(len(tg.Hosts())) - 1,
+		NumBestEntriesBeforeTimeout: 0,
+		NumBestPrimaryEntries:       0,
 	})
 	if err != nil {
 		t.Fatal(err)
