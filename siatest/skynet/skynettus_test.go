@@ -257,8 +257,22 @@ func testOptionsHandler(t *testing.T, r *siatest.TestNode) {
 		if err := resp.Body.Close(); err != nil {
 			t.Fatal(err)
 		}
-		if _, ok := resp.Header["Tus-Extension"]; !ok {
+		extensionHeader, ok := resp.Header["Tus-Extension"]
+		if !ok {
 			t.Fatal("missing header")
+		}
+		extensions := strings.Split(extensionHeader[0], ",")
+		if len(extensions) != 3 {
+			t.Fatal("wrong number of extensions", len(extensions), extensions)
+		}
+		if extensions[0] != "creation" {
+			t.Fatal("extension 'creation' should be enabled", extensions[0])
+		}
+		if extensions[1] != "creation-with-upload" {
+			t.Fatal("extension 'creation-with-upload' should be enabled", extensions[1])
+		}
+		if extensions[2] != "concatenation" {
+			t.Fatal("extension 'concatenation' should be enabled", extensions[2])
 		}
 		if _, ok := resp.Header["Tus-Resumable"]; !ok {
 			t.Fatal("missing header")

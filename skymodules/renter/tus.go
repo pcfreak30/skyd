@@ -437,7 +437,6 @@ func (u *skynetTUSUpload) FinishUpload(ctx context.Context) (err error) {
 	if u.fi.IsPartial {
 		// If the upload is a partial upload we are done. We don't need to
 		// upload the metadata or create a skylink.
-		u.mu.Unlock()
 		return nil
 	} else if u.isSmall || u.fi.Size == 0 {
 		skylink, err = u.finishUploadSmall(ctx)
