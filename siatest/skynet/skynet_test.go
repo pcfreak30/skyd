@@ -4324,25 +4324,22 @@ func TestRegistryHealth(t *testing.T) {
 
 	// Helper function to check the health.
 	assertHealth := func(expected skymodules.RegistryEntryHealth) error {
-		// Get the health both ways.
-		reh1, err := r.RegistryEntryHealth(spk, dataKey)
+		// Randomly decide what endpoint to use.
+		var reh skymodules.RegistryEntryHealth
+		var err error
+		choice := fastrand.Intn(2)
+		if choice == 0 {
+			reh, err = r.RegistryEntryHealth(spk, dataKey)
+		} else {
+			reh, err = r.RegistryEntryHealthRID(rid)
+		}
 		if err != nil {
 			return err
 		}
-		reh2, err := r.RegistryEntryHealthRID(rid)
-		if err != nil {
-			return err
-		}
-
-		// They should be the same.
-		if !reflect.DeepEqual(reh1, reh2) {
-			return fmt.Errorf("health responses don't match: %v %v", reh1, reh2)
-		}
-
-		if !reflect.DeepEqual(reh1, expected) {
-			got := siatest.PrintJSON(reh1)
+		if !reflect.DeepEqual(reh, expected) {
+			got := siatest.PrintJSON(reh)
 			expected := siatest.PrintJSON(expected)
-			return fmt.Errorf("health doesn't match expected \n got: %v \n expected: %v", got, expected)
+			return fmt.Errorf("health doesn't match expected (choice %v) \n got: %v \n expected: %v", choice, got, expected)
 		}
 		return nil
 	}
