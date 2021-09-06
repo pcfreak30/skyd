@@ -66,8 +66,6 @@ type (
 		staticCompleteTime        time.Time
 		staticExecuteTime         time.Time
 		staticEID                 modules.RegistryEntryID
-		staticSPK                 *types.SiaPublicKey
-		staticTweak               *crypto.Hash
 		staticWorker              *worker
 	}
 )
@@ -199,8 +197,6 @@ func (j *jobReadRegistry) callDiscard(err error) {
 			staticErr:          errors.Extend(err, ErrJobDiscarded),
 			staticCompleteTime: time.Now(),
 			staticEID:          j.staticRegistryEntryID,
-			staticSPK:          j.staticSiaPublicKey,
-			staticTweak:        j.staticTweak,
 			staticWorker:       w,
 		}
 		select {
@@ -235,8 +231,6 @@ func (j *jobReadRegistry) callExecute() {
 				staticErr:                 err,
 				staticExecuteTime:         start,
 				staticEID:                 j.staticRegistryEntryID,
-				staticSPK:                 j.staticSiaPublicKey,
-				staticTweak:               j.staticTweak,
 				staticWorker:              w,
 			}
 			select {

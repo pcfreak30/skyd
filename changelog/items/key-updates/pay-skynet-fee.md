@@ -1,1 +1,0 @@
-- add code to automatically pay skynet fee every 24hours
