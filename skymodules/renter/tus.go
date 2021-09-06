@@ -428,26 +428,18 @@ func (u *skynetTUSUpload) FinishUpload(ctx context.Context) (err error) {
 	}()
 
 	u.mu.Lock()
-
-	// Update the last write before starting to wait for the chunks to avoid
-	// having the chunk pruned. This mostly happens in testing but won't
-	// hurt now that we no longer wait for every chunk to become available
-	// right away.
-	u.lastWrite = time.Now()
-
-	// If the upload is a partial upload we are done. We don't need to
-	// upload the metadata or create a skylink.
-	if u.fi.IsPartial {
-		u.mu.Unlock()
-		return nil
-	}
-	u.mu.Unlock()
-
-	u.mu.Lock()
 	defer u.mu.Unlock()
 
+	// Update the last write before starting to finalize the upload.
+	u.lastWrite = time.Now()
+
 	var skylink skymodules.Skylink
-	if u.isSmall || u.fi.Size == 0 {
+	if u.fi.IsPartial {
+		// If the upload is a partial upload we are done. We don't need to
+		// upload the metadata or create a skylink.
+		u.mu.Unlock()
+		return nil
+	} else if u.isSmall || u.fi.Size == 0 {
 		skylink, err = u.finishUploadSmall(ctx)
 	} else {
 		skylink, err = u.finishUploadLarge(ctx, u.fileNode.MasterKey(), u.fileNode.ErasureCode())
@@ -569,5 +561,19 @@ func (u *skynetTUSUpload) ConcatUploads(ctx context.Context, partialUploads []ha
 			return errors.AddContext(err, "failed to add skylink to partial uploads")
 		}
 	}
+
+	// Upon success, we mark the partial uploads as complete to prevent them
+	// from being pruned.
+	for i := range partialUploads {
+		pu := partialUploads[i].(*skynetTUSUpload)
+		pu.mu.Lock()
+		pu.complete = true
+		pu.mu.Unlock()
+	}
+
+	// Same for the actual concatenated upload.
+	u.mu.Lock()
+	u.complete = true
+	u.mu.Unlock()
 	return nil
 }
