@@ -49,6 +49,9 @@ func TestSkynetTUSUploader(t *testing.T) {
 	}()
 
 	// Run tests.
+	t.Run("PruneIdle", func(t *testing.T) { // run first to avoid ndf
+		testTUSUploaderPruneIdle(t, tg.Renters()[0])
+	})
 	t.Run("Basic", func(t *testing.T) {
 		testTUSUploaderBasic(t, tg.Renters()[0])
 	})
@@ -57,9 +60,6 @@ func TestSkynetTUSUploader(t *testing.T) {
 	})
 	t.Run("TooLarge", func(t *testing.T) {
 		testTUSUploaderTooLarge(t, tg.Renters()[0])
-	})
-	t.Run("PruneIdle", func(t *testing.T) {
-		testTUSUploaderPruneIdle(t, tg.Renters()[0])
 	})
 	t.Run("UnstableConnection", func(t *testing.T) {
 		testTUSUploaderUnstableConnection(t, tg)
