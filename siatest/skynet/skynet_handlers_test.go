@@ -12,6 +12,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/node"
+	"gitlab.com/SkynetLabs/skyd/node/api"
 	"gitlab.com/SkynetLabs/skyd/node/api/client"
 	"gitlab.com/SkynetLabs/skyd/siatest"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
@@ -73,10 +74,17 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 		{
 			// ValidSkyfile is the happy path, ensuring that we don't get errors
 			// on valid data.
-			Name:             "ValidSkyfileNoTrailingSlash",
-			Skylink:          "_A6d-2CpM2OQ-7m5NPAYW830NdzC3wGydFzzd-KnHXhwJA",
+			Name:          "ValidSkyfileNoTrailingSlashNotASkapp",
+			Skylink:       "_A6d-2CpM2OQ-7m5NPAYW830NdzC3wGydFzzd-KnHXhwJA",
+			ExpectedError: "",
+		},
+		{
+			// ValidSkyfile is the happy path, ensuring that we don't get errors
+			// on valid data.
+			Name:             "ValidSkyfileNoTrailingSlashSkapp",
+			Skylink:          "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA",
 			ExpectedError:    "Redirect",
-			ExpectedRedirect: "_A6d-2CpM2OQ-7m5NPAYW830NdzC3wGydFzzd-KnHXhwJA/",
+			ExpectedRedirect: "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA/",
 		},
 		{
 			// SingleFileDefaultPath ensures that we return an error if a single
@@ -103,7 +111,7 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 			// NonRootPath ensures that we can get a non-root file by passing
 			// its path manually.
 			Name:          "NonRootPath",
-			Skylink:       "4BBcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA/dir/file.txt",
+			Skylink:       "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA/dir/index.html",
 			ExpectedError: "",
 		},
 		{
@@ -253,7 +261,7 @@ func testEnsureSkynetSkylinkHeader(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Verify the response header contains the same Skylink.
-	if header.Get("Skynet-Skylink") != skylink {
+	if header.Get(api.SkynetSkylinkHeader) != skylink {
 		t.Fatal("unexpected")
 	}
 }

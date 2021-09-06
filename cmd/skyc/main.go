@@ -89,9 +89,11 @@ var (
 	skynetUploadDefaultPath        string // Specify the file to serve when no specific file is specified.
 	skynetUploadDisableDefaultPath bool   // This skyfile will not have a default path. The only way to use it is to download it.
 	skynetUploadDryRun             bool   // Perform a dry-run of the upload. This returns the skylink without actually uploading the file to the network.
+	skynetUploadErrorPages         string // Override error files for some error codes. Contains a JSON object that maps error codes to file names.
 	skynetUploadRoot               bool   // Use root as the base instead of the Skynet folder.
 	skynetUploadSeparately         bool   // When uploading all files from a directory, upload each file separately, generating individual skylinks.
 	skynetUploadSilent             bool   // Don't report progress while uploading
+	skynetUploadTryFiles           string // A comma-separated list of fallback files, in case the requested file is not available.
 	skynetPortalPublic             bool   // Specify if a portal is public or not
 
 	// Utils Flags
@@ -389,7 +391,9 @@ func initCmds() *cobra.Command {
 	skynetUploadCmd.Flags().BoolVarP(&skynetUploadSeparately, "separately", "", false, "Upload each file separately, generating individual skylinks")
 	skynetUploadCmd.Flags().StringVar(&skynetUploadDefaultPath, "defaultpath", "", "Specify the file to serve when no specific file is specified.")
 	skynetUploadCmd.Flags().BoolVarP(&skynetUploadDisableDefaultPath, "disabledefaultpath", "", false, "This skyfile will not have a default path. The only way to use it is to download it. Mutually exclusive with --defaultpath")
+	skynetUploadCmd.Flags().StringVar(&skynetUploadErrorPages, "errorpages", "{}", "Specify a JSON map of error codes and filename pairs which override the content served with the given error code. Example: {\"404\":\"notfound.html\"}")
 	skynetUploadCmd.Flags().BoolVarP(&skynetUploadSilent, "silent", "", false, "Don't report progress while uploading")
+	skynetUploadCmd.Flags().StringVar(&skynetUploadTryFiles, "tryfiles", "", "Specify an ordered, comma-separated list of files to be served if the requested file is not found.")
 	skynetUploadCmd.Flags().StringVar(&skykeyID, "skykeyid", "", "Specify the skykey to be used by its key identifier.")
 	skynetUploadCmd.Flags().StringVar(&skykeyName, "skykeyname", "", "Specify the skykey to be used by name.")
 	skynetUnpinCmd.Flags().BoolVar(&skynetUnpinRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")

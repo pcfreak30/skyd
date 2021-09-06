@@ -63,7 +63,7 @@ const (
 	pcwsGougingFractionDenom = 25
 )
 
-// pcwsUnreseovledWorker tracks an unresolved worker that is associated with a
+// pcwsUnresolvedWorker tracks an unresolved worker that is associated with a
 // specific projectChunkWorkerSet. The timestamp indicates when the unresolved
 // worker is expected to have a resolution, and is an estimate based on historic
 // performance from the worker.
@@ -314,6 +314,32 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	})
 }
 
+// WaitForResults waits for all workers of the state to resolve up until ctx is
+// closed. Once the ctx is closed, all available responses are returned.
+func (ws *pcwsWorkerState) WaitForResults(ctx context.Context) []*pcwsWorkerResponse {
+	for {
+		ws.mu.Lock()
+		rw := ws.resolvedWorkers
+		noUnresolvedWorkers := len(ws.unresolvedWorkers) == 0
+		updateChan := ws.registerForWorkerUpdate()
+		ws.mu.Unlock()
+
+		// If there are no more unresolved workers, we are done.
+		if noUnresolvedWorkers {
+			return rw
+		}
+
+		// Otherwise we wait for either an update or the timeout.
+		select {
+		case <-updateChan:
+			continue
+		case <-ctx.Done():
+			// Timeout reached. Return what we got.
+			return rw
+		}
+	}
+}
+
 // managedLaunchWorker will launch a job to determine which sectors of a chunk
 // are available through that worker. The resulting unresolved worker is
 // returned so it can be added to the pending worker state.
@@ -344,7 +370,7 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 	jhs := w.newJobHasSectorWithPostExecutionHook(ctx, responseChan, func(resp *jobHasSectorResponse) {
 		ws.managedHandleResponse(resp)
 		cancel()
-	}, pcws.staticPieceRoots...)
+	}, pcws.staticErasureCoder.NumPieces(), pcws.staticPieceRoots...)
 
 	expectedJobTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs, pcwsHasSectorTimeout)
 	if err != nil {
@@ -544,8 +570,9 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 
 		pricePerMS: pricePerMS,
 
-		availablePieces: make([][]*pieceDownload, ec.NumPieces()),
-		dataPieces:      make([][]byte, ec.NumPieces()),
+		availablePieces:         make([][]*pieceDownload, ec.NumPieces()),
+		availablePiecesByWorker: make(map[string][]uint64),
+		dataPieces:              make([][]byte, ec.NumPieces()),
 
 		staticSkipRecovery: skipRecovery,
 

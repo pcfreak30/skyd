@@ -1229,6 +1229,7 @@ func TestLowAllowanceAlert(t *testing.T) {
 	renterParams.Allowance.Period = 10
 	renterParams.Allowance.RenewWindow = 5
 	renterParams.ContractorDeps = &dependencies.DependencyLowFundsRenewalFail{}
+	renterParams.SkipActivePriceTableCheck = true
 	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
@@ -1260,6 +1261,7 @@ func TestLowAllowanceAlert(t *testing.T) {
 	renterParams.Allowance.Hosts = 2
 	renterParams.RenterDeps = &dependencies.DependencyDisableUploadGougingCheck{}
 	renterParams.ContractorDeps = &dependencies.DependencyLowFundsRefreshFail{}
+	renterParams.SkipActivePriceTableCheck = true
 	nodes, err = tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
@@ -1289,6 +1291,7 @@ func TestLowAllowanceAlert(t *testing.T) {
 	renterParams = node.Renter(filepath.Join(testDir, "renter_form"))
 	renterParams.SkipSetAllowance = true
 	renterParams.ContractorDeps = &dependencies.DependencyLowFundsFormationFail{}
+	renterParams.SkipActivePriceTableCheck = true
 	nodes, err = tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)

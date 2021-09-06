@@ -28,10 +28,6 @@ import (
 )
 
 const (
-	// DefaultSkynetDefaultPath is the defaultPath value we use when the user
-	// hasn't specified one and `index.html` exists in the skyfile.
-	DefaultSkynetDefaultPath = "index.html"
-
 	// DefaultSkynetRequestTimeout is the default request timeout for routes
 	// that have a timeout query string parameter. If the request can not be
 	// resolved within the given amount of time, it times out. This is used for
@@ -43,7 +39,30 @@ const (
 	// request timeout. This to prevent an attack vector where the attacker
 	// could cause a go-routine leak by creating a bunch of requests with very
 	// high timeouts.
-	MaxSkynetRequestTimeout = 15 * 60 // in seconds
+	MaxSkynetRequestTimeout = 15 * time.Minute
+
+	// SkynetDisableForceHeader allows disabling the force-update feature.
+	SkynetDisableForceHeader = "Skynet-Disable-Force"
+
+	// SkynetFileLayoutHeader holds the layout of this skyfile.
+	SkynetFileLayoutHeader = "Skynet-File-Layout"
+
+	// SkynetFileMetadataHeader holds an encoded JSON object with the metadata
+	// of the skyfile *or* the subdirectory of the skyfile that has been
+	// requested.
+	SkynetFileMetadataHeader = "Skynet-File-Metadata"
+
+	// SkynetProofHeader holds an encoded JSON object with the registry proofs
+	// for this skylink.
+	SkynetProofHeader = "Skynet-Proof"
+
+	// SkynetSkylinkHeader is a string representation of the base64 encoded
+	// v1 Skylink that was served.
+	SkynetSkylinkHeader = "Skynet-Skylink"
+
+	// SkynetRequestedSkylinkHeader is a string representation of the base64 encoded
+	// Skylink that was requested.
+	SkynetRequestedSkylinkHeader = "Skynet-Requested-Skylink"
 )
 
 var (
@@ -111,6 +130,12 @@ type (
 		BaseSectorUpload15mP99ms      float64 `json:"basesectorupload15mp99ms"`
 		BaseSectorUpload15mP999ms     float64 `json:"basesectorupload15mp999ms"`
 		BaseSectorUpload15mP9999ms    float64 `json:"basesectorupload15mp9999ms"`
+
+		// Sector Download Stats
+		BaseSectorOverdrivePct   float64 `json:"basesectoroverdrivepct"`
+		BaseSectorOverdriveAvg   float64 `json:"basesectoroverdriveavg"`
+		FanoutSectorOverdrivePct float64 `json:"fanoutsectoroverdrivepct"`
+		FanoutSectorOverdriveAvg float64 `json:"fanoutsectoroverdriveavg"`
 
 		// Chunk Upload Stats
 		ChunkUpload15mDataPoints float64 `json:"chunkupload15mdatapoints"`
@@ -211,7 +236,7 @@ type (
 
 // skynetBaseSectorHandlerGET accepts a skylink as input and will return the
 // encoded basesector.
-func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse the skylink from the raw URL of the request. Any special characters
 	// in the raw URL are encoded, allowing us to differentiate e.g. the '?'
 	// that begins query parameters from the encoded version '%3F'.
@@ -247,7 +272,7 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 	}
 
 	// Fetch the skyfile's streamer to serve the basesector of the file
-	streamer, srvs, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
+	streamer, srvs, _, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
 	if err != nil {
 		handleSkynetError(w, "failed to fetch base sector", err)
 		return
@@ -372,7 +397,7 @@ func (api *API) skynetPortalsHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 // skynetRootHandlerGET handles the api call for a download by root request.
 // This call returns the encoded sector.
-func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse the query params.
 	queryForm, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
@@ -456,19 +481,15 @@ func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, p
 
 // skynetSkylinkHandlerGET accepts a skylink as input and will stream the data
 // from the skylink out of the response body as output.
-func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse the request parameters
 	params, err := parseDownloadRequestParameters(req)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-
-	// Extract the requested path, and set it to be the served path for now.
-	// The resolved path is the path we use when building the ETag, and might
-	// differ from the requested path if we default to the default path.
 	path := params.path
-	servedPath := path
+	format := params.format
 
 	// Get the renter's settings.
 	settings, err := api.renter.Settings()
@@ -489,103 +510,46 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		_ = streamer.Close()
 	}()
 
+	metadata := streamer.Metadata()
+	ew := newCustomErrorWriter(metadata, streamer)
+
 	// Attach proof.
 	err = attachRegistryEntryProof(w, srvs)
 	if err != nil {
-		WriteError(w, Error{"unable to attach proof: " + err.Error()}, http.StatusInternalServerError)
+		ew.WriteError(w, Error{"unable to attach proof: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
-	// Validate Metadata
-	metadata := streamer.Metadata()
-	if metadata.DefaultPath != "" && len(metadata.Subfiles) == 0 {
-		WriteError(w, Error{"defaultpath is not allowed on single files, please specify a format if you want to download this skyfile regardless"}, http.StatusBadRequest)
-		return
-	}
-
-	// Only validate default path if the format is not specified, this way the
-	// file can still be downloaded should it have been uploaded with incorrect
-	// metadata, which is possible seeing as it may have been uploaded by a
-	// private portal.
-	if params.format == skymodules.SkyfileFormatNotSpecified {
-		if metadata.DefaultPath != "" && metadata.DisableDefaultPath {
-			WriteError(w, Error{"invalid defaultpath state - both defaultpath and disabledefaultpath are set, please specify a format"}, http.StatusBadRequest)
-			return
-		}
-	}
-	defaultPath := metadata.DefaultPath
-	if metadata.DefaultPath == "" && !metadata.DisableDefaultPath {
-		if len(metadata.Subfiles) == 1 {
-			// If `defaultpath` and `disabledefaultpath` are not set and the
-			// skyfile has a single subfile we automatically default to it.
-			for filename := range metadata.Subfiles {
-				defaultPath = skymodules.EnsurePrefix(filename, "/")
-				break
-			}
-		} else {
-			prefixedDefaultSkynetPath := skymodules.EnsurePrefix(DefaultSkynetDefaultPath, "/")
-			for filename := range metadata.Subfiles {
-				if skymodules.EnsurePrefix(filename, "/") == prefixedDefaultSkynetPath {
-					defaultPath = prefixedDefaultSkynetPath
-					break
-				}
-			}
-		}
-	}
-
-	var isSubfile bool
-
-	// Serve the contents of the file at the default path if one is set. Note
-	// that we return the metadata for the entire Skylink when we serve the
-	// contents of the file at the default path.
-	// We only use the default path when the user requests the root path because
-	// we want to enable people to access individual subfile without forcing
-	// them to download the entire skyfile.
-	if path == "/" && defaultPath != "" && params.format == skymodules.SkyfileFormatNotSpecified {
-		if strings.Count(defaultPath, "/") > 1 && len(metadata.Subfiles) > 1 {
-			WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s) which refers to a non-root file, please specify a format", defaultPath)}, http.StatusBadRequest)
-			return
-		}
+	// Only validate default path and tryfiles if the format is not specified,
+	// this way the file can still be downloaded should it have been uploaded
+	// with incorrect metadata, which is possible seeing as it may have been
+	// uploaded by a private portal.
+	if format == skymodules.SkyfileFormatNotSpecified {
+		// The path we actually want to serve based on defaultpath and tryfiles.
+		servePath := metadata.ServePath(path)
+		isMulti := len(metadata.Subfiles) > 1
 		// If we don't have a subPath and the skylink doesn't end with a
 		// trailing slash we need to redirect in order to add the trailing
 		// slash. This is only true for skapps - they need it in order to
 		// properly work with relative paths. We also don't need to redirect if
 		// this is a HEAD request or if it's a download as attachment.
-		if !params.attachment && req.Method == http.MethodGet && !strings.HasSuffix(params.skylinkStringNoQuery, "/") {
+		if isMulti && path == "/" && servePath != path && !params.attachment && req.Method == http.MethodGet && !strings.HasSuffix(params.skylinkStringNoQuery, "/") {
 			location := params.skylinkStringNoQuery + "/"
 			if req.URL.RawQuery != "" {
 				location += "?" + req.URL.RawQuery
 			}
 			w.Header().Set("Location", location)
-			w.WriteHeader(http.StatusTemporaryRedirect)
+			w.WriteHeader(http.StatusPermanentRedirect)
 			return
 		}
-
-		metadataForPath, isFile, offset, size := metadata.ForPath(defaultPath)
-		if len(metadataForPath.Subfiles) == 0 {
-			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v", params.path)}, http.StatusNotFound)
-			return
-		}
-		if !isFile {
-			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, please specify a specific path or a format in order to download the content", defaultPath)}, http.StatusNotFound)
-			return
-		}
-		streamer, err = NewLimitStreamer(streamer, streamer.Metadata(), streamer.RawMetadata(), streamer.Skylink(), streamer.Layout(), offset, size)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
-			return
-		}
-
-		isSubfile = isFile
-		metadata = metadataForPath
-		servedPath = defaultPath
+		path = servePath
 	}
-
+	var isSubfile bool
 	// Serve the contents of the skyfile at path if one is set
 	if path != "/" {
 		metadataForPath, isFile, offset, size := metadata.ForPath(path)
 		if len(metadataForPath.Subfiles) == 0 {
-			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound)
+			ew.WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound)
 			return
 		}
 		// NOTE: we don't have an actual raw metadata for the subpath. So we are
@@ -593,23 +557,20 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		// the metadata can't be used to create a skylink anyway.
 		rawMetadataForPath, err := json.Marshal(metadataForPath)
 		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to marshal subfile metadata for path %v", path)}, http.StatusNotFound)
+			ew.WriteError(w, Error{fmt.Sprintf("failed to marshal subfile metadata for path %v", path)}, http.StatusNotFound)
 			return
 		}
 		streamer, err = NewLimitStreamer(streamer, metadataForPath, rawMetadataForPath, streamer.Skylink(), streamer.Layout(), offset, size)
 		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
+			ew.WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
 			return
 		}
 
 		isSubfile = isFile
 		metadata = metadataForPath
-		servedPath = path
 	}
-
 	// If we are serving more than one file, and the format is not
 	// specified, default to downloading it as a zip archive.
-	format := params.format
 	if !isSubfile && metadata.IsDirectory() && format == skymodules.SkyfileFormatNotSpecified {
 		format = skymodules.SkyfileFormatZip
 	}
@@ -620,21 +581,25 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// Set the common Header fields
 	//
 	// Set the Skylink response header
-	w.Header().Set("Skynet-Skylink", params.skylink.String())
+	if !streamer.Skylink().IsSkylinkV1() {
+		build.Critical("skylink attached in skynet-skylink header is not v1")
+	}
+	w.Header().Set(SkynetSkylinkHeader, streamer.Skylink().String())
+	w.Header().Set(SkynetRequestedSkylinkHeader, params.skylink.String())
 
 	// Set the ETag response header
 	//
-	// NOTE: we use the Skylink returned by the streamer to buid the ETag with,
+	// NOTE: we use the Skylink returned by the streamer to build the ETag with,
 	// this is very important as the incoming skylink might have been a V2
 	// skylink that got resolved to a v1 skylink. We don't want to build the
 	// ETag on the V2 skylink as that is constant, even though the data might
 	// change.
-	eTag := buildETag(streamer.Skylink(), servedPath, format)
+	eTag := buildETag(streamer.Skylink(), path, format)
 	w.Header().Set("ETag", fmt.Sprintf("\"%v\"", eTag))
 
 	// Set the Layout
 	if params.includeLayout {
-		w.Header().Set("Skynet-File-Layout", hex.EncodeToString(encLayout))
+		w.Header().Set(SkynetFileLayoutHeader, hex.EncodeToString(encLayout))
 	}
 
 	// Set an appropriate Content-Disposition header
@@ -659,7 +624,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if format.IsArchive() {
 		err = serveArchive(w, streamer, format, metadata, monetize)
 		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as %v archive: %v", format, err)}, http.StatusInternalServerError)
+			ew.WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as %v archive: %v", format, err)}, http.StatusInternalServerError)
 		}
 		return
 	}
@@ -742,7 +707,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	// passing the force flag, if they want to they can set overrule the force
 	// flag by passing in the 'Skynet-Disable-Force' header
 	allowForce := true
-	strDisableForce := req.Header.Get("Skynet-Disable-Force")
+	strDisableForce := req.Header.Get(SkynetDisableForceHeader)
 	if strDisableForce != "" {
 		disableForce, err := strconv.ParseBool(strDisableForce)
 		if err != nil {
@@ -791,13 +756,13 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 		handleSkynetError(w, "failed to pin file to skynet", err)
 		return
 	}
-	w.Header().Set("Skynet-Skylink", skylink.String())
+	w.Header().Set(SkynetSkylinkHeader, skylink.String())
 	WriteSuccess(w)
 }
 
 // skynetTUSUploadSkylinkGET is the handler for the /skynet/tus/skylink/:id
 // endpoint.
-func (api *API) skynetTUSUploadSkylinkGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skynetTUSUploadSkylinkGET(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	// Get id from path.
 	id := ps.ByName("id")
 
@@ -812,7 +777,7 @@ func (api *API) skynetTUSUploadSkylinkGET(w http.ResponseWriter, req *http.Reque
 	}
 
 	// Set the Skylink response header
-	w.Header().Set("Skynet-Skylink", skylink.String())
+	w.Header().Set(SkynetSkylinkHeader, skylink.String())
 
 	// Respond with the skylink in the body as well.
 	WriteJSON(w, SkynetSkyfileHandlerPOST{
@@ -855,6 +820,9 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		// Set encryption key details
 		SkykeyName: params.skyKeyName,
 		SkykeyID:   params.skyKeyID,
+
+		TryFiles:   params.tryFiles,
+		ErrorPages: params.errorPages,
 	}
 
 	// set the reader
@@ -911,7 +879,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 
 		// Set the Skylink response header
-		w.Header().Set("Skynet-Skylink", skylink.String())
+		w.Header().Set(SkynetSkylinkHeader, skylink.String())
 
 		WriteJSON(w, SkynetSkyfileHandlerPOST{
 			Skylink:    skylink.String(),
@@ -939,7 +907,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	}
 
 	// Set the Skylink response header
-	w.Header().Set("Skynet-Skylink", skylink.String())
+	w.Header().Set(SkynetSkylinkHeader, skylink.String())
 
 	WriteJSON(w, SkynetSkyfileHandlerPOST{
 		Skylink:    skylink.String(),
@@ -950,7 +918,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 // skynetStatsHandlerGET responds with a JSON with statistical data about
 // skynet, e.g. number of files uploaded, total size, etc.
-func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	// Pull the skynet stats from the root directory
 	dirs, err := api.renter.DirList(skymodules.RootSiaPath())
 	if err != nil {
@@ -1055,11 +1023,20 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 		totalStorage += c.Size()
 	}
 
+	// Get the sector stats
+	baseSectorStats := renterPerf.BaseSectorDownloadOverdriveStats
+	fanoutSectorStats := renterPerf.FanoutSectorDownloadOverdriveStats
+
 	WriteJSON(w, &SkynetStatsGET{
 		BaseSectorUpload15mDataPoints: renterPerf.BaseSectorUploadStats.DataPoints[0],
 		BaseSectorUpload15mP99ms:      float64(renterPerf.BaseSectorUploadStats.Nines[0][1]) / float64(time.Millisecond),
 		BaseSectorUpload15mP999ms:     float64(renterPerf.BaseSectorUploadStats.Nines[0][2]) / float64(time.Millisecond),
 		BaseSectorUpload15mP9999ms:    float64(renterPerf.BaseSectorUploadStats.Nines[0][3]) / float64(time.Millisecond),
+
+		BaseSectorOverdrivePct:   baseSectorStats.OverdrivePct(),
+		BaseSectorOverdriveAvg:   baseSectorStats.NumOverdriveWorkersAvg(),
+		FanoutSectorOverdrivePct: fanoutSectorStats.OverdrivePct(),
+		FanoutSectorOverdriveAvg: fanoutSectorStats.NumOverdriveWorkersAvg(),
 
 		ChunkUpload15mDataPoints: renterPerf.ChunkUploadStats.DataPoints[0],
 		ChunkUpload15mP99ms:      float64(renterPerf.ChunkUploadStats.Nines[0][1]) / float64(time.Millisecond),
@@ -1482,6 +1459,13 @@ func (api *API) skylinkResolveGET(w http.ResponseWriter, req *http.Request, ps h
 		return
 	}
 
+	// Set the Skylink response headers.
+	if !slV1.IsSkylinkV1() {
+		build.Critical("skylink attached in skynet-skylink header is not v1")
+	}
+	w.Header().Set(SkynetSkylinkHeader, slV1.String())
+	w.Header().Set(SkynetRequestedSkylinkHeader, sl.String())
+
 	// Send response.
 	WriteJSON(w, SkylinkResolveGET{
 		Skylink: slV1.String(),
@@ -1503,7 +1487,7 @@ func (api *API) skynetRestoreHandlerPOST(w http.ResponseWriter, req *http.Reques
 }
 
 // skynetMetadataHandlerGET is the handler for the /skynet/metadata endpoint.
-func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse the skylink from the raw URL of the request. Any special characters
 	// in the raw URL are encoded, allowing us to differentiate e.g. the '?'
 	// that begins query parameters from the encoded version '%3F'.
@@ -1538,11 +1522,8 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 		}
 	}
 
-	// Set the Skylink response header
-	w.Header().Set("Skynet-Skylink", skylink.String())
-
 	// Fetch the skyfile's streamer to serve the basesector of the file
-	streamer, srvs, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
+	streamer, srvs, resolvedLink, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
 	if err != nil {
 		handleSkynetError(w, "failed to fetch base sector", err)
 		return
@@ -1552,6 +1533,13 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 		// error here.
 		_ = streamer.Close()
 	}()
+
+	// Set the Skylink response header
+	if !resolvedLink.IsSkylinkV1() {
+		build.Critical("skylink attached in skynet-skylink header is not v1")
+	}
+	w.Header().Set(SkynetSkylinkHeader, resolvedLink.String())
+	w.Header().Set(SkynetRequestedSkylinkHeader, skylink.String())
 
 	// Attach proof.
 	err = attachRegistryEntryProof(w, srvs)
