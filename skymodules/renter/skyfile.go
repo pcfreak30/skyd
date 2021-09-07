@@ -1489,19 +1489,8 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 				continue // ignore
 			}
 
-			// TODO: This is not accurate. There might be a better
-			// solution.
-			var pieces int
-			if numPieces == 0 {
-				// No fanout.
-				pieces = int(SkyfileDefaultBaseChunkRedundancy)
-			} else {
-				// Has fanout.
-				pieces = numPieces
-			}
-
 			// Add job to worker.
-			jhs := worker.newJobHasSector(ctx, responseChan, pieces, batch...)
+			jhs := worker.newJobHasSector(ctx, responseChan, numPieces, batch...)
 			if !worker.staticJobHasSectorQueue.callAdd(jhs) {
 				continue // ignore
 			}
