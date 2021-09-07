@@ -54,6 +54,15 @@ func NewDecay(halfLife time.Duration) *GenericDecay {
 	}
 }
 
+// Clone returns a clone of the decay
+func (d *GenericDecay) Clone() *GenericDecay {
+	return &GenericDecay{
+		staticHalfLife:  d.staticHalfLife,
+		lastDecay:       d.lastDecay,
+		decayedLifetime: d.decayedLifetime,
+	}
+}
+
 // Decay calculates the amount of decay that needs to be applied, and applies it
 // by calling the passed in function which acts on the data.
 func (d *GenericDecay) Decay(applyDecayFn ApplyFunc) {

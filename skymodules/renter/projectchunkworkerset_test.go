@@ -566,3 +566,83 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 }
+
+// TestWaitForResult is a unit test for the worker state's WaitForResults
+// method.
+func TestWaitForResult(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a plain worker state.
+	ws := &pcwsWorkerState{
+		unresolvedWorkers: make(map[string]*pcwsUnresolvedWorker),
+	}
+
+	// Add unresolved worker.
+	_, pk1 := crypto.GenerateKeyPair()
+	hpk1 := types.Ed25519PublicKey(pk1)
+	ws.unresolvedWorkers[hpk1.String()] = &pcwsUnresolvedWorker{}
+
+	// Wait for its result in a separate goroutine.
+	done := make(chan struct{})
+	var result []*pcwsWorkerResponse
+	go func() {
+		result = ws.WaitForResults(context.Background())
+		close(done)
+	}()
+
+	// Wait some time. Should still not be done.
+	select {
+	case <-done:
+		t.Fatal("wait finished")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	// Move the unresolved workers to resolved.
+	ws.mu.Lock()
+	delete(ws.unresolvedWorkers, hpk1.String())
+	resolvedWorker := &pcwsWorkerResponse{err: errors.New("test")}
+	ws.resolvedWorkers = append(ws.resolvedWorkers, resolvedWorker)
+
+	// Close the update chan.
+	ws.closeUpdateChans()
+	ws.mu.Unlock()
+
+	// Should be done now.
+	select {
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("still not done")
+	case <-done:
+	}
+
+	// Result should have length 1.
+	if len(result) != 1 {
+		t.Fatal("unexpected", len(result))
+	}
+
+	// Add another unresolved worker.
+	_, pk2 := crypto.GenerateKeyPair()
+	hpk2 := types.Ed25519PublicKey(pk2)
+	ws.unresolvedWorkers[hpk2.String()] = &pcwsUnresolvedWorker{}
+
+	// Use a timeout this time.
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	// Measure the time the call takes.
+	start := time.Now()
+	result = ws.WaitForResults(ctx)
+
+	// Should have taken at least 100ms to return.
+	if time.Since(start) < 100*time.Millisecond {
+		t.Fatal("returned too early")
+	}
+
+	// Result should have length 1 again. Because we got the same resolved
+	// worker.
+	if len(result) != 1 {
+		t.Fatal("unexpected", len(result))
+	}
+}

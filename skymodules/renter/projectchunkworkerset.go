@@ -63,7 +63,7 @@ const (
 	pcwsGougingFractionDenom = 25
 )
 
-// pcwsUnreseovledWorker tracks an unresolved worker that is associated with a
+// pcwsUnresolvedWorker tracks an unresolved worker that is associated with a
 // specific projectChunkWorkerSet. The timestamp indicates when the unresolved
 // worker is expected to have a resolution, and is an estimate based on historic
 // performance from the worker.
@@ -312,6 +312,32 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 		worker:       w,
 		pieceIndices: indices,
 	})
+}
+
+// WaitForResults waits for all workers of the state to resolve up until ctx is
+// closed. Once the ctx is closed, all available responses are returned.
+func (ws *pcwsWorkerState) WaitForResults(ctx context.Context) []*pcwsWorkerResponse {
+	for {
+		ws.mu.Lock()
+		rw := ws.resolvedWorkers
+		noUnresolvedWorkers := len(ws.unresolvedWorkers) == 0
+		updateChan := ws.registerForWorkerUpdate()
+		ws.mu.Unlock()
+
+		// If there are no more unresolved workers, we are done.
+		if noUnresolvedWorkers {
+			return rw
+		}
+
+		// Otherwise we wait for either an update or the timeout.
+		select {
+		case <-updateChan:
+			continue
+		case <-ctx.Done():
+			// Timeout reached. Return what we got.
+			return rw
+		}
+	}
 }
 
 // managedLaunchWorker will launch a job to determine which sectors of a chunk
