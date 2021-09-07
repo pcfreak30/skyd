@@ -306,6 +306,28 @@ type (
 	}
 )
 
+type (
+	// SkynetTUSUpload is the interface for a TUS upload in the
+	// SkynetTUSUploadStore.
+	SkynetTUSUpload interface {
+		handler.Upload
+		SiaPath() SiaPath
+		Skylink() (Skylink, bool)
+	}
+
+	// SkynetTUSUploadStore defines an interface for a storage backend that is
+	// capable of storing upload information as well as locking uploads and pruning
+	// them.
+	SkynetTUSUploadStore interface {
+		ToPrune() ([]SkynetTUSUpload, error)
+		Prune(SkynetTUSUpload) error
+		SaveUpload(id string, upload SkynetTUSUpload) error
+		Upload(id string) (SkynetTUSUpload, error)
+
+		handler.Locker
+	}
+)
+
 // ForPath returns a subset of the SkyfileMetadata that contains all of the
 // subfiles for the given path. The path can lead to both a directory or a file.
 // Note that this method will return the subfiles with offsets relative to the

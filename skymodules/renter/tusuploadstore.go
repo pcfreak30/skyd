@@ -7,26 +7,16 @@ import (
 
 	"github.com/tus/tusd/pkg/handler"
 	"github.com/tus/tusd/pkg/memorylocker"
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
-// skynetTUSUploadStore defines an interface for a storage backend that is
-// capable of storing upload information as well as locking uploads and pruning
-// them.
-type skynetTUSUploadStore interface {
-	Prune() error
-	SaveUpload(upload *skynetTUSUpload) error
-	Upload(id string) (*skynetTUSUpload, error)
-
-	handler.Locker
-}
-
-// newSkynetTUSInMemoryUploadStore creates a new skynetTUSInMemoryUploadStore.
-func newSkynetTUSInMemoryUploadStore(r *Renter) *skynetTUSInMemoryUploadStore {
+// NewSkynetTUSInMemoryUploadStore creates a new skynetTUSInMemoryUploadStore.
+func NewSkynetTUSInMemoryUploadStore() *skynetTUSInMemoryUploadStore {
 	return &skynetTUSInMemoryUploadStore{
 		uploads:      make(map[string]*skynetTUSUpload),
 		staticLocker: memorylocker.New(),
-		staticRenter: r,
 	}
 }
 
@@ -35,8 +25,18 @@ func newSkynetTUSInMemoryUploadStore(r *Renter) *skynetTUSInMemoryUploadStore {
 type skynetTUSInMemoryUploadStore struct {
 	uploads      map[string]*skynetTUSUpload
 	mu           sync.Mutex
-	staticRenter *Renter
 	staticLocker *memorylocker.MemoryLocker
+}
+
+func (u *skynetTUSUpload) SiaPath() skymodules.SiaPath {
+	return u.staticSUP.SiaPath
+}
+
+func (u *skynetTUSUpload) Skylink() (skymodules.Skylink, bool) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	_, exists := u.fi.MetaData["Skylink"]
+	return u.sl, exists
 }
 
 // NewLock implements handler.Locker by forwarding the call to an in-memory
@@ -46,15 +46,21 @@ func (us *skynetTUSInMemoryUploadStore) NewLock(id string) (handler.Lock, error)
 }
 
 // SaveUpload saves an upload.
-func (us *skynetTUSInMemoryUploadStore) SaveUpload(u *skynetTUSUpload) error {
+func (us *skynetTUSInMemoryUploadStore) SaveUpload(id string, u skymodules.SkynetTUSUpload) error {
 	us.mu.Lock()
 	defer us.mu.Unlock()
-	us.uploads[u.fi.ID] = u
+	upload, ok := u.(*skynetTUSUpload)
+	if !ok {
+		err := errors.New("SaveUpload: can't store a non *skynetTUSUpload")
+		build.Critical(err)
+		return err
+	}
+	us.uploads[id] = upload
 	return nil
 }
 
 // Upload returns an upload by ID.
-func (us *skynetTUSInMemoryUploadStore) Upload(id string) (*skynetTUSUpload, error) {
+func (us *skynetTUSInMemoryUploadStore) Upload(id string) (skymodules.SkynetTUSUpload, error) {
 	us.mu.Lock()
 	defer us.mu.Unlock()
 	upload, exists := us.uploads[id]
@@ -65,32 +71,32 @@ func (us *skynetTUSInMemoryUploadStore) Upload(id string) (*skynetTUSUpload, err
 }
 
 // Prune removes uploads that have been idle for too long.
-func (us *skynetTUSInMemoryUploadStore) Prune() error {
+func (us *skynetTUSInMemoryUploadStore) ToPrune() ([]skymodules.SkynetTUSUpload, error) {
 	us.mu.Lock()
-	var toDelete []skymodules.SiaPath
-	for id, upload := range us.uploads {
-		upload.mu.Lock()
-		lastWrite := upload.lastWrite
-		complete := upload.complete
-		upload.mu.Unlock()
+	defer us.mu.Unlock()
+	var toDelete []skymodules.SkynetTUSUpload
+	for _, u := range us.uploads {
+		u.mu.Lock()
+		lastWrite := u.lastWrite
+		complete := u.complete
+		u.mu.Unlock()
 		if time.Since(lastWrite) < PruneTUSUploadTimeout {
 			continue // nothing to do
 		}
-		// Prune
-		_ = upload.Close()
-		delete(us.uploads, id)
-
 		// If the upload wasn't completed, delete the files on disk.
 		if !complete {
-			toDelete = append(toDelete, upload.staticSUP.SiaPath)
-			toDelete = append(toDelete, upload.staticUP.SiaPath)
+			toDelete = append(toDelete, u)
 		}
 	}
-	us.mu.Unlock()
+	return toDelete, nil
+}
 
-	// Delete files outside of lock.
-	for _, sp := range toDelete {
-		_ = us.staticRenter.DeleteFile(sp)
-	}
+// Prune removes uploads that have been idle for too long.
+func (us *skynetTUSInMemoryUploadStore) Prune(toPrune skymodules.SkynetTUSUpload) error {
+	us.mu.Lock()
+	defer us.mu.Unlock()
+	upload := toPrune.(*skynetTUSUpload)
+	_ = upload.Close()
+	delete(us.uploads, upload.fi.ID)
 	return nil
 }

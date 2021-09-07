@@ -48,7 +48,7 @@ type (
 	// skynetTUSUploader implements multiple TUS interfaces for skynet uploads
 	// allowing for resumable uploads.
 	skynetTUSUploader struct {
-		staticUploads skynetTUSUploadStore
+		staticUploads skymodules.SkynetTUSUploadStore
 
 		staticRenter *Renter
 		mu           sync.Mutex
@@ -81,9 +81,9 @@ type (
 )
 
 // newSkynetTUSUploader creates a new uploader.
-func newSkynetTUSUploader(renter *Renter) *skynetTUSUploader {
+func newSkynetTUSUploader(renter *Renter, tus skymodules.SkynetTUSUploadStore) *skynetTUSUploader {
 	return &skynetTUSUploader{
-		staticUploads: newSkynetTUSInMemoryUploadStore(renter),
+		staticUploads: tus,
 		staticRenter:  renter,
 	}
 }
@@ -167,7 +167,7 @@ func (stu *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileIn
 	}
 
 	// Add the upload to the map of uploads.
-	err = stu.staticUploads.SaveUpload(upload)
+	err = stu.staticUploads.SaveUpload(info.ID, upload)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to save new upload")
 	}
@@ -181,14 +181,11 @@ func (stu *skynetTUSUploader) GetUpload(ctx context.Context, id string) (handler
 
 // Skylink returns the skylink for the upload with the given ID.
 func (stu *skynetTUSUploader) Skylink(id string) (skymodules.Skylink, bool) {
-	upload, err := stu.staticUploads.Upload(id)
+	u, err := stu.staticUploads.Upload(id)
 	if err != nil {
 		return skymodules.Skylink{}, false
 	}
-	upload.mu.Lock()
-	defer upload.mu.Unlock()
-	_, exists := upload.fi.MetaData["Skylink"]
-	return upload.sl, exists
+	return u.Skylink()
 }
 
 // Close closes the upload and underlying filenode.
@@ -513,7 +510,19 @@ func (r *Renter) threadedPruneTUSUploads() {
 			return // shutdown
 		case <-ticker.C:
 		}
-		r.staticSkynetTUSUploader.staticUploads.Prune()
+		toDelete, err := r.staticSkynetTUSUploader.staticUploads.ToPrune()
+		if err != nil {
+			r.staticLog.Print("Failed to get TUS uploads for pruning", err)
+		}
+
+		// Delete files.
+		for _, upload := range toDelete {
+			// Delete on disk.
+			_ = r.DeleteFile(skymodules.SiaPath(upload.SiaPath()))
+
+			// Delete from store.
+			_ = r.staticSkynetTUSUploader.staticUploads.Prune(upload)
+		}
 	}
 }
 
