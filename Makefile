@@ -120,27 +120,42 @@ spellcheck: markdown-spellcheck
 staticcheck:
 	staticcheck $(pkgs)
 
-# starts a mongo container for testing and removes any existing ones.
 start-mongo:
 # Remove existing container.
-	-docker stop mongo
+	-docker stop mongo1
+	-docker stop mongo2
+	-docker stop mongo3
+
+	-docker network create mongo-test-net
 
 # Start primary node.
 	docker run \
       --rm \
       --detach \
-      --name mongo \
-      -p 127.0.0.1:27017:27017 \
-      -e MONGODB_ADVERTISED_HOSTNAME=$(mongohost) \
-      -e MONGODB_REPLICA_SET_MODE=primary \
-      -e MONGODB_PRIMARY_HOST=localhost \
-      -e MONGODB_ROOT_PASSWORD=pwd \
-      -e MONGODB_REPLICA_SET_KEY=testkey \
-      bitnami/mongodb:4.4.1
+      --name mongo1 \
+      --net mongo-test-net \
+      -p 127.0.0.1:17017:27017 \
+      mongo mongod --replSet mongo-test-set
+	docker run \
+      --rm \
+      --detach \
+      --name mongo2 \
+      --net mongo-test-net \
+      -p 127.0.0.1:17018:27017 \
+      mongo mongod --replSet mongo-test-set
+	docker run \
+      --rm \
+      --detach \
+      --name mongo3 \
+      --net mongo-test-net \
+      -p 127.0.0.1:17019:27017 \
+      mongo mongod --replSet mongo-test-set
 
-# stops an existing mongo container.
 stop-mongo:
-	-docker stop mongo
+	-docker stop mongo1
+	-docker stop mongo2
+	-docker stop mongo3
+	-docker network remove mongo-test-net
 
 # debug builds and installs debug binaries. This will also install the utils.
 debug:

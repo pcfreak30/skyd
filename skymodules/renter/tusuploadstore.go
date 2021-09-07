@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"context"
 	"os"
 	"sync"
 	"time"
@@ -10,14 +11,64 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
+type skynetTUSMongoUploadStore struct {
+	staticClient *mongo.Client
+}
+
+func (us *skynetTUSMongoUploadStore) Close() error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	return us.staticClient.Disconnect(ctx)
+}
+
+func (us *skynetTUSMongoUploadStore) NewLock(id string) (handler.Lock, error) {
+	panic("not implemented yet")
+}
+
+func (us *skynetTUSMongoUploadStore) ToPrune() ([]skymodules.SkynetTUSUpload, error) {
+	panic("not implemented yet")
+}
+
+func (us *skynetTUSMongoUploadStore) Prune(skymodules.SkynetTUSUpload) error {
+	panic("not implemented yet")
+}
+
+func (us *skynetTUSMongoUploadStore) SaveUpload(id string, upload skymodules.SkynetTUSUpload) error {
+	panic("not implemented yet")
+}
+
+func (us *skynetTUSMongoUploadStore) Upload(id string) (skymodules.SkynetTUSUpload, error) {
+	panic("not implemented yet")
+}
+
+type skynetTUSMongoUpload struct {
+	ID     string `bson:"_id"`
+	LockID string `bson:"lockid"`
+}
+
 // NewSkynetTUSInMemoryUploadStore creates a new skynetTUSInMemoryUploadStore.
-func NewSkynetTUSInMemoryUploadStore() *skynetTUSInMemoryUploadStore {
+func NewSkynetTUSInMemoryUploadStore() skymodules.SkynetTUSUploadStore {
 	return &skynetTUSInMemoryUploadStore{
 		uploads:      make(map[string]*skynetTUSUpload),
 		staticLocker: memorylocker.New(),
 	}
+}
+
+// NewSkynetTUSMongoUploadStore creates a new upload store using a mongodb as
+// the storage backend.
+func NewSkynetTUSMongoUploadStore(client *mongo.Client) (skymodules.SkynetTUSUploadStore, error) {
+	return newSkynetTUSMongoUploadStore(client)
+}
+
+// newSkynetTUSMongoUploadStore creates a new upload store using a mongodb as
+// the storage backend.
+func newSkynetTUSMongoUploadStore(client *mongo.Client) (*skynetTUSMongoUploadStore, error) {
+	return &skynetTUSMongoUploadStore{
+		staticClient: client,
+	}, nil
 }
 
 // skynetTUSInMemoryUploadStore is an in-memory skynetTUSUploadStore
@@ -38,6 +89,9 @@ func (u *skynetTUSUpload) Skylink() (skymodules.Skylink, bool) {
 	_, exists := u.fi.MetaData["Skylink"]
 	return u.sl, exists
 }
+
+// Close implements the io.Closer and is a no-op for the in-memory store.
+func (us *skynetTUSInMemoryUploadStore) Close() error { return nil }
 
 // NewLock implements handler.Locker by forwarding the call to an in-memory
 // locker.

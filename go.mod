@@ -33,4 +33,5 @@ require (
 	go.sia.tech/siad v1.5.7-0.20210804035623-852125e8bdf3
 	golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2
 	golang.org/x/net v0.0.0-20210410081132-afb366fc7cd1
+	gopkg.in/alessio/shellescape.v1 v1.0.0-20170105083845-52074bc9df61 // indirect
 )

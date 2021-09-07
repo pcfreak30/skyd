@@ -1132,6 +1132,9 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.staticStreamBufferStats = skymodules.NewDistributionTrackerStandard()
 	r.staticStreamBufferStats.AddDataPoint(5 * time.Second) // Seed the stats so that startup doesn't say 0.
 	r.staticSkynetTUSUploader = newSkynetTUSUploader(r, tus)
+	if err := r.tg.AfterStop(r.staticSkynetTUSUploader.Close); err != nil {
+		return nil, err
+	}
 	r.staticStreamBufferSet = newStreamBufferSet(r.staticStreamBufferStats, &r.tg)
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
 	close(r.staticUploadHeap.pauseChan)

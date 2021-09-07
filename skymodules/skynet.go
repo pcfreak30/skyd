@@ -324,6 +324,7 @@ type (
 		SaveUpload(id string, upload SkynetTUSUpload) error
 		Upload(id string) (SkynetTUSUpload, error)
 
+		io.Closer
 		handler.Locker
 	}
 )

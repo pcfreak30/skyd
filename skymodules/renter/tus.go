@@ -93,6 +93,11 @@ func (r *Renter) SkynetTUSUploader() skymodules.SkynetTUSDataStore {
 	return r.staticSkynetTUSUploader
 }
 
+// Close closes the uploader and the underlying storage backend.
+func (stu *skynetTUSUploader) Close() error {
+	return stu.staticUploads.Close()
+}
+
 // NewLock implements the handler.Locker interface by passing on the call to the
 // upload storage backend.
 func (stu *skynetTUSUploader) NewLock(id string) (handler.Lock, error) {
