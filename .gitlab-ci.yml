@@ -74,6 +74,18 @@ default: &default_params
 
   after_script:
     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
+  
+  services:
+    - name: bitnami/mongodb:4.4.1
+      alias: mongo
+  
+  variables:
+    # Configure mongodb environment variables
+    MONGODB_ADVERTISED_HOSTNAME: mongo \
+    MONGODB_REPLICA_SET_MODE: primary \
+    MONGODB_PRIMARY_HOST: localhost \
+    MONGODB_ROOT_PASSWORD: pwd \
+    MONGODB_REPLICA_SET_KEY: testkey \
 
 ## Default common test params for regular and nightly pipelines
 ## for Windows runner.
@@ -206,7 +218,7 @@ legacy-tests:
     paths:
       - .cache
   script:
-    - make test-long run=. pkgs="$legacy_pkgs"
+    - make test-long mongohost=mongo run=. pkgs="$legacy_pkgs"
 
 #################
 # Package Tests
@@ -218,7 +230,7 @@ package-renter-tests:
     paths:
       - .cache
   script:
-    - make test-long run=. pkgs="$package_renter_pkgs"
+    - make test-long mongohost=mongo run=. pkgs="$package_renter_pkgs"
 
 package-tests:
   <<: *default_test_params
@@ -227,7 +239,7 @@ package-tests:
     paths:
       - .cache
   script:
-    - make test-long run=. pkgs="$package_pkgs"
+    - make test-long mongohost=mongo run=. pkgs="$package_pkgs"
 
 #################
 # Siatest Tests
@@ -239,7 +251,7 @@ siatest-tests:
     paths:
       - .cache
   script:
-    - make test-long run=. pkgs="$siatest_pkgs"
+    - make test-long mongohost=mongo run=. pkgs="$siatest_pkgs"
 
 siatest-renter-tests:
   <<: *default_test_params
@@ -250,7 +262,7 @@ siatest-renter-tests:
   script:
     - apt-get update
     - apt-get install -y fuse
-    - make test-long run=. pkgs="$siatest_renter_pkgs"
+    - make test-long mongohost=mongo run=. pkgs="$siatest_renter_pkgs"
 
 siatest-renter-sub-tests:
   <<: *default_test_params
@@ -261,7 +273,7 @@ siatest-renter-sub-tests:
   script:
     - apt-get update
     - apt-get install -y fuse
-    - make test-long run=. pkgs="$siatest_renter_sub_pkgs"
+    - make test-long mongohost=mongo run=. pkgs="$siatest_renter_sub_pkgs"
 
 siatest-skynet-tests:
   <<: *default_test_params
@@ -272,7 +284,7 @@ siatest-skynet-tests:
   script:
     - apt-get update
     - apt-get install -y fuse
-    - make test-long run=. pkgs="$siatest_skynet_pkgs"
+    - make test-long mongohost=mongo run=. pkgs="$siatest_skynet_pkgs"
 
 ############################
 # Nightly Tests 

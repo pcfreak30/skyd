@@ -64,6 +64,10 @@ pkgs = \
 	./skymodules/renter/contractor \
 	./skymodules/renter/proto
 
+# mongohost is the hostname that skyd will use to connect to in testing. If not
+# specified it will default to localhost.
+mongohost = localhost
+
 # release-pkgs determine which packages are built for release and distribution
 # when running a 'make release' command.
 release-pkgs = ./cmd/skyc ./cmd/skyd
@@ -112,6 +116,28 @@ spellcheck: markdown-spellcheck
 staticcheck:
 	staticcheck $(pkgs)
 
+# starts a mongo container for testing and removes any existing ones.
+start-mongo:
+# Remove existing container.
+	-docker stop mongo
+
+# Start primary node.
+	docker run \
+      --rm \
+      --detach \
+      --name mongo \
+      -p 127.0.0.1:27017:27017 \
+      -e MONGODB_ADVERTISED_HOSTNAME=$(mongohost) \
+      -e MONGODB_REPLICA_SET_MODE=primary \
+      -e MONGODB_PRIMARY_HOST=localhost \
+      -e MONGODB_ROOT_PASSWORD=pwd \
+      -e MONGODB_REPLICA_SET_KEY=testkey \
+      bitnami/mongodb:4.4.1
+
+# stops an existing mongo container.
+stop-mongo:
+	-docker stop mongo
+
 # debug builds and installs debug binaries. This will also install the utils.
 debug:
 	go install -tags='debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
@@ -149,12 +175,13 @@ test-v:
 	GORACE='$(racevars)' go test -race -v -short -tags='debug testing netgo' -timeout=15s $(pkgs) -run=$(run) -count=$(count)
 test-long: clean fmt vet lint
 	@mkdir -p cover
-	GORACE='$(racevars)' go test -race --coverprofile='./cover/cover.out' -v -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=$(run) -count=$(count)
+	GORACE='$(racevars)' MONGODB_HOST=$(mongohost) go test -race --coverprofile='./cover/cover.out' -v -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=$(run) -count=$(count)
 
 # Use on Linux (and MacOS)
 test-vlong: clean fmt vet lint
 	@mkdir -p cover
-	GORACE='$(racevars)' go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run) -count=$(count)
+	export MONGODB_HOST=$(mongohost)
+	GORACE='$(racevars)' MONGODB_HOST=$(mongohost) go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run) -count=$(count)
 
 # Use on Windows without fmt, vet, lint
 test-vlong-windows: clean
