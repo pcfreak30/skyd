@@ -81,11 +81,11 @@ default: &default_params
   
   variables:
     # Configure mongodb environment variables
-    MONGODB_ADVERTISED_HOSTNAME: mongo \
-    MONGODB_REPLICA_SET_MODE: primary \
-    MONGODB_PRIMARY_HOST: localhost \
-    MONGODB_ROOT_PASSWORD: pwd \
-    MONGODB_REPLICA_SET_KEY: testkey \
+    MONGODB_ADVERTISED_HOSTNAME: mongo
+    MONGODB_REPLICA_SET_MODE: primary
+    MONGODB_PRIMARY_HOST: localhost
+    MONGODB_ROOT_PASSWORD: pwd
+    MONGODB_REPLICA_SET_KEY: testkey
 
 ## Default common test params for regular and nightly pipelines
 ## for Windows runner.
