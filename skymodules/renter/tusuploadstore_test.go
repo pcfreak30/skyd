@@ -2,6 +2,7 @@ package renter
 
 import (
 	"context"
+	"reflect"
 	"sync"
 	"testing"
 
@@ -56,8 +57,11 @@ func TestMongoSmoke(t *testing.T) {
 	}
 	defer client.Disconnect(context.Background())
 
-	entry := bson.M{
-		"_id": fastrand.Intn(1000),
+	type E struct {
+		ID int `bson:"_id"`
+	}
+	entry := E{
+		ID: fastrand.Intn(1000),
 	}
 	// Create a single entry in a collection.
 	collection := client.Database(t.Name()).Collection("smoke")
@@ -67,26 +71,16 @@ func TestMongoSmoke(t *testing.T) {
 	}
 
 	// Should be able to find that entry.
-	result := collection.FindOne(context.Background(), entry)
+	result := collection.FindOne(context.Background(), bson.M{"_id": entry.ID})
 	if result.Err() != nil {
-		t.Fatal(err)
+		t.Fatal(result.Err())
 	}
-	readEntry := bson.M{
-		"_id": 0,
-	}
+	var readEntry E
 	err = result.Decode(&readEntry)
 	if err != nil {
 		t.Fatal(err)
 	}
-	expectedID, ok := entry["_id"]
-	if !ok {
-		t.Fatal("unexpected")
-	}
-	readID, ok := entry["_id"]
-	if !ok {
-		t.Fatal("unexpected")
-	}
-	if expectedID != readID {
-		t.Fatal("ids don't match")
+	if !reflect.DeepEqual(entry, readEntry) {
+		t.Fatal("entries don't match", entry, readEntry)
 	}
 }
