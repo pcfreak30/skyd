@@ -2,7 +2,6 @@ package renter
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"testing"
 
@@ -32,9 +31,7 @@ func initMongo() {
 		Username: "root",
 		Password: "pwd",
 	}
-	fmt.Println("uri", build.MongoDBURI())
 	uri := build.MongoDBURI()
-	fmt.Println("MONGOURI", uri)
 	opts := options.Client().ApplyURI(uri).SetAuth(auth)
 	mongoClient, initMongoErr = mongo.Connect(context.Background(), opts)
 }
