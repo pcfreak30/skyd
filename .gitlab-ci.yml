@@ -80,6 +80,7 @@ default: &default_params
       alias: mongo
   
   variables:
+    FF_NETWORK_PER_BUILD: 1
     # Configure mongodb environment variables
     MONGODB_ADVERTISED_HOSTNAME: mongo
     MONGODB_REPLICA_SET_MODE: primary
