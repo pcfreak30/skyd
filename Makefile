@@ -175,7 +175,7 @@ test:
 	go test -short -tags='debug testing netgo' -timeout=5s $(pkgs) -run=$(run) -count=$(count)
 test-v:
 	GORACE='$(racevars)' go test -race -v -short -tags='debug testing netgo' -timeout=15s $(pkgs) -run=$(run) -count=$(count)
-test-long: clean fmt vet lint
+test-long: clean 
 	@mkdir -p cover
 	GORACE='$(racevars)' MONGODB_URI=$(mongouri) go test -race --coverprofile='./cover/cover.out' -v -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=$(run) -count=$(count)
 

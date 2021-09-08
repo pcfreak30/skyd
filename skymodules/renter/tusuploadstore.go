@@ -6,17 +6,38 @@ import (
 	"sync"
 	"time"
 
+	lock "github.com/square/mongo-lock"
 	"github.com/tus/tusd/pkg/handler"
 	"github.com/tus/tusd/pkg/memorylocker"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/mongo/readconcern"
+	"go.mongodb.org/mongo-driver/mongo/writeconcern"
 )
 
-type skynetTUSMongoUploadStore struct {
-	staticClient *mongo.Client
-}
+const (
+	tusDBName                     = "tus"
+	tusUploadsMongoCollectionName = "uploads"
+)
+
+type (
+	skynetTUSMongoUploadStore struct {
+		staticClient *mongo.Client
+	}
+
+	mongoTUSUpload struct {
+		ID     string `bson:"_id"`
+		LockID string `bson:"lockid"`
+	}
+
+	skynetMongoLock struct {
+		staticClient   *lock.Client
+		staticUploadID string
+	}
+)
 
 func (us *skynetTUSMongoUploadStore) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
@@ -24,8 +45,57 @@ func (us *skynetTUSMongoUploadStore) Close() error {
 	return us.staticClient.Disconnect(ctx)
 }
 
-func (us *skynetTUSMongoUploadStore) NewLock(id string) (handler.Lock, error) {
-	panic("not implemented yet")
+// NewLock creates a new lock for the upload with the given ID.
+func (us *skynetTUSMongoUploadStore) NewLock(uploadID string) (handler.Lock, error) {
+	client := lock.NewClient(us.staticClient.Database(tusDBName).Collection(tusUploadsMongoCollectionName))
+	err := client.CreateIndexes(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	return &skynetMongoLock{
+		staticClient:   client,
+		staticUploadID: uploadID,
+	}, nil
+}
+
+// Lock exclusively locks the lock. It returns handler.ErrFileLocked if the
+// upload is already locked and it will put an expiration time on the lock in
+// case the server dies while the file is locked. That way uploads won't remain
+// locked forever.
+func (l *skynetMongoLock) Lock() error {
+	client := l.staticClient
+	ld := lock.LockDetails{
+		Owner: "TUS",
+		Host:  "TODO:InsertHost",
+		TTL:   uint((5 * time.Minute).Seconds()),
+	}
+	err := client.XLock(context.Background(), l.staticUploadID, l.staticUploadID, ld)
+	if err == lock.ErrAlreadyLocked {
+		return handler.ErrFileLocked
+	}
+	return err
+}
+
+// Unlock attempts to unlock an upload. It will retry doing so for a certain
+// time before giving up.
+func (l *skynetMongoLock) Unlock() error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	var err error
+LOOP:
+	for {
+		_, err = l.staticClient.Unlock(context.Background(), l.staticUploadID)
+		if err == nil {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			break LOOP
+		case <-time.After(time.Second):
+		}
+	}
+	build.Critical("Failed to unlock the lock", err)
+	return err
 }
 
 func (us *skynetTUSMongoUploadStore) ToPrune() ([]skymodules.SkynetTUSUpload, error) {
@@ -59,16 +129,22 @@ func NewSkynetTUSInMemoryUploadStore() skymodules.SkynetTUSUploadStore {
 
 // NewSkynetTUSMongoUploadStore creates a new upload store using a mongodb as
 // the storage backend.
-func NewSkynetTUSMongoUploadStore(client *mongo.Client) (skymodules.SkynetTUSUploadStore, error) {
-	return newSkynetTUSMongoUploadStore(client)
+func NewSkynetTUSMongoUploadStore(uri string, creds options.Credential) (skymodules.SkynetTUSUploadStore, error) {
+	return newSkynetTUSMongoUploadStore(uri, creds)
 }
 
 // newSkynetTUSMongoUploadStore creates a new upload store using a mongodb as
 // the storage backend.
-func newSkynetTUSMongoUploadStore(client *mongo.Client) (*skynetTUSMongoUploadStore, error) {
+func newSkynetTUSMongoUploadStore(uri string, creds options.Credential) (*skynetTUSMongoUploadStore, error) {
+	opts := options.Client().
+		ApplyURI(uri).
+		SetAuth(creds).
+		SetReadConcern(readconcern.Majority()).
+		SetWriteConcern(writeconcern.New(writeconcern.WMajority()))
+	client, err := mongo.Connect(context.Background(), opts)
 	return &skynetTUSMongoUploadStore{
 		staticClient: client,
-	}, nil
+	}, err
 }
 
 // skynetTUSInMemoryUploadStore is an in-memory skynetTUSUploadStore
