@@ -3,19 +3,18 @@ package renter
 import (
 	"context"
 	"fmt"
-	"os"
 	"sync"
 	"testing"
 
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/SkynetLabs/skyd/build"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 var (
-	// initMongoOnce makes sure ethat initMongo is only called once.
+	// initMongoOnce makes sure that initMongo is only called once.
 	initMongoOnce sync.Once
 
 	// initMongoErr contains any errors happening during the initialization
@@ -33,12 +32,9 @@ func initMongo() {
 		Username: "root",
 		Password: "pwd",
 	}
-	host, ok := os.LookupEnv("MONGODB_HOST")
-	if !ok {
-		initMongoErr = errors.New("MONGODB_HOST not specified")
-		return
-	}
-	opts := options.Client().ApplyURI(fmt.Sprintf("mongodb://%s:27017", host)).SetAuth(auth)
+	fmt.Println("uri", build.MongoDBURI())
+	uri := build.MongoDBURI()
+	opts := options.Client().ApplyURI(uri).SetAuth(auth)
 	mongoClient, initMongoErr = mongo.Connect(context.Background(), opts)
 }
 

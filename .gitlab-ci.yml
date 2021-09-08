@@ -218,7 +218,7 @@ legacy-tests:
     paths:
       - .cache
   script:
-    - make test-long mongohost=mongo run=. pkgs="$legacy_pkgs"
+    - make test-long mongouri=mongodb://mongo:27017 run=. pkgs="$legacy_pkgs"
 
 #################
 # Package Tests
@@ -230,7 +230,7 @@ package-renter-tests:
     paths:
       - .cache
   script:
-    - make test-long mongohost=mongo run=. pkgs="$package_renter_pkgs"
+    - make test-long mongouri=mongodb://mongo:27017 run=. pkgs="$package_renter_pkgs"
 
 package-tests:
   <<: *default_test_params
@@ -239,7 +239,7 @@ package-tests:
     paths:
       - .cache
   script:
-    - make test-long mongohost=mongo run=. pkgs="$package_pkgs"
+    - make test-long mongouri=mongodb://mongo:27017 run=. pkgs="$package_pkgs"
 
 #################
 # Siatest Tests
@@ -251,7 +251,7 @@ siatest-tests:
     paths:
       - .cache
   script:
-    - make test-long mongohost=mongo run=. pkgs="$siatest_pkgs"
+    - make test-long mongouri=mongodb://mongo:27017 run=. pkgs="$siatest_pkgs"
 
 siatest-renter-tests:
   <<: *default_test_params
@@ -262,7 +262,7 @@ siatest-renter-tests:
   script:
     - apt-get update
     - apt-get install -y fuse
-    - make test-long mongohost=mongo run=. pkgs="$siatest_renter_pkgs"
+    - make test-long mongouri=mongodb://mongo:27017 run=. pkgs="$siatest_renter_pkgs"
 
 siatest-renter-sub-tests:
   <<: *default_test_params
@@ -273,7 +273,7 @@ siatest-renter-sub-tests:
   script:
     - apt-get update
     - apt-get install -y fuse
-    - make test-long mongohost=mongo run=. pkgs="$siatest_renter_sub_pkgs"
+    - make test-long mongouri=mongodb://mongo:27017 run=. pkgs="$siatest_renter_sub_pkgs"
 
 siatest-skynet-tests:
   <<: *default_test_params
@@ -284,7 +284,7 @@ siatest-skynet-tests:
   script:
     - apt-get update
     - apt-get install -y fuse
-    - make test-long mongohost=mongo run=. pkgs="$siatest_skynet_pkgs"
+    - make test-long mongouri=mongodb://mongo:27017 run=. pkgs="$siatest_skynet_pkgs"
 
 ############################
 # Nightly Tests 
