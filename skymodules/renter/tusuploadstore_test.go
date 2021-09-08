@@ -34,6 +34,7 @@ func initMongo() {
 	}
 	fmt.Println("uri", build.MongoDBURI())
 	uri := build.MongoDBURI()
+	fmt.Println("MONGOURI", uri)
 	opts := options.Client().ApplyURI(uri).SetAuth(auth)
 	mongoClient, initMongoErr = mongo.Connect(context.Background(), opts)
 }
@@ -47,6 +48,11 @@ func newMongoDBForTesting() (*mongo.Client, error) {
 
 // TestMongoSmoke is a smoke test for the mongodb connection.
 func TestMongoSmoke(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	client, err := newMongoDBForTesting()
 	if err != nil {
 		t.Fatal(err)
