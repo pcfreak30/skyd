@@ -2,7 +2,13 @@ package build
 
 var (
 	// mongoDBHost is the environment variable that tells
-	mongoDBURI = "MONGODB_URI"
+	mongoDBURI      = "MONGODB_URI"
+	mongoDBUser     = "MONGODB_USER"
+	mongoDBPassword = "MONGODB_PASSWORD"
+
+	// skynetPortalHostname is the hostname of the portal. Might be an empty
+	// string on standalone skyd deploy.
+	skynetPortalHostname = "SKYNET_SERVER_API"
 
 	// siaAPIPassword is the environment variable that sets a custom API
 	// password if the default is not used

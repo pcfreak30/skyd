@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/tus/tusd/pkg/handler"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"go.mongodb.org/mongo-driver/bson"
@@ -35,7 +36,12 @@ var mongoTestCreds = options.Credential{
 // initMongo initializes the connection between skyd and mongodb for testing.
 func initMongo() {
 	// Create client.
-	uri := build.MongoDBURI()
+	uri, ok := build.MongoDBURI()
+	if !ok {
+		err := errors.New("MONGODB_URI not set")
+		initMongoErr = err
+		return
+	}
 	opts := options.Client().ApplyURI(uri).SetAuth(mongoTestCreds)
 	mongoClient, initMongoErr = mongo.Connect(context.Background(), opts)
 }
@@ -45,6 +51,15 @@ func initMongo() {
 func newMongoDBForTesting() (*mongo.Client, error) {
 	initMongoOnce.Do(initMongo)
 	return mongoClient, initMongoErr
+}
+
+// newMongoTestStore creates a skynetTUSMongoUploadStore for testing.
+func newMongoTestStore(name string) (*skynetTUSMongoUploadStore, error) {
+	uri, ok := build.MongoDBURI()
+	if !ok {
+		build.Critical("uri not set")
+	}
+	return newSkynetTUSMongoUploadStore(context.Background(), uri, name, mongoTestCreds)
 }
 
 // TestMongoSmoke is a smoke test for the mongodb connection.
@@ -95,7 +110,7 @@ func TestMongoLocking(t *testing.T) {
 	}
 	t.Parallel()
 
-	us, err := newSkynetTUSMongoUploadStore(build.MongoDBURI(), mongoTestCreds)
+	us, err := newMongoTestStore(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}

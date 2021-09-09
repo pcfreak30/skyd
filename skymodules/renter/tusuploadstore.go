@@ -19,13 +19,20 @@ import (
 )
 
 const (
+	// mongoLockTTL is the time-to-live in seconds for a lock in the
+	// mongodb. After that time passes, an entry is no longer considered
+	// locked. This avoids deadlocks in case a server locks an entry and
+	// then crashes before unlocking it.
+	mongoLockTTL = 300 // 5 minutes
+
 	tusDBName                     = "tus"
 	tusUploadsMongoCollectionName = "uploads"
 )
 
 type (
 	skynetTUSMongoUploadStore struct {
-		staticClient *mongo.Client
+		staticClient         *mongo.Client
+		staticPortalHostname string
 	}
 
 	mongoTUSUpload struct {
@@ -34,8 +41,9 @@ type (
 	}
 
 	skynetMongoLock struct {
-		staticClient   *lock.Client
-		staticUploadID string
+		staticClient         *lock.Client
+		staticPortalHostname string
+		staticUploadID       string
 	}
 )
 
@@ -53,8 +61,9 @@ func (us *skynetTUSMongoUploadStore) NewLock(uploadID string) (handler.Lock, err
 		return nil, err
 	}
 	return &skynetMongoLock{
-		staticClient:   client,
-		staticUploadID: uploadID,
+		staticClient:         client,
+		staticPortalHostname: us.staticPortalHostname,
+		staticUploadID:       uploadID,
 	}, nil
 }
 
@@ -66,8 +75,8 @@ func (l *skynetMongoLock) Lock() error {
 	client := l.staticClient
 	ld := lock.LockDetails{
 		Owner: "TUS",
-		Host:  "TODO:InsertHost",
-		TTL:   uint((5 * time.Minute).Seconds()),
+		Host:  l.staticPortalHostname,
+		TTL:   mongoLockTTL,
 	}
 	err := client.XLock(context.Background(), l.staticUploadID, l.staticUploadID, ld)
 	if err == lock.ErrAlreadyLocked {
@@ -114,11 +123,6 @@ func (us *skynetTUSMongoUploadStore) Upload(id string) (skymodules.SkynetTUSUplo
 	panic("not implemented yet")
 }
 
-type skynetTUSMongoUpload struct {
-	ID     string `bson:"_id"`
-	LockID string `bson:"lockid"`
-}
-
 // NewSkynetTUSInMemoryUploadStore creates a new skynetTUSInMemoryUploadStore.
 func NewSkynetTUSInMemoryUploadStore() skymodules.SkynetTUSUploadStore {
 	return &skynetTUSInMemoryUploadStore{
@@ -129,21 +133,22 @@ func NewSkynetTUSInMemoryUploadStore() skymodules.SkynetTUSUploadStore {
 
 // NewSkynetTUSMongoUploadStore creates a new upload store using a mongodb as
 // the storage backend.
-func NewSkynetTUSMongoUploadStore(uri string, creds options.Credential) (skymodules.SkynetTUSUploadStore, error) {
-	return newSkynetTUSMongoUploadStore(uri, creds)
+func NewSkynetTUSMongoUploadStore(ctx context.Context, uri, portalName string, creds options.Credential) (skymodules.SkynetTUSUploadStore, error) {
+	return newSkynetTUSMongoUploadStore(ctx, uri, portalName, creds)
 }
 
 // newSkynetTUSMongoUploadStore creates a new upload store using a mongodb as
 // the storage backend.
-func newSkynetTUSMongoUploadStore(uri string, creds options.Credential) (*skynetTUSMongoUploadStore, error) {
+func newSkynetTUSMongoUploadStore(ctx context.Context, uri, portalName string, creds options.Credential) (*skynetTUSMongoUploadStore, error) {
 	opts := options.Client().
 		ApplyURI(uri).
 		SetAuth(creds).
 		SetReadConcern(readconcern.Majority()).
 		SetWriteConcern(writeconcern.New(writeconcern.WMajority()))
-	client, err := mongo.Connect(context.Background(), opts)
+	client, err := mongo.Connect(ctx, opts)
 	return &skynetTUSMongoUploadStore{
-		staticClient: client,
+		staticClient:         client,
+		staticPortalHostname: portalName,
 	}, err
 }
 

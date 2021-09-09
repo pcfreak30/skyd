@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -13,12 +14,15 @@ import (
 
 	"github.com/spf13/cobra"
 	"gitlab.com/NebulousLabs/errors"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.sia.tech/siad/modules"
 	"golang.org/x/crypto/ssh/terminal"
 
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/node/api/server"
 	"gitlab.com/SkynetLabs/skyd/profile"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/uber/jaeger-lib/metrics"
@@ -26,6 +30,10 @@ import (
 	jaegercfg "github.com/uber/jaeger-client-go/config"
 	jaegerlog "github.com/uber/jaeger-client-go/log"
 )
+
+// mongoConnectionTimeout is the maximum allowed timeout for establishing a
+// mongodb connection before it is considered failed.
+var mongoConnectionTimeout = 30 * time.Second
 
 // passwordPrompt securely reads a password from stdin.
 func passwordPrompt(prompt string) (string, error) {
@@ -199,6 +207,37 @@ func tryAutoUnlock(srv *server.Server) {
 	}
 }
 
+// initMongo establishes a connection to a mongodb if specified by the
+// environment vars and creates a SkynetTUSUploadStore from it.
+func initMongo() (skymodules.SkynetTUSUploadStore, error) {
+	// Check if the uri was set. If not, we are done
+	mongouri, ok := build.MongoDBURI()
+	if !ok {
+		fmt.Println("No MongoDB URI set - continuing with in-memory storage")
+		return nil, nil
+	}
+	fmt.Println("MongoDB URI found - trying to connect to server at", mongouri)
+	user, ok := build.MongoDBUser()
+	if !ok {
+		return nil, errors.New("No MongoDB user set")
+	}
+	password, ok := build.MongoDBPassword()
+	if !ok {
+		return nil, errors.New("No MongoDB password set")
+	}
+	portalName, ok := build.SkynetPortalHostname()
+	if !ok {
+		return nil, errors.New("No PortalName set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), mongoConnectionTimeout)
+	defer cancel()
+	return renter.NewSkynetTUSMongoUploadStore(ctx, mongouri, portalName, options.Credential{
+		Username: user,
+		Password: password,
+	})
+}
+
 // startDaemon uses the config parameters to initialize Sia modules and start
 // siad.
 func startDaemon(config Config) (err error) {
@@ -208,6 +247,12 @@ func startDaemon(config Config) (err error) {
 	config, err = loadAPIPassword(config)
 	if err != nil {
 		return errors.AddContext(err, "failed to get API password")
+	}
+
+	// Load mongdb config.
+	uploadStore, err := initMongo()
+	if err != nil {
+		return errors.AddContext(err, "failed to load mongodb config")
 	}
 
 	// Print the siad Version and GitRevision
@@ -229,6 +274,11 @@ func startDaemon(config Config) (err error) {
 
 	// Create the node params by parsing the modules specified in the config.
 	nodeParams := parseModules(config)
+
+	// Set the upload store if available.
+	if uploadStore != nil {
+		nodeParams.TUSUploadStore = uploadStore
+	}
 
 	// Start and run the server.
 	srv, err := server.New(config.Siad.APIaddr, config.Siad.RequiredUserAgent, config.APIPassword, nodeParams, loadStart)
