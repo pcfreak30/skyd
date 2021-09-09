@@ -1,6 +1,7 @@
 package skymodules
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skykey"
+	"gitlab.com/skynetlabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -288,6 +290,7 @@ type (
 	// the renter implements for skynet.
 	SkynetTUSDataStore interface {
 		handler.DataStore
+		handler.ConcaterDataStore
 		handler.Locker
 
 		// Skylink returns the Skylink for an upload with a given ID.  If the
@@ -310,10 +313,15 @@ type (
 	// SkynetTUSUpload is the interface for a TUS upload in the
 	// SkynetTUSUploadStore.
 	SkynetTUSUpload interface {
-		io.Closer
-		handler.Upload
 		SiaPath() SiaPath
 		Skylink() (Skylink, bool)
+
+		GetInfo(ctx context.Context) (handler.FileInfo, error)
+
+		UploadParams(ctx context.Context) (skymodules.SkyfileUploadParameters, skymodules.FileUploadParams, error)
+
+		CommitWriteChunk(newOffset int64, newLastWrite time.Time, fanout []byte) error
+		CommitFinishUpload(skylink Skylink) error
 	}
 
 	// SkynetTUSUploadStore defines an interface for a storage backend that is
@@ -322,9 +330,9 @@ type (
 	SkynetTUSUploadStore interface {
 		ToPrune() ([]SkynetTUSUpload, error)
 		Prune(SkynetTUSUpload) error
-		CreateUpload(fi handler.FileInfo, sup SkyfileUploadParameters, up FileUploadParams, sm SkyfileMetadata) (SkynetTUSUpload, error)
+		CreateUpload(fi handler.FileInfo, sup SkyfileUploadParameters, up FileUploadParams, sm []byte) (SkynetTUSUpload, error)
 		SaveUpload(id string, upload SkynetTUSUpload) error
-		Upload(id string) (SkynetTUSUpload, error)
+		GetUpload(ctx context.Context, id string) (SkynetTUSUpload, error)
 
 		io.Closer
 		handler.Locker
