@@ -122,12 +122,11 @@ func fileUploadParams(siaPath skymodules.SiaPath, dataPieces, parityPieces int, 
 
 	// Return the FileUploadParams
 	return skymodules.FileUploadParams{
-		SiaPath:             siaPath,
-		ErasureCode:         ec,
-		Force:               force,
-		DisablePartialChunk: true,  // must be set to true - partial chunks change, content addressed files must not change.
-		Repair:              false, // indicates whether this is a repair operation
-		CipherType:          ct,
+		SiaPath:     siaPath,
+		ErasureCode: ec,
+		Force:       force,
+		Repair:      false, // indicates whether this is a repair operation
+		CipherType:  ct,
 	}, nil
 }
 
@@ -946,10 +945,9 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 
 	// Start setting up the FUP.
 	fup := skymodules.FileUploadParams{
-		Force:               lup.Force,
-		DisablePartialChunk: true,  // must be set to true - partial chunks change, content addressed files must not change.
-		Repair:              false, // indicates whether this is a repair operation
-		CipherType:          crypto.TypePlain,
+		Force:      lup.Force,
+		Repair:     false, // indicates whether this is a repair operation
+		CipherType: crypto.TypePlain,
 	}
 
 	// Re-encrypt the baseSector for upload and add the fanout key to the fup.

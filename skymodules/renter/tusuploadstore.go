@@ -2,14 +2,12 @@ package renter
 
 import (
 	"context"
-	"os"
 	"sync"
 	"time"
 
 	lock "github.com/square/mongo-lock"
 	"github.com/tus/tusd/pkg/handler"
 	"github.com/tus/tusd/pkg/memorylocker"
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -18,6 +16,8 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/writeconcern"
 )
 
+// TODO: Implement pruning for locks.
+
 const (
 	// mongoLockTTL is the time-to-live in seconds for a lock in the
 	// mongodb. After that time passes, an entry is no longer considered
@@ -25,8 +25,17 @@ const (
 	// then crashes before unlocking it.
 	mongoLockTTL = 300 // 5 minutes
 
-	tusDBName                     = "tus"
+	// tusDBName is the name of the database all TUS related data is stored
+	// in.
+	tusDBName = "tus"
+
+	// tusUploadsMongoCollectionName is the name of the collection within
+	// the database used to store upload info.
 	tusUploadsMongoCollectionName = "uploads"
+
+	// tusLocksMongoCollectionName is the name of the collection within the
+	// database used to store locks.
+	tusLocksMongoCollectionName = "locks"
 )
 
 type (
@@ -36,10 +45,10 @@ type (
 	}
 
 	mongoTUSUpload struct {
-		ID     string `bson:"_id"`
-		LockID string `bson:"lockid"`
+		ID string `bson:"_id"`
 	}
 
+	// skynetMongoLock is a lock used for locking an upload.
 	skynetMongoLock struct {
 		staticClient         *lock.Client
 		staticPortalHostname string
@@ -55,7 +64,7 @@ func (us *skynetTUSMongoUploadStore) Close() error {
 
 // NewLock creates a new lock for the upload with the given ID.
 func (us *skynetTUSMongoUploadStore) NewLock(uploadID string) (handler.Lock, error) {
-	client := lock.NewClient(us.staticClient.Database(tusDBName).Collection(tusUploadsMongoCollectionName))
+	client := lock.NewClient(us.staticLockCollection())
 	err := client.CreateIndexes(context.Background())
 	if err != nil {
 		return nil, err
@@ -115,20 +124,24 @@ func (us *skynetTUSMongoUploadStore) Prune(skymodules.SkynetTUSUpload) error {
 	panic("not implemented yet")
 }
 
+func (us *skynetTUSMongoUploadStore) CreateUpload(fi handler.FileInfo, sup skymodules.SkyfileUploadParameters, up skymodules.FileUploadParams, sm skymodules.SkyfileMetadata) (skymodules.SkynetTUSUpload, error) {
+	panic("not implemented yet")
+}
+
 func (us *skynetTUSMongoUploadStore) SaveUpload(id string, upload skymodules.SkynetTUSUpload) error {
 	panic("not implemented yet")
 }
 
-func (us *skynetTUSMongoUploadStore) Upload(id string) (skymodules.SkynetTUSUpload, error) {
-	panic("not implemented yet")
+func (us *skynetTUSMongoUploadStore) staticUploadCollection() *mongo.Collection {
+	return us.staticClient.Database(tusDBName).Collection(tusUploadsMongoCollectionName)
 }
 
-// NewSkynetTUSInMemoryUploadStore creates a new skynetTUSInMemoryUploadStore.
-func NewSkynetTUSInMemoryUploadStore() skymodules.SkynetTUSUploadStore {
-	return &skynetTUSInMemoryUploadStore{
-		uploads:      make(map[string]*skynetTUSUpload),
-		staticLocker: memorylocker.New(),
-	}
+func (us *skynetTUSMongoUploadStore) staticLockCollection() *mongo.Collection {
+	return us.staticClient.Database(tusDBName).Collection(tusLocksMongoCollectionName)
+}
+
+func (us *skynetTUSMongoUploadStore) Upload(id string) (skymodules.SkynetTUSUpload, error) {
+	panic("not implemented yet")
 }
 
 // NewSkynetTUSMongoUploadStore creates a new upload store using a mongodb as
@@ -140,11 +153,16 @@ func NewSkynetTUSMongoUploadStore(ctx context.Context, uri, portalName string, c
 // newSkynetTUSMongoUploadStore creates a new upload store using a mongodb as
 // the storage backend.
 func newSkynetTUSMongoUploadStore(ctx context.Context, uri, portalName string, creds options.Credential) (*skynetTUSMongoUploadStore, error) {
+	// NOTE: Since we know that in the case of a success, an upload will
+	// only ever exist on a single portal, we choose very loose consistency
+	// guarantees here for the sake of performance. The worst thing that can
+	// happen if a user continues uploading from an outdated portal is
+	// redundant pinning.
 	opts := options.Client().
 		ApplyURI(uri).
 		SetAuth(creds).
-		SetReadConcern(readconcern.Majority()).
-		SetWriteConcern(writeconcern.New(writeconcern.WMajority()))
+		SetReadConcern(readconcern.Local()).
+		SetWriteConcern(writeconcern.New(writeconcern.J(true)))
 	client, err := mongo.Connect(ctx, opts)
 	return &skynetTUSMongoUploadStore{
 		staticClient:         client,
@@ -169,69 +187,4 @@ func (u *skynetTUSUpload) Skylink() (skymodules.Skylink, bool) {
 	defer u.mu.Unlock()
 	_, exists := u.fi.MetaData["Skylink"]
 	return u.sl, exists
-}
-
-// Close implements the io.Closer and is a no-op for the in-memory store.
-func (us *skynetTUSInMemoryUploadStore) Close() error { return nil }
-
-// NewLock implements handler.Locker by forwarding the call to an in-memory
-// locker.
-func (us *skynetTUSInMemoryUploadStore) NewLock(id string) (handler.Lock, error) {
-	return us.staticLocker.NewLock(id)
-}
-
-// SaveUpload saves an upload.
-func (us *skynetTUSInMemoryUploadStore) SaveUpload(id string, u skymodules.SkynetTUSUpload) error {
-	us.mu.Lock()
-	defer us.mu.Unlock()
-	upload, ok := u.(*skynetTUSUpload)
-	if !ok {
-		err := errors.New("SaveUpload: can't store a non *skynetTUSUpload")
-		build.Critical(err)
-		return err
-	}
-	us.uploads[id] = upload
-	return nil
-}
-
-// Upload returns an upload by ID.
-func (us *skynetTUSInMemoryUploadStore) Upload(id string) (skymodules.SkynetTUSUpload, error) {
-	us.mu.Lock()
-	defer us.mu.Unlock()
-	upload, exists := us.uploads[id]
-	if !exists {
-		return nil, os.ErrNotExist
-	}
-	return upload, nil
-}
-
-// Prune removes uploads that have been idle for too long.
-func (us *skynetTUSInMemoryUploadStore) ToPrune() ([]skymodules.SkynetTUSUpload, error) {
-	us.mu.Lock()
-	defer us.mu.Unlock()
-	var toDelete []skymodules.SkynetTUSUpload
-	for _, u := range us.uploads {
-		u.mu.Lock()
-		lastWrite := u.lastWrite
-		complete := u.complete
-		u.mu.Unlock()
-		if time.Since(lastWrite) < PruneTUSUploadTimeout {
-			continue // nothing to do
-		}
-		// If the upload wasn't completed, delete the files on disk.
-		if !complete {
-			toDelete = append(toDelete, u)
-		}
-	}
-	return toDelete, nil
-}
-
-// Prune removes uploads that have been idle for too long.
-func (us *skynetTUSInMemoryUploadStore) Prune(toPrune skymodules.SkynetTUSUpload) error {
-	us.mu.Lock()
-	defer us.mu.Unlock()
-	upload := toPrune.(*skynetTUSUpload)
-	_ = upload.Close()
-	delete(us.uploads, upload.fi.ID)
-	return nil
 }

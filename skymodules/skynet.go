@@ -310,6 +310,7 @@ type (
 	// SkynetTUSUpload is the interface for a TUS upload in the
 	// SkynetTUSUploadStore.
 	SkynetTUSUpload interface {
+		io.Closer
 		handler.Upload
 		SiaPath() SiaPath
 		Skylink() (Skylink, bool)
@@ -321,6 +322,7 @@ type (
 	SkynetTUSUploadStore interface {
 		ToPrune() ([]SkynetTUSUpload, error)
 		Prune(SkynetTUSUpload) error
+		CreateUpload(fi handler.FileInfo, sup SkyfileUploadParameters, up FileUploadParams, sm SkyfileMetadata) (SkynetTUSUpload, error)
 		SaveUpload(id string, upload SkynetTUSUpload) error
 		Upload(id string) (SkynetTUSUpload, error)
 

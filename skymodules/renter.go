@@ -539,12 +539,11 @@ type DownloadInfo struct {
 // FileUploadParams contains the information used by the Renter to upload a
 // file.
 type FileUploadParams struct {
-	Source              string
-	SiaPath             SiaPath
-	ErasureCode         ErasureCoder
-	Force               bool
-	DisablePartialChunk bool
-	Repair              bool
+	Source      string
+	SiaPath     SiaPath
+	ErasureCode ErasureCoder
+	Force       bool
+	Repair      bool
 
 	// CipherType was added later. If it is left blank, the renter will use the
 	// default encryption method (as of writing, Threefish)
