@@ -8,20 +8,46 @@ import (
 
 	"github.com/tus/tusd/pkg/handler"
 	"github.com/tus/tusd/pkg/memorylocker"
+	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
 )
 
-type skynetInMemoryUpload struct {
-	complete  bool
-	fi        handler.FileInfo
-	lastWrite time.Time
+type (
+	// skynetTUSInMemoryUploadStore is an in-memory skynetTUSUploadStore
+	// implementation.
+	skynetTUSInMemoryUploadStore struct {
+		uploads      map[string]*skynetInMemoryUpload
+		mu           sync.Mutex
+		staticLocker *memorylocker.MemoryLocker
+	}
 
-	// Skyfile upload parameters.
-	baseSectorUploadParams skymodules.SkyfileUploadParameters
-	fanoutUploadParams     skymodules.FileUploadParams
+	// skynetInMemoryUpload represents an upload within the
+	// skynetTUSInMemoryUploadStore.
+	skynetInMemoryUpload struct {
+		complete          bool
+		fanout            []byte
+		fi                handler.FileInfo
+		isSmallFile       bool
+		smallFileData     []byte
+		lastWrite         time.Time
+		staticFilename    string
+		staticForceUpload bool
+		staticSP          skymodules.SiaPath
 
-	mu sync.Mutex
-}
+		// Base chunk related fields.
+		staticBaseChunkRedundancy uint8
+		staticMetadata            []byte
+
+		// Fanout related fields.
+		staticFanoutDataPieces   int
+		staticFanoutParityPieces int
+		staticCipherType         crypto.CipherType
+
+		// utilities
+		mu sync.Mutex
+	}
+)
 
 // NewSkynetTUSInMemoryUploadStore creates a new skynetTUSInMemoryUploadStore.
 func NewSkynetTUSInMemoryUploadStore() skymodules.SkynetTUSUploadStore {
@@ -34,37 +60,32 @@ func NewSkynetTUSInMemoryUploadStore() skymodules.SkynetTUSUploadStore {
 // Close implements the io.Closer and is a no-op for the in-memory store.
 func (us *skynetTUSInMemoryUploadStore) Close() error { return nil }
 
-func (us *skynetTUSInMemoryUploadStore) CreateUpload(fi handler.FileInfo, sup skymodules.SkyfileUploadParameters, up skymodules.FileUploadParams, sm skymodules.SkyfileMetadata) (skymodules.SkynetTUSUpload, error) {
+// CreateUpload creates a new upload and adds it to the store.
+func (us *skynetTUSInMemoryUploadStore) CreateUpload(fi handler.FileInfo, sp skymodules.SiaPath, fileName string, baseChunkRedundancy uint8, fanoutDataPieces, fanoutParityPieces int, sm []byte, force bool, ct crypto.CipherType) (skymodules.SkynetTUSUpload, error) {
 	us.mu.Lock()
 	defer us.mu.Unlock()
-
 	upload := &skynetInMemoryUpload{
-		fi:        fi,
-		lastWrite: time.Now(),
-		sm:        sm,
-		staticSUP: sup,
-		staticUP:  up,
+		complete:          false,
+		fanout:            nil,
+		fi:                fi,
+		lastWrite:         time.Now(),
+		staticFilename:    fileName,
+		staticForceUpload: force,
+		staticSP:          sp,
+
+		staticBaseChunkRedundancy: baseChunkRedundancy,
+		staticMetadata:            sm,
+
+		staticFanoutDataPieces:   fanoutDataPieces,
+		staticFanoutParityPieces: fanoutParityPieces,
+		staticCipherType:         ct,
 	}
-	us.uploads[id] = upload
+	us.uploads[fi.ID] = upload
 	return upload, nil
 }
 
-func (u *skynetInMemoryUpload) CommitFinishUpload(skylink skymodules.Skylink) error {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	u.complete = true
-	u.fi.MetaData["Skylink"] = skylink.String()
-	return nil
-}
-
-// NewLock implements handler.Locker by forwarding the call to an in-memory
-// locker.
-func (us *skynetTUSInMemoryUploadStore) NewLock(id string) (handler.Lock, error) {
-	return us.staticLocker.NewLock(id)
-}
-
-// Upload returns an upload by ID.
-func (us *skynetTUSInMemoryUploadStore) Upload(id string) (skymodules.SkynetTUSUpload, error) {
+// GetUpload returns an upload from the upload store.
+func (us *skynetTUSInMemoryUploadStore) GetUpload(_ context.Context, id string) (skymodules.SkynetTUSUpload, error) {
 	us.mu.Lock()
 	defer us.mu.Unlock()
 	upload, exists := us.uploads[id]
@@ -74,8 +95,125 @@ func (us *skynetTUSInMemoryUploadStore) Upload(id string) (skymodules.SkynetTUSU
 	return upload, nil
 }
 
-func (us *skynetTUSInMemoryUploadStore) UploadParams(ctx context.Context) (skymodules.SkyfileUploadParameters, skymodules.FileUploadParams, error) {
-	panic("not implemented yet")
+// NewLock implements handler.Locker by forwarding the call to an in-memory
+// locker.
+func (us *skynetTUSInMemoryUploadStore) NewLock(id string) (handler.Lock, error) {
+	return us.staticLocker.NewLock(id)
+}
+
+// CommitFinishUpload commits a finished upload to the upload store. This means
+// setting the skylink of the finished upload.
+func (u *skynetInMemoryUpload) CommitFinishUpload(skylink skymodules.Skylink) error {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.complete = true
+	u.fi.MetaData["Skylink"] = skylink.String()
+	return nil
+}
+
+// CommitWriteChunkSmallFile commits the changes to the upload after successfully writing
+// a chunk to the store.
+func (u *skynetInMemoryUpload) CommitWriteChunkSmallFile(newOffset int64, newLastWrite time.Time, smallFileData []byte) error {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
+	u.fi.Offset = newOffset
+	u.lastWrite = newLastWrite
+	u.isSmallFile = true
+	u.smallFileData = smallFileData
+	return nil
+}
+
+// CommitWriteChunkSmallFile commits the changes to the upload after successfully writing
+// a chunk to the store.
+func (u *skynetInMemoryUpload) CommitWriteChunkLargeFile(newOffset int64, newLastWrite time.Time, fanout []byte) error {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
+	u.fi.Offset = newOffset
+	u.lastWrite = newLastWrite
+	u.fanout = append(u.fanout, fanout...)
+	return nil
+}
+
+// GetInfo returns the upload's underlying handler.FileInfo.
+func (u *skynetInMemoryUpload) GetInfo(ctx context.Context) (handler.FileInfo, error) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.fi, nil
+}
+
+// PruneInfo returns the relevant info for pruning an upload. This includes the
+// upload id, the siapath for the base sector and the siapth for the fanout.
+func (u *skynetInMemoryUpload) PruneInfo(ctx context.Context) (id string, sp skymodules.SiaPath, err error) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	id = u.fi.ID
+	sp = u.staticSP
+	return
+}
+
+// UploadParams return skymodules.SkyfileUploadParameters and
+// skymodules.FileUploadParams for the upload.
+func (u *skynetInMemoryUpload) UploadParams(ctx context.Context) (skymodules.SkyfileUploadParameters, skymodules.FileUploadParams, error) {
+	sup := skymodules.SkyfileUploadParameters{
+		BaseChunkRedundancy: u.staticBaseChunkRedundancy,
+		Filename:            u.staticFilename,
+		Force:               u.staticForceUpload,
+		SiaPath:             u.staticSP,
+	}
+	fanoutSiaPath, err := u.staticSP.AddSuffixStr(skymodules.ExtendedSuffix)
+	if err != nil {
+		return skymodules.SkyfileUploadParameters{}, skymodules.FileUploadParams{}, err
+	}
+	up, err := fileUploadParams(fanoutSiaPath, u.staticFanoutDataPieces, u.staticFanoutParityPieces, u.staticForceUpload, u.staticCipherType)
+	if err != nil {
+		return skymodules.SkyfileUploadParameters{}, skymodules.FileUploadParams{}, err
+	}
+	return sup, up, nil
+}
+
+// Fanout returns the fanout of the upload.
+func (u *skynetInMemoryUpload) Fanout(ctx context.Context) ([]byte, error) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.fanout, nil
+}
+
+func (u *skynetInMemoryUpload) IsSmallUpload(ctx context.Context) (bool, error) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.isSmallFile, nil
+}
+
+// SkyfileMetadata returns the raw SkyfileMetadata of the upload.
+func (u *skynetInMemoryUpload) SkyfileMetadata(ctx context.Context) ([]byte, error) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.staticMetadata, nil
+}
+
+// SmallUploadData returns the data for a small upload.
+func (u *skynetInMemoryUpload) SmallUploadData(ctx context.Context) ([]byte, error) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.smallFileData, nil
+}
+
+// Skylink returns the skylink of the upload if it was set already.
+func (u *skynetInMemoryUpload) Skylink() (skymodules.Skylink, bool) {
+	u.mu.Lock()
+	u.mu.Unlock()
+	sl, exists := u.fi.MetaData["Skylink"]
+	if !exists {
+		return skymodules.Skylink{}, false
+	}
+	var skylink skymodules.Skylink
+	if err := skylink.LoadString(sl); err != nil {
+		build.Critical("upload contains invalid skylink")
+		return skymodules.Skylink{}, false
+	}
+	return skylink, true
 }
 
 // Prune removes uploads that have been idle for too long.
@@ -100,11 +238,9 @@ func (us *skynetTUSInMemoryUploadStore) ToPrune() ([]skymodules.SkynetTUSUpload,
 }
 
 // Prune removes uploads that have been idle for too long.
-func (us *skynetTUSInMemoryUploadStore) Prune(toPrune skymodules.SkynetTUSUpload) error {
+func (us *skynetTUSInMemoryUploadStore) Prune(uploadID string) error {
 	us.mu.Lock()
 	defer us.mu.Unlock()
-	upload := toPrune.(*skynetTUSUpload)
-	_ = upload.Close()
-	delete(us.uploads, upload.fi.ID)
+	delete(us.uploads, uploadID)
 	return nil
 }

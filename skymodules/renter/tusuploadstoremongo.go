@@ -2,18 +2,17 @@ package renter
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	lock "github.com/square/mongo-lock"
 	"github.com/tus/tusd/pkg/handler"
-	"github.com/tus/tusd/pkg/memorylocker"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readconcern"
 	"go.mongodb.org/mongo-driver/mongo/writeconcern"
+	"go.sia.tech/siad/crypto"
 )
 
 // TODO: Implement pruning for locks.
@@ -120,11 +119,15 @@ func (us *skynetTUSMongoUploadStore) ToPrune() ([]skymodules.SkynetTUSUpload, er
 	panic("not implemented yet")
 }
 
-func (us *skynetTUSMongoUploadStore) Prune(skymodules.SkynetTUSUpload) error {
+func (us *skynetTUSMongoUploadStore) Prune(string) error {
 	panic("not implemented yet")
 }
 
-func (us *skynetTUSMongoUploadStore) CreateUpload(fi handler.FileInfo, sup skymodules.SkyfileUploadParameters, up skymodules.FileUploadParams, sm skymodules.SkyfileMetadata) (skymodules.SkynetTUSUpload, error) {
+func (us *skynetTUSMongoUploadStore) CreateUpload(fi handler.FileInfo, sp skymodules.SiaPath, fileName string, baseChunkRedundancy uint8, fanoutDataPieces, fanoutParityPieces int, sm []byte, force bool, ct crypto.CipherType) (skymodules.SkynetTUSUpload, error) {
+	panic("not implemented yet")
+}
+
+func (us *skynetTUSMongoUploadStore) GetUpload(_ context.Context, id string) (skymodules.SkynetTUSUpload, error) {
 	panic("not implemented yet")
 }
 
@@ -168,23 +171,4 @@ func newSkynetTUSMongoUploadStore(ctx context.Context, uri, portalName string, c
 		staticClient:         client,
 		staticPortalHostname: portalName,
 	}, err
-}
-
-// skynetTUSInMemoryUploadStore is an in-memory skynetTUSUploadStore
-// implementation.
-type skynetTUSInMemoryUploadStore struct {
-	uploads      map[string]*skynetTUSUpload
-	mu           sync.Mutex
-	staticLocker *memorylocker.MemoryLocker
-}
-
-func (u *skynetTUSUpload) SiaPath() skymodules.SiaPath {
-	return u.staticSUP.SiaPath
-}
-
-func (u *skynetTUSUpload) Skylink() (skymodules.Skylink, bool) {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	_, exists := u.fi.MetaData["Skylink"]
-	return u.sl, exists
 }

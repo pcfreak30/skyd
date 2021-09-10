@@ -273,7 +273,6 @@ func (r *Renter) managedCreateSkylink(ctx context.Context, sup skymodules.Skyfil
 // its own name, which allows the file to be renamed concurrently without
 // causing any race conditions.
 func (r *Renter) managedCreateSkylinkRawMD(ctx context.Context, sup skymodules.SkyfileUploadParameters, metadataBytes, fanoutBytes []byte, size uint64, masterKey crypto.CipherKey, ec skymodules.ErasureCoder) (skymodules.Skylink, error) {
-
 	// Check that the encryption key and erasure code is compatible with the
 	// skyfile format. This is intentionally done before any heavy computation
 	// to catch errors early on.

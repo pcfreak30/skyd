@@ -17,7 +17,6 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skykey"
-	"gitlab.com/skynetlabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -313,15 +312,21 @@ type (
 	// SkynetTUSUpload is the interface for a TUS upload in the
 	// SkynetTUSUploadStore.
 	SkynetTUSUpload interface {
-		SiaPath() SiaPath
 		Skylink() (Skylink, bool)
 
 		GetInfo(ctx context.Context) (handler.FileInfo, error)
+		IsSmallUpload(ctx context.Context) (bool, error)
+		PruneInfo(ctx context.Context) (id string, sp SiaPath, err error)
 
-		UploadParams(ctx context.Context) (skymodules.SkyfileUploadParameters, skymodules.FileUploadParams, error)
+		UploadParams(ctx context.Context) (SkyfileUploadParameters, FileUploadParams, error)
 
-		CommitWriteChunk(newOffset int64, newLastWrite time.Time, fanout []byte) error
+		CommitWriteChunkSmallFile(newOffset int64, newLastWrite time.Time, smallUploadData []byte) error
+		CommitWriteChunkLargeFile(newOffset int64, newLastWrite time.Time, fanout []byte) error
 		CommitFinishUpload(skylink Skylink) error
+
+		Fanout(ctx context.Context) ([]byte, error)
+		SkyfileMetadata(ctx context.Context) ([]byte, error)
+		SmallUploadData(ctx context.Context) ([]byte, error)
 	}
 
 	// SkynetTUSUploadStore defines an interface for a storage backend that is
@@ -329,9 +334,8 @@ type (
 	// them.
 	SkynetTUSUploadStore interface {
 		ToPrune() ([]SkynetTUSUpload, error)
-		Prune(SkynetTUSUpload) error
-		CreateUpload(fi handler.FileInfo, sup SkyfileUploadParameters, up FileUploadParams, sm []byte) (SkynetTUSUpload, error)
-		SaveUpload(id string, upload SkynetTUSUpload) error
+		Prune(string) error
+		CreateUpload(fi handler.FileInfo, sp SiaPath, fileName string, baseChunkRedundancy uint8, fanoutDataPieces, fanoutParityPieces int, sm []byte, force bool, ct crypto.CipherType) (SkynetTUSUpload, error)
 		GetUpload(ctx context.Context, id string) (SkynetTUSUpload, error)
 
 		io.Closer
