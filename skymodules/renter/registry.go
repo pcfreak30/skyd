@@ -365,7 +365,13 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 	} else if d.Milliseconds() > 200 {
 		span.SetTag("speed", "slow")
 	}
-	r.staticRegReadStats.AddDataPoint(d)
+
+	// TODO: This is a gross hotfix designed to temporarily fix a key problem,
+	// this is not a long term solution. The real solution will be in place next
+	// week (Chris is working on it), this is just to get us stable until then.
+	if d.Milliseconds() < 2000 {
+		r.staticRegReadStats.AddDataPoint(d)
+	}
 }
 
 // RegistryEntryHealth returns the health of a registry entry specified by the
