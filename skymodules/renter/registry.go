@@ -230,6 +230,7 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 	if len(bests) == 0 {
 		return
 	}
+	numGoodResps := len(goodResps)
 
 	// Sort the best responses by completion time.
 	sort.Slice(bests, func(i, j int) bool {
@@ -276,6 +277,7 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 	// Determine the secondBest response by asking all workers with valid responses
 	// again, one-by-one.
 	var secondBests []*jobReadRegistryResponse
+	var numSecondBestChecks int
 	var d2 time.Duration
 	for _, resp := range goodResps {
 		// Otherwise look up the same entry.
@@ -285,6 +287,7 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 			l.Printf("threadedAddResponseSet: worker that successfully retrieved a registry value failed to retrieve it again: %v", err)
 			continue
 		}
+		numSecondBestChecks++
 		if srv == nil {
 			l.Printf("threadedAddResponseSet: worker that successfully retrieved a non-nil registry value returned nil")
 			continue
@@ -318,10 +321,22 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 	// Get the duration of the best lookup.
 	d := best.staticCompleteTime.Sub(startTime)
 
+	// If we found a secondBest, use that instead.
+	span.LogKV("best", d.Milliseconds())
+	if secondBest != nil {
+		span.SetTag("secondbest", true)
+		span.LogKV("secondbest", d2.Milliseconds())
+		l.Printf("threadedAddResponseSet: replaced best with secondBest duration %v -> %v (revs: %v -> %v)", d, d2, secondBest.Revision, best.staticSignedRegistryValue.Revision)
+		d = d2
+	} else {
+		span.SetTag("secondbest", false)
+		l.Printf("threadedAddResponseSet: using best duration %v (secondBest: %v, nil: %v)", d, d2, secondBest == nil)
+	}
+
 	// If the duration of the best was very long, print some additional info.
 	if d > readRegistryStatsDebugThreshold {
 		// base msg
-		logStr := fmt.Sprintf("threadedAddResponseSet: WARN: best lookup on host %v took longer than %v seconds", best.staticWorker.staticHostPubKeyStr, readRegistryStatsDebugThreshold)
+		logStr := fmt.Sprintf("threadedAddResponseSet: WARN: lookup from host %v took longer than %v seconds", best.staticWorker.staticHostPubKeyStr, readRegistryStatsDebugThreshold)
 		srv := best.staticSignedRegistryValue
 		// Add revision
 		if srv != nil {
@@ -333,21 +348,11 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 		bestSRV := best.staticSignedRegistryValue
 		logStr += fmt.Sprintf(" - spk: %v - tweak: %v", bestSRV.PubKey.String(), bestSRV.Tweak.String())
 		// Add number of good/total responses.
-		logStr += fmt.Sprintf(" - goodResps: %v/%v", len(goodResps), len(resps))
+		logStr += fmt.Sprintf(" - goodResps before trim: %v/%v", numGoodResps, len(resps))
+		logStr += fmt.Sprintf(" - goodResps after trim: %v/%v", len(goodResps), len(resps))
+		logStr += fmt.Sprintf(" - secondBest checks: %v/%v", numSecondBestChecks, len(resps))
 		// Log string.
 		l.Print(logStr)
-	}
-
-	// If we found a secondBest, use that instead.
-	span.LogKV("best", d.Milliseconds())
-	if secondBest != nil {
-		span.SetTag("secondbest", true)
-		span.LogKV("secondbest", d2.Milliseconds())
-		l.Printf("threadedAddResponseSet: replaced best with secondBest duration %v -> %v (revs: %v -> %v)", d, d2, best.staticSignedRegistryValue.Revision, secondBest.Revision)
-		d = d2
-	} else {
-		span.SetTag("secondbest", false)
-		l.Printf("threadedAddResponseSet: using best duration %v (secondBest: %v, nil: %v)", d, d2, secondBest == nil)
 	}
 
 	// Sanity check duration is not zero.
