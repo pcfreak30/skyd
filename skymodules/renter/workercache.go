@@ -31,6 +31,7 @@ type (
 		staticHostVersion     string
 		staticRenterAllowance skymodules.Allowance
 		staticHostMuxAddress  string
+		staticMaliciousHost   bool
 		staticSynced          bool
 
 		staticLastUpdate time.Time
@@ -69,12 +70,21 @@ func (w *worker) managedUpdateCache() {
 		return
 	}
 
+	// Check if the host is potentially malicious.
+	malicious, err := w.staticRenter.staticHostDB.IsMalicious(host)
+	if err != nil {
+		w.staticRenter.staticLog.Printf("Worker %v could not update the cache, hostdb failed to check if host is malicious with error: %v, worker being killed", w.staticHostPubKeyStr, err)
+		w.managedKill()
+		atomic.StoreUint64(&w.atomicCacheUpdating, 0)
+		return
+	}
+
 	// Create the cache object.
 	newCache := &workerCache{
 		staticBlockHeight:     w.staticRenter.staticConsensusSet.Height(),
 		staticContractID:      renterContract.ID,
 		staticContractUtility: renterContract.Utility,
-		staticHostMuxAddress:  host.SiaMuxAddress(),
+		staticMaliciousHost:   malicious,
 		staticHostVersion:     host.Version,
 		staticRenterAllowance: w.staticRenter.staticHostContractor.Allowance(),
 		staticSynced:          w.staticRenter.staticConsensusSet.Synced(),

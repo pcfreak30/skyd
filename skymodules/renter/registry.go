@@ -17,14 +17,6 @@ import (
 	"go.sia.tech/siad/types"
 )
 
-const (
-	// bestWorkerIndexForResponseSet defines the rank of the worker we use
-	// for the metrics in threadedAddResponseSet. It means that out of all
-	// the workers that returned the best possible entry found on the
-	// network, we use the n-th fastest for the estimation.
-	bestWorkerIndexForResponseSet = 4 // 5th best worker
-)
-
 var (
 	// MaxRegistryReadTimeout is the default timeout used when reading from
 	// the registry.
@@ -200,7 +192,7 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 	}
 
 	// Find the fastest timing with the highest revision number.
-	var bests []*jobReadRegistryResponse
+	var best *jobReadRegistryResponse
 	var goodResps []*jobReadRegistryResponse
 	for _, resp := range resps {
 		if resp.staticErr != nil {
@@ -211,38 +203,10 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 			goodResps = append(goodResps, resp)
 		}
 		// Grab the fastest best response we got.
-		var currentBest *jobReadRegistryResponse
-		if len(bests) > 0 {
-			currentBest = bests[0]
-		}
-		if isBetter, sameRev := isBetterReadRegistryResponse(currentBest, resp); isBetter && !sameRev {
-			// If the new response is better, empty the slice of best
-			// responses since its going to be better than any of them.
-			bests = []*jobReadRegistryResponse{resp}
-		} else if sameRev {
-			// If it is not necessarily better but has the same
-			// revision, remember it.
-			bests = append(bests, resp)
+		if isBetter, _ := isBetterReadRegistryResponse(best, resp); isBetter {
+			best = resp
 		}
 	}
-
-	// No best response. Return early.
-	if len(bests) == 0 {
-		return
-	}
-
-	// Sort the best responses by completion time.
-	sort.Slice(bests, func(i, j int) bool {
-		return bests[i].staticCompleteTime.Before(bests[j].staticCompleteTime)
-	})
-
-	// Use the 5th best response for the metrics. If we don't have 5 best
-	// responses, use the last one.
-	bestIndex := len(bests) - 1
-	if bestIndex > bestWorkerIndexForResponseSet {
-		bestIndex = bestWorkerIndexForResponseSet
-	}
-	best := bests[bestIndex]
 
 	// Check if the best response got a value. If it doesn't, there is no need to
 	// continue. Trying the other responses in bests also won't work since they are
@@ -275,7 +239,7 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 
 	// Determine the secondBest response by asking all workers with valid responses
 	// again, one-by-one.
-	var secondBests []*jobReadRegistryResponse
+	var secondBest *jobReadRegistryResponse
 	var d2 time.Duration
 	for _, resp := range goodResps {
 		// Otherwise look up the same entry.
@@ -292,27 +256,9 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 		// If the revision is >= the best one, we are done.
 		if srv.Revision >= best.staticSignedRegistryValue.Revision {
 			d2 = resp.staticCompleteTime.Sub(startTime)
-			secondBests = append(secondBests, resp)
-		}
-		// Check if we got enough results.
-		if len(secondBests) > bestWorkerIndexForResponseSet+1 {
+			secondBest = resp
 			break
 		}
-	}
-
-	// Sort the secondBests by completion time and get the 5th best
-	// secondBest.
-	sort.Slice(secondBests, func(i, j int) bool {
-		return secondBests[i].staticCompleteTime.Before(secondBests[j].staticCompleteTime)
-	})
-	var secondBest *skymodules.RegistryEntry
-	if len(secondBests) > 0 {
-		secondBestIndex := len(secondBests) - 1
-		if secondBestIndex > bestWorkerIndexForResponseSet {
-			secondBestIndex = bestWorkerIndexForResponseSet
-		}
-		secondBest = secondBests[secondBestIndex].staticSignedRegistryValue
-		d2 = secondBests[secondBestIndex].staticCompleteTime.Sub(startTime)
 	}
 
 	// Get the duration of the best lookup.
@@ -343,7 +289,7 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 	if secondBest != nil {
 		span.SetTag("secondbest", true)
 		span.LogKV("secondbest", d2.Milliseconds())
-		l.Printf("threadedAddResponseSet: replaced best with secondBest duration %v -> %v (revs: %v -> %v)", d, d2, best.staticSignedRegistryValue.Revision, secondBest.Revision)
+		l.Printf("threadedAddResponseSet: replaced best with secondBest duration %v -> %v (revs: %v -> %v)", d, d2, best.staticSignedRegistryValue.Revision, secondBest.staticSignedRegistryValue.Revision)
 		d = d2
 	} else {
 		span.SetTag("secondbest", false)
@@ -365,7 +311,7 @@ func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentrac
 	} else if d.Milliseconds() > 200 {
 		span.SetTag("speed", "slow")
 	}
-	r.staticRegReadStats.AddDataPoint(d)
+	r.staticRegistryReadStats.AddDataPoint(d)
 }
 
 // RegistryEntryHealth returns the health of a registry entry specified by the
@@ -471,7 +417,7 @@ func (r *Renter) managedRegistryEntryHealth(ctx context.Context, rid modules.Reg
 	// Specify a context for the background jobs. It will be closed as soon as
 	// threadedAddResponseSet is done.
 	backgroundCtx, backgroundCancel := context.WithCancel(r.tg.StopCtx())
-	responseSet := r.managedLaunchReadRegistryWorkers(backgroundCtx, span, rid, spk, tweak)
+	responseSet, _ := r.managedLaunchReadRegistryWorkers(backgroundCtx, span, rid, spk, tweak)
 
 	// If there are no workers remaining, fail early.
 	if responseSet.left == 0 {
@@ -564,8 +510,8 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	// datapoints later.
 	startTime := time.Now()
 
-	responseSet := r.managedLaunchReadRegistryWorkers(backgroundCtx, span, rid, spk, tweak)
-	numWorkers := responseSet.left
+	responseSet, launchedWorkers := r.managedLaunchReadRegistryWorkers(backgroundCtx, span, rid, spk, tweak)
+	numWorkers := len(launchedWorkers)
 
 	// If there are no workers remaining, fail early.
 	if numWorkers == 0 {
@@ -586,19 +532,19 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	}()
 
 	// Use the p999 of the registry read stats to determine the timeout.
-	nines := r.staticRegReadStats.Percentiles()
-	estimate := nines[0][2]
-	ctx, cancel := context.WithTimeout(ctx, estimate)
-	defer cancel()
+	workersToWaitFor := regReadCutoffWorkers(launchedWorkers)
 
 	var best *jobReadRegistryResponse
 	responses := 0
-	for responseSet.responsesLeft() > 0 {
+	for responseSet.responsesLeft() > 0 && len(workersToWaitFor) > 0 {
 		// Check cancel condition and block for more responses.
 		resp := responseSet.next(ctx)
 		if resp == nil {
 			break // context triggered
 		}
+
+		// Remove worker from the map.
+		delete(workersToWaitFor, resp.staticWorker.staticHostPubKeyStr)
 
 		// Increment responses.
 		responses++
@@ -632,7 +578,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 // managedLaunchReadRegistryWorkers launches read registry jobs on all available
 // workers and returns a read response set which can be used to wait for the
 // workers' responses.
-func (r *Renter) managedLaunchReadRegistryWorkers(ctx context.Context, span opentracing.Span, rid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) *readResponseSet {
+func (r *Renter) managedLaunchReadRegistryWorkers(ctx context.Context, span opentracing.Span, rid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) (*readResponseSet, []*worker) {
 	// Get the full list of workers and create a channel to receive all of the
 	// results from the workers. The channel is buffered with one slot per
 	// worker, so that the workers do not have to block when returning the
@@ -668,6 +614,8 @@ func (r *Renter) managedLaunchReadRegistryWorkers(ctx context.Context, span open
 		workers[numRegistryWorkers] = worker
 		numRegistryWorkers++
 	}
+	workers = workers[:numRegistryWorkers]
+
 	// If specified, increment numWorkers. This will cause the loop to never
 	// exit without any of the context being closed since the response set won't
 	// be able to read the last response.
@@ -675,7 +623,7 @@ func (r *Renter) managedLaunchReadRegistryWorkers(ctx context.Context, span open
 		numRegistryWorkers++
 	}
 
-	return newReadResponseSet(staticResponseChan, numRegistryWorkers)
+	return newReadResponseSet(staticResponseChan, numRegistryWorkers), workers
 }
 
 // managedUpdateRegistry updates the registries on all workers with the given
@@ -917,4 +865,31 @@ func (r *Renter) threadedHandleRegistryRepairs(ctx context.Context, parentSpan o
 	if err != nil {
 		r.staticLog.Debugln("threadedHandleRegistryRepairs: failed to update registry", err)
 	}
+}
+
+// regReadCutoffWorkers returns the workers to wait for before considering the
+// result good enough amongst the provided launched workers.
+func regReadCutoffWorkers(workers []*worker) map[string]*worker {
+	// Filter malicious hosts.
+	i := 0
+	for _, w := range workers {
+		if w.staticCache().staticMaliciousHost {
+			continue
+		}
+		workers[i] = w
+		i++
+	}
+	// Sort workers by their estimate.
+	sort.Slice(workers, func(i, j int) bool {
+		return workers[i].ReadRegCutoffEstimate() < workers[j].ReadRegCutoffEstimate()
+	})
+	// Drop slowest 50%.
+	workers = workers[:len(workers)/2+len(workers)%2]
+
+	// Put remaining ones in map.
+	remaining := make(map[string]*worker, len(workers))
+	for _, w := range workers {
+		remaining[w.staticHostPubKeyStr] = w
+	}
+	return remaining
 }
