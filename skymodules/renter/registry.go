@@ -113,6 +113,10 @@ var (
 		Standard: 2 * time.Second,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
+
+	// minAwaitedCutoffWorkerPercentage is the percentage of cutoff workers
+	// we wait for before cutting of a registry entry lookup.
+	minAwaitedCutoffWorkersPercentage = 0.8 // 80%
 )
 
 // readResponseSet is a helper type which allows for returning a set of ongoing
@@ -533,7 +537,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 
 	// Get the cutoff workers and wait for 80% of them to finish.
 	workersToWaitFor := regReadCutoffWorkers(launchedWorkers)
-	cutoff := int(float64(len(workersToWaitFor)) * 0.2)
+	cutoff := int(float64(len(workersToWaitFor)) * (1.0 - minAwaitedCutoffWorkersPercentage))
 	fmt.Println("cutoff", cutoff)
 
 	var best *jobReadRegistryResponse
