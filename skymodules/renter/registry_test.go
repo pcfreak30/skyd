@@ -7,8 +7,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
@@ -415,6 +417,53 @@ func TestIsBetterReadRegistryResponse(t *testing.T) {
 		}
 		if equal != test.equal {
 			t.Errorf("%v: wrong result expected %v but was %v", i, test.result, result)
+		}
+	}
+}
+
+// TestRegReadCutoffWorkers is a unit test for regReadCutoffWorkers.
+func TestRegReadCutoffWorkers(t *testing.T) {
+	t.Parallel()
+
+	// Create 3 workers. A faster one, a slower one and a malicious one.
+	wOneSecond := &worker{
+		atomicCache: unsafe.Pointer(&workerCache{
+			staticMaliciousHost: false,
+		}),
+		staticJobReadRegistryDT: skymodules.NewDistributionTrackerStandard(),
+	}
+	wOneSecond.staticJobReadRegistryDT.AddDataPoint(time.Second)
+
+	wTwoSeconds := &worker{
+		atomicCache: unsafe.Pointer(&workerCache{
+			staticMaliciousHost: false,
+		}),
+		staticJobReadRegistryDT: skymodules.NewDistributionTrackerStandard(),
+	}
+	wTwoSeconds.staticJobReadRegistryDT.AddDataPoint(2 * time.Second)
+
+	wMalicious := &worker{
+		atomicCache: unsafe.Pointer(&workerCache{
+			staticMaliciousHost: false,
+		}),
+		staticJobReadRegistryDT: skymodules.NewDistributionTrackerStandard(),
+	}
+	wMalicious.staticJobReadRegistryDT.AddDataPoint(time.Millisecond)
+
+	// Test result. There should only be 1 worker in the result. The
+	// malicious worker was trimmed, then the slow one was dropped so only
+	// the fast one remains.
+	for i := 0; i < 3; i++ {
+		workers := []*worker{wTwoSeconds, wMalicious, wOneSecond}
+		fastrand.Shuffle(len(workers), func(i, j int) {
+			workers[i], workers[j] = workers[j], workers[i]
+		})
+		result := regReadCutoffWorkers(workers)
+		if len(result) != 1 {
+			t.Fatal("wrong length", len(result))
+		}
+		if _, ok := result[wOneSecond.staticHostPubKeyStr]; !ok {
+			t.Fatal("wrong worker remaining")
 		}
 	}
 }
