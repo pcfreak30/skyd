@@ -260,22 +260,15 @@ func (r *Renter) managedRegistryEntryHealth(ctx context.Context, rid modules.Reg
 	defer r.staticRegistryMemoryManager.Return(readRegistryMemory)
 
 	// Specify a context for the background jobs. It will be closed as soon as
-	// threadedAddResponseSet is done.
+	// threadedHandleRegistryRepairs is done.
 	backgroundCtx, backgroundCancel := context.WithCancel(r.tg.StopCtx())
+	defer backgroundCancel()
 	responseSet, _ := r.managedLaunchReadRegistryWorkers(backgroundCtx, span, rid, spk, tweak)
 
 	// If there are no workers remaining, fail early.
 	if responseSet.left == 0 {
-		backgroundCancel()
 		return skymodules.RegistryEntryHealth{}, errors.AddContext(skymodules.ErrNotEnoughWorkersInWorkerPool, "cannot perform ReadRegistry")
 	}
-
-	// Add the response set to the stats after this method is done.
-	defer func() {
-		_ = r.tg.Launch(func() {
-			backgroundCancel()
-		})
-	}()
 
 	// Collect as many responses as possible before the ctx is closed.
 	var best *jobReadRegistryResponse
@@ -353,7 +346,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	defer r.staticRegistryMemoryManager.Return(readRegistryMemory)
 
 	// Specify a context for the background jobs. It will be closed as soon as
-	// threadedAddResponseSet is done.
+	// threadedHandleRegistryRepairs is done.
 	backgroundCtx, backgroundCancel := context.WithCancel(r.tg.StopCtx())
 
 	responseSet, launchedWorkers := r.managedLaunchReadRegistryWorkers(backgroundCtx, span, rid, spk, tweak)
@@ -377,6 +370,13 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	// Get the cutoff workers and wait for 80% of them to finish.
 	workersToWaitFor := regReadCutoffWorkers(launchedWorkers)
 	cutoff := int(float64(len(workersToWaitFor)) * (1.0 - minAwaitedCutoffWorkersPercentage))
+
+	// Prevent reaching the cutoff point when ReadRegistryBlocking is
+	// injected as a dependency.
+	if r.staticDeps.Disrupt("ReadRegistryBlocking") {
+		workersToWaitFor["extra"] = &worker{}
+		cutoff = 0
+	}
 
 	var best *jobReadRegistryResponse
 	responses := 0
