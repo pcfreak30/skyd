@@ -84,6 +84,7 @@ func (w *worker) managedUpdateCache() {
 		staticBlockHeight:     w.staticRenter.staticConsensusSet.Height(),
 		staticContractID:      renterContract.ID,
 		staticContractUtility: renterContract.Utility,
+		staticHostMuxAddress:  host.SiaMuxAddress(),
 		staticMaliciousHost:   malicious,
 		staticHostVersion:     host.Version,
 		staticRenterAllowance: w.staticRenter.staticHostContractor.Allowance(),
