@@ -538,7 +538,6 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	// Get the cutoff workers and wait for 80% of them to finish.
 	workersToWaitFor := regReadCutoffWorkers(launchedWorkers)
 	cutoff := int(float64(len(workersToWaitFor)) * (1.0 - minAwaitedCutoffWorkersPercentage))
-	fmt.Println("cutoff", cutoff)
 
 	var best *jobReadRegistryResponse
 	responses := 0
@@ -548,7 +547,6 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 		if resp == nil {
 			break // context triggered
 		}
-		fmt.Println("workers to wait for", len(workersToWaitFor))
 
 		// Remove worker from the map.
 		delete(workersToWaitFor, resp.staticWorker.staticHostPubKeyStr)
