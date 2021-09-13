@@ -13,7 +13,6 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
 )
 
@@ -100,11 +99,6 @@ var (
 	// successfully.
 	updateRegistryBackgroundTimeout = time.Minute
 
-	// readRegistryStatsDebugThreshold is a threshold for the best lookup's
-	// timing. If the timing is above the threshold, we log some additional
-	// information to figure out why it took that long.
-	readRegistryStatsDebugThreshold = 10 * time.Second
-
 	// readRegistrySeed is the first duration added to the registry stats after
 	// creating it.
 	// NOTE: This needs to be <= readRegistryBackgroundTimeout
@@ -167,155 +161,6 @@ func (rrs *readResponseSet) next(ctx context.Context) *jobReadRegistryResponse {
 // Next.
 func (rrs *readResponseSet) responsesLeft() int {
 	return rrs.left
-}
-
-// threadedAddResponseSet adds a response set to the stats. This includes
-// waiting for all responses to arrive and then identifying the best one by
-// choosing the fastest one with the highest revision. After that it works its
-// way from the fastest to the slowest worker and asks them for a revision
-// again until a revision is found that is >= the best one. This is referred to
-// as secondBest. If we find a valid secondBest we use that timing, otherwise we
-// stick to the best. That way we get the fastest response for the best entry
-// even if an update caused a slow worker to be considered best at first.
-func (r *Renter) threadedAddResponseSet(ctx context.Context, parentSpan opentracing.Span, startTime time.Time, rrs *readResponseSet, l *persist.Logger) {
-	if err := r.tg.Add(); err != nil {
-		return
-	}
-	defer r.tg.Done()
-
-	responseCtx, responseCancel := context.WithTimeout(ctx, ReadRegistryBackgroundTimeout)
-	defer responseCancel()
-
-	span := opentracing.StartSpan("threadedAddResponseSet", opentracing.ChildOf(parentSpan.Context()))
-	defer span.Finish()
-
-	// Get all responses.
-	resps := rrs.collect(responseCtx)
-	if resps == nil {
-		return // nothing to do
-	}
-
-	// Find the fastest timing with the highest revision number.
-	var best *jobReadRegistryResponse
-	var goodResps []*jobReadRegistryResponse
-	for _, resp := range resps {
-		if resp.staticErr != nil {
-			continue
-		}
-		// Remember all responses that returned a valid entry.
-		if resp.staticSignedRegistryValue != nil {
-			goodResps = append(goodResps, resp)
-		}
-		// Grab the fastest best response we got.
-		if isBetter, _ := isBetterReadRegistryResponse(best, resp); isBetter {
-			best = resp
-		}
-	}
-
-	// Check if the best response got a value. If it doesn't, there is no need to
-	// continue. Trying the other responses in bests also won't work since they are
-	// all equally as good.
-	if best == nil || best.staticSignedRegistryValue == nil {
-		return
-	}
-	span.LogKV("revision", best.staticSignedRegistryValue.Revision)
-
-	// Drop any responses from goodResps that were slower or equal to best
-	// and any that were previously ranked better than best in bests.
-	for i := 0; i < len(goodResps); i++ {
-		if goodResps[i].staticCompleteTime.Before(best.staticCompleteTime) {
-			continue // nothing to do for faster response
-		}
-		// Replace element to remove with the last one and drop it.
-		goodResps[i] = goodResps[len(goodResps)-1]
-		goodResps = goodResps[:len(goodResps)-1]
-		i--
-	}
-
-	// Sort the good responses by completion time.
-	sort.Slice(goodResps, func(i, j int) bool {
-		return goodResps[i].staticCompleteTime.Before(goodResps[j].staticCompleteTime)
-	})
-
-	// Limit the time we spend on finding the second best response.
-	secondBestCtx, secondBestCancel := context.WithTimeout(ctx, ReadRegistryBackgroundTimeout)
-	defer secondBestCancel()
-
-	// Determine the secondBest response by asking all workers with valid responses
-	// again, one-by-one.
-	var secondBest *jobReadRegistryResponse
-	var d2 time.Duration
-	for _, resp := range goodResps {
-		// Otherwise look up the same entry.
-		srv, err := resp.staticWorker.ReadRegistry(secondBestCtx, span, resp.staticSignedRegistryValue.PubKey, resp.staticSignedRegistryValue.Tweak)
-		// Ignore responses with errors and without revision.
-		if err != nil {
-			l.Printf("threadedAddResponseSet: worker that successfully retrieved a registry value failed to retrieve it again: %v", err)
-			continue
-		}
-		if srv == nil {
-			l.Printf("threadedAddResponseSet: worker that successfully retrieved a non-nil registry value returned nil")
-			continue
-		}
-		// If the revision is >= the best one, we are done.
-		if srv.Revision >= best.staticSignedRegistryValue.Revision {
-			d2 = resp.staticCompleteTime.Sub(startTime)
-			secondBest = resp
-			break
-		}
-	}
-
-	// Get the duration of the best lookup.
-	d := best.staticCompleteTime.Sub(startTime)
-
-	// If the duration of the best was very long, print some additional info.
-	if d > readRegistryStatsDebugThreshold {
-		// base msg
-		logStr := fmt.Sprintf("threadedAddResponseSet: WARN: best lookup on host %v took longer than %v seconds", best.staticWorker.staticHostPubKeyStr, readRegistryStatsDebugThreshold)
-		srv := best.staticSignedRegistryValue
-		// Add revision
-		if srv != nil {
-			logStr += fmt.Sprintf(" - revision: %v", srv.Revision)
-		}
-		// Add eid
-		logStr += fmt.Sprintf(" - eid: %v", best.staticEID)
-		// Add spk and tweak
-		bestSRV := best.staticSignedRegistryValue
-		logStr += fmt.Sprintf(" - spk: %v - tweak: %v", bestSRV.PubKey.String(), bestSRV.Tweak.String())
-		// Add number of good/total responses.
-		logStr += fmt.Sprintf(" - goodResps: %v/%v", len(goodResps), len(resps))
-		// Log string.
-		l.Print(logStr)
-	}
-
-	// If we found a secondBest, use that instead.
-	span.LogKV("best", d.Milliseconds())
-	if secondBest != nil {
-		span.SetTag("secondbest", true)
-		span.LogKV("secondbest", d2.Milliseconds())
-		l.Printf("threadedAddResponseSet: replaced best with secondBest duration %v -> %v (revs: %v -> %v)", d, d2, best.staticSignedRegistryValue.Revision, secondBest.staticSignedRegistryValue.Revision)
-		d = d2
-	} else {
-		span.SetTag("secondbest", false)
-		l.Printf("threadedAddResponseSet: using best duration %v (secondBest: %v, nil: %v)", d, d2, secondBest == nil)
-	}
-
-	// Sanity check duration is not zero.
-	if d == 0 {
-		err := errors.New("zero duration was passed to AddDatum")
-		build.Critical(err)
-		return
-	}
-
-	// The error is ignored since it only returns an error if the measurement is
-	// outside of the 5 minute bounds the stats were created with.
-	span.LogKV("datapoint", d.Milliseconds())
-	if d.Milliseconds() > 2000 {
-		span.SetTag("speed", "vslow")
-	} else if d.Milliseconds() > 200 {
-		span.SetTag("speed", "slow")
-	}
-	r.staticRegistryReadStats.AddDataPoint(d)
 }
 
 // RegistryEntryHealth returns the health of a registry entry specified by the
@@ -414,10 +259,6 @@ func (r *Renter) managedRegistryEntryHealth(ctx context.Context, rid modules.Reg
 	}
 	defer r.staticRegistryMemoryManager.Return(readRegistryMemory)
 
-	// Get the start time before launching the workers to avoid negative
-	// datapoints later.
-	startTime := time.Now()
-
 	// Specify a context for the background jobs. It will be closed as soon as
 	// threadedAddResponseSet is done.
 	backgroundCtx, backgroundCancel := context.WithCancel(r.tg.StopCtx())
@@ -432,7 +273,6 @@ func (r *Renter) managedRegistryEntryHealth(ctx context.Context, rid modules.Reg
 	// Add the response set to the stats after this method is done.
 	defer func() {
 		_ = r.tg.Launch(func() {
-			r.threadedAddResponseSet(r.tg.StopCtx(), span, startTime, responseSet, r.staticLog)
 			backgroundCancel()
 		})
 	}()
@@ -491,6 +331,12 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	span := tracer.StartSpan("managedReadRegistry")
 	defer span.Finish()
 
+	// Measure the time it takes to fetch the entry.
+	startTime := time.Now()
+	defer func() {
+		r.staticRegistryReadStats.AddDataPoint(time.Since(startTime))
+	}()
+
 	// Log some info about this trace.
 	span.LogKV("RID", hex.EncodeToString(rid[:]))
 	if spk != nil && tweak != nil {
@@ -510,10 +356,6 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	// threadedAddResponseSet is done.
 	backgroundCtx, backgroundCancel := context.WithCancel(r.tg.StopCtx())
 
-	// Get the start time before launching the workers to avoid negative
-	// datapoints later.
-	startTime := time.Now()
-
 	responseSet, launchedWorkers := r.managedLaunchReadRegistryWorkers(backgroundCtx, span, rid, spk, tweak)
 	numWorkers := len(launchedWorkers)
 
@@ -526,9 +368,6 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	defer func() {
 		_ = r.tg.Launch(func() {
 			defer backgroundCancel()
-
-			// Add the response set to the stats after this method is done.
-			r.threadedAddResponseSet(r.tg.StopCtx(), span, startTime, responseSet, r.staticLog)
 
 			// Handle registry repairs.
 			r.threadedHandleRegistryRepairs(r.tg.StopCtx(), span, responseSet)
