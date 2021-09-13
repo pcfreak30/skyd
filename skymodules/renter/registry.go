@@ -531,12 +531,14 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 		})
 	}()
 
-	// Use the p999 of the registry read stats to determine the timeout.
+	// Get the cutoff workers and wait for 80% of them to finish.
 	workersToWaitFor := regReadCutoffWorkers(launchedWorkers)
+	cutoff := int(float64(len(workersToWaitFor)) * 0.2)
+	fmt.Println("cutoff", cutoff)
 
 	var best *jobReadRegistryResponse
 	responses := 0
-	for responseSet.responsesLeft() > 0 && len(workersToWaitFor) > 0 {
+	for responseSet.responsesLeft() > 0 && len(workersToWaitFor) > cutoff {
 		// Check cancel condition and block for more responses.
 		resp := responseSet.next(ctx)
 		if resp == nil {
