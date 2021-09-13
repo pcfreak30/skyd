@@ -91,8 +91,10 @@ type (
 		// time the available pieces were last updated. This enables counting
 		// the hopeful pieces without introducing a race condition in the
 		// finished check.
-		availablePieces            [][]*pieceDownload
-		availablePiecesByWorker    map[string][]uint64
+		availablePieces         [][]*pieceDownload
+		availablePiecesByWorker map[string][]uint64
+		launchedPiecesByWorker  map[string]map[uint64]time.Time
+
 		workersConsideredIndex     int
 		unresolvedWorkersRemaining int
 
@@ -242,6 +244,60 @@ func (pdc *projectDownloadChunk) updateAvailablePieces() {
 	pdc.unresolvedWorkersRemaining = len(ws.unresolvedWorkers)
 }
 
+// updateAvailablePiecesWithResult will update the available piece for the given
+// worker and piece index with the download error.
+func (pdc *projectDownloadChunk) updateAvailablePiecesWithResult(w *worker, pieceIndex uint64, downloadErr error) {
+	// ensure available pieces is up to date
+	pdc.updateAvailablePieces()
+
+	// update the available piece with the result of the download
+	pieceFound := false
+	for i := 0; i < len(pdc.availablePieces[pieceIndex]); i++ {
+		if pdc.availablePieces[pieceIndex][i].worker.staticHostPubKeyStr == w.staticHostPubKeyStr {
+			// sanity check we are marking only a single piece
+			if pieceFound {
+				build.Critical("the list of available pieces contains duplicates.")
+			}
+			pieceFound = true
+			pdc.availablePieces[pieceIndex][i].completed = true
+			pdc.availablePieces[pieceIndex][i].downloadErr = downloadErr
+		}
+	}
+
+	// sanity we marked the piece is complete
+	// sanity we marked the piece is complete
+	if !pieceFound {
+		msg := "available pieces:\n"
+		for index, av := range pdc.availablePieces {
+			for _, pd := range av {
+				msg += fmt.Sprintf("piece at index %v has worker %v\n", index, pd.worker.staticHostPubKeyStr)
+			}
+		}
+
+		pdc.updateAvailablePieces()
+		msg += "available pieces NEW:\n"
+		for index, av := range pdc.availablePieces {
+			for _, pd := range av {
+				msg += fmt.Sprintf("piece at index %v has worker %v\n", index, pd.worker.staticHostPubKeyStr)
+			}
+		}
+
+		msg += "\nlaunched workers:\n"
+		for _, lw := range pdc.launchedWorkers {
+			msg += fmt.Sprintf("piece at index %v has launched worker %v\n", lw.staticPieceIndex, lw.staticWorker.staticHostPubKeyStr)
+		}
+
+		msg += "\nresolved workers:\n"
+		pdc.workerState.mu.Lock()
+		for _, rw := range pdc.workerState.resolvedWorkers {
+			msg += fmt.Sprintf("resolved worker %v has pieces%v static pieces %v\n", rw.worker.staticHostPubKeyStr, rw.pieceIndices, rw.staticPieceIndices)
+		}
+		pdc.workerState.mu.Unlock()
+
+		build.Critical(fmt.Sprintf("CRITICAL:\ncould not mark piece %v as complete for worker %v with error %v, the piece was not found in he list of available pieces, piece considered %v, context\n\n%v", pieceIndex, w.staticHostPubKeyStr, downloadErr, pdc.workersConsideredIndex, msg))
+	}
+}
+
 // updateWorkerHeap updates a worker heap by going through all workers and
 // updating them depending on whether they are resolved or not. This does not
 // apply any gouging or maintenance checks again since we don't expect a
@@ -387,19 +443,7 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 
 	// Check whether the job failed.
 	if jrr.staticErr != nil {
-		// The download failed, update the pdc available pieces to reflect the
-		// failure.
-		pieceFound := false
-		for i := 0; i < len(pdc.availablePieces[pieceIndex]); i++ {
-			if pdc.availablePieces[pieceIndex][i].worker.staticHostPubKeyStr == worker.staticHostPubKeyStr {
-				if pieceFound {
-					build.Critical("The list of available pieces contains duplicates.") // sanity check
-				}
-				pieceFound = true
-				pdc.availablePieces[pieceIndex][i].completed = true
-				pdc.availablePieces[pieceIndex][i].downloadErr = jrr.staticErr
-			}
-		}
+		pdc.updateAvailablePiecesWithResult(worker, pieceIndex, jrr.staticErr)
 		return
 	}
 
@@ -415,21 +459,8 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 	pdc.dataPieces[pieceIndex] = jrr.staticData
 	jrr.staticData = nil // Just in case there's a reference to the job response elsewhere.
 
-	pieceFound := false
-	for i := 0; i < len(pdc.availablePieces[pieceIndex]); i++ {
-		if pdc.availablePieces[pieceIndex][i].worker.staticHostPubKeyStr == worker.staticHostPubKeyStr {
-			if pieceFound {
-				build.Critical("The list of available pieces contains duplicates.") // sanity check
-			}
-			pieceFound = true
-			pdc.availablePieces[pieceIndex][i].completed = true
-		}
-	}
-
-	// TODO: should we add this check?
-	if !pieceFound {
-		fmt.Println("CRITICAL: COULD NOT MARK PIECE AS COMPLETED")
-	}
+	// Update the available pieces with the download result
+	pdc.updateAvailablePiecesWithResult(worker, pieceIndex, nil)
 }
 
 // fail will send an error down the download response channel.
@@ -560,9 +591,8 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 
 	// Ensure that there are enough pieces that could potentially become
 	// completed to finish the download.
-	fmt.Printf("completed %v hopeful %v minpieces %v", completedPieces, hopefulPieces, ec.MinPieces())
 	if hopefulPieces < ec.MinPieces() {
-		return false, errNotEnoughPieces
+		return false, errors.Compose(ErrRootNotFound, errors.AddContext(errNotEnoughPieces, fmt.Sprintf("%v < %v", hopefulPieces, ec.MinPieces())))
 	}
 	return false, nil
 }
@@ -581,9 +611,10 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 	}
 
 	// Log the event.
+	worker := w.staticHostPubKeyStr
 	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
 		span.LogKV(
-			"launchWorker", w.staticHostPubKeyStr,
+			"launchWorker", worker,
 			"overdriveWorker", isOverdrive,
 		)
 	}
@@ -606,6 +637,12 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 	// Submit the job.
 	expectedCompleteTime, added := jrq.callAddWithEstimate(jrs)
 
+	// Track the launched piece
+	if _, exists := pdc.launchedPiecesByWorker[worker]; !exists {
+		pdc.launchedPiecesByWorker[worker] = make(map[uint64]time.Time)
+	}
+	pdc.launchedPiecesByWorker[worker][pieceIndex] = time.Now()
+
 	// Track the launched worker
 	if added {
 		pdc.launchedWorkers = append(pdc.launchedWorkers, &launchedWorkerInfo{
@@ -622,16 +659,14 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 	}
 
 	// Update the status of the piece that was launched. 'launched' should be
-	// set to 'true'. If the launch failed, 'failed' should be set to 'true'. If
-	// the launch succeeded, the expected completion time of the job should be
-	// set.
+	// set to 'true'.
 	//
 	// NOTE: We don't break out of the loop when we find a piece/worker
 	// match. If all is going well, each worker should appear at most once
 	// in this piece, but for the sake of defensive programming we check all
 	// elements anyway.
 	for _, pieceDownload := range pdc.availablePieces[pieceIndex] {
-		if w.staticHostPubKeyStr == pieceDownload.worker.staticHostPubKeyStr {
+		if worker == pieceDownload.worker.staticHostPubKeyStr {
 			pieceDownload.launched = true
 			if added {
 				pieceDownload.expectedCompleteTime = expectedCompleteTime

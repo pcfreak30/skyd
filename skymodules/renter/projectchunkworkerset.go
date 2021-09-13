@@ -85,9 +85,10 @@ type pcwsUnresolvedWorker struct {
 // at that index. There is also an error field that will be set in the event an
 // error occurred while performing the HasSector query.
 type pcwsWorkerResponse struct {
-	worker       *worker
-	pieceIndices []uint64
-	err          error
+	worker             *worker
+	pieceIndices       []uint64
+	staticPieceIndices []uint64
+	err                error
 }
 
 // pcwsWorkerState contains the worker state for a single thread that is
@@ -314,8 +315,9 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	// Add this worker to the set of resolved workers (even if there are no
 	// indices that the worker can fetch).
 	ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
-		worker:       w,
-		pieceIndices: indices,
+		worker:             w,
+		pieceIndices:       indices,
+		staticPieceIndices: append([]uint64{}, indices...),
 	})
 }
 
@@ -497,7 +499,6 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 // will select those workers only if the additional expense of using those
 // workers is less than 100 * pricePerMS.
 func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePerMS types.Currency, offset, length uint64, skipRecovery, lowPrio bool) (chan *downloadResponse, error) {
-	fmt.Println("MANAGED DOWNLOAD", offset, length)
 	// Potentially force a timeout via a disrupt for testing.
 	if pcws.staticRenter.staticDeps.Disrupt("timeoutProjectDownloadByRoot") {
 		return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
@@ -578,6 +579,7 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 
 		availablePieces:         make([][]*pieceDownload, ec.NumPieces()),
 		availablePiecesByWorker: make(map[string][]uint64),
+		launchedPiecesByWorker:  make(map[string]map[uint64]time.Time),
 		dataPieces:              make([][]byte, ec.NumPieces()),
 
 		staticSkipRecovery: skipRecovery,
@@ -594,7 +596,7 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	pdc.launchTime = time.Now()
 
 	// Launch the workers in a separate go routine
-	go pdc.launchWorkers()
+	go pdc.threadedLaunchWorkers()
 
 	return pdc.downloadResponseChan, nil
 }

@@ -1,11 +1,13 @@
 package renter
 
 import (
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/types"
@@ -19,6 +21,7 @@ type (
 	// downloadWorker is an interface implemented by both the individual and
 	// chimera workers that represents a worker that can be used for downloads.
 	downloadWorker interface {
+
 		// cost returns the expected job cost for downloading a piece of data
 		// with given length from the worker. If the worker has already been
 		// launched, its cost will be zero.
@@ -29,14 +32,11 @@ type (
 		// of time since it was launched.
 		distribution() *skymodules.Distribution
 
-		// getPieceForDownload returns the piece to download next for this
-		// worker, along with the piece index we return whether or not this is a
-		// chimera worker
-		getPieceForDownload() (uint64, bool)
+		// getPieceForDownload returns the piece to download next
+		getPieceForDownload() uint64
 
-		// identifier returns a string identifying this download worker, note
-		// that this string is not unique as all chimera workers will be labeled
-		// the same
+		// identifier returns a unique identifier for the download worker, this
+		// identifier can be used as a key when mapping the download worker
 		identifier() string
 
 		// markPieceForDownload allows specifying what piece to download for
@@ -88,6 +88,9 @@ type (
 		// staticPieceIndices contains a list of piece indices, for a chimera
 		// worker this will be an array containing every piece index
 		staticPieceIndices []uint64
+
+		// staticUID uniquely identifies the chimera worker
+		staticUID [8]byte
 	}
 
 	// individualWorker is a struct that represents a single worker object, both
@@ -106,9 +109,12 @@ type (
 		// in the worker are not selected for duplicate piece indices.
 		currentPiece uint64
 
-		staticLookupDistribution *skymodules.Distribution
-		staticReadDistribution   *skymodules.Distribution
-		staticWorker             *worker
+		// staticUID uniquely identifies the chimera worker
+		staticUID [8]byte
+
+		staticExpectedResolveTime time.Time
+		staticReadDistribution    *skymodules.Distribution
+		staticWorker              *worker
 	}
 
 	// workerSet is a collection of workers that may or may not have been
@@ -127,16 +133,10 @@ type (
 	coinflips []float64
 )
 
-// identifier returns a string that identiefies the worker, in the case of an
-// individual worker it's the short string version of the worker's host pubkey
-func (iw *individualWorker) identifier() string {
-	return iw.staticWorker.staticHostPubKey.ShortString()
-}
-
-// identifier returns a string that identifies the worker, in the case of a
-// chimera worker it simply returns "chimera" and is thus not unique
-func (cw *chimeraWorker) identifier() string {
-	return "chimera"
+// resolved returns whether this individual worker is a resolved worker or not,
+// which is the case if it's resolve chance is exactly 1.
+func (iw *individualWorker) resolved() bool {
+	return iw.resolveChance == 1
 }
 
 // TODO: remove me (debugging)
@@ -159,6 +159,16 @@ func (cw *chimeraWorker) launched() bool {
 	return false
 }
 
+// TODO: remove me (debugging)
+func (iw *individualWorker) identifier() string {
+	return hex.EncodeToString(iw.staticUID[:])
+}
+
+// TODO: remove me (debugging)
+func (cw *chimeraWorker) identifier() string {
+	return hex.EncodeToString(cw.staticUID[:])
+}
+
 // markPieceForDownload takes a piece index and marks it as the piece to
 // download next for this worker.
 func (iw *individualWorker) markPieceForDownload(pieceIndex uint64) {
@@ -167,23 +177,22 @@ func (iw *individualWorker) markPieceForDownload(pieceIndex uint64) {
 
 // markPieceForDownload takes a piece index and marks it as the piece to
 // download for this worker. In the case of a chimera worker this method is
-// essentially a co-op since chimera workers are never launched
+// essentially a no-op since chimera workers are never launched
 func (cw *chimeraWorker) markPieceForDownload(pieceIndex uint64) {
 	// this is a no-op
 }
 
-// getPieceForDownload returns the piece to download for this worker alongside a
-// boolean that indicates whether it's a chimera worker or not.
-func (iw *individualWorker) getPieceForDownload() (uint64, bool) {
-	return iw.currentPiece, false
+// getPieceForDownload returns the piece to download next
+func (iw *individualWorker) getPieceForDownload() uint64 {
+	return iw.currentPiece
 }
 
-// getPieceForDownload returns the piece to download for this worker alongside a
-// boolean that indicates whether it's a chimera worker or not. For a chimera
-// worker the return values of this method are constant and will only be used to
-// prevent this worker from being launched.
-func (cw *chimeraWorker) getPieceForDownload() (uint64, bool) {
-	return 0, true
+// getPieceForDownload returns the piece to download next, for a chimera worker
+// this is always 0 and should never be called, which is why we add a
+// build.Critical to signal developer error.
+func (cw *chimeraWorker) getPieceForDownload() uint64 {
+	build.Critical("developer error, should not get called on a chimera worker")
+	return 0
 }
 
 // NewChimeraWorker returns a new chimera worker object.
@@ -317,18 +326,16 @@ func (iw *individualWorker) split(chance float64) (*individualWorker, *individua
 		pieceIndices:  iw.pieceIndices,
 		resolveChance: chance,
 
-		staticLookupDistribution: iw.staticLookupDistribution,
-		staticReadDistribution:   iw.staticReadDistribution,
-		staticWorker:             iw.staticWorker,
+		staticReadDistribution: iw.staticReadDistribution,
+		staticWorker:           iw.staticWorker,
 	}
 	remainder := &individualWorker{
 		launchedAt:    iw.launchedAt,
 		pieceIndices:  iw.pieceIndices,
 		resolveChance: iw.resolveChance - chance,
 
-		staticLookupDistribution: iw.staticLookupDistribution,
-		staticReadDistribution:   iw.staticReadDistribution,
-		staticWorker:             iw.staticWorker,
+		staticReadDistribution: iw.staticReadDistribution,
+		staticWorker:           iw.staticWorker,
 	}
 
 	return main, remainder
@@ -355,17 +362,15 @@ func (ws *workerSet) cheaperSetFromCandidate(candidate downloadWorker) *workerSe
 	workersToIndex := make(map[string]int)
 	pieceToIndex := make(map[uint64]int)
 	for i, w := range ws.workers {
-		// map the worker index
-		key := w.worker().staticHostPubKeyStr
-		workersToIndex[key] = i
-
-		// map the piece to the worker index, if the worker is a chimera worker
-		// we don't have to map the piece because a chimera worker can
-		// theoretically still resolve all pieces
-		piece, chimera := w.getPieceForDownload()
-		if !chimera {
-			pieceToIndex[piece] = i
+		// skip chimera workers, those workers can resolve all pieces
+		_, ok := w.(*chimeraWorker)
+		if ok {
+			continue
 		}
+
+		// map the worker index
+		workersToIndex[w.identifier()] = i
+		pieceToIndex[w.getPieceForDownload()] = i
 	}
 
 	// sort the workers by cost, most expensive to cheapest
@@ -380,14 +385,13 @@ func (ws *workerSet) cheaperSetFromCandidate(candidate downloadWorker) *workerSe
 	swapIndex := -1
 LOOP:
 	for _, expensiveWorker := range byCostDesc {
-		expensiveWorkerKey := expensiveWorker.worker().staticHostPubKeyStr
-		expensiveWorkerIndex := workersToIndex[expensiveWorkerKey]
-
 		// if the candidate is not cheaper than this worker we can stop looking
 		// to build a cheaper set since the workers are sorted by cost
 		if candidate.cost(ws.staticLength).Cmp(expensiveWorker.cost(ws.staticLength)) >= 0 {
 			break
 		}
+
+		expensiveWorkerIndex := workersToIndex[expensiveWorker.identifier()]
 
 		// the candidate is only useful if it can replace a worker and
 		// contribute pieces to the worker set for which we don't already have
@@ -547,10 +551,10 @@ func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker) {
 	defer ws.mu.Unlock()
 
 	// create two maps to help update the workers
-	resolved := make(map[string]int)
-	unresolved := make(map[string]int)
+	resolved := make(map[string]int, len(workers))
+	unresolved := make(map[string]int, len(workers))
 	for i, w := range workers {
-		if w.resolveChance == 1 {
+		if w.resolved() {
 			resolved[w.staticWorker.staticHostPubKeyStr] = i
 		} else {
 			unresolved[w.staticWorker.staticHostPubKeyStr] = i
@@ -572,10 +576,7 @@ func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker) {
 
 		// if it became resolved, update the worker accordingly
 		if !rwExists && uwExists {
-			if cap(workers[uwIndex].pieceIndices) != cap(rw.pieceIndices) {
-				fmt.Printf("CAP WRONG %v != %v\n", cap(workers[uwIndex].pieceIndices), cap(rw.pieceIndices))
-			}
-			workers[uwIndex].pieceIndices = rw.pieceIndices
+			workers[uwIndex].pieceIndices = append([]uint64{}, rw.pieceIndices...)
 			workers[uwIndex].resolveChance = 1
 			continue
 		}
@@ -583,17 +584,13 @@ func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker) {
 		// if it was resolved already, we want to update a couple of fields
 		if rwExists {
 			// update the launched at
-			if workers[rwIndex].launchedAt.IsZero() {
-				workers[rwIndex].launchedAt = pdc.launchedAt(rw.worker)
-			}
-
-			// update the piece indices
-			workers[uwIndex].pieceIndices = pdc.filterCompletedPieceIndices(rw.worker, workers[uwIndex].pieceIndices)
+			workers[rwIndex].launchedAt = pdc.launchedAt(rw.worker)
 		}
 	}
 }
 
-// workers returns the resolved and unresolved workers as separate slices
+// workers returns both resolved and unresolved workers as a single slice of
+// individual workers
 func (pdc *projectDownloadChunk) workers() []*individualWorker {
 	ws := pdc.workerState
 	ws.mu.Lock()
@@ -613,16 +610,17 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 
 		stats := rw.worker.staticJobReadQueue.staticStats
 		rdt := stats.distributionTrackerForLength(length)
-		ldt := rw.worker.staticJobHasSectorQueue.staticDT
-		workers = append(workers, &individualWorker{
+
+		iw := &individualWorker{
 			launchedAt:    pdc.launchedAt(rw.worker),
-			pieceIndices:  rw.pieceIndices,
+			pieceIndices:  append([]uint64{}, rw.pieceIndices...),
 			resolveChance: 1,
 
-			staticLookupDistribution: ldt.Distribution(0),
-			staticReadDistribution:   rdt.Distribution(0),
-			staticWorker:             rw.worker,
-		})
+			staticReadDistribution: rdt.Distribution(0),
+			staticWorker:           rw.worker,
+		}
+		fastrand.Read(iw.staticUID[:])
+		workers = append(workers, iw)
 	}
 
 	// add all unresolved workers that are deemed good for downloading
@@ -630,7 +628,6 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 		w := uw.staticWorker
 		stats := w.staticJobReadQueue.staticStats
 		rdt := stats.distributionTrackerForLength(length)
-		ldt := w.staticJobHasSectorQueue.staticDT
 
 		// exclude workers that are not useful
 		if !isGoodForDownload(w) {
@@ -643,123 +640,110 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 			pieceIndices[i] = uint64(i)
 		}
 
-		workers = append(workers, &individualWorker{
+		if w.staticJobHasSectorQueue.callAvailabilityRate(ec.NumPieces()) == 1 {
+			build.Critical("ja dat ist")
+		}
+
+		iw := &individualWorker{
 			pieceIndices:  pieceIndices,
 			resolveChance: w.staticJobHasSectorQueue.callAvailabilityRate(ec.NumPieces()),
 
-			staticLookupDistribution: ldt.Distribution(0),
-			staticReadDistribution:   rdt.Distribution(0),
-			staticWorker:             w,
-		})
+			staticExpectedResolveTime: uw.staticExpectedResolvedTime,
+			staticReadDistribution:    rdt.Distribution(0),
+			staticWorker:              w,
+		}
+		fastrand.Read(iw.staticUID[:])
+		workers = append(workers, iw)
 	}
 
 	return workers
 }
 
-// launchedAt returns the time at which this worker was launched.
+// launchedAt returns the most recent time at which this worker was launched.
 func (pdc *projectDownloadChunk) launchedAt(w *worker) time.Time {
-	for _, lw := range pdc.launchedWorkers {
-		if lw.staticWorker.staticHostPubKeyStr == w.staticHostPubKeyStr {
-			return lw.staticLaunchTime
-		}
-	}
-	return time.Time{}
-}
-
-// filterCompletedPieceIndices will range over the given piece indices for the
-// worker and will remove all pieces which were already launched. By doing so
-// the worker essentially becomes eligible to download multiple pieces should
-// that be necessary.
-func (pdc *projectDownloadChunk) filterCompletedPieceIndices(w *worker, pieceIndices []uint64) []uint64 {
-	completed := make(map[uint64]struct{})
-	for _, lw := range pdc.launchedWorkers {
-		if lw.staticWorker.staticHostPubKeyStr == w.staticHostPubKeyStr && !lw.completeTime.IsZero() {
-			completed[lw.staticPieceIndex] = struct{}{}
-		}
+	launchedPieces, exists := pdc.launchedPiecesByWorker[w.staticHostPubKeyStr]
+	if !exists {
+		return time.Time{}
 	}
 
-	var filtered []uint64
-	for _, pi := range pieceIndices {
-		if _, exists := completed[pi]; !exists {
-			filtered = append(filtered, pi)
+	var mostRecentLaunchTime time.Time
+	for _, launchTime := range launchedPieces {
+		if launchTime.After(mostRecentLaunchTime) {
+			mostRecentLaunchTime = launchTime
 		}
 	}
-	return filtered
+	return mostRecentLaunchTime
 }
 
 // isLaunched returns true if the given worker was already launched for the
 // given piece.
 func (pdc *projectDownloadChunk) isLaunched(w *worker, piece uint64) bool {
-	for _, lw := range pdc.launchedWorkers {
-		fmt.Printf("launched worker %v is downloading piece %v and is complete: %v\n", lw.staticWorker.staticHostPubKey.ShortString(), lw.staticPieceIndex, lw.completeTime)
-		// check if piece matches
-		if lw.staticPieceIndex != piece {
-			continue
-		}
-		// check if worker matches
-		if lw.staticWorker.staticHostPubKeyStr != w.staticHostPubKeyStr {
-			continue
-		}
-		return true
+	launchedPieces, exists := pdc.launchedPiecesByWorker[w.staticHostPubKeyStr]
+	if !exists {
+		return false
 	}
-	return false
+	_, exists = launchedPieces[piece]
+	return exists
 }
 
 // launchWorkerSet will range over the workers in the given worker set and will
 // try to launch every worker that has not yet been launched and is ready to
 // launch.
 func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) {
-	fmt.Println("launching set")
 	// convenience variables
 	minPieces := pdc.workerSet.staticErasureCoder.MinPieces()
 
 	// range over all workers in the set and launch if possible
 	for _, w := range ws.workers {
 		// continue if the worker is a chimera worker
-		piece, chimera := w.getPieceForDownload()
-		if chimera {
-			fmt.Println("skip because chimera")
+		_, ok := w.(*chimeraWorker)
+		if ok {
 			continue
 		}
 
-		worker := w.worker()
-		workerStr := w.identifier()
-
 		// continue if the worker is already launched
-		if pdc.isLaunched(worker, piece) {
-			fmt.Println("skip because downloading")
+		piece := w.getPieceForDownload()
+		if pdc.isLaunched(w.worker(), piece) {
+			fmt.Println("worker already launched")
 			continue
 		}
 
 		// launch the piece
 		isOverdrive := len(pdc.launchedWorkers) >= minPieces
-		_, launched := pdc.launchWorker(worker, piece, isOverdrive)
-		if launched {
-			fmt.Printf("launched worker %v for piece %v\n", workerStr, piece)
-		}
+		pdc.launchWorker(w.worker(), piece, isOverdrive)
 	}
 	return
 }
 
-// launchWorkers performs the main download loop, every iteration we update the
-// pdc's available pieces, construct a new worker set and launch every worker
-// that can be launched from that set. Every iteration we check whether the
-// download was finished.
-func (pdc *projectDownloadChunk) launchWorkers() {
+// threadedLaunchWorkers performs the main download loop, every iteration we
+// update the pdc's available pieces, construct a new worker set and launch
+// every worker that can be launched from that set. Every iteration we check
+// whether the download was finished.
+func (pdc *projectDownloadChunk) threadedLaunchWorkers() {
 	// register for a worker update chan
 	ws := pdc.workerState
 	ws.mu.Lock()
 	workerUpdateChan := ws.registerForWorkerUpdate()
 	ws.mu.Unlock()
 
-	// update the available pieces
-	pdc.updateAvailablePieces()
-
 	// grab the workers, this set of workers will not change but rather get
 	// updated to avoid needless performing gouging checks on every iteration
 	workers := pdc.workers()
 
+	// verify we have enough workers to complete the download
+	minPieces := pdc.workerSet.staticErasureCoder.MinPieces()
+	if len(workers) < minPieces {
+		pdc.fail(errors.Compose(ErrRootNotFound, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v", len(workers), minPieces))))
+		return
+	}
+
 	for {
+		// update the available pieces
+		pdc.updateAvailablePieces()
+
+		// update the workers on every iteration
+		pdc.updateWorkers(workers)
+
 		// create a worker set and launch it
 		workerSet, err := pdc.createWorkerSet(workers, maxOverdriveWorkers)
 		if err != nil {
@@ -770,14 +754,22 @@ func (pdc *projectDownloadChunk) launchWorkers() {
 			pdc.launchWorkerSet(workerSet)
 		}
 
+		// check whether the download is completed
+		completed, err := pdc.finished()
+		if completed {
+			pdc.finalize()
+			return
+		}
+		if err != nil {
+			pdc.fail(err)
+			return
+		}
+
 		// iterate
 		select {
-		case <-time.After(time.Second): // TODO update to 20 * time.Millisecond
-			// recreate the workerset every 20ms
+		case <-time.After(maxWaitUnresolvedWorkerUpdate):
+			// recreate the workerset every 10ms
 		case <-workerUpdateChan:
-			// update the available pieces list
-			pdc.updateAvailablePieces()
-
 			// register for another update chan
 			ws := pdc.workerState
 			ws.mu.Lock()
@@ -785,27 +777,10 @@ func (pdc *projectDownloadChunk) launchWorkers() {
 			ws.mu.Unlock()
 		case jrr := <-pdc.workerResponseChan:
 			pdc.handleJobReadResponse(jrr)
-
-			// check whether the download is completed
-			completed, err := pdc.finished()
-			if completed {
-				pdc.finalize()
-				return
-			}
-			if err != nil {
-				pdc.fail(err)
-				return
-			}
 		case <-pdc.ctx.Done():
 			pdc.fail(errors.New("download timed out"))
 			return
-		case <-time.After(time.Minute):
-			build.Critical("download timed out after 1m, a download should always have a reasonable timeout")
-			return
 		}
-
-		// update the workers on every iteration
-		pdc.updateWorkers(workers)
 	}
 }
 
@@ -830,18 +805,11 @@ func (pdc *projectDownloadChunk) createWorkerSet(allWorkers []*individualWorker,
 		}
 	}
 
-	fmt.Printf("creating worker set, resolved %v unresolved %v\n", len(resolvedWorkers), len(unresolvedWorkers))
-
-	// verify we have enough workers to complete the download
-	if len(allWorkers) < minPieces {
-		return nil, errors.Compose(ErrRootNotFound, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v", len(allWorkers), minPieces)))
-	}
-
 	// sort unresolved workers by expected resolve time
 	sort.Slice(unresolvedWorkers, func(i, j int) bool {
-		dI := unresolvedWorkers[i].staticLookupDistribution
-		dJ := unresolvedWorkers[j].staticLookupDistribution
-		return dI.ExpectedDuration() < dJ.ExpectedDuration()
+		eRTI := unresolvedWorkers[i].staticExpectedResolveTime
+		eRTJ := unresolvedWorkers[j].staticExpectedResolveTime
+		return eRTI.Before(eRTJ)
 	})
 
 	// combine unresolved workers into a set of chimera workers
@@ -861,7 +829,6 @@ func (pdc *projectDownloadChunk) createWorkerSet(allWorkers []*individualWorker,
 		current.addWorker(remainder)
 	}
 
-	fmt.Printf("built %v chimera workers from the unresolved workers\n", len(chimeraWorkers))
 	// note that we ignore the "current" worker as it is not complete
 
 	// combine all workers
@@ -885,12 +852,10 @@ OUTER:
 		workersNeeded := minPieces + numOverdrive
 		for bI := 0; bI < skymodules.DistributionTrackerTotalBuckets; bI++ {
 			bDur := skymodules.DistributionDurationForBucketIndex(bI)
-			fmt.Printf("= = = = = \nduration in focus %v \n", bDur)
 			// exit early if ppms in combination with the bucket duration
 			// already exceeds the adjusted cost of the current best set,
 			// workers would be too slow by definition
 			if bestSetFound && bDur > bestSet.adjustedDuration(ppms) {
-				fmt.Println("breaking OUTER, best set found and dur is larger than adjusted best set duration")
 				break OUTER
 			}
 
@@ -902,13 +867,6 @@ OUTER:
 				return chanceI > chanceJ
 			})
 
-			// TODO: remove me (debug logging)
-			msg := "\nsortedWorkers:\n"
-			for i, w := range workers {
-				msg += fmt.Sprintf("%d) %v datapoints: %v chance: %v cost: %v chimera: %t launched: %v pieces: %v\n", i+1, w.identifier(), w.distribution().DataPoints(), w.distribution().ChanceAfter(bDur), w.cost(length), w.chimera(), w.launched(), w.pieces())
-			}
-			fmt.Println(msg)
-
 			// group the most likely workers to complete in the current duration
 			// in a way that we ensure no two workers are going after the same
 			// piece
@@ -916,11 +874,21 @@ OUTER:
 			var lessLikely []downloadWorker
 			pieces := make(map[uint64]struct{})
 			for _, w := range workers {
+				var launchedPieces map[uint64]time.Time
+				if w.worker() != nil {
+					launchedPieces = pdc.launchedPiecesByWorker[w.worker().staticHostPubKeyStr]
+				}
+
 				for _, pieceIndex := range w.pieces() {
 					_, exists := pieces[pieceIndex]
 					if exists {
 						continue
 					}
+					_, exists = launchedPieces[pieceIndex]
+					if exists {
+						continue
+					}
+
 					w.markPieceForDownload(pieceIndex)
 					pieces[pieceIndex] = struct{}{}
 
@@ -941,20 +909,12 @@ OUTER:
 				staticMinPieces:        minPieces,
 			}
 
-			msg = "mostLikely:\n"
-			for _, w := range mostLikelySet.workers {
-				msg += w.identifier() + " "
-			}
-			fmt.Println(msg + "\n")
-
 			// if the chance of the most likely set does not exceed 50%, it is
 			// not high enough to continue, no need to continue this iteration,
 			// we need to try a slower and thus more likely bucket
 			if !mostLikelySet.chanceGreaterThanHalf(bDur) {
-				fmt.Println("mostLikely is NOT greater than half for", bDur)
 				continue
 			}
-			fmt.Println("mostLikely IS greater than half for", bDur)
 
 			// now loop the remaining workers and try and swap them with the
 			// most expensive workers in the most likely set
@@ -966,36 +926,19 @@ OUTER:
 				if !cheaperSet.chanceGreaterThanHalf(bDur) {
 					break
 				}
-				msg := "cheaperSet: "
-				for _, w := range mostLikelySet.workers {
-					msg += w.identifier() + ", "
-				}
-				fmt.Println(msg)
 				mostLikelySet = cheaperSet
 			}
 
 			// perform price per ms comparison
 			if !bestSetFound {
-				fmt.Println("best set not found, is now equal to most likely")
-				fmt.Println(len(mostLikelySet.workers))
 				bestSet = mostLikelySet
 				bestSetFound = true
 			} else {
-				fmt.Println("best set existed already")
 				if mostLikelySet.adjustedDuration(ppms) < bestSet.adjustedDuration(ppms) {
-					fmt.Println("best set updated")
 					bestSet = mostLikelySet
 				}
 			}
 		}
-	}
-
-	if bestSet != nil {
-		msg := "bestSet: "
-		for _, w := range bestSet.workers {
-			msg += w.identifier() + ", "
-		}
-		fmt.Println(msg)
 	}
 
 	return bestSet, nil

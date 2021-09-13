@@ -43,6 +43,11 @@ const (
 	// the sector was available.
 	jobHasSectorQueueMinAvailabilityRate = 0.001
 
+	// jobHasSectorQueueMaxAvailabilityRate is the maximum availability rate we
+	// return, it is strictly less than one because we consider a worker with an
+	// availability rate of 1 as resolved at all times
+	jobHasSectorQueueMaxAvailabilityRate = 0.99
+
 	// hasSectorBatchSize is the number of has sector jobs batched together upon
 	// calling callNext.
 	// This number is the result of empirical testing which determined that 13
@@ -497,7 +502,11 @@ func (jq *jobHasSectorQueue) callAvailabilityRate(numPieces int) float64 {
 		return jobHasSectorQueueMinAvailabilityRate
 	}
 
-	return bucket.totalAvailable / bucket.totalLookups
+	availabilityRate := bucket.totalAvailable / bucket.totalLookups
+	if availabilityRate > jobHasSectorQueueMaxAvailabilityRate {
+		return jobHasSectorQueueMaxAvailabilityRate
+	}
+	return availabilityRate
 }
 
 // callUpdateAvailabilityMetrics updates the fields on the has sector queue that
@@ -521,7 +530,7 @@ func (jq *jobHasSectorQueue) callUpdateJobTimeMetrics(jobTime time.Duration) {
 // expectedJobTime will return the amount of time that a job is expected to
 // take, given the current conditions of the queue.
 func (jq *jobHasSectorQueue) expectedJobTime() time.Duration {
-	return time.Duration(jq.weightedJobTime)
+	return jq.staticDT.Distribution(0).ExpectedDuration()
 }
 
 // initJobHasSectorQueue will init the queue for the has sector jobs.
