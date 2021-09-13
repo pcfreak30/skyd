@@ -542,6 +542,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 		if resp == nil {
 			break // context triggered
 		}
+		fmt.Println("workers to wait for", len(workersToWaitFor))
 
 		// Remove worker from the map.
 		delete(workersToWaitFor, resp.staticWorker.staticHostPubKeyStr)
