@@ -376,7 +376,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	awaitedWorkers := 0
 	cutoff := int(float64(len(workersToWaitFor)) * minAwaitedCutoffWorkersPercentage)
 	if cutoff == 0 {
-		build.Critical(fmt.Sprint("cutoff is 0", len(launchedWorkers), len(awaitedWorkers))
+		build.Critical(fmt.Sprint("cutoff is 0", len(launchedWorkers), len(workersToWaitFor)))
 		cutoff++
 	}
 
