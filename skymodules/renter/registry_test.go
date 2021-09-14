@@ -2,6 +2,7 @@ package renter
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"testing"
 	"time"
@@ -246,6 +247,7 @@ func TestRegReadCutoffWorkers(t *testing.T) {
 		atomicCache: unsafe.Pointer(&workerCache{
 			staticMaliciousHost: false,
 		}),
+		staticHostPubKeyStr:     "onesec",
 		staticJobReadRegistryDT: skymodules.NewDistributionTrackerStandard(),
 	}
 	wOneSecond.staticJobReadRegistryDT.AddDataPoint(time.Second)
@@ -254,23 +256,29 @@ func TestRegReadCutoffWorkers(t *testing.T) {
 		atomicCache: unsafe.Pointer(&workerCache{
 			staticMaliciousHost: false,
 		}),
+		staticHostPubKeyStr:     "twosecs",
 		staticJobReadRegistryDT: skymodules.NewDistributionTrackerStandard(),
 	}
 	wTwoSeconds.staticJobReadRegistryDT.AddDataPoint(2 * time.Second)
 
-	wMalicious := &worker{
-		atomicCache: unsafe.Pointer(&workerCache{
-			staticMaliciousHost: false,
-		}),
-		staticJobReadRegistryDT: skymodules.NewDistributionTrackerStandard(),
+	wMalicious := func() *worker {
+		pks := hex.EncodeToString(fastrand.Bytes(8))
+		w := &worker{
+			atomicCache: unsafe.Pointer(&workerCache{
+				staticMaliciousHost: true,
+			}),
+			staticHostPubKeyStr:     "malicious" + pks,
+			staticJobReadRegistryDT: skymodules.NewDistributionTrackerStandard(),
+		}
+		w.staticJobReadRegistryDT.AddDataPoint(time.Millisecond)
+		return w
 	}
-	wMalicious.staticJobReadRegistryDT.AddDataPoint(time.Millisecond)
 
 	// Test result. There should only be 1 worker in the result. The
 	// malicious worker was trimmed, then the slow one was dropped so only
 	// the fast one remains.
 	for i := 0; i < 3; i++ {
-		workers := []*worker{wTwoSeconds, wMalicious, wOneSecond}
+		workers := []*worker{wMalicious(), wTwoSeconds, wMalicious(), wMalicious(), wOneSecond, wMalicious()}
 		fastrand.Shuffle(len(workers), func(i, j int) {
 			workers[i], workers[j] = workers[j], workers[i]
 		})
@@ -279,7 +287,7 @@ func TestRegReadCutoffWorkers(t *testing.T) {
 			t.Fatal("wrong length", len(result))
 		}
 		if _, ok := result[wOneSecond.staticHostPubKeyStr]; !ok {
-			t.Fatal("wrong worker remaining")
+			t.Fatal("wrong worker remaining", result)
 		}
 	}
 }

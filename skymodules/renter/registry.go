@@ -725,6 +725,7 @@ func regReadCutoffWorkers(workers []*worker) map[string]*worker {
 		workers[i] = w
 		i++
 	}
+	workers = workers[:i]
 	// Sort workers by their estimate.
 	sort.Slice(workers, func(i, j int) bool {
 		return workers[i].ReadRegCutoffEstimate() < workers[j].ReadRegCutoffEstimate()
