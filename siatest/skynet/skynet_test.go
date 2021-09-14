@@ -4430,11 +4430,11 @@ func TestRegistryHealth(t *testing.T) {
 	// should return before the timeout.
 	deps.Enable()
 	err = assertHealth(skymodules.RegistryEntryHealth{
-		RevisionNumber:              revision,
-		NumEntries:                  uint64(len(tg.Hosts())),
-		NumBestEntries:              uint64(len(tg.Hosts())) - 1,
-		NumBestEntriesBeforeTimeout: 0,
-		NumBestPrimaryEntries:       0,
+		RevisionNumber:             revision,
+		NumEntries:                 uint64(len(tg.Hosts())),
+		NumBestEntries:             uint64(len(tg.Hosts())) - 1,
+		NumBestEntriesBeforeCutoff: 0,
+		NumBestPrimaryEntries:      0,
 	})
 	if err != nil {
 		t.Fatal(err)
