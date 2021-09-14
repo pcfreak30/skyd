@@ -14,10 +14,18 @@ import (
 	"go.sia.tech/siad/types"
 )
 
-// maxWaitUnresolvedWorkerUpdate defines the amount of time we want to wait for
-// unresolved workers to become resolved when trying to create the initial
-// worker set.
-const maxWaitUnresolvedWorkerUpdate = 10 * time.Millisecond
+const (
+	// maxWaitUnresolvedWorkerUpdate defines the amount of time we want to wait
+	// for unresolved workers to become resolved when trying to create the
+	// initial worker set.
+	maxWaitUnresolvedWorkerUpdate = 10 * time.Millisecond
+)
+
+var (
+	// emptyUID is an empty 8 byte slice used to compare against and verify
+	// whether the uid is initialised
+	emptyUID [8]byte
+)
 
 // NOTE: all of the following defined types are used by the PDC, which is
 // inherently thread un-safe, that means that these types don't not need to be
@@ -54,12 +62,6 @@ type (
 
 		// worker returns the underlying worker
 		worker() *worker
-
-		// TODO: remove me (added for debugging purposes and I'd like to keep
-		// them in there until the code is more finalised, they help give more
-		// information about the worker when logging information)
-		launched() bool
-		chimera() bool
 	}
 
 	// chimeraWorker is a worker that's built from unresolved workers until the
@@ -145,39 +147,10 @@ func (iw *individualWorker) resolved() bool {
 	return iw.resolveChance == 1
 }
 
-// TODO: remove me (debugging)
-func (iw *individualWorker) chimera() bool {
-	return false
-}
-
-// TODO: remove me (debugging)
-func (cw *chimeraWorker) chimera() bool {
-	return true
-}
-
-// TODO: remove me (debugging)
-func (iw *individualWorker) launched() bool {
-	return !iw.launchedAt.IsZero()
-}
-
-// TODO: remove me (debugging)
-func (cw *chimeraWorker) launched() bool {
-	return false
-}
-
-// TODO: remove me (debugging)
+// identifier returns a unqiue identifier for this worker.
 func (iw *individualWorker) identifier() string {
 	identifier := hex.EncodeToString(iw.staticUID[:])
-	if identifier == "0000000000000000" {
-		build.Critical("developer error, uid not initialized")
-	}
-	return identifier
-}
-
-// TODO: remove me (debugging)
-func (cw *chimeraWorker) identifier() string {
-	identifier := hex.EncodeToString(cw.staticUID[:])
-	if identifier == "0000000000000000" {
+	if identifier == hex.EncodeToString(emptyUID[:]) {
 		build.Critical("developer error, uid not initialized")
 	}
 	return identifier
@@ -273,6 +246,15 @@ func (cw *chimeraWorker) distribution() *skymodules.Distribution {
 		}
 	}
 	return cw.cachedDistribution
+}
+
+// identifier returns a unqiue identifier for this worker.
+func (cw *chimeraWorker) identifier() string {
+	identifier := hex.EncodeToString(cw.staticUID[:])
+	if identifier == hex.EncodeToString(emptyUID[:]) {
+		build.Critical("developer error, uid not initialized")
+	}
+	return identifier
 }
 
 // pieces implements the downloadWorker interface, chimera workers return all
