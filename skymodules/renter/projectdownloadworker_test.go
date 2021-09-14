@@ -817,3 +817,62 @@ func newTestIndivualWorker(hostPubKeyStr string, resolveChance float64, readDura
 		staticWorker:           w,
 	}
 }
+
+// TestAddCostPenalty is a unit test that covers the `addCostPenalty` helper
+// function.
+//
+// NOTE: should this file get removed due to introducing a new version of the
+// overdrive, this test has to move to projectdownloadworker_test as the
+// `addCostPenalty` function is used there as well.
+func TestAddCostPenalty(t *testing.T) {
+	t.Parallel()
+
+	// verify happy case
+	jt := time.Duration(fastrand.Intn(10) + 1)
+	jc := types.NewCurrency64(fastrand.Uint64n(100) + 10)
+	pricePerMS := types.NewCurrency64(5)
+
+	// calculate the expected outcome
+	penalty, err := jc.Div(pricePerMS).Uint64()
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := jt + (time.Duration(penalty) * time.Millisecond)
+	adjusted := addCostPenalty(jt, jc, pricePerMS)
+	if adjusted != expected {
+		t.Error("unexpected", adjusted, expected)
+	}
+
+	// verify no penalty if pricePerMS is higher than the cost of the job
+	adjusted = addCostPenalty(jt, jc, types.SiacoinPrecision)
+	if adjusted != jt {
+		t.Error("unexpected")
+	}
+
+	// verify overflow
+	jt = time.Duration(1)
+	jc = types.NewCurrency64(math.MaxUint64).Mul64(10)
+	pricePerMS = types.NewCurrency64(2)
+	jt = addCostPenalty(jt, jc, pricePerMS)
+	if jt != time.Duration(math.MaxInt64) {
+		t.Error("Expected job time to be adjusted to MaxInt64 on overflow")
+	}
+
+	// verify penalty higher than MaxInt64
+	jt = time.Duration(1)
+	jc = types.NewCurrency64(math.MaxInt64).Add64(1)
+	pricePerMS = types.NewCurrency64(1)
+	jt = addCostPenalty(jt, jc, pricePerMS)
+	if jt != time.Duration(math.MaxInt64) {
+		t.Error("Expected job time to be adjusted to MaxInt64 when penalty exceeds MaxInt64")
+	}
+
+	// verify high job time overflowing after adding penalty
+	jc = types.NewCurrency64(10)
+	pricePerMS = types.NewCurrency64(1)   // penalty is 10
+	jt = time.Duration(math.MaxInt64 - 5) // job time + penalty exceeds MaxInt64
+	jt = addCostPenalty(jt, jc, pricePerMS)
+	if jt != time.Duration(math.MaxInt64) {
+		t.Error("Expected job time to be adjusted to MaxInt64 when job time + penalty exceeds MaxInt64")
+	}
+}

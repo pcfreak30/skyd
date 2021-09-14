@@ -3,6 +3,7 @@ package renter
 import (
 	"encoding/hex"
 	"fmt"
+	"math"
 	"sort"
 	"time"
 
@@ -12,6 +13,11 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/types"
 )
+
+// maxWaitUnresolvedWorkerUpdate defines the amount of time we want to wait for
+// unresolved workers to become resolved when trying to create the initial
+// worker set.
+const maxWaitUnresolvedWorkerUpdate = 10 * time.Millisecond
 
 // NOTE: all of the following defined types are used by the PDC, which is
 // inherently thread un-safe, that means that these types don't not need to be
@@ -942,6 +948,28 @@ OUTER:
 	}
 
 	return bestSet, nil
+}
+
+// addCostPenalty takes a certain job time and adds a penalty to it depending on
+// the jobcost and the pdc's price per MS.
+func addCostPenalty(jobTime time.Duration, jobCost, pricePerMS types.Currency) time.Duration {
+	// If the pricePerMS is higher or equal than the cost of the job, simply
+	// return without penalty.
+	if pricePerMS.Cmp(jobCost) >= 0 {
+		return jobTime
+	}
+
+	// Otherwise, add a penalty
+	var adjusted time.Duration
+	penalty, err := jobCost.Div(pricePerMS).Uint64()
+	if err != nil || penalty > math.MaxInt64 {
+		adjusted = time.Duration(math.MaxInt64)
+	} else if reduced := math.MaxInt64 - int64(penalty); int64(jobTime) > reduced {
+		adjusted = time.Duration(math.MaxInt64)
+	} else {
+		adjusted = jobTime + (time.Duration(penalty) * time.Millisecond)
+	}
+	return adjusted
 }
 
 // isGoodForDownload is a helper function that returns true if and only if the
