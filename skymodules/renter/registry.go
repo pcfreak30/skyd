@@ -369,7 +369,8 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 
 	// Get the cutoff workers and wait for 80% of them to finish.
 	workersToWaitFor := regReadCutoffWorkers(launchedWorkers)
-	cutoff := int(float64(len(workersToWaitFor)) * (1.0 - minAwaitedCutoffWorkersPercentage))
+	awaitedWorkers := 0
+	cutoff := int(float64(len(workersToWaitFor)) * minAwaitedCutoffWorkersPercentage)
 
 	// Prevent reaching the cutoff point when ReadRegistryBlocking is
 	// injected as a dependency.
@@ -382,15 +383,24 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	responses := 0
 	// Wait for responses until either there are no responses left or until
 	// we have waited for enough of our workersToWaitFor.
-	for responseSet.responsesLeft() > 0 && len(workersToWaitFor) > cutoff {
+	for responseSet.responsesLeft() > 0 {
 		// Check cancel condition and block for more responses.
 		resp := responseSet.next(ctx)
 		if resp == nil {
 			break // context triggered
 		}
 
-		// Remove worker from the map.
-		delete(workersToWaitFor, resp.staticWorker.staticHostPubKeyStr)
+		// Check if we have waited for enough workers.
+		if awaitedWorkers >= cutoff {
+			break // done
+		}
+
+		// Check if the response comes from one of the workers we wait
+		// for.
+		_, exists := workersToWaitFor[resp.staticWorker.staticHostPubKeyStr]
+		if exists {
+			awaitedWorkers++
+		}
 
 		// Increment responses.
 		responses++
