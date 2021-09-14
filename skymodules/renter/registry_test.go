@@ -240,6 +240,9 @@ func TestIsBetterReadRegistryResponse(t *testing.T) {
 
 // TestRegReadCutoffWorkers is a unit test for regReadCutoffWorkers.
 func TestRegReadCutoffWorkers(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
 	t.Parallel()
 
 	// Create 3 workers. A faster one, a slower one and a malicious one.
@@ -277,17 +280,28 @@ func TestRegReadCutoffWorkers(t *testing.T) {
 	// Test result. There should only be 1 worker in the result. The
 	// malicious worker was trimmed, then the slow one was dropped so only
 	// the fast one remains.
-	for i := 0; i < 3; i++ {
-		workers := []*worker{wMalicious(), wTwoSeconds, wMalicious(), wMalicious(), wOneSecond, wMalicious()}
-		fastrand.Shuffle(len(workers), func(i, j int) {
-			workers[i], workers[j] = workers[j], workers[i]
+	for i := 0; i < 10; i++ {
+		workerSet := []*worker{wMalicious(), wTwoSeconds, wMalicious(), wMalicious(), wOneSecond, wMalicious()}
+		fastrand.Shuffle(len(workerSet), func(i, j int) {
+			workerSet[i], workerSet[j] = workerSet[j], workerSet[i]
 		})
-		result := regReadCutoffWorkers(workers)
-		if len(result) != 1 {
-			t.Fatal("wrong length", len(result))
-		}
-		if _, ok := result[wOneSecond.staticHostPubKeyStr]; !ok {
-			t.Fatal("wrong worker remaining", result)
+		// Try multiple values for minWorkers.
+		for minWorkers := 0; minWorkers < len(workerSet)*2; minWorkers++ {
+			// Deep copy input.
+			workers := append([]*worker{}, workerSet...)
+			result := regReadCutoffWorkers(workers, minWorkers)
+			// For minWorkers == 0 or 1, we expect 1 worker in the
+			// result. For larger values we expect 2.
+			expectedResult := 1
+			if minWorkers > 1 {
+				expectedResult = 2
+			}
+			if len(result) != expectedResult {
+				t.Fatal("wrong length", len(result), expectedResult, minWorkers)
+			}
+			if _, ok := result[wOneSecond.staticHostPubKeyStr]; !ok {
+				t.Fatal("wrong worker remaining", result)
+			}
 		}
 	}
 }

@@ -111,6 +111,10 @@ var (
 	// minAwaitedCutoffWorkerPercentage is the percentage of cutoff workers
 	// we wait for before cutting off a registry entry lookup.
 	minAwaitedCutoffWorkersPercentage = 0.8 // 80%
+
+	// minCutoffWorkers is the lower limit of workers we wait for when
+	// looking up a registry entry.
+	minCutoffWorkers = 10
 )
 
 // readResponseSet is a helper type which allows for returning a set of ongoing
@@ -368,7 +372,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	}()
 
 	// Get the cutoff workers and wait for 80% of them to finish.
-	workersToWaitFor := regReadCutoffWorkers(launchedWorkers)
+	workersToWaitFor := regReadCutoffWorkers(launchedWorkers, minCutoffWorkers)
 	awaitedWorkers := 0
 	cutoff := int(float64(len(workersToWaitFor)) * minAwaitedCutoffWorkersPercentage)
 
@@ -725,7 +729,7 @@ func (r *Renter) threadedHandleRegistryRepairs(ctx context.Context, parentSpan o
 
 // regReadCutoffWorkers returns the workers to wait for before considering the
 // result good enough amongst the provided launched workers.
-func regReadCutoffWorkers(workers []*worker) map[string]*worker {
+func regReadCutoffWorkers(workers []*worker, minWorkers int) map[string]*worker {
 	// Filter malicious hosts.
 	i := 0
 	for _, w := range workers {
@@ -740,8 +744,14 @@ func regReadCutoffWorkers(workers []*worker) map[string]*worker {
 	sort.Slice(workers, func(i, j int) bool {
 		return workers[i].ReadRegCutoffEstimate() < workers[j].ReadRegCutoffEstimate()
 	})
-	// Drop slowest 50%.
-	workers = workers[:len(workers)/2+len(workers)%2]
+	// Drop slowest 50% but don't go below the min.
+	newLen := len(workers) / 2
+	if newLen < minWorkers && minWorkers <= len(workers) {
+		newLen = minWorkers
+	} else if newLen < minWorkers && minWorkers > len(workers) {
+		newLen = len(workers)
+	}
+	workers = workers[:newLen]
 
 	// Put remaining ones in map.
 	remaining := make(map[string]*worker, len(workers))
