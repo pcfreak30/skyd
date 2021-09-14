@@ -1,6 +1,9 @@
 package build
 
 var (
+	// mongoDBHost is the environment variable that tells
+	mongoDBURI = "MONGODB_URI"
+
 	// siaAPIPassword is the environment variable that sets a custom API
 	// password if the default is not used
 	siaAPIPassword = "SIA_API_PASSWORD"

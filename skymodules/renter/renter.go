@@ -233,6 +233,10 @@ type Renter struct {
 	staticStuckStack    stuckStack
 	staticUploadHeap    uploadHeap
 
+	// Registry repair related fields.
+	ongoingRegistryRepairs   map[modules.RegistryEntryID]struct{}
+	ongoingRegistryRepairsMu sync.Mutex
+
 	// Cache the hosts from the last price estimation result.
 	lastEstimationHosts []skymodules.HostDBEntry
 
@@ -1101,6 +1105,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		staticDownloadHistory: newDownloadHistory(),
 
 		staticSubscriptionManager: newSubscriptionManager(),
+
+		ongoingRegistryRepairs: make(map[modules.RegistryEntryID]struct{}),
 
 		staticConsensusSet:   cs,
 		staticDeps:           deps,

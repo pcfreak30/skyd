@@ -66,8 +66,6 @@ type (
 		staticCompleteTime        time.Time
 		staticExecuteTime         time.Time
 		staticEID                 modules.RegistryEntryID
-		staticSPK                 *types.SiaPublicKey
-		staticTweak               *crypto.Hash
 		staticWorker              *worker
 	}
 )
@@ -199,8 +197,6 @@ func (j *jobReadRegistry) callDiscard(err error) {
 			staticErr:          errors.Extend(err, ErrJobDiscarded),
 			staticCompleteTime: time.Now(),
 			staticEID:          j.staticRegistryEntryID,
-			staticSPK:          j.staticSiaPublicKey,
-			staticTweak:        j.staticTweak,
 			staticWorker:       w,
 		}
 		select {
@@ -235,8 +231,6 @@ func (j *jobReadRegistry) callExecute() {
 				staticErr:                 err,
 				staticExecuteTime:         start,
 				staticEID:                 j.staticRegistryEntryID,
-				staticSPK:                 j.staticSiaPublicKey,
-				staticTweak:               j.staticTweak,
 				staticWorker:              w,
 			}
 			select {
@@ -289,6 +283,12 @@ func (j *jobReadRegistry) callExecute() {
 		signedValue = &srv.SignedRegistryValue
 	}
 
+	// Simulate the host returning no entry.
+	if j.staticQueue.staticWorker().staticRenter.staticDeps.Disrupt("ReadRegistryNoEntry") {
+		srv = nil
+		signedValue = nil
+	}
+
 	// Check if we have a cached version of the looked up entry. If the new entry
 	// has a higher revision number we update it. If it has a lower one we know that
 	// the host should be punished for losing it or trying to cheat us.
@@ -298,7 +298,12 @@ func (j *jobReadRegistry) callExecute() {
 		j.staticQueue.callReportFailure(errCheating)
 		span.LogKV("error", errCheating)
 		j.staticSpan.SetTag("success", false)
-		w.staticRegistryCache.Set(j.staticRegistryEntryID, srv.SignedRegistryValue, true) // adjust the cache
+		// Update the cache.
+		if srv != nil {
+			w.staticRegistryCache.Set(j.staticRegistryEntryID, srv.SignedRegistryValue, true)
+		} else {
+			w.staticRegistryCache.Delete(j.staticRegistryEntryID)
+		}
 		return
 	}
 

@@ -41,6 +41,11 @@ func APIPassword() (string, error) {
 	return pw, nil
 }
 
+// MongoDBURI returns the URI that the mongodb client in skyd should connect to.
+func MongoDBURI() string {
+	return os.Getenv(mongoDBURI)
+}
+
 // ProfileDir returns the directory where any profiles for the running siad
 // instance will be stored
 func ProfileDir() string {
