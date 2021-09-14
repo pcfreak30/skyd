@@ -379,8 +379,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	// Prevent reaching the cutoff point when ReadRegistryBlocking is
 	// injected as a dependency.
 	if r.staticDeps.Disrupt("ReadRegistryBlocking") {
-		workersToWaitFor["extra"] = &worker{}
-		cutoff = 0
+		awaitedWorkers = -1
 	}
 
 	var best *jobReadRegistryResponse
