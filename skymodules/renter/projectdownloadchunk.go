@@ -84,22 +84,25 @@ type (
 
 		// availablePieces are pieces that resolved workers think they can
 		// fetch.
-		//
+		availablePieces         [][]*pieceDownload
+		availablePiecesByWorker map[string][]uint64
+
 		// workersConsideredIndex keeps track of what workers were already
 		// considered after looking at the 'resolvedWorkers' array defined on
 		// the pcws. This enables the worker selection code to realize which
 		// pieces in the worker set have been resolved since the last check.
-		//
+		workersConsideredIndex int
+
 		// unresolvedWorkersRemaining is the number of unresolved workers at the
 		// time the available pieces were last updated. This enables counting
 		// the hopeful pieces without introducing a race condition in the
 		// finished check.
-		availablePieces         [][]*pieceDownload
-		availablePiecesByWorker map[string][]uint64
-		launchedPiecesByWorker  map[string]map[uint64]time.Time
-
-		workersConsideredIndex     int
 		unresolvedWorkersRemaining int
+
+		// launchedPiecesByWorker keeps track of what workers have launched what
+		// pieces at what time. The download code needs this information quite
+		// often so by having this map we can do constant time lookups.
+		launchedPiecesByWorker map[string]map[uint64]time.Time
 
 		// dataPieces is the buffer that is used to place data as it comes back.
 		// There is one piece per chunk, and pieces can be nil. To know if the
