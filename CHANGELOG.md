@@ -1,14 +1,20 @@
-## Version Scheme
-
+Version Scheme
+--------------
 skyd uses the following versioning scheme, vX.X.X
+ - First Digit signifies a major (compatibility breaking) release
+ - Second Digit signifies a major (non compatibility breaking) release
+ - Third Digit signifies a minor or patch release
 
-- First Digit signifies a major (compatibility breaking) release
-- Second Digit signifies a major (non compatibility breaking) release
-- Third Digit signifies a minor or patch release
-
-## Version History
+Version History
+---------------
 
 Latest:
+
+## Sep 14, 2021:
+### deploy-2021-09-14
+**Key Updates**
+- Add tryfiles metadata field which lists potential subfiles to serve in case the requested files don't exist.
+- Add errorpages metadata field which defines custom content to be served in case specific error codes are to be returned.
 
 ## Sep 2, 2021:
 ### v1.5.8
