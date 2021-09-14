@@ -375,6 +375,10 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	workersToWaitFor := regReadCutoffWorkers(launchedWorkers, minCutoffWorkers)
 	awaitedWorkers := 0
 	cutoff := int(float64(len(workersToWaitFor)) * minAwaitedCutoffWorkersPercentage)
+	if cutoff == 0 {
+		build.Critical(fmt.Sprint("cutoff is 0", len(launchedWorkers), len(awaitedWorkers))
+		cutoff++
+	}
 
 	// Prevent reaching the cutoff point when ReadRegistryBlocking is
 	// injected as a dependency.
