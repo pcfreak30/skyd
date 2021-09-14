@@ -296,7 +296,7 @@ func (r *Renter) managedRegistryEntryHealth(ctx context.Context, rid modules.Reg
 	bestSRV := best.staticSignedRegistryValue
 
 	// Get the cutoff workers and wait for 80% of them to finish.
-	workersToWaitFor := regReadCutoffWorkers(launchedWorkers)
+	workersToWaitFor := regReadCutoffWorkers(launchedWorkers, minCutoffWorkers)
 	awaitedWorkers := 0
 	cutoff := int(float64(len(workersToWaitFor)) * minAwaitedCutoffWorkersPercentage)
 
