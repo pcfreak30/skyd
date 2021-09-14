@@ -167,12 +167,20 @@ func (cw *chimeraWorker) launched() bool {
 
 // TODO: remove me (debugging)
 func (iw *individualWorker) identifier() string {
-	return hex.EncodeToString(iw.staticUID[:])
+	identifier := hex.EncodeToString(iw.staticUID[:])
+	if identifier == "0000000000000000" {
+		build.Critical("developer error, uid not initialized")
+	}
+	return identifier
 }
 
 // TODO: remove me (debugging)
 func (cw *chimeraWorker) identifier() string {
-	return hex.EncodeToString(cw.staticUID[:])
+	identifier := hex.EncodeToString(cw.staticUID[:])
+	if identifier == "0000000000000000" {
+		build.Critical("developer error, uid not initialized")
+	}
+	return identifier
 }
 
 // markPieceForDownload takes a piece index and marks it as the piece to

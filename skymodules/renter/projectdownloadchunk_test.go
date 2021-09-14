@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -12,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
@@ -190,7 +190,7 @@ func TestProjectDownloadChunk_finished(t *testing.T) {
 	// mock resolved state - not hopeful and not finished
 	pdc.unresolvedWorkersRemaining = 0
 	finished, err = pdc.finished()
-	if err != errNotEnoughPieces {
+	if !errors.Contains(err, errNotEnoughPieces) {
 		t.Fatal("unexpected error", err)
 	}
 	if finished {
@@ -215,7 +215,7 @@ func TestProjectDownloadChunk_finished(t *testing.T) {
 	pdc.availablePieces[2][0].completed = true
 	pdc.availablePieces[2][0].downloadErr = errors.New("failed")
 	finished, err = pdc.finished()
-	if err != errNotEnoughPieces {
+	if !errors.Contains(err, errNotEnoughPieces) {
 		t.Fatal("unexpected error", err)
 	}
 	if finished {
@@ -276,6 +276,8 @@ func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
 	pcws.staticRenter = renter
 
 	pdc := new(projectDownloadChunk)
+	pdc.workerState = new(pcwsWorkerState)
+	pdc.launchedPiecesByWorker = make(map[string]map[uint64]time.Time, 0)
 	pdc.workerSet = pcws
 	pdc.workerSet.staticChunkIndex = 0
 	pdc.dataPieces = make([][]byte, ec.NumPieces())
@@ -391,6 +393,7 @@ func TestProjectDownloadChunk_launchWorker(t *testing.T) {
 
 	// mock a pdc, ensure available pieces is not nil
 	pdc := new(projectDownloadChunk)
+	pdc.launchedPiecesByWorker = make(map[string]map[uint64]time.Time, 0)
 	pdc.ctx = context.Background()
 	pdc.workerSet = pcws
 	pdc.pieceLength = 1 << 16 // 64kb

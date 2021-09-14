@@ -33,7 +33,7 @@ func TestChimeraWorker(t *testing.T) {
 	if cw.worker() != nil {
 		t.Fatal("bad")
 	}
-	if cw.pieces() != nil {
+	if len(cw.pieces()) != 1 {
 		t.Fatal("bad")
 	}
 	if cw.remaining != 1 {
@@ -325,7 +325,7 @@ func testWorkerSetAdjustedDuration(t *testing.T) {
 func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 	t.Parallel()
 
-	// updateReadCostWithFactor is a helper function that enables to alter a
+	// updateReadCostWithFactor is a helper function that enables altering a
 	// worker's cost by multiplying the read length cost of the worker's price
 	// table with the given factor
 	updateReadCostWithFactor := func(w *individualWorker, factor uint64) {
@@ -363,17 +363,17 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 	}
 
 	// create a candidate worker and try and build a cheaper set, should return
-	// nil because the workers can't resolve a single piece
-	cw := newTestIndivualWorker("w3", 1, 10*time.Millisecond)
-	if ws.cheaperSetFromCandidate(cw) != nil {
+	// nil because the worker can't resolve a single piece
+	iw3 := newTestIndivualWorker("w3", 1, 10*time.Millisecond)
+	if ws.cheaperSetFromCandidate(iw3) != nil {
 		t.Fatal("bad")
 	}
 
 	// make the candidate worker able to resolve a piece, should now return a
 	// cheaper set because we will have thrown out the most expensive worker
 	// (w2) in favor of w3
-	cw.pieceIndices = append(cw.pieceIndices, 3)
-	cheaperSet := ws.cheaperSetFromCandidate(cw)
+	iw3.pieceIndices = append(iw3.pieceIndices, 3)
+	cheaperSet := ws.cheaperSetFromCandidate(iw3)
 	if cheaperSet == nil {
 		t.Fatal("bad")
 	}
@@ -384,17 +384,18 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 		t.Fatal("bad")
 	}
 
-	// continue with the cheaper set as working set
+	// continue with the cheaper set as working set (w1 and w3)
 	ws = cheaperSet
 
-	// make the 1st worker resolve piece '1'
-	iw1.pieceIndices = append(iw1.pieceIndices, 1)
+	// mark piece 1 for worker 1 and mark piece 3 for worker 3
+	iw1.markPieceForDownload(1)
+	iw3.markPieceForDownload(3)
 
 	// make a new candidate worker that is capable of resolving both piece '1'
 	// and '3', to ensure we replace the most expensive one of the two
-	cw = newTestIndivualWorker("w4", 1, 10*time.Millisecond)
-	cw.pieceIndices = append(cw.pieceIndices, 1, 3)
-	cheaperSet = ws.cheaperSetFromCandidate(cw)
+	iw4 := newTestIndivualWorker("w4", 1, 10*time.Millisecond)
+	iw4.pieceIndices = append(iw4.pieceIndices, 1, 3)
+	cheaperSet = ws.cheaperSetFromCandidate(iw4)
 	if cheaperSet == nil {
 		t.Fatal("bad")
 	}
@@ -402,7 +403,7 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 		t.Fatal("bad")
 	}
 	if workerAt(cheaperSet, 0) != "w4" && workerAt(cheaperSet, 1) != "w3" {
-		t.Fatal("bad")
+		t.Fatal("bad", workerAt(cheaperSet, 0), workerAt(cheaperSet, 1))
 	}
 
 	// continue with the cheaper set as working set
@@ -410,18 +411,18 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 
 	// present a worker that is capable of resolving a piece but is more
 	// expensive than the workers we have currently
-	cw = newTestIndivualWorker("w5", .1, 10*time.Millisecond)
-	cw.pieceIndices = append(cw.pieceIndices, 1, 3)
-	updateReadCostWithFactor(cw, 3)
-	cheaperSet = ws.cheaperSetFromCandidate(cw)
+	iw5 := newTestIndivualWorker("w5", .1, 10*time.Millisecond)
+	iw5.pieceIndices = append(iw5.pieceIndices, 1, 3)
+	updateReadCostWithFactor(iw5, 3)
+	cheaperSet = ws.cheaperSetFromCandidate(iw5)
 	if cheaperSet != nil {
 		t.Fatal("bad")
 	}
 
 	// now make it cheaper and try and build a cheaper set from it, assert we
 	// now have replaced w4 for w5
-	updateReadCostWithFactor(cw, 0)
-	cheaperSet = ws.cheaperSetFromCandidate(cw)
+	updateReadCostWithFactor(iw5, 0)
+	cheaperSet = ws.cheaperSetFromCandidate(iw5)
 	if cheaperSet == nil {
 		t.Fatal("bad")
 	}
@@ -435,7 +436,7 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 	// now do the same thing but set a launch time for w4 to ensure its cost is
 	// treated at 0, this should make it so the cheaper worker replaces w3
 	ws.workers[0].(*individualWorker).launchedAt = time.Now()
-	cheaperSet = ws.cheaperSetFromCandidate(cw)
+	cheaperSet = ws.cheaperSetFromCandidate(iw5)
 	if cheaperSet == nil {
 		t.Fatal("bad")
 	}
@@ -449,7 +450,7 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 	// now do the same thing again but launch w3, this should have as a result
 	// we can't build a cheaper set
 	ws.workers[1].(*individualWorker).launchedAt = time.Now()
-	cheaperSet = ws.cheaperSetFromCandidate(cw)
+	cheaperSet = ws.cheaperSetFromCandidate(iw5)
 	if cheaperSet != nil {
 		t.Fatal("bad")
 	}
@@ -810,12 +811,14 @@ func testCoinflipsSum(t *testing.T) {
 func newTestIndivualWorker(hostPubKeyStr string, resolveChance float64, readDuration time.Duration) *individualWorker {
 	w := mockWorker(readDuration)
 	w.staticHostPubKeyStr = hostPubKeyStr
-	return &individualWorker{
+	iw := &individualWorker{
 		resolveChance: resolveChance,
 
 		staticReadDistribution: skymodules.NewDistribution(15 * time.Minute),
 		staticWorker:           w,
 	}
+	fastrand.Read(iw.staticUID[:])
+	return iw
 }
 
 // TestAddCostPenalty is a unit test that covers the `addCostPenalty` helper
