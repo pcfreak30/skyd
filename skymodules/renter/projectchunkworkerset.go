@@ -69,10 +69,9 @@ type pcwsUnresolvedWorker struct {
 // at that index. There is also an error field that will be set in the event an
 // error occurred while performing the HasSector query.
 type pcwsWorkerResponse struct {
-	worker             *worker
-	pieceIndices       []uint64
-	staticPieceIndices []uint64
-	err                error
+	worker       *worker
+	pieceIndices []uint64
+	err          error
 }
 
 // pcwsWorkerState contains the worker state for a single thread that is
@@ -245,9 +244,8 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	// Add this worker to the set of resolved workers (even if there are no
 	// indices that the worker can fetch).
 	ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
-		worker:             w,
-		pieceIndices:       indices,
-		staticPieceIndices: append([]uint64{}, indices...),
+		worker:       w,
+		pieceIndices: indices,
 	})
 }
 
@@ -525,8 +523,8 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	fastrand.Read(pdc.uid[:])
 	pdc.launchTime = time.Now()
 
-	// Launch the workers in a separate go routine
-	go pdc.threadedLaunchWorkers()
+	// Launch the download project in a separate go routine
+	go pdc.threadedLaunchProjectDownload()
 
 	return pdc.downloadResponseChan, nil
 }

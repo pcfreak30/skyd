@@ -729,11 +729,11 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) {
 	return
 }
 
-// threadedLaunchWorkers performs the main download loop, every iteration we
-// update the pdc's available pieces, construct a new worker set and launch
-// every worker that can be launched from that set. Every iteration we check
-// whether the download was finished.
-func (pdc *projectDownloadChunk) threadedLaunchWorkers() {
+// threadedLaunchProjectDownload performs the main download loop, every
+// iteration we update the pdc's available pieces, construct a new worker set
+// and launch every worker that can be launched from that set. Every iteration
+// we check whether the download was finished.
+func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	// register for a worker update chan
 	ws := pdc.workerState
 	ws.mu.Lock()
