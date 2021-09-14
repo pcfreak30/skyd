@@ -654,10 +654,6 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 			pieceIndices[i] = uint64(i)
 		}
 
-		if w.staticJobHasSectorQueue.callAvailabilityRate(ec.NumPieces()) == 1 {
-			build.Critical("ja dat ist")
-		}
-
 		iw := &individualWorker{
 			pieceIndices:  pieceIndices,
 			resolveChance: w.staticJobHasSectorQueue.callAvailabilityRate(ec.NumPieces()),
@@ -718,7 +714,6 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) {
 		// continue if the worker is already launched
 		piece := w.getPieceForDownload()
 		if pdc.isLaunched(w.worker(), piece) {
-			fmt.Println("worker already launched")
 			continue
 		}
 
@@ -751,13 +746,10 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		return
 	}
 
+	// update the available pieces
+	pdc.updateAvailablePieces()
+
 	for {
-		// update the available pieces
-		pdc.updateAvailablePieces()
-
-		// update the workers on every iteration
-		pdc.updateWorkers(workers)
-
 		// create a worker set and launch it
 		workerSet, err := pdc.createWorkerSet(workers, maxOverdriveWorkers)
 		if err != nil {
@@ -795,6 +787,12 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			pdc.fail(errors.New("download timed out"))
 			return
 		}
+
+		// update the available pieces
+		pdc.updateAvailablePieces()
+
+		// update the workers on every iteration
+		pdc.updateWorkers(workers)
 	}
 }
 
