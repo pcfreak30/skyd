@@ -109,7 +109,7 @@ var (
 	}).(time.Duration)
 
 	// minAwaitedCutoffWorkerPercentage is the percentage of cutoff workers
-	// we wait for before cutting of a registry entry lookup.
+	// we wait for before cutting off a registry entry lookup.
 	minAwaitedCutoffWorkersPercentage = 0.8 // 80%
 )
 
@@ -380,6 +380,8 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 
 	var best *jobReadRegistryResponse
 	responses := 0
+	// Wait for responses until either there are no responses left or until
+	// we have waited for enough of our workersToWaitFor.
 	for responseSet.responsesLeft() > 0 && len(workersToWaitFor) > cutoff {
 		// Check cancel condition and block for more responses.
 		resp := responseSet.next(ctx)
