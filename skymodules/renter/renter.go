@@ -1121,16 +1121,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		mu:                   siasync.New(modules.SafeMutexDelay, 1),
 		staticTPool:          tpool,
 	}
-	r.staticRegistryReadStats = skymodules.NewDistributionTrackerStandard()
-	r.staticRegistryReadStats.AddDataPoint(readRegistryStatsSeed) // Seed the stats so that startup doesn't say 0.
-	r.staticRegWriteStats = skymodules.NewDistributionTrackerStandard()
-	r.staticRegWriteStats.AddDataPoint(5 * time.Second) // Seed the stats so that startup doesn't say 0.
-	r.staticBaseSectorUploadStats = skymodules.NewDistributionTrackerStandard()
-	r.staticBaseSectorUploadStats.AddDataPoint(15 * time.Second) // Seed the stats so that startup doesn't say 0.
-	r.staticChunkUploadStats = skymodules.NewDistributionTrackerStandard()
-	r.staticChunkUploadStats.AddDataPoint(15 * time.Second) // Seed the stats so that startup doesn't say 0.
-	r.staticStreamBufferStats = skymodules.NewDistributionTrackerStandard()
-	r.staticStreamBufferStats.AddDataPoint(5 * time.Second) // Seed the stats so that startup doesn't say 0.
 	r.staticSkynetTUSUploader = newSkynetTUSUploader(r)
 	r.staticStreamBufferSet = newStreamBufferSet(r.staticStreamBufferStats, &r.tg)
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
@@ -1226,6 +1216,9 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	// the utilities regularly.
 	r.managedUpdateRenterContractsAndUtilities()
 	go r.threadedUpdateRenterContractsAndUtilities()
+
+	// Launch the stat persisting thread.
+	go r.threadedStatsPersister()
 
 	// Spin up background threads which are not depending on the renter being
 	// up-to-date with consensus.
