@@ -242,7 +242,7 @@ func (u *ongoingTUSUpload) tryUploadSmallFile(ctx context.Context, reader io.Rea
 }
 
 // WriteChunk writes the chunk to the provided offset.
-func (u *ongoingTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.Reader) (n int64, err error) {
+func (u *ongoingTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.Reader) (_ int64, err error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	uploader := u.staticUploader
@@ -264,7 +264,7 @@ func (u *ongoingTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.
 		// large upload to receive a fanout.
 		if isSmall && !fi.IsPartial {
 			err = u.staticUpload.CommitWriteChunkSmallFile(fi.Size, time.Now(), smallFileData)
-			return n, err
+			return int64(len(smallFileData)), err
 		}
 	}
 	// If we get to this point with a small file, something is wrong.
@@ -320,7 +320,7 @@ func (u *ongoingTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.
 	onlyOnePieceNeeded := ec.MinPieces() == 1 && fileNode.MasterKey().Type() == crypto.TypePlain
 	cr := NewFanoutChunkReader(src, ec, onlyOnePieceNeeded, fileNode.MasterKey())
 	var chunks []*unfinishedUploadChunk
-	chunks, n, err = uploader.staticRenter.callUploadStreamFromReaderWithFileNodeNoBlock(ctx, fileNode, cr, offset)
+	chunks, n, err := uploader.staticRenter.callUploadStreamFromReaderWithFileNodeNoBlock(ctx, fileNode, cr, offset)
 
 	// Simulate loss of connection one byte early.
 	if deps.Disrupt("TUSConnectionDropped") {
