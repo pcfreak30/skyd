@@ -161,6 +161,9 @@ func (api *API) buildHTTPRoutes() {
 		// uploading a file with a known size in chunks.
 		storeComposer.UseCore(sds)
 
+		// Enable concatenating uploads.
+		storeComposer.UseConcater(sds)
+
 		// Enable locking the upload.
 		storeComposer.UseLocker(sds)
 
