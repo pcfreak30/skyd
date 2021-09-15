@@ -74,6 +74,7 @@ func newSkynetTUSUploader(renter *Renter, tus skymodules.SkynetTUSUploadStore) *
 	return &skynetTUSUploader{
 		staticUploadStore: tus,
 		staticRenter:      renter,
+		ongoingUploads:    make(map[string]*ongoingTUSUpload),
 	}
 }
 
