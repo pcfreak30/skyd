@@ -288,6 +288,7 @@ type (
 	// the renter implements for skynet.
 	SkynetTUSDataStore interface {
 		handler.DataStore
+		handler.ConcaterDataStore
 		handler.Locker
 
 		// Skylink returns the Skylink for an upload with a given ID.  If the

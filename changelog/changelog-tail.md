@@ -1,3 +1,12 @@
+## Sep 2, 2021:
+### v1.5.8
+**Bugs Fixed**
+- Fix directory flattening bug by locking in Go v1.16
+- Fix excessive memory allocation in downloads
+
+**Other**
+- Add download overdrive stats to the '/skynet/stats' endpoint
+
 ## Aug 10, 2021:
 ### v1.5.7
 **Key Updates**
