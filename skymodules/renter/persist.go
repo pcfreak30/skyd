@@ -70,6 +70,7 @@ var (
 		Testing:  2 * time.Second,
 	}).(time.Duration)
 
+	// statsMetadata is the metadata used when persisting the renter stats.
 	statsMetadata = persist.Metadata{
 		Header:  "Stats",
 		Version: "1.5.7",
