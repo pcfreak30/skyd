@@ -631,6 +631,10 @@ type HostDBEntry struct {
 	IPNets          []string  `json:"ipnets"`
 	LastIPNetChange time.Time `json:"lastipnetchange"`
 
+	// Malicious indicates whether the host is considered to be a malicous
+	// host by the hostdb.
+	Malicious bool `json:"malicious"`
+
 	// The public key of the host, stored separately to minimize risk of certain
 	// MitM based vulnerabilities.
 	PublicKey types.SiaPublicKey `json:"publickey"`
@@ -1653,6 +1657,10 @@ type HostDB interface {
 	// IPViolationsCheck returns a boolean indicating if the IP violation check is
 	// enabled or not.
 	IPViolationsCheck() (bool, error)
+
+	// IsMalicious indicates whether the host is considered to be malicious
+	// according to the hostdb.
+	IsMalicious(HostDBEntry) (bool, error)
 
 	// RandomHosts returns a set of random hosts, weighted by their estimated
 	// usefulness / attractiveness to the renter. RandomHosts will not return

@@ -323,6 +323,7 @@ func (j *jobReadRegistry) callExecute() {
 	jq.mu.Lock()
 	jq.weightedJobTime = expMovingAvgHotStart(jq.weightedJobTime, float64(jobTime), jobReadRegistryPerformanceDecay)
 	jq.mu.Unlock()
+	jq.staticWorkerObj.staticJobReadRegistryDT.AddDataPoint(jobTime)
 }
 
 // callExpectedBandwidth returns the bandwidth that is expected to be consumed

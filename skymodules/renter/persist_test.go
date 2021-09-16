@@ -93,7 +93,7 @@ func TestRenterSaveLoad(t *testing.T) {
 	}
 
 	// The registry stats should be seeded.
-	allNines := rt.renter.staticRegReadStats.Percentiles()
+	allNines := rt.renter.staticRegistryReadStats.Percentiles()
 	for i, distribution := range allNines {
 		for j, nine := range distribution {
 			if nine < (readRegistryStatsSeed*95/100) || nine > (readRegistryStatsSeed*105/11) {

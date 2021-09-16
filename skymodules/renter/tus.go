@@ -579,6 +579,7 @@ func (u *ongoingTUSUpload) ConcatUploads(ctx context.Context, partialUploads []h
 	if err != nil {
 		return err
 	}
+	sup.SiaPath = skymodules.RandomSkynetFilePath()
 	skylink, err := u.finishUploadLarge(ctx, fanout, sup, fi, masterKey, ec, smBytes)
 	if err != nil {
 		return err
