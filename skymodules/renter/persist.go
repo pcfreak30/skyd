@@ -292,17 +292,24 @@ func (r *Renter) managedInitStats() error {
 		r.staticBaseSectorUploadStats.AddDataPoint(15 * time.Second)  // Seed the stats so that startup doesn't say 0.
 		r.staticChunkUploadStats.AddDataPoint(15 * time.Second)       // Seed the stats so that startup doesn't say 0.
 		r.staticStreamBufferStats.AddDataPoint(5 * time.Second)       // Seed the stats so that startup doesn't say 0.
+		return nil
 	} else if err != nil {
 		build.Critical(err)
 		fmt.Println("WARN: reset stats after failing to load them", err)
-		return nil
+		return nil // ignore and overwrite
 	}
 
 	// Found stats. Seed with existing values.
-	r.staticRegistryReadStats.Load(stats.RegistryReadStats)
-	r.staticRegWriteStats.Load(stats.RegistryWriteStats)
-	r.staticBaseSectorUploadStats.Load(stats.BaseSectorUploadStats)
-	r.staticChunkUploadStats.Load(stats.ChunkUploadStats)
-	r.staticStreamBufferStats.Load(stats.StreamBufferStats)
+	println("load")
+	err1 := r.staticRegistryReadStats.Load(stats.RegistryReadStats)
+	err2 := r.staticRegWriteStats.Load(stats.RegistryWriteStats)
+	err3 := r.staticBaseSectorUploadStats.Load(stats.BaseSectorUploadStats)
+	err4 := r.staticChunkUploadStats.Load(stats.ChunkUploadStats)
+	err5 := r.staticStreamBufferStats.Load(stats.StreamBufferStats)
+	if err := errors.Compose(err1, err2, err3, err4, err5); err != nil {
+		build.Critical(err)
+		fmt.Println("WARN: failed to load one or more distribution trackers")
+		return nil // ignore and overwrite
+	}
 	return nil
 }

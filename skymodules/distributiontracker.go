@@ -434,15 +434,19 @@ func (dt *DistributionTracker) AddDataPoint(dur time.Duration) {
 
 // Load loads the buckets of a PersistedDistributionTracker into the tracker
 // that this method is called on, overwriting the buckets in the process.
-func (dt *DistributionTracker) Load(tracker PersistedDistributionTracker) {
+func (dt *DistributionTracker) Load(tracker PersistedDistributionTracker) error {
+	fmt.Println("load", dt)
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
-	dt.distributions = make([]*Distribution, len(tracker.Distributions))
-	for i := range dt.distributions {
+	if len(dt.distributions) != len(tracker.Distributions) {
+		return fmt.Errorf("failed to load distribution tracker -  number of persisted distributions doesn't match the expectations: %v != %v", len(dt.distributions), len(tracker.Distributions))
+	}
+	for i := range tracker.Distributions {
 		for j := range dt.distributions[i].timings {
 			dt.distributions[i].timings[j] = tracker.Distributions[i].Timings[j]
 		}
 	}
+	return nil
 }
 
 // Percentiles returns the percentiles for 4 timings for each distribution in

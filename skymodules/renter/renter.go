@@ -1122,7 +1122,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		staticTPool:          tpool,
 	}
 	r.staticSkynetTUSUploader = newSkynetTUSUploader(r)
-	r.staticStreamBufferSet = newStreamBufferSet(r.staticStreamBufferStats, &r.tg)
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
 	close(r.staticUploadHeap.pauseChan)
 
@@ -1194,6 +1193,9 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	if err != nil {
 		return nil, err
 	}
+
+	// Init stream buffer now that the stats are initialised.
+	r.staticStreamBufferSet = newStreamBufferSet(r.staticStreamBufferStats, &r.tg)
 
 	// After persist is initialized, create the worker pool.
 	r.staticWorkerPool = r.newWorkerPool()
