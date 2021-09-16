@@ -54,7 +54,6 @@ func TestUrlValuesFromSkynetUploadParams(t *testing.T) {
 		"disabledefaultpath",
 		"tryfiles",
 		"errorpages",
-		"monetization",
 	}) {
 		t.Log(values)
 		t.Fatal("unexpected")
@@ -116,7 +115,6 @@ func TestUrlValuesFromSkynetUploadParams(t *testing.T) {
 		"disabledefaultpath",
 		"tryfiles",
 		"errorpages",
-		"monetization",
 		"skykeyname",
 		"skykeyid",
 	}) {
