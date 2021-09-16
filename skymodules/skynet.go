@@ -1,6 +1,7 @@
 package skymodules
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -288,6 +289,7 @@ type (
 	// the renter implements for skynet.
 	SkynetTUSDataStore interface {
 		handler.DataStore
+		handler.ConcaterDataStore
 		handler.Locker
 
 		// Skylink returns the Skylink for an upload with a given ID.  If the
@@ -303,6 +305,42 @@ type (
 		NumBestPrimaryEntries uint64 `json:"numbestprimaryentries"`
 		NumEntries            uint64 `json:"numentries"`
 		RevisionNumber        uint64 `json:"revisionnumber"`
+	}
+)
+
+type (
+	// SkynetTUSUpload is the interface for a TUS upload in the
+	// SkynetTUSUploadStore.
+	SkynetTUSUpload interface {
+		Skylink() (Skylink, bool)
+
+		GetInfo(ctx context.Context) (handler.FileInfo, error)
+		IsSmallUpload(ctx context.Context) (bool, error)
+		PruneInfo(ctx context.Context) (id string, sp SiaPath, err error)
+
+		UploadParams(ctx context.Context) (SkyfileUploadParameters, FileUploadParams, error)
+
+		CommitWriteChunkSmallFile(newOffset int64, newLastWrite time.Time, smallUploadData []byte) error
+		CommitWriteChunk(newOffset int64, newLastWrite time.Time, smallFile bool, fanout []byte) error
+		CommitFinishUpload(skylink Skylink) error
+		CommitFinishPartialUpload() error
+
+		Fanout(ctx context.Context) ([]byte, error)
+		SkyfileMetadata(ctx context.Context) ([]byte, error)
+		SmallUploadData(ctx context.Context) ([]byte, error)
+	}
+
+	// SkynetTUSUploadStore defines an interface for a storage backend that is
+	// capable of storing upload information as well as locking uploads and pruning
+	// them.
+	SkynetTUSUploadStore interface {
+		ToPrune() ([]SkynetTUSUpload, error)
+		Prune(string) error
+		CreateUpload(fi handler.FileInfo, sp SiaPath, fileName string, baseChunkRedundancy uint8, fanoutDataPieces, fanoutParityPieces int, sm []byte, force bool, ct crypto.CipherType) (SkynetTUSUpload, error)
+		GetUpload(ctx context.Context, id string) (SkynetTUSUpload, error)
+
+		io.Closer
+		handler.Locker
 	}
 )
 

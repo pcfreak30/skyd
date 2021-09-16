@@ -539,12 +539,11 @@ type DownloadInfo struct {
 // FileUploadParams contains the information used by the Renter to upload a
 // file.
 type FileUploadParams struct {
-	Source              string
-	SiaPath             SiaPath
-	ErasureCode         ErasureCoder
-	Force               bool
-	DisablePartialChunk bool
-	Repair              bool
+	Source      string
+	SiaPath     SiaPath
+	ErasureCode ErasureCoder
+	Force       bool
+	Repair      bool
 
 	// CipherType was added later. If it is left blank, the renter will use the
 	// default encryption method (as of writing, Threefish)
@@ -631,6 +630,10 @@ type HostDBEntry struct {
 	// Measurements related to the IP subnet mask.
 	IPNets          []string  `json:"ipnets"`
 	LastIPNetChange time.Time `json:"lastipnetchange"`
+
+	// Malicious indicates whether the host is considered to be a malicous
+	// host by the hostdb.
+	Malicious bool `json:"malicious"`
 
 	// The public key of the host, stored separately to minimize risk of certain
 	// MitM based vulnerabilities.
@@ -1654,6 +1657,10 @@ type HostDB interface {
 	// IPViolationsCheck returns a boolean indicating if the IP violation check is
 	// enabled or not.
 	IPViolationsCheck() (bool, error)
+
+	// IsMalicious indicates whether the host is considered to be malicious
+	// according to the hostdb.
+	IsMalicious(HostDBEntry) (bool, error)
 
 	// RandomHosts returns a set of random hosts, weighted by their estimated
 	// usefulness / attractiveness to the renter. RandomHosts will not return

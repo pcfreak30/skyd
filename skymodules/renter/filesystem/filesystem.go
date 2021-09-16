@@ -317,7 +317,7 @@ func (fs *FileSystem) NewSiaDir(siaPath skymodules.SiaPath, mode os.FileMode) er
 }
 
 // NewSiaFile creates a SiaFile at the specified siaPath.
-func (fs *FileSystem) NewSiaFile(siaPath skymodules.SiaPath, source string, ec skymodules.ErasureCoder, mk crypto.CipherKey, fileSize uint64, fileMode os.FileMode, disablePartialUpload bool) error {
+func (fs *FileSystem) NewSiaFile(siaPath skymodules.SiaPath, source string, ec skymodules.ErasureCoder, mk crypto.CipherKey, fileSize uint64, fileMode os.FileMode) error {
 	// Create SiaDir for file.
 	dirSiaPath, err := siaPath.Dir()
 	if err != nil {

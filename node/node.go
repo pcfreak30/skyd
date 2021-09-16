@@ -82,6 +82,8 @@ type NodeParams struct {
 	TransactionPool modules.TransactionPool
 	Wallet          modules.Wallet
 
+	TUSUploadStore skymodules.SkynetTUSUploadStore
+
 	// Dependencies for each module supporting dependency injection.
 	AccountingDeps   modules.Dependencies
 	ConsensusSetDeps modules.Dependencies
@@ -260,6 +262,14 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	if err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create siamux"))
 		return nil, errChan
+	}
+
+	// Create the TUS upload store.
+	var tus skymodules.SkynetTUSUploadStore
+	if params.TUSUploadStore == nil {
+		tus = renter.NewSkynetTUSInMemoryUploadStore()
+	} else {
+		tus = params.TUSUploadStore
 	}
 
 	// Load all modules
@@ -513,7 +523,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 			close(c)
 			return nil, c
 		}
-		renter, errChanRenter := renter.NewCustomRenter(g, cs, tp, hdb, w, hc, mux, persistDir, renterRateLimit, renterDeps)
+		renter, errChanRenter := renter.NewCustomRenter(g, cs, tp, hdb, w, hc, mux, tus, persistDir, renterRateLimit, renterDeps)
 		if err := modules.PeekErr(errChanRenter); err != nil {
 			c <- err
 			close(c)

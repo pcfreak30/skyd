@@ -93,7 +93,7 @@ func TestRenterSaveLoad(t *testing.T) {
 	}
 
 	// The registry stats should be seeded.
-	allNines := rt.renter.staticRegReadStats.Percentiles()
+	allNines := rt.renter.staticRegistryReadStats.Percentiles()
 	for i, distribution := range allNines {
 		for j, nine := range distribution {
 			if nine < (readRegistryStatsSeed*95/100) || nine > (readRegistryStatsSeed*105/11) {
@@ -146,7 +146,8 @@ func TestRenterSaveLoad(t *testing.T) {
 	// load should now load the files into memory.
 	var errChan <-chan error
 	rl := ratelimit.NewRateLimit(0, 0, 0)
-	rt.renter, errChan = New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, rl, filepath.Join(rt.dir, skymodules.RenterDir))
+	tus := NewSkynetTUSInMemoryUploadStore()
+	rt.renter, errChan = New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, tus, rl, filepath.Join(rt.dir, skymodules.RenterDir))
 	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +261,8 @@ func TestRenterPaths(t *testing.T) {
 	}
 	var errChan <-chan error
 	rl := ratelimit.NewRateLimit(0, 0, 0)
-	rt.renter, errChan = New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, rl, filepath.Join(rt.dir, skymodules.RenterDir))
+	tus := NewSkynetTUSInMemoryUploadStore()
+	rt.renter, errChan = New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, tus, rl, filepath.Join(rt.dir, skymodules.RenterDir))
 	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
