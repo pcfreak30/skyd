@@ -435,7 +435,6 @@ func (dt *DistributionTracker) AddDataPoint(dur time.Duration) {
 // Load loads the buckets of a PersistedDistributionTracker into the tracker
 // that this method is called on, overwriting the buckets in the process.
 func (dt *DistributionTracker) Load(tracker PersistedDistributionTracker) error {
-	fmt.Println("load", dt)
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 	if len(dt.distributions) != len(tracker.Distributions) {

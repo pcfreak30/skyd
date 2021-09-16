@@ -62,7 +62,13 @@ var (
 	shareHeader  = [15]byte{'S', 'i', 'a', ' ', 'S', 'h', 'a', 'r', 'e', 'd', ' ', 'F', 'i', 'l', 'e'}
 	shareVersion = "0.4"
 
-	statsPersistInterval = 30 * time.Minute
+	// statsPersistInterval defines the interval the renter uses for
+	// persisting its stats.
+	statsPersistInterval = build.Select(build.Var{
+		Dev:      time.Minute,
+		Standard: 30 * time.Minute,
+		Testing:  2 * time.Second,
+	}).(time.Duration)
 
 	statsMetadata = persist.Metadata{
 		Header:  "Stats",
@@ -94,6 +100,7 @@ func (r *Renter) saveSync() error {
 	return persist.SaveJSON(settingsMetadata, r.persist, filepath.Join(r.persistDir, PersistFilename))
 }
 
+// threadedStatsPersister periodically persists the renter's collected stats.
 func (r *Renter) threadedStatsPersister() {
 	if err := r.tg.Add(); err != nil {
 		return
@@ -300,7 +307,6 @@ func (r *Renter) managedInitStats() error {
 	}
 
 	// Found stats. Seed with existing values.
-	println("load")
 	err1 := r.staticRegistryReadStats.Load(stats.RegistryReadStats)
 	err2 := r.staticRegWriteStats.Load(stats.RegistryWriteStats)
 	err3 := r.staticBaseSectorUploadStats.Load(stats.BaseSectorUploadStats)
