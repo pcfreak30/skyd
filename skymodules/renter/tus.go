@@ -254,8 +254,10 @@ func (u *ongoingTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.
 	}
 
 	// If the offset is 0, we try to determine if the upload is large or small.
+	var isSmall bool
 	if offset == 0 {
-		smallFileData, isSmall, err := u.tryUploadSmallFile(ctx, src)
+		var smallFileData []byte
+		smallFileData, isSmall, err = u.tryUploadSmallFile(ctx, src)
 		if err != nil {
 			return 0, err
 		}
@@ -266,13 +268,15 @@ func (u *ongoingTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.
 			err = u.staticUpload.CommitWriteChunkSmallFile(fi.Size, time.Now(), smallFileData)
 			return int64(len(smallFileData)), err
 		}
+		src = io.MultiReader(bytes.NewReader(smallFileData), src)
+	} else {
+		isSmall, err = u.staticUpload.IsSmallUpload(ctx)
+		if err != nil {
+			return 0, err
+		}
 	}
 	// If we get to this point with a small file, something is wrong.
 	// Theoretically this is not possible but return an error for extra safety.
-	isSmall, err := u.staticUpload.IsSmallUpload(ctx)
-	if err != nil {
-		return 0, err
-	}
 	if isSmall && !fi.IsPartial {
 		return 0, errors.New("can't upload another chunk to a small file upload")
 	}
@@ -358,7 +362,7 @@ func (u *ongoingTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.
 			return 0, errors.AddContext(err, "failed to upload chunk")
 		}
 	}
-	return n, u.staticUpload.CommitWriteChunkLargeFile(fi.Offset+n, time.Now(), cr.Fanout())
+	return n, u.staticUpload.CommitWriteChunk(fi.Offset+n, time.Now(), isSmall, cr.Fanout())
 }
 
 // GetInfo returns the file info.
@@ -593,9 +597,11 @@ func (u *ongoingTUSUpload) ConcatUploads(ctx context.Context, partialUploads []h
 
 	// Upon success, we mark the partial uploads as complete to prevent them
 	// from being pruned.
+	var errs error
 	for i := range partialUploads {
-		_ = partialUploads[i].(*ongoingTUSUpload)
-		panic("set partial upload to complete to avoid pruning")
+		// Commit the partial upload as complete as well. This
+		pu = partialUploads[i].(*ongoingTUSUpload)
+		errs = errors.Compose(errs, pu.staticUpload.CommitFinishPartialUpload())
 	}
-	return u.staticUpload.CommitFinishUpload(skylink)
+	return errors.Compose(errs, u.staticUpload.CommitFinishUpload(skylink))
 }

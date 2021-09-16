@@ -321,8 +321,9 @@ type (
 		UploadParams(ctx context.Context) (SkyfileUploadParameters, FileUploadParams, error)
 
 		CommitWriteChunkSmallFile(newOffset int64, newLastWrite time.Time, smallUploadData []byte) error
-		CommitWriteChunkLargeFile(newOffset int64, newLastWrite time.Time, fanout []byte) error
+		CommitWriteChunk(newOffset int64, newLastWrite time.Time, smallFile bool, fanout []byte) error
 		CommitFinishUpload(skylink Skylink) error
+		CommitFinishPartialUpload() error
 
 		Fanout(ctx context.Context) ([]byte, error)
 		SkyfileMetadata(ctx context.Context) ([]byte, error)
