@@ -237,20 +237,6 @@ func testValidateSkyfileMetadata(t *testing.T) {
 		t.Fatal("unexpected outcome")
 	}
 
-	// verify invalid 0 length
-	invalid = metadata
-	invalid.Subfiles = SkyfileSubfiles{
-		"validkey": SkyfileSubfileMetadata{
-			Filename: "validkey",
-			Len:      1,
-		},
-	}
-	invalid.Length = 0
-	err = ValidateSkyfileMetadata(invalid)
-	if err == nil || !strings.Contains(err.Error(), "invalid length set on metadata") {
-		t.Fatal("unexpected outcome")
-	}
-
 	// verify valid 0 length
 	invalid = metadata
 	invalid.Subfiles = SkyfileSubfiles{
@@ -291,7 +277,7 @@ func testValidateSkyfileMetadata(t *testing.T) {
 	}
 	valid.Length = 1
 	err = ValidateSkyfileMetadata(valid)
-	if err == nil || !strings.Contains(err.Error(), "invalid length set on metadata - length: 1, totalLength: 10, subfiles: 1, monetized: false") {
+	if err == nil || !strings.Contains(err.Error(), "invalid length set on metadata - length: 1, totalLength: 10, subfiles: 1") {
 		t.Fatal("unexpected outcome")
 	}
 }
