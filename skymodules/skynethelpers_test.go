@@ -246,7 +246,6 @@ func testValidateSkyfileMetadata(t *testing.T) {
 		},
 	}
 	invalid.Length = 0
-	invalid.Monetization = &Monetization{}
 	err = ValidateSkyfileMetadata(invalid)
 	if err == nil || !strings.Contains(err.Error(), "invalid length set on metadata") {
 		t.Fatal("unexpected outcome")
@@ -375,9 +374,6 @@ func TestParseSkyfileMetadata(t *testing.T) {
 	// Make sure monetization is validated.
 	sm := SkyfileMetadata{
 		Filename: "test",
-		Monetization: &Monetization{
-			License: "", // invalid license
-		},
 	}
 	smBytes, err := json.Marshal(sm)
 	if err != nil {

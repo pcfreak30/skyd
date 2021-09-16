@@ -8,7 +8,6 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
-	"go.sia.tech/siad/types"
 )
 
 // TestUrlValuesFromSkynetUploadParams is a unit test that covers the helper
@@ -27,18 +26,6 @@ func TestUrlValuesFromSkynetUploadParams(t *testing.T) {
 		return true
 	}
 
-	// Create monetization.
-	monetization := &skymodules.Monetization{
-		Monetizers: []skymodules.Monetizer{
-			{
-				Address:  types.UnlockHash{},
-				Amount:   types.NewCurrency64(fastrand.Uint64n(1000) + 1),
-				Currency: skymodules.CurrencyUSD,
-			},
-		},
-	}
-	fastrand.Read(monetization.Monetizers[0].Address[:])
-
 	// Create SkyfileMultipartUploadParameters.
 	smup := skymodules.SkyfileMultipartUploadParameters{
 		SiaPath:             skymodules.RandomSiaPath(),
@@ -50,7 +37,6 @@ func TestUrlValuesFromSkynetUploadParams(t *testing.T) {
 		DisableDefaultPath:  false,
 		TryFiles:            []string{""},
 		ErrorPages:          map[int]string{},
-		Monetization:        monetization,
 	}
 
 	// Verify 'urlValuesFromSkyfileMultipartUploadParameters' helper
@@ -109,7 +95,6 @@ func TestUrlValuesFromSkynetUploadParams(t *testing.T) {
 		DisableDefaultPath:  false,
 		TryFiles:            []string{},
 		ErrorPages:          map[int]string{},
-		Monetization:        monetization,
 		SkykeyName:          "somename",
 		SkykeyID:            skyKeyID,
 	}
