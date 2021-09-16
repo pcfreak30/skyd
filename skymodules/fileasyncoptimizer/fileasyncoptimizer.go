@@ -191,7 +191,7 @@ func (fo *FileOptimizer) addWrite(file File, data []byte, offset int64) {
 		// TODO: Make some noisy logs if the sleep time gets over 100
 		// milliseconds, it means the background thread has been processing the
 		// same queue for at least 5 seconds.
-		if sleepTime > 10 * time.Millisecond {
+		if sleepTime > 10*time.Millisecond {
 			time.Sleep(time.Duration(sleepTime))
 		}
 	}
@@ -495,8 +495,7 @@ func (f *File) Sync() error {
 //
 // TODO: incomplete, need to allocate the array for example
 func NewFileOptimizer() (*FileOptimizer, error) {
-	fo := &FileOptimizer{
-	}
+	fo := &FileOptimizer{}
 
 	// lock the hasWork mutex so that the background thread is immediately
 	// blocking at startup.
