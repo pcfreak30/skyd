@@ -1,18 +1,22 @@
-// fileasyncoptimizer.go wraps the os.File object with another object that
-// attempts to optimize the latency with which async operations return. It will
-// also try to minimize the total number of syscalls that get made. These
-// optimizations achieve higher total throughput and lower overall system load
-// at the cost of potentially substantially slowing down synchronous operations
-// like File.Sync() and File.Close().
+// fileasyncoptimizer.go is a utility that wraps a bunch of os.File objects and
+// serializes their syscalls, building a queue and optimizing away multiple
+// writes to the same area of the file. The primary goal of this object is to
+// eliminate any blocking that happens when writing to a file, and the secondary
+// goals are to reduce the total number of syscals that get made and reduce
+// overall pressure on the filesystem.
 //
-// This is optimized code, which means that extra steps are taken at various
-// points in the code to minimize overheads, potentially at the cost of
-// readability. We take these steps more aggressivley than we do in most of the
-// rest of the codebase.
+// We built this code after realizing that when under substantial pressure,
+// file.Write calls would often block for 5 or more seconds. This code allows us
+// to call file.Write in critical paths without worrying that there will be an
+// extended amount of blocking. This file provides the same consistency
+// guarantees as a normal os.File - data that is written will be read back
+// correctly, and data cannot be guaranteed to have been persisted to disk until
+// file.Sync has been called. If file.Sync is called, a guarantee is provided
+// that the data is persisted.
 //
-// NOTE: A single optimizer can be used for many files across many packages, and
-// will perform better at its job of reducing the total number of filesystem
-// calls if more pieces of the codebase are all using the optimizer.
+// There are some mild CPU tradeoffs that get made. There are fewer syscalls,
+// but more pressure on the CPU as algorithms run to merge together various
+// Write calls. This is generally a good trade.
 package fileasyncoptimizer
 
 // TODO: Add a safety check that probabilistically verifies that the data model
@@ -30,31 +34,6 @@ import (
 )
 
 const (
-	// MaxPendingWrites defines the maximum number of pending writes that the
-	// FileOptimizer will accept. When the FileOptimzer starts to get close to the
-	// limit, it will put artifical sleeps into the write calls to apply pressure on
-	// the callers and reduce the number of incoming writes. It will start to log
-	// when this happens so that sysadmins can see that there are a lot of calls
-	// taking place.
-	//
-	// NOTE: There is only a single background thread processing syscalls. We use
-	// only one thread to minimize the total syscall throughput and keep the overall
-	// system load low. This thread is allowed to run at full speed however.
-	//
-	// NOTE: In the worst case, this array adds linear overhead to each call. When
-	// the list of pending writes is processed, each write potentially has to
-	// iterate over the full size of the array twice before the write can be
-	// committed.
-	//
-	// NOTE: If changing this value, FullQueueSleepExponential also needs to be
-	// changed.
-	MaxPendingWrites = 10e3
-
-	// SleepPerWriteIteration defines the minimum amount of time that the background
-	// thread is going to sleep before performing work. This ensures that there is
-	// time for multiple writes to the same file to be batched together.
-	SleepPerWriteIteration = time.Millisecond * 50
-
 	// FullQueueSleepExponential defines the slope of the exponential curve that
 	// establishes how long a thread must wait before adding a new pendingWrite
 	// to the FileOptimizer.
@@ -69,6 +48,26 @@ const (
 	// NOTE: This constant directly interacts with MaxPendingWrites, make sure
 	// the change them in tandem.
 	FullQueueSleepExponential = 1.006
+
+	// MaxPendingWrites defines the maximum number of pending writes that the
+	// FileOptimizer will accept. When the FileOptimzer starts to get close to the
+	// limit, it will put artifical sleeps into the write calls to apply pressure on
+	// the callers and reduce the number of incoming writes. It will start to log
+	// when this happens so that sysadmins can see that there are a lot of calls
+	// taking place.
+	//
+	// NOTE: There is only a single background thread processing syscalls. We use
+	// only one thread to minimize the total syscall throughput and keep the overall
+	// system load low. This thread is allowed to run at full speed however.
+	//
+	// NOTE: If changing this value, FullQueueSleepExponential also needs to be
+	// changed.
+	MaxPendingWrites = 10e3
+
+	// SleepPerWriteCycle defines the minimum amount of time that the background
+	// thread is going to sleep before performing work. This ensures that there is
+	// time for multiple writes to the same file to be batched together.
+	SleepPerWriteCylce = time.Millisecond * 50
 )
 
 // pendingWrite contains a byte slice and an offset. The length is implied by
