@@ -6,6 +6,7 @@ import (
 
 	lock "github.com/square/mongo-lock"
 	"github.com/tus/tusd/pkg/handler"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -14,8 +15,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/writeconcern"
 	"go.sia.tech/siad/crypto"
 )
-
-// TODO: Implement pruning for locks.
 
 const (
 	// mongoLockTTL is the time-to-live in seconds for a lock in the
@@ -39,7 +38,10 @@ const (
 
 type (
 	skynetTUSMongoUploadStore struct {
+		ctx context.Context
+
 		staticClient         *mongo.Client
+		staticLockClient     *lock.Client
 		staticPortalHostname string
 	}
 
@@ -63,13 +65,8 @@ func (us *skynetTUSMongoUploadStore) Close() error {
 
 // NewLock creates a new lock for the upload with the given ID.
 func (us *skynetTUSMongoUploadStore) NewLock(uploadID string) (handler.Lock, error) {
-	client := lock.NewClient(us.staticLockCollection())
-	err := client.CreateIndexes(context.Background())
-	if err != nil {
-		return nil, err
-	}
 	return &skynetMongoLock{
-		staticClient:         client,
+		staticClient:         us.staticLockClient,
 		staticPortalHostname: us.staticPortalHostname,
 		staticUploadID:       uploadID,
 	}, nil
@@ -120,6 +117,11 @@ func (us *skynetTUSMongoUploadStore) ToPrune() ([]skymodules.SkynetTUSUpload, er
 }
 
 func (us *skynetTUSMongoUploadStore) Prune(string) error {
+	purger := lock.NewPurger(us.staticLockClient)
+	_, err := purger.Purge(us.ctx)
+	if err != nil {
+		return errors.AddContext(err, "failed to purge old locks")
+	}
 	panic("not implemented yet")
 }
 
@@ -167,8 +169,22 @@ func newSkynetTUSMongoUploadStore(ctx context.Context, uri, portalName string, c
 		SetReadConcern(readconcern.Local()).
 		SetWriteConcern(writeconcern.New(writeconcern.J(true)))
 	client, err := mongo.Connect(ctx, opts)
-	return &skynetTUSMongoUploadStore{
+	if err != nil {
+		return nil, err
+	}
+
+	// Create store.
+	us := &skynetTUSMongoUploadStore{
 		staticClient:         client,
 		staticPortalHostname: portalName,
-	}, err
+	}
+
+	// Create lock client.
+	lockClient := lock.NewClient(us.staticLockCollection())
+	err = lockClient.CreateIndexes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	us.staticLockClient = lockClient
+	return us, nil
 }
