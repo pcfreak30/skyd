@@ -372,6 +372,13 @@ func TestParseSkyfileMetadata(t *testing.T) {
 	randData = fastrand.Bytes(int(modules.SectorSize))
 	copy(randData, layoutBytes)
 	ParseSkyfileMetadata(randData) // no error check, just want to know it doesn't panic
+	// No fanout
+	layout.FanoutSize = 0
+	layoutBytes = layout.Encode()
+	_, _, _, _, _, err := ParseSkyfileMetadata(randData) // no error check, just want to know it doesn't panic
+	if errors.Contains(err, ErrMalformedBaseSector) {
+		t.Fatal(err)
+	}
 	// Make sure monetization is validated.
 	sm := SkyfileMetadata{
 		Filename: "test",

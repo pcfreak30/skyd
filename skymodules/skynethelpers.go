@@ -25,6 +25,10 @@ var (
 	// ErrInvalidDefaultPath is returned when the specified default path is not
 	// valid, e.g. the file it points to does not exist.
 	ErrInvalidDefaultPath = errors.New("invalid default path provided")
+
+	// ErrMalformedBaseSector is returned if a malformed base sector is
+	// detected.
+	ErrMalformedBaseSector = errors.New("base sector is malformed")
 )
 
 // AddMultipartFile is a helper function to add a file to multipart form-data.
@@ -267,12 +271,17 @@ func ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []by
 	rawSM = baseSector[offset : offset+metadataSize]
 	err = json.Unmarshal(rawSM, &sm)
 	if err != nil {
+		err = errors.Compose(ErrMalformedBaseSector, err)
 		return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, nil, errors.AddContext(err, "unable to parse SkyfileMetadata from skyfile base sector")
 	}
 	offset += metadataSize
 
 	// In version 1, the base sector payload is nil unless there is no fanout.
 	if sl.FanoutSize == 0 {
+		// Check for out-of-bounds.
+		if offset+sl.Filesize > uint64(len(baseSector)) {
+			return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, nil, errors.AddContext(ErrMalformedBaseSector, "fanout size is 0 but base sector doesn't contain full file data")
+		}
 		baseSectorPayload = baseSector[offset : offset+sl.Filesize]
 	}
 

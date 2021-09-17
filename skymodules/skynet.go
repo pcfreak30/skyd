@@ -582,6 +582,16 @@ func (sl *SkyfileLayout) DecodeFanoutIntoChunks(fanoutBytes []byte) ([][]crypto.
 		}
 		chunks = append(chunks, chunk)
 	}
+
+	// Make sure the fanout chunks match the filesize.
+	chunkSize := ChunkSize(sl.CipherType, uint64(sl.FanoutDataPieces))
+	expectedFanoutChunks := sl.Filesize / chunkSize
+	if sl.Filesize%chunkSize != 0 {
+		expectedFanoutChunks++
+	}
+	if uint64(numChunks) != expectedFanoutChunks {
+		return nil, errors.AddContext(ErrMalformedBaseSector, fmt.Sprintf("unexpected fanout length %v != %v", numChunks, expectedFanoutChunks))
+	}
 	return chunks, nil
 }
 
