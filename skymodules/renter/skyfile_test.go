@@ -3,12 +3,14 @@ package renter
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -105,8 +107,24 @@ func TestShortFanoutPanic(t *testing.T) {
 	if _, err = wt.rt.addHost(t.Name() + "2"); err != nil {
 		t.Fatal(err)
 	}
-
 	r := wt.rt.renter
+
+	// Wait for them to show up as workers.
+	err = build.Retry(600, 100*time.Millisecond, func() error {
+		_, err := wt.rt.miner.AddBlock()
+		if err != nil {
+			return err
+		}
+		r.staticWorkerPool.callUpdate()
+		workers := r.staticWorkerPool.callWorkers()
+		if len(workers) < 3 {
+			return fmt.Errorf("expected %v workers but got %v", 3, len(workers))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Prepare a metadata for a basic file.
 	fileSize := modules.SectorSize * 3
@@ -177,7 +195,7 @@ func TestShortFanoutPanic(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Download the file. This should fail due to the malformed fanout.
+	// Download the file. This should fail due to the short fanout.
 	_, _, err = r.DownloadSkylink(skylink, time.Hour, types.SiacoinPrecision.MulFloat(1e-7))
 	if err == nil || !strings.Contains(err.Error(), skymodules.ErrMalformedBaseSector.Error()) {
 		t.Fatal(err)
