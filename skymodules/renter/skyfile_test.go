@@ -3,7 +3,6 @@ package renter
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -146,10 +145,8 @@ func TestShortFanoutPanic(t *testing.T) {
 	}
 	fanout := chunkReader.Fanout()
 
-	fmt.Println("fanout before", len(fanout))
 	// Shrink the fanout to 1 chunk.
 	fanout = fanout[:ec.NumPieces()*crypto.HashSize]
-	fmt.Println("fanout after", len(fanout))
 
 	// Prepare a layout.
 	sl := skymodules.SkyfileLayout{
@@ -180,7 +177,7 @@ func TestShortFanoutPanic(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Download the file.
+	// Download the file. This should fail due to the malformed fanout.
 	_, _, err = r.DownloadSkylink(skylink, time.Hour, types.SiacoinPrecision.MulFloat(1e-7))
 	if err == nil || !strings.Contains(err.Error(), skymodules.ErrMalformedBaseSector.Error()) {
 		t.Fatal(err)
