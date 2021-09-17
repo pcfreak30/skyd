@@ -302,7 +302,9 @@ func (r *Renter) managedInitStats() error {
 		r.staticStreamBufferStats.AddDataPoint(5 * time.Second)       // Seed the stats so that startup doesn't say 0.
 		return nil
 	} else if err != nil {
-		build.Critical(err)
+		if build.Release == "testing" {
+			build.Critical(err)
+		}
 		fmt.Println("WARN: reset stats after failing to load them", err)
 		return nil // ignore and overwrite
 	}
@@ -314,7 +316,9 @@ func (r *Renter) managedInitStats() error {
 	err4 := r.staticChunkUploadStats.Load(stats.ChunkUploadStats)
 	err5 := r.staticStreamBufferStats.Load(stats.StreamBufferStats)
 	if err := errors.Compose(err1, err2, err3, err4, err5); err != nil {
-		build.Critical(err)
+		if build.Release == "testing" {
+			build.Critical(err)
+		}
 		fmt.Println("WARN: failed to load one or more distribution trackers")
 		return nil // ignore and overwrite
 	}
