@@ -180,11 +180,10 @@ func (stu *skynetTUSUploader) GetUpload(ctx context.Context, id string) (handler
 	// Search for ongoing upload.
 	stu.mu.Lock()
 	ou, exists := stu.ongoingUploads[id]
+	stu.mu.Unlock()
 	if exists {
-		stu.mu.Unlock()
 		return ou, nil
 	}
-	stu.mu.Unlock()
 
 	// If it doesn't exist create one.
 	upload, err := stu.staticUploadStore.GetUpload(ctx, id)
@@ -421,7 +420,7 @@ func (u *ongoingTUSUpload) FinishUpload(ctx context.Context) (err error) {
 	if err != nil {
 		return errors.AddContext(err, "failed to fetch smBytes")
 	}
-	smallUploadData, err := u.staticUpload.SmallUploadData(ctx)
+	smallUploadData, err := u.staticUpload.SmallFileData(ctx)
 	if err != nil {
 		return errors.AddContext(err, "failed to fetch smallUploadData")
 	}
@@ -477,13 +476,15 @@ func (r *Renter) threadedPruneTUSUploads() {
 		for _, upload := range toDelete {
 			uploadID, sp, err := upload.PruneInfo(r.tg.StopCtx())
 			if err != nil {
-				r.staticLog.Critical("failed to fetch prune info from upload", err)
-			} else {
-				// Delete on disk.
-				spFanout, _ := sp.AddSuffixStr(skymodules.ExtendedSuffix)
-				_ = r.DeleteFile(sp)
-				_ = r.DeleteFile(spFanout)
+				r.staticLog.Print("WARN: failed to fetch prune info from upload", err)
+				continue
 			}
+
+			// Delete on disk.
+			spFanout, _ := sp.AddSuffixStr(skymodules.ExtendedSuffix)
+			_ = r.DeleteFile(sp)
+			_ = r.DeleteFile(spFanout)
+
 			// Delete from store.
 			_ = r.staticSkynetTUSUploader.staticUploadStore.Prune(uploadID)
 

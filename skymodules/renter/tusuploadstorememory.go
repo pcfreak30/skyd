@@ -111,8 +111,8 @@ func (u *skynetInMemoryUpload) CommitFinishUpload(skylink skymodules.Skylink) er
 	return nil
 }
 
-// CommitFinishPartialUpload commits a finished upload to the upload store. This means
-// setting the skylink of the finished upload.
+// CommitFinishPartialUpload commits a finished upload to the upload store by
+// setting it to be completed.
 func (u *skynetInMemoryUpload) CommitFinishPartialUpload() error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
@@ -120,30 +120,16 @@ func (u *skynetInMemoryUpload) CommitFinishPartialUpload() error {
 	return nil
 }
 
+// CommitWriteChunk commits the changes to the upload after successfully writing
+// a chunk to the store.
+func (u *skynetInMemoryUpload) CommitWriteChunk(newOffset int64, newLastWrite time.Time, smallFile bool, data []byte) error {
+	return u.managedCommitWriteChunk(newOffset, newLastWrite, smallFile, data)
+}
+
 // CommitWriteChunkSmallFile commits the changes to the upload after successfully writing
 // a chunk to the store.
 func (u *skynetInMemoryUpload) CommitWriteChunkSmallFile(newOffset int64, newLastWrite time.Time, smallFileData []byte) error {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-
-	u.fi.Offset = newOffset
-	u.lastWrite = newLastWrite
-	u.isSmallFile = true
-	u.smallFileData = smallFileData
-	return nil
-}
-
-// CommitWriteChunk commits the changes to the upload after successfully writing
-// a chunk to the store.
-func (u *skynetInMemoryUpload) CommitWriteChunk(newOffset int64, newLastWrite time.Time, smallFile bool, fanout []byte) error {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-
-	u.fi.Offset = newOffset
-	u.lastWrite = newLastWrite
-	u.isSmallFile = smallFile
-	u.fanout = append(u.fanout, fanout...)
-	return nil
+	return u.managedCommitWriteChunk(newOffset, newLastWrite, true, smallFileData)
 }
 
 // GetInfo returns the upload's underlying handler.FileInfo.
@@ -204,7 +190,7 @@ func (u *skynetInMemoryUpload) SkyfileMetadata(ctx context.Context) ([]byte, err
 }
 
 // SmallUploadData returns the data for a small upload.
-func (u *skynetInMemoryUpload) SmallUploadData(ctx context.Context) ([]byte, error) {
+func (u *skynetInMemoryUpload) SmallFileData(ctx context.Context) ([]byte, error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	return u.smallFileData, nil
@@ -252,5 +238,24 @@ func (us *skynetTUSInMemoryUploadStore) Prune(uploadID string) error {
 	us.mu.Lock()
 	defer us.mu.Unlock()
 	delete(us.uploads, uploadID)
+	return nil
+}
+
+// managedCommitWriteChunk commits the changes to the upload after successfully
+// writing a chunk to the store. For small files the data will be set as the
+// smallFileData and for large files it is interpreted as the fanout and
+// appended to the existing fanout.
+func (u *skynetInMemoryUpload) managedCommitWriteChunk(newOffset int64, newLastWrite time.Time, smallFile bool, data []byte) error {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
+	u.fi.Offset = newOffset
+	u.lastWrite = newLastWrite
+	u.isSmallFile = smallFile
+	if smallFile {
+		u.smallFileData = data
+	} else {
+		u.fanout = append(u.fanout, data...)
+	}
 	return nil
 }

@@ -327,7 +327,7 @@ type (
 
 		Fanout(ctx context.Context) ([]byte, error)
 		SkyfileMetadata(ctx context.Context) ([]byte, error)
-		SmallUploadData(ctx context.Context) ([]byte, error)
+		SmallFileData(ctx context.Context) ([]byte, error)
 	}
 
 	// SkynetTUSUploadStore defines an interface for a storage backend that is
