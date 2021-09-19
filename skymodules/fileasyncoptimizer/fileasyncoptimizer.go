@@ -19,14 +19,6 @@
 // Write calls. This is generally a good trade.
 package fileasyncoptimizer
 
-// TODO: Add a safety check that probabilistically verifies that the data model
-// of the optimizer is being respected. When you call WriteAt on the optimizer,
-// you are not allowed to subsequently modify the data that you passed in. We
-// can verify this by making a copy of the original input and comparing the
-// original input to the current state of the slice at write-time. This is only
-// performed probabilistically because it otherwise would have runtime
-// overheads, and ultimately defeat the point of the optimization.
-
 import (
 	"math"
 	"os"
@@ -70,36 +62,6 @@ const (
 	SleepPerWriteCylce = time.Millisecond * 50
 )
 
-// pendingWrite contains a byte slice and an offset. The length is implied by
-// the length of the byte slice. Since the byte slice is just a pointer, this
-// entire object is constant size.
-//
-// The zero-value of this struct sets writePending to 'false', indicating that
-// no work is needed. When it gets updated with a write, the value needs to be
-// flipped to 'true'.
-//
-// The pendingWrite fields are protected by the fo mutex.
-type pendingWrite struct {
-	data   []byte // data being written, length implied by len(data)
-	offset int64  // offset for where to start the write
-
-	fileIndex    int  // index of the file in the optimizer being written to
-	writePending bool // set to true when the write finishes
-}
-
-// File is a wrapper for os.File that interacts with the FileOptimizer.
-type File struct {
-	// atomicClosed is used to indicate whether the file has been closed.
-	// Atomics are used here to eliminate lock contention between multiple
-	// threads performing operations on the file at the same time, while still
-	// allowing all threads to verify that no operation has been performed after
-	// the file has been closed.
-	atomicClosed uint64
-
-	staticFileIndex int
-	staticFile      *os.File
-}
-
 // A FileOptimizer is a single struct that can manage multiple files at the same
 // time. All of them will syscall over a single thread, in an attempt to reduce
 // the total number of syscalls that the program is making.
@@ -112,131 +74,149 @@ type File struct {
 // allocations inside of the syscall itself, the FileOptimizer is not doing any
 // allocations.
 //
-// NOTE: There is no threadgroup in the FileOptimizer, you close it by calling
-// Close() in a tg.AfterStop call. FileOptimizer.Close() will error if it not
-// all of the underyling files have been closed yet.
+// NOTE: For best results, the entire executable should use the same
+// fileasyncoptimizer, and not one per package. If there are multiple optimizers
+// running at once, they will each dedicate a full thread to making syscalls,
+// which can significantly increase overheads and substantially damage peak
+// latency.
+//
+// NOTE: Closing this object can take a while, and will not fast-close through a
+// thread-group because every pending write needs time to be written to disk. If
+// there are a large number of pending writes, this can take some time and there
+// is no shortcutting it.
 type FileOptimizer struct {
-	// files is a list of files that the FileOptimizer is tracking. It'll expand
-	// the list as needed, meaning (barely) reduced performance initially, with
-	// performance improving
-	files []File
+	// The writeCounter exists to apply backpressure on a large number of
+	// incoming writeThreads. Generally speaking this value is never important
+	// and it should never really get to the point where there are sleeps. But
+	// if it does get to that point, we want to make sure that only one write
+	// can happen at a time, and that the write that is happening is actively
+	// blocking other writes for increasing periods of time. The mutex exists to
+	// create lock contention among threads that are trying to increment the
+	// counter.
+	//
+	// The counter itself however is atomic because we want threads to be able
+	// to decrement the counter at any time as the write gets cleared. The
+	// decrement threads do not need to respect the mutex.
+	//
+	// The waitingForWorkMu is a second mutex that interacts with the
+	// atomicWriteCounter. If the atomicWriteCounter goes to 0, the processing
+	// thread will stop all work and block until the waitingForWork mutex is
+	// unlocked. When it does get unlocked, it will not do any work until it is
+	// locked again. This allows the managedScheduleWrite function to call
+	// Unlock safely any time that it increments the number of writes from 0 to
+	// 1.
+	//
+	// atomicClosed gets set to 1 when the program is closed. It should only be
+	// written to when the writeCounterMu is locked, so that we can detect
+	// misuse where files are still being written do during or after Close is
+	// called on the optimizer.
+	//
+	// NOTE: atomics all need to be clustered at the top of the struct to be
+	// safe on 32 bit systems. Since this is a weird hybrid of an atomic and a
+	// non-atomic, it needs to be directly below the cluster of atomics that we
+	// normally place at the top.
+	atomicClosed uint64
+	atomicWriteCounter uint64
+	waitingForWorkMu sync.Mutex
+	writeCounterMu sync.Mutex
 
-	// pendingWrites is a pointer to a slice of MaxPendingWrites entries that
-	// tracks writes that are pending to files in the file optimizer. This is a
-	// pointer instead of a true slice because the background thread has another
-	// slice of the same length, and the background thread is continually
-	// swapping out the pendingWrites for the list it finished to keep things
-	// efficient.
-	pendingSyncs           []*sync.Mutex // TODO: Figure out how to buffer this.
-	pendingWrites          *[MaxPendingWrites]pendingWrite
-	pendingWritesNextIndex int
+	// Linked list of files in the optimizer.
+	filesHead *File
+	filesTail *File
 
-	// A channel-free system for orchestrating whether the background thread has
-	// work to do. The core is the hasWork mutex, which will remain locked until
-	// there is work to do, causing the background thread to block when it tries
-	// to lock the mutex. Other threads that are providing work to the
-	// background thread will unlock the mutex after they add work to the pile.
-	// They will know if the hasWork mutex needs to be unlocked because
-	// 'pendingWritesNextIndex' equals zero when they obtain the FileOptimizer
-	// mutex.
-	hasWork sync.Mutex // there is work if it is unlocked
-
-	// Utilities.
-	closed bool
-	mu     priorityMutex
-
-	// externFinalIterationComplete is a bool that only gets used by the
-	// background thread in 'threadedWriteToFiles'. This bool gets set to true
-	// after the FileOptimizer is closed when the background thread begins
-	// working on the final set of writes. After all of those writes are
-	// complete, the background thread can exit successfully, knowing that every
-	// write was called.
-	externFinalIterationComplete bool
+	// closedMu is used to coordinate shutdown between a call to Close() and the
+	// background thread. Close() will lock the mutex when closing starts, and
+	// then it'll lock it a second time to wait for the background thread to
+	// finish cleaning up all the pending writes. When the background thread is
+	// finished, it'll unlock the mutex.
+	closedMu sync.Mutex
 }
 
-// addWrite is used by File.Write and File.WriteAt to add writes to the
-// optimizer's queue.
-func (fo *FileOptimizer) addWrite(file File, data []byte, offset int64) {
-	// The FileOptimzer needs to be locked for the whole addWrite call.
-	fo.mu.Lock()
-	defer fo.mu.Unlock()
+// completeWrite will let the file optimizer know that a pendingWrite has been
+// written to disk, and that we can decrement the number of writes remaining.
+func (fo *FileOptimizer) completeWrite() uint64 {
+	// Decrement the write counter.
+	writesRemaining := atomic.AddUint64(&fo.atomicWriteCounter, ^uint64(0))
 
-	// If the queue is full, panic.
-	//
-	// An alternative option would be to unlock the 'fo' and go to sleep for a
-	// long time before waking up to try again, but really we should never be
-	// this backlogged, and it IS worth a panic.
-	if fo.pendingWritesNextIndex > MaxPendingWrites {
-		panic("ratelimiting mechanism on FileOptimizer has failed")
+	// Check for underflow.
+	if writesRemaining > MaxPendingWrites {
+		panic("the file optimizer write counter is being misused", writesRemaining)
 	}
+	return writesRemaining
+}
 
-	// Sleep for a while if the queue is filling up. This does unfortunately
-	// require sleeping while the lock is held, because we have to ensure other
-	// threads are not concurrently adding the the queue as well.  The one
-	// downside is that this will also delay the background thread from getting
-	// started on the queue if it wants to begin processing, but this is seen as
-	// an acceptable sacrifice. If there is a material delay here, it means
-	// there are thousands of entries that will be processed at once, and at
-	// most one of them delayed the processing by sleeping.
-	//
-	// The sleep here is not protected with a softSleep because if the sleep
-	// takes a long time and yet things are still filling up quickly
-	if fo.pendingWritesNextIndex > MaxPendingWrites/2 {
-		pwni := float64(pendingWritesNextIndex - MaxPendingWrites/2)
-		sleepTime := time.Duration(math.Pow(pwni, FullQueueSleepExponential))
-
-		// Only bother calling Sleep if it's a meaningful amount of time.
-		//
-		// TODO: Make some noisy logs if the sleep time gets over 100
-		// milliseconds, it means the background thread has been processing the
-		// same queue for at least 5 seconds.
+// managedScheduleWrite is a thread that keeps backpressure on incoming file
+// writes if there are more writes being added than the background thread is
+// processing. This serializes write calls through a mutex that will sleep for
+// increasingly long periods of time if backpressure builds too high.
+//
+// The sleeps don't even start until MexPendingWrites/2 writes have built up,
+// which is quite a large number, so this really should only come into effect if
+// something is going seriously wrong.
+func (fo *FileOptimizer) managedScheduleWrite() {
+	// Before incrementing the writeCounter, sleep to apply backpressure. Most
+	// of the time, there should be no sleeping at all because the writeCounter
+	// should be staying small.
+	fo.writeCounterMu.Lock()
+	if atomic.LoadUint64(&fo.atomicClosed) == 1 {
+		// Developer error, should not be calling write if the file optimizer is
+		// not running anymore. Panic here because this will result in data not
+		// being written to disk that might be expected to get written to disk.
+		panic("write called on FileOptimizer after the FileOptimizer was closed")
+	}
+	writes := atomic.AddUint64(&fo.atomicWriteCounter, 1)
+	if writes == 1 {
+		// We incremented the number of writes from 0 to 1, so we need to
+		// unblock the processing thread.
+		fo.waitingForWorkMu.Unlock()
+	}
+	if writes > MaxPendingWrites {
+		panic("write backpressure management has failed")
+	}
+	half := MaxPendingWrites/2
+	if writes > half {
+		sleepTime := time.Duration(math.Pow(FullQueueSleepExponential, writes-half))
 		if sleepTime > 10*time.Millisecond {
 			time.Sleep(time.Duration(sleepTime))
 		}
 	}
-
-	// Check whether the hasWork mutex needs to be unlocked.
-	if fo.pendingWritesNextIndex == 0 {
-		fo.hasWork.Unlock()
-	}
-
-	// Add a pendingWrite to the next pendingWrite slot.
-	fo.pendingWrites[fo.pendingWritesNextIndex].data = data
-	fo.pendingWrites[fo.pendingWritesNextIndex].offset = offset
-	fo.pendingWrites[fo.pendingWritesNextIndex].fileIndex = file.staticFileIndex
-	fo.pendingWrites[fo.pendingWritesNextIndex].writePending = true
-	fo.pendingWritesNextIndex++
+	fo.writeCounterMu.Unlock()
 }
 
-// threadedWriteToFiles is a permanent background thread
+// threadedWriteToFiles is a permanent background thread that loops over the
+// files that are open in the file optimizer and commits the pending writes to
+// disk, aggregating where possible.
+//
+// TODO: Exit on close. Cannot exit until number of writes remaining is zero.
 func (fo *FileOptimizer) threadedWriteToFiles() {
-	// Create a set of pendingWrites that is specific to this thread. As writes
-	// get processed, this array of pendingWrites will be swapped with the array
-	// in the FileOptimizer, so that the FileOptimizer is always collecting new
-	// writes into a fresh batch.
-	//
-	// NOTE: activeWritesFinalIndex is actually 1 larger than the final index,
-	// meaning the comparison is '<' and not '<=' when iterating over the
-	// activeWrites.
-	activeWrites := new([MaxPendingWrites]pendingWrite)
-	var activeWritesFinalIndex int
-
-	// Write space is a moderately sized array that gets used when calling
-	// WriteAt, it gets used to minimze the total number of allocations required
-	// when writing to the file.
-	writeSpace := make([]byte, 1<<24)
-
 	// Infinite loop.
 	for {
-		// Block until there is work. If the hasWork mutex is locked, the
-		// background thread will block until an external thread signals that
-		// there is work by unlocking it.
+		// INVARIANT: We can only reach the top of this loop if the write
+		// counter has been brought to zero. This means that the
+		// waitingForWorkMu was locked by the processing thread and is waiting
+		// for a call to managedScheduleWrite to unblock the processing thread.
 		//
-		// Once unblocking, we will wait to signal through the hasWorkLocked
-		// bool that it can be unblocked again until we grab the pendingWrites,
-		// so that we ensure that all files queued in the interim are waiting
-		// for the correct moment to sync.
-		fo.hasWork.Lock()
+		// The waitingForWork mechanism operates by having the write scheduler
+		// unlock the waitingForWorkMu if it brings the value from 0 to 1. We
+		// guarantee that the mutex is locked in this case by ensuring we do not
+		// decrement the counter until after we have locked the mutex. If the
+		// value ever goes to zero again, we have to stop all work until we've
+		// locked the mutex once more.
+		fo.waitingForWorkMu.Lock()
+
+		// Check for closed condition. If we are closed and there are no pending
+		// writes, we can exit immediately. Otherwise we need to unlock the
+		// mutex and get the pending writes to 0. We need to unlock the mutex
+		// because (as a result of the fo being closed) no writing thread will
+		// unlock it for us. When we get pending writes to zero, we'll iterate
+		// again and exit this time.
+		if atomic.LoadUint64(&fo.atomicClosed) == 1 {
+			if atomic.LoadUint64(&fo.atomicWriteCounter) == 0 {
+				fo.closedMu.Unlock()
+				return
+			}
+			fo.waitingForWorkMu.Unlock()
+		}
 
 		// To give the write calls time to clump up and buffer, sleep for some
 		// time.
@@ -246,258 +226,115 @@ func (fo *FileOptimizer) threadedWriteToFiles() {
 		// object.
 		time.Sleep(SleepPerWriteIteration)
 
-		// The background thread gets priority access to the fo mutex. If a
-		// bajillion threads are trying to call addWrite at the same time and
-		// all blocking on it because the thread with the lock is sleeping for
-		// an hour, the background thread needs to get priority access so it can
-		// immediately reset the queue and begin working on the next batch.
-		fo.mu.PriorityLock()
-		if fo.closed {
-			// Exit if the fileOptimizer has been closed.
-			fo.mu.Unlock()
-			return
-		}
-		// Swap out the active writes (now empty) for the pending writes.
-		// Resetting the pendingWritesNextIndex to zero will also signal that
-		// the hasWork mutex is now locked.
-		fo.pendingWrites, activeWrites = activeWrites, fo.pendingWrites
-		fo.pendingWritesNextIndex, activeWritesFinalIndex = 0, fo.pendingWritesNextIndex
-		pendingSyncs := fo.pendingSyncs
-		fo.pendingSyncs = make([]*sync.Mutex, 0)
-		fo.mu.Unlock()
-
-		// Loop over the new activeWrites array. The activeWrites array has been
-		// written in the order that the write calls were made. Each write call
-		// is acting on a different file.
+		// Start work with the first file.
 		//
-		// Originally I tried to sort this array to reduce the n^2 computational
-		// overhead, but it got messy because you need to preserve the
-		// write-ordering, which means that while you can sort by file index,
-		// you can't easily sort within a file index, since each write covers a
-		// range of data and you can't sort an element past another element that
-		// overlaps with your range. Instead I opted to eat the full n^2 cost
-		// and just assume that MaxPendingWrites could reasonably be kept small
-		// enough to prevent it from mattering.
+		// We don't need to check if the filesHead is nil because we will only
+		// be here if there is a pending write, which implies that there is a
+		// file.
 		//
-		// Each iteration of the loop, we find the first write that hasn't been
-		// committed yet. Then we loop over the remaining array to find all
-		// overlapping writes to the same file and we learn the full range of
-		// writes that need to be made. Then we create a []byte that covers the
-		// full range of data. Finally, we copy all of the overlapping writes
-		// into that array in the order that the data was originally written and
-		// write the result to the os.File.
-		nextIndex := 0
-		for nextIndex < activeWritesFinalIndex {
-			// Iterate over the array to find the full range of overlapping
-			// writes with the nextIndex. Any time that the range is expanded,
-			// we have to go back to the start and look for more overlaps. Even
-			// though this makes the algorithm seem like n^3, it's still
-			// actually n^2 because each time we go back we reduce the total
-			// number of times we need to iterate over the base array while
-			// writing.
+		// NOTE: The only exit condition here is the write counter reaching
+		// zero. We have to be strict about that exit condition because all of
+		// our control flow for waiting for new work and waiting for shutdown
+		// depends on it.
+		current := fo.filesHead
+LOOP A:
+		for {
+			// Process writes on just this file. Start by grabbing the
+			// pendingWrites and moving them to the processingWrites.
 			//
-			// NOTE: There is a bit of trickiness with the offsets here. The
-			// 'low' is set to the index of the offset, and the 'high' is set to
-			// the index plus the range. So if you have 1 byte at index 0, your
-			// low will be '0' and your high will be '1', even though it's only
-			// one byte. This means that two bytes right next to each other will
-			// overlap in the comparisons. A single byte at index 0 will have a
-			// low of 0 and a high of 1, and a single byte at index 1 will have
-			// a low of 1 and a high of 2. When the comparison checks if the low
-			// of the '1' byte overlaps with the high of the '0' byte, it will
-			// find that they _do_ overlap, which is the correct finding for
-			// this algorithm.
+			// NOTE: If we ever decrement the write counter to 0, we need to
+			// exit immediately and go wait for the waitingForWorkMu to be
+			// unlocked again. This is important to the safety of the control
+			// flow.
 			//
-			// If in doubt, check the unit tests, which cover this edge case and
-			// others.
-			targetFile := activeWrites[nextIndex].staticFileIndex
-			low := activeWrites[nextIndex].offset
-			high := activeWrites[nextIndex].offset + len(activeWrites[nextIndex].data)
-			expandedRange := true
-			for expandedRange {
-				expandedRange = false
-				for i := nextIndex + 1; i < activeWritesFinalIndex; i++ {
-					// Make sure this write is targeting the same file.
-					if activeWrites[i].staticFileIndex != targetFile {
-						continue
-					}
-					// Make sure the write is not already complete.
-					if !activeWrites[i].writePending {
-						continue
-					}
-					// Make sure this write overlaps the current write range.
-					if activeWrites[i].offset > high {
-						continue
-					}
-					if activeWrites[i].offset+len(activeWrites[i].data) < low {
-						continue
-					}
-					// Make sure this write actually expands the range as
-					// opposed to sitting inside of the range. We need this
-					// check because we need to know whether we should set the
-					// 'expandedRange' variable to true.
-					if activeWrites[i].offset >= low && activeWrites[i].offset+len(activeWrites[i].data) <= high {
-						continue
-					}
+			// NOTE: The nested locking here is safe because no other code in
+			// this object performs nested locking. We need to do this because
+			// we have to move the pendingWrites to the processingWrites in an
+			// atomic action, otherwise the read calls might miss some writes.
+			current.pendingWritesMu.Lock()
+			current.processingWritesMu.Lock()
+			current.processingWritesHead = current.pendingWritesHead
+			current.pendingWritesHead = nil
+			current.processingWritesMu.Unlock()
+			current.pendingWritesMu.Unlock()
 
-					// This element geniunely expands the range, reset the low
-					// and high.
-					expandedRange = true
-					if activeWrites[i].offset < low {
-						low = activeWrites[i].offset
-					}
-					if activeWrites[i].offset+len(activeWrites[i].data) > high {
-						high = activeWrites[i].offset + len(activeWrites[i].data)
-					}
-					// I am fairly confident that in the worst case this break
-					// is more optimal than continuing. I am unsure about the
-					// average case.
-					break
+			// Process the writes one at a time. There will be concurrent
+			// threads reading from these values, but no concurrent threads
+			// writing to these values, so we only need to grab the lock when we
+			// are doing writing (to protect the other reads).
+			nextWrite := currentProcessingWritesHead
+			for nextWrite != nil {
+				// TODO: We could reduce syscall overhead by checking if a bunch
+				// of writes in a row can be all written in a single call. This
+				// does require allocating new memory (or using an object pool),
+				// and given that the goal here is to substantially reduce
+				// syscall pressure, we probably should see if we can combine
+				// consecutive data.
+				_, err := current.staticFile.WriteAt(current.data, current.offset)
+				if err != nil {
+					panic("error while calling WriteAt on optimizer file: ", err)
+				}
+
+				// Lock the procesingWritesMu and remove this node from the
+				// list. Then move on to the next node.
+				//
+				// TODO: Return the object to the object pool once those are
+				// implemented.
+				current.processingWritesMu.Lock()
+				current.processingWritesHead = nextWrite.next
+				current.processingWritesMu.Unlock()
+				nextWrite = nextWrite.next
+
+				// Decrement the number of pending writes. If the counter was
+				// decremented to 0, break out of loop A so that we go back to
+				// blocking on the waitingForWorkMu.
+				newWrites := fo.completeWrite()
+				if newWrites == 0 {
+					break A
 				}
 			}
 
-			// We have established a low and high, create the corresponding
-			// []byte and then copy elements in. If the final []byte fits in our
-			// writeSpace, we'll use the writeSpace slice, otherwise we'll make
-			// a new slice. This helps minimize allocations and GC pressure.
-			var finalWrite []byte
-			if high-low > len(writeSpace) {
-				finalWrite = make([]byte, high-low)
+			// We've finished processing writes on the current file, move to the
+			// next file.
+			if current.next == nil {
+				current = fo.filesHead
 			} else {
-				finalWrite = writeSpace[:high-low]
+				current = current.next
 			}
-
-			// Iterate over the list one more time, copying in every overlapping
-			// byte slice in order.
-			for i := nextIndex; i < activeWritesFinalIndex; i++ {
-				// Make sure this write is targeting the same file.
-				if activeWrites[i].staticFileIndex != targetFile {
-					continue
-				}
-				// Make sure the write is not already complete.
-				if !activeWrites[i].writePending {
-					continue
-				}
-				// Make sure this write is part of the write range.
-				if activeWrites[i].offset > high {
-					continue
-				}
-				if activeWrites[i].offset+len(activeWrites[i].data) < low {
-					continue
-				}
-
-				// Mark this write as complete.
-				activeWrites[i].writePending = false
-				// Copy the write into the finalWrite.
-				start := activeWrites[i].offset - low
-				copy(finalWrite[start:], activeWrites[i].data)
-			}
-
-			// Call WriteAt on the underlying file. If the write fails, crash
-			// the program. Critical files use the optimizer, there is no
-			// recovering if a write can't complete.
-			_, err := x.WriteAt(low, finalWrite)
-			if err != nil {
-				panic("write failed on optimized file:", err)
-			}
-
-			// Advance nextIndex to the next pending write.
-			for nextIndex < activeWritesFinalIndex && !activeWrites[nextIndex].writePending {
-				nextIndex++
-			}
-		}
-
-		// Release all of the pending Syncs.
-		for _, sync := range pendingSyncs {
-			sync.Unlock()
 		}
 	}
 }
 
-// TODO: Implement File.Open. It'll look for the lowest fileIndex that is
-// available, and allocate a larger slice if needed. It does this by iterating
-// over the array. If we know there are no gaps before a certain point, we can
-// remember that and reduce the amount of future scanning required.
-
-// Close will ensure the fileOptimizer gets shut down.
-//
-// Note: Close should not be called on the FileOptimizer until Close has been
-// called on every underlying file.
+// Close will shut down the background thread of the file optimizer.
 func (fo *FileOptimizer) Close() error {
-	fo.mu.Lock()
-	defer fo.mu.Unlock()
-	if fo.closed {
-		return errors.New("cannot call close multiple times")
+	// Lock the closed mutex, this will enable the background thread to inform
+	// us when it has finished processing all remaining writes.
+	fo.closedMu.Lock()
+
+	// We set the fo to closed while holding the writeCounterMu lock, which
+	// means it will not be competing with any scheduled writes. Close() should
+	// not be called while there are writes in progress anyway, but we do this
+	// as an extra layer of safety + detecting misuse.
+	fo.writeCounterMu.Lock()
+	swapped := atmoic.CompareAndSwap(&fo.atomicClosed, 0, 1)
+	fo.writeCounterMu.Unlock()
+	if !swapped {
+		fo.closedMu.Unlock()
+		return errors.AddContext(err, "file optimizer is already closed")
 	}
 
-	// Check that all files were closed before the optimizer was closed.
-	for i := 0; i < len(fo.files); i++ {
-		if fo[i] != nil {
-			return errors.New("cannot call close while there are unclosed files")
-		}
-	}
-	// Set 'closed' to true to kill the optimizer loop and catch frivolous calls
-	// to Close.
-	fo.closed = true
-	return nil
+	// Unlock the waitingForWorkMu to signal a wake-up. The waitingForWorkMu
+	// will either be locked because there are pending writes, or it will be
+	// locked because no pending writes have woken it up from sleeping. Once we
+	// have closed, there should be no more pending writes at all, and we have
+	// panic checks that enforce this.
+	fo.waitingForWorkMu.Unlock()
+
+	// Block until the background thread unlocks the closedMu.
+	fo.closedMu.Lock()
+	// Unlock the closedMu again, which will prevent a deadlock in the event
+	// that close is called multiple times.
+	fo.closedMu.Unlock()
 }
 
-// Close will block until all pending writes have been called, and then it will
-// subsequently call Sync() on the underlying os.File. Close should only be
-// called one time, Close should not be called concurrently with any other
-// function.
-func (f *File) Close() error {
-	firstClose := atomic.CompareAndSwapUint64(&f.atomicClosed, 0, 1)
-	if !firstClose {
-		return errors.New("cannot close a closed file")
-	}
-
-	// Sync the file to ensure that all pending writes have been cleared from
-	// the file optimizer, and then properly close the file.
-	syncErr := f.Sync()
-	closeErr := f.file.Close()
-
-	// Pull the file out of the file optimizer.
-	f.staticFileOptimizer.mu.Lock()
-	f.staticFileOptimizer.files[f.fileIndex] = nil
-	f.staticFileOptimizer.mu.Unlock()
-
-	// Return a composition of the sync and close errors.
-	return errors.Compose(syncErr, closeErr)
-}
-
-// Sync will block until all pending writes have completed, and then it will
-// call Sync() on the underlying file.
-//
-// TODO: This can be optimized by ensuring that it is connected directly to at
-// least one Write call. I ran out of time today and didn't figure out how to do
-// this without an in-memory map, which we would like to avoid.
-func (f *File) Sync() error {
-	// Create a mutex and lock it.
-	var syncMu sync.Mutex
-	syncMu.Lock()
-
-	// Add the mutex to the FileOptimizer, it will be unlocked when all pending
-	// writes are complete.
-	f.staticFileOptimizer.mu.Lock()
-	f.staticFileOptimizer.pendingSyncs = append(f.staticFileOptimizer.pendingSyncs, &syncMu)
-	f.staticFileOptimizer.mu.Unlock()
-
-	// Block until the FileOptimizer unlocks the syncMu.
-	syncMu.Lock()
-
-	// Sync the underlying file and return.
-	return f.file.Sync()
-}
-
-// NewFileOptimizer initializes and returns a FileOptimizer.
-//
-// TODO: incomplete, need to allocate the array for example
-func NewFileOptimizer() (*FileOptimizer, error) {
-	fo := &FileOptimizer{}
-
-	// lock the hasWork mutex so that the background thread is immediately
-	// blocking at startup.
-	fo.hasWork.Lock()
-	return fo, nil
-}
+// TODO: Implement File.Open.
