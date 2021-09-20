@@ -237,7 +237,7 @@ type (
 
 	// archiveFunc is a function that serves subfiles from src to dst and
 	// archives them using a certain algorithm.
-	archiveFunc func(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMetadata, monetize func(io.Writer) io.Writer) error
+	archiveFunc func(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMetadata) error
 )
 
 // skynetBaseSectorHandlerGET accepts a skylink as input and will return the
@@ -497,13 +497,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	path := params.path
 	format := params.format
 
-	// Get the renter's settings.
-	settings, err := api.renter.Settings()
-	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to fetch renter settings: %v", err)}, http.StatusInternalServerError)
-		return
-	}
-
 	// Fetch the skyfile's metadata and a streamer to download the file
 	streamer, srvs, err := api.renter.DownloadSkylink(params.skylink, params.timeout, params.pricePerMS)
 	if err != nil {
@@ -620,15 +613,10 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 	w.Header().Set("Content-Disposition", cdh)
 
-	// Declare a function for monetizing a writer.
-	monetize := func(w io.Writer) io.Writer {
-		return newMonetizedWriter(w, metadata, api.wallet, settings.CurrencyConversionRates, settings.MonetizationBase)
-	}
-
 	// If requested, serve the content as a tar archive, compressed tar
 	// archive or zip archive.
 	if format.IsArchive() {
-		err = serveArchive(w, streamer, format, metadata, monetize)
+		err = serveArchive(w, streamer, format, metadata)
 		if err != nil {
 			ew.WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as %v archive: %v", format, err)}, http.StatusInternalServerError)
 		}
@@ -641,12 +629,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if metadata.ContentType() != "" {
 		w.Header().Set("Content-Type", metadata.ContentType())
 	}
-
-	// Monetize the response if necessary by wrapping the response writer in a
-	// monetized one.
-	mrw := newMonetizedResponseWriter(w, metadata, api.wallet, settings.CurrencyConversionRates, settings.MonetizationBase)
-
-	http.ServeContent(mrw, req, metadata.Filename, time.Time{}, streamer)
+	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
 }
 
 // skynetSkylinkPinHandlerPOST will pin a skylink to this Sia node, ensuring
@@ -815,9 +798,8 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		SiaPath:             params.siaPath,
 
 		// Set filename and mode
-		Filename:     params.filename,
-		Mode:         params.mode,
-		Monetization: params.monetization,
+		Filename: params.filename,
+		Mode:     params.mode,
 
 		// Set the default path params
 		DefaultPath:        params.defaultPath,

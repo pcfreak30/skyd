@@ -319,9 +319,9 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 			// note that we do not check the length property of a subfile as it
 			// is possible a user might have uploaded an empty part
 		}
-		legacyFile := len(metadata.Subfiles) > 0 && metadata.Length == 0 && metadata.Monetization == nil
+		legacyFile := len(metadata.Subfiles) > 0 && metadata.Length == 0
 		if !legacyFile && metadata.Length != totalLength {
-			return fmt.Errorf("invalid length set on metadata - length: %v, totalLength: %v, subfiles: %v, monetized: %v", metadata.Length, totalLength, len(metadata.Subfiles), metadata.Monetization != nil)
+			return fmt.Errorf("invalid length set on metadata - length: %v, totalLength: %v, subfiles: %v", metadata.Length, totalLength, len(metadata.Subfiles))
 		}
 	}
 
@@ -346,30 +346,6 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 	err = ValidateErrorPages(metadata.ErrorPages, metadata.Subfiles)
 	if err != nil {
 		return errors.AddContext(err, "metadata contains invalid errorpages configuration")
-	}
-
-	// Make sure the returned metadata has valid monetization settings.
-	if err := ValidateMonetization(metadata.Monetization); err != nil {
-		return errors.AddContext(err, "metadata has invalid monetization")
-	}
-	return nil
-}
-
-// ValidateMonetization is a helper function to validate a list of monetizers.
-func ValidateMonetization(m *Monetization) error {
-	if m == nil {
-		return nil // No monetization is valid monetization.
-	}
-	if m.License != LicenseMonetization {
-		return ErrUnknownLicense
-	}
-	for _, m := range m.Monetizers {
-		if m.Amount.IsZero() {
-			return ErrZeroMonetizer
-		}
-		if m.Currency != CurrencyUSD {
-			return ErrInvalidCurrency
-		}
 	}
 	return nil
 }

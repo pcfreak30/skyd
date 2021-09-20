@@ -1092,16 +1092,6 @@ func urlValuesFromSkyfileMultipartUploadParameters(sup skymodules.SkyfileMultipa
 	values.Set("root", fmt.Sprintf("%t", sup.Root))
 	values.Set("basechunkredundancy", fmt.Sprintf("%v", sup.BaseChunkRedundancy))
 	values.Set("filename", sup.Filename)
-
-	// encode monetizers
-	if sup.Monetization != nil {
-		b, err := json.Marshal(sup.Monetization)
-		if err != nil {
-			return url.Values{}, err
-		}
-		values.Set("monetization", string(b))
-	}
-
 	values.Set("defaultpath", sup.DefaultPath)
 	values.Set("disabledefaultpath", strconv.FormatBool(sup.DisableDefaultPath))
 
@@ -1147,16 +1137,6 @@ func urlValuesFromSkyfileUploadParameters(sup skymodules.SkyfileUploadParameters
 	values.Set("basechunkredundancy", fmt.Sprintf("%v", sup.BaseChunkRedundancy))
 	values.Set("filename", sup.Filename)
 	values.Set("mode", fmt.Sprintf("%o", sup.Mode))
-
-	// encode monetizers
-	if sup.Monetization != nil {
-		b, err := json.Marshal(sup.Monetization)
-		if err != nil {
-			return url.Values{}, err
-		}
-		values.Set("monetization", string(b))
-	}
-
 	values.Set("defaultpath", sup.DefaultPath)
 	values.Set("disabledefaultpath", strconv.FormatBool(sup.DisableDefaultPath))
 

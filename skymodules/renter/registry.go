@@ -267,7 +267,7 @@ func (r *Renter) managedRegistryEntryHealth(ctx context.Context, rid modules.Reg
 	// threadedHandleRegistryRepairs is done.
 	backgroundCtx, backgroundCancel := context.WithCancel(r.tg.StopCtx())
 	defer backgroundCancel()
-	responseSet, _ := r.managedLaunchReadRegistryWorkers(backgroundCtx, span, rid, spk, tweak)
+	responseSet, launchedWorkers := r.managedLaunchReadRegistryWorkers(backgroundCtx, span, rid, spk, tweak)
 
 	// If there are no workers remaining, fail early.
 	if responseSet.left == 0 {
@@ -292,11 +292,30 @@ func (r *Renter) managedRegistryEntryHealth(ctx context.Context, rid modules.Reg
 	}
 	bestSRV := best.staticSignedRegistryValue
 
+	// Get the cutoff workers and wait for 80% of them to finish.
+	workersToWaitFor := regReadCutoffWorkers(launchedWorkers, minCutoffWorkers)
+	awaitedWorkers := 0
+	cutoff := int(float64(len(workersToWaitFor)) * minAwaitedCutoffWorkersPercentage)
+	if cutoff == 0 {
+		cutoff = len(workersToWaitFor)
+	}
+	if r.staticDeps.Disrupt("DelayRegistryHealthResponses") {
+		cutoff = 0 // all workers will be conidered to come after the cutoff
+	}
+
 	// Count the number of responses that match the best one. We do so by
 	// asking for the reason why the individual entries can't update the
 	// best one. If ErrSameRevNum is returned, the entries are equal.
-	var nTotal, nBestTotal, nPrimary uint64
+	var nTotal, nBestTotal, nBestTotalBeforeCutoff, nPrimary uint64
 	for _, resp := range resps {
+		// Check if response arrived before cutoff.
+		beforeCutoff := awaitedWorkers < cutoff
+		// Check if the response comes from one of the workers we wait
+		// for.
+		_, exists := workersToWaitFor[resp.staticWorker.staticHostPubKeyStr]
+		if exists {
+			awaitedWorkers++
+		}
 		if resp.staticSignedRegistryValue == nil {
 			// Ignore responses without value.
 			continue
@@ -305,16 +324,21 @@ func (r *Renter) managedRegistryEntryHealth(ctx context.Context, rid modules.Reg
 		update, reason := bestSRV.ShouldUpdateWith(&resp.staticSignedRegistryValue.RegistryValue, resp.staticWorker.staticHostPubKey)
 		if update {
 			nPrimary++
+		}
+		if update || errors.Contains(reason, modules.ErrSameRevNum) {
 			nBestTotal++
-		} else if errors.Contains(reason, modules.ErrSameRevNum) {
-			nBestTotal++
+			// Check if we have waited for enough workers.
+			if beforeCutoff {
+				nBestTotalBeforeCutoff++
+			}
 		}
 	}
 	return skymodules.RegistryEntryHealth{
-		RevisionNumber:        bestSRV.Revision,
-		NumEntries:            nTotal,
-		NumBestEntries:        nBestTotal,
-		NumBestPrimaryEntries: nPrimary,
+		RevisionNumber:             bestSRV.Revision,
+		NumEntries:                 nTotal,
+		NumBestEntries:             nBestTotal,
+		NumBestEntriesBeforeCutoff: nBestTotalBeforeCutoff,
+		NumBestPrimaryEntries:      nPrimary,
 	}, nil
 }
 

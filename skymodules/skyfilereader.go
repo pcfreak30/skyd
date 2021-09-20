@@ -79,9 +79,8 @@ func NewSkyfileReader(reader io.Reader, sup SkyfileUploadParameters) SkyfileUplo
 	return &skyfileReader{
 		reader: reader,
 		metadata: SkyfileMetadata{
-			Filename:     sup.Filename,
-			Mode:         sup.Mode,
-			Monetization: sup.Monetization,
+			Filename: sup.Filename,
+			Mode:     sup.Mode,
 		},
 		metadataAvail: make(chan struct{}),
 	}
@@ -231,7 +230,6 @@ func newSkyfileMultipartReader(reader *multipart.Reader, sup SkyfileUploadParame
 		reader: reader,
 		metadata: SkyfileMetadata{
 			Filename:           sup.Filename,
-			Monetization:       sup.Monetization,
 			Mode:               sup.Mode,
 			DefaultPath:        sup.DefaultPath,
 			DisableDefaultPath: sup.DisableDefaultPath,
