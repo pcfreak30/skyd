@@ -53,14 +53,6 @@ var (
 	DefaultTryFilesValue = []string{"index.html"}
 )
 
-const (
-	// CurrencyUSD the specifier for USD in the monetizer.
-	CurrencyUSD = "usd"
-
-	// LicenseMonetization is the first skynet monetization license.
-	LicenseMonetization = "CAB-Ra8Zi6jew3w63SJUAKnsBRiZdpmQGLehLJbTd-b_Mg"
-)
-
 var (
 	// BaseSectorNonceDerivation is the specifier used to derive a nonce for base
 	// sector encryption
@@ -161,10 +153,6 @@ type (
 		// Mode indicates the file permissions of the skyfile.
 		Mode os.FileMode
 
-		// Monetization contains a list of monetization info for the upload. It
-		// will be added to the SkyfileMetadata of the uploaded file.
-		Monetization *Monetization
-
 		// DefaultPath indicates what content to serve if the user has not
 		// specified a path and the user is not trying to download the Skylink
 		// as an archive. If left empty, it will be interpreted as "index.html"
@@ -231,10 +219,6 @@ type (
 
 		// ContentType indicates the media of the data supplied by the reader.
 		ContentType string
-
-		// Monetization contains a list of monetization info for the upload. It
-		// will be added to the SkyfileMetadata of the uploaded file.
-		Monetization *Monetization
 	}
 
 	// SkyfilePinParameters defines the parameters specific to pinning a
@@ -259,7 +243,6 @@ type (
 		Subfiles           SkyfileSubfiles `json:"subfiles,omitempty"`
 		DefaultPath        string          `json:"defaultpath,omitempty"`
 		DisableDefaultPath bool            `json:"disabledefaultpath,omitempty"`
-		Monetization       *Monetization   `json:"monetization,omitempty"`
 		TryFiles           []string        `json:"tryfiles,omitempty"`
 		ErrorPages         map[int]string  `json:"errorpages,omitempty"`
 	}
@@ -269,19 +252,6 @@ type (
 		Address modules.NetAddress `json:"address"` // the IP or domain name of the portal. Must be a valid network address
 		Public  bool               `json:"public"`  // indicates whether the portal can be accessed publicly or not
 
-	}
-
-	// Monetization contains the monetization information for a skyfile.
-	Monetization struct {
-		Monetizers []Monetizer `json:"monetizers"`
-		License    string      `json:"license"`
-	}
-
-	// Monetizer refers to a single content provider being paid.
-	Monetizer struct {
-		Address  types.UnlockHash `json:"address"`
-		Amount   types.Currency   `json:"amount"`
-		Currency string           `json:"currency"`
 	}
 
 	// SkynetTUSDataStore is the combined interface of all TUS interfaces that
@@ -300,10 +270,11 @@ type (
 	// RegistryEntryHealth contains information about a registry entry's
 	// health on the network.
 	RegistryEntryHealth struct {
-		NumBestEntries        uint64 `json:"numbestentries"`
-		NumBestPrimaryEntries uint64 `json:"numbestprimaryentries"`
-		NumEntries            uint64 `json:"numentries"`
-		RevisionNumber        uint64 `json:"revisionnumber"`
+		NumBestEntries             uint64 `json:"numbestentries"`
+		NumBestEntriesBeforeCutoff uint64 `json:"numbestentriesbeforecutoff"`
+		NumBestPrimaryEntries      uint64 `json:"numbestprimaryentries"`
+		NumEntries                 uint64 `json:"numentries"`
+		RevisionNumber             uint64 `json:"revisionnumber"`
 	}
 )
 
@@ -316,11 +287,10 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 	// All paths must be absolute.
 	path = EnsurePrefix(path, "/")
 	metadata := SkyfileMetadata{
-		Filename:     path,
-		Monetization: sm.Monetization,
-		Subfiles:     make(SkyfileSubfiles),
-		TryFiles:     sm.TryFiles,
-		ErrorPages:   sm.ErrorPages,
+		Filename:   path,
+		Subfiles:   make(SkyfileSubfiles),
+		TryFiles:   sm.TryFiles,
+		ErrorPages: sm.ErrorPages,
 	}
 
 	// Try to find an exact match
@@ -353,21 +323,6 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 	// Set the metadata length by summing up the length of the subfiles.
 	for _, file := range metadata.Subfiles {
 		metadata.Length += file.Len
-	}
-	// Adjust the monetization using the ratio between the previous total length
-	// and the new one.
-	if sm.Monetization != nil {
-		// Deep copy parent monetization.
-		var md Monetization
-		md = *sm.Monetization
-		md.Monetizers = append([]Monetizer{}, sm.Monetization.Monetizers...)
-		// Adjust individual monetizers.
-		for i, m := range md.Monetizers {
-			m.Amount = m.Amount.Mul64(metadata.Length).Div64(sm.Length)
-			md.Monetizers[i] = m
-		}
-		// Assign to metadata.
-		metadata.Monetization = &md
 	}
 	return metadata, isFile, offset, metadata.size()
 }
@@ -710,74 +665,6 @@ func ComputeMonetizationPayout(amt, base types.Currency) types.Currency {
 // IsSkynetDir is a helper that tells if the siapath is in the Skynet Folder
 func IsSkynetDir(sp SiaPath) bool {
 	return strings.HasPrefix(sp.String(), SkynetFolder.String())
-}
-
-// PayMonetizers is a helper method for paying out monetizers.
-func PayMonetizers(w modules.SiacoinSenderMulti, monetization *Monetization, downloadedData, totalData uint64, conversionRates map[string]types.Currency, monetizationBase types.Currency) error {
-	return payMonetizers(w, monetization, downloadedData, totalData, conversionRates, monetizationBase, fastrand.Reader)
-}
-
-// payMonetizers is a helper method for paying out monetizers.
-func payMonetizers(w modules.SiacoinSenderMulti, monetization *Monetization, downloadedData, totalData uint64, conversionRates map[string]types.Currency, monetizationBase types.Currency, rand io.Reader) error {
-	// If there is no monetization, there is nothing for us to do.
-	if monetization == nil {
-		return nil
-	}
-	// If no data was downloaded, there is nothing to pay for.
-	if downloadedData == 0 {
-		return nil
-	}
-	// If there are no monetizers, there is nothing to do.
-	if len(monetization.Monetizers) == 0 {
-		return nil
-	}
-	// There are monetizers, but the base is 0.
-	if monetizationBase.IsZero() {
-		return ErrZeroBase
-	}
-	// Pay out monetizers.
-	var payouts []types.SiacoinOutput
-	for _, monetizer := range monetization.Monetizers {
-		// Check conversion rate.
-		conversion, valid := conversionRates[monetizer.Currency]
-		if !valid {
-			return ErrInvalidCurrency
-		}
-		// Check if the conversion rate is zero.
-		if conversion.IsZero() {
-			return errors.AddContext(ErrZeroConversionRate, monetizer.Currency)
-		}
-		// Convert money to SC.
-		sc := monetizer.Amount.Mul(conversion).Div(types.SiacoinPrecision)
-
-		// Adjust money to percentage of downloaded content. Unless we download
-		// a 0 byte file.
-		if totalData > 0 {
-			sc = sc.Mul64(downloadedData).Div64(totalData)
-		}
-
-		// Figure out how much to pay.
-		payout, err := computeMonetizationPayout(sc, monetizationBase, rand)
-		if err != nil {
-			return err
-		}
-
-		// Ignore 0 payouts.
-		if payout.IsZero() {
-			continue
-		}
-		payouts = append(payouts, types.SiacoinOutput{
-			Value:      payout,
-			UnlockHash: monetizer.Address,
-		})
-	}
-	// If no payouts remain, there is nothing to do.
-	if len(payouts) == 0 {
-		return nil
-	}
-	// Send money.
-	_, err := w.SendSiacoinsMulti(payouts)
-	return err
 }
 
 // computeMonetizationPayout is a helper function to decide how much money to

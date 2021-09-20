@@ -47,7 +47,7 @@ func testTryFilesWithRootIndex(t *testing.T, tg *siatest.TestGroup) {
 		{Name: "dir_without_idx/about.html", Data: []byte(dirWithoutIdxAbout)},
 	}
 
-	skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, tf, ep, true, nil, "", skykey.SkykeyID{})
+	skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, tf, ep, true, "", skykey.SkykeyID{})
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
@@ -109,7 +109,7 @@ func testTryFilesWithoutRootIndex(t *testing.T, tg *siatest.TestGroup) {
 		{Name: "dir_without_idx/about.html", Data: []byte(fc4)},
 	}
 
-	skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, tf, ep, true, nil, "", skykey.SkykeyID{})
+	skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, tf, ep, true, "", skykey.SkykeyID{})
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
@@ -166,7 +166,7 @@ func testSkynetErrorPages(t *testing.T, tg *siatest.TestGroup) {
 		// there is no leading slash on purpose - we shouldn't need it
 		{Name: "404.html", Data: []byte(fc404)},
 	}
-	skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, tf, ep, true, nil, "", skykey.SkykeyID{})
+	skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, tf, ep, true, "", skykey.SkykeyID{})
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
@@ -202,17 +202,17 @@ func testTryFiles_TableTests(t *testing.T, tg *siatest.TestGroup) {
 
 	ep := map[int]string{404: "/404.html"}
 	tfWithGlobalIndex := []string{"good-news/index.html", "index.html", "/index.html"}
-	withGlobalIndex, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking("global_index", subfiles, "", false, tfWithGlobalIndex, ep, true, nil, "", skykey.SkykeyID{})
+	withGlobalIndex, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking("global_index", subfiles, "", false, tfWithGlobalIndex, ep, true, "", skykey.SkykeyID{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	tfNoGlobalIndex := []string{"index.html", "good-news/index.html"}
-	noGlobalIndex, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking("no_global_index", subfiles, "", false, tfNoGlobalIndex, ep, true, nil, "", skykey.SkykeyID{})
+	noGlobalIndex, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking("no_global_index", subfiles, "", false, tfNoGlobalIndex, ep, true, "", skykey.SkykeyID{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	tfNoIndex := []string{"good-news/index.html"}
-	noIndex, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking("no_global_index", subfiles, "", false, tfNoIndex, ep, true, nil, "", skykey.SkykeyID{})
+	noIndex, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking("no_global_index", subfiles, "", false, tfNoIndex, ep, true, "", skykey.SkykeyID{})
 	if err != nil {
 		t.Fatal(err)
 	}
