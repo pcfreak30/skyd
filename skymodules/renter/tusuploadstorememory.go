@@ -122,15 +122,15 @@ func (u *skynetInMemoryUpload) CommitFinishPartialUpload() error {
 
 // CommitWriteChunk commits the changes to the upload after successfully writing
 // a chunk to the store.
-func (u *skynetInMemoryUpload) CommitWriteChunk(newOffset int64, newLastWrite time.Time, smallFile bool, fanout []byte) error {
+func (u *skynetInMemoryUpload) CommitWriteChunk(newOffset int64, newLastWrite time.Time, fanout []byte) error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	u.fanout = append(u.fanout, fanout...)
-	return u.commitWriteChunk(newOffset, newLastWrite, smallFile)
+	return u.commitWriteChunk(newOffset, newLastWrite, u.isSmallFile)
 }
 
-// CommitWriteChunkSmallFile commits the changes to the upload after successfully writing
-// a chunk to the store.
+// CommitWriteChunkSmallFile commits the changes to the upload after
+// successfully writing a chunk to the store.
 func (u *skynetInMemoryUpload) CommitWriteChunkSmallFile(newOffset int64, newLastWrite time.Time, smallFileData []byte) error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
@@ -146,7 +146,7 @@ func (u *skynetInMemoryUpload) GetInfo(ctx context.Context) (handler.FileInfo, e
 }
 
 // PruneInfo returns the relevant info for pruning an upload. This includes the
-// upload id, the siapath for the base sector and the siapth for the fanout.
+// upload id and the siapath.
 func (u *skynetInMemoryUpload) PruneInfo(ctx context.Context) (id string, sp skymodules.SiaPath, err error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
@@ -182,6 +182,8 @@ func (u *skynetInMemoryUpload) Fanout(ctx context.Context) ([]byte, error) {
 	return u.fanout, nil
 }
 
+// IsSmallUpload indicates whether an upload is considered a small upload.
+// That's the case when it doesn't consist of a full chunk.
 func (u *skynetInMemoryUpload) IsSmallUpload(ctx context.Context) (bool, error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()

@@ -248,11 +248,7 @@ func (r *Renter) CreateSkylinkFromSiafile(sup skymodules.SkyfileUploadParameters
 	return r.managedCreateSkylinkFromFileNode(r.tg.StopCtx(), sup, metadata, fileNode, fanoutBytes)
 }
 
-// managedCreateSkylinkFromFileNode creates a skylink from a file node.
-//
-// The name needs to be passed in explicitly because a file node does not track
-// its own name, which allows the file to be renamed concurrently without
-// causing any race conditions.
+// managedCreateSkylink creates a skylink from the provided parameters.
 func (r *Renter) managedCreateSkylink(ctx context.Context, sup skymodules.SkyfileUploadParameters, skyfileMetadata skymodules.SkyfileMetadata, fanoutBytes []byte, size uint64, masterKey crypto.CipherKey, ec skymodules.ErasureCoder) (skymodules.Skylink, error) {
 	// Check if the given metadata is valid
 	err := skymodules.ValidateSkyfileMetadata(skyfileMetadata)
@@ -267,11 +263,8 @@ func (r *Renter) managedCreateSkylink(ctx context.Context, sup skymodules.Skyfil
 	return r.managedCreateSkylinkRawMD(ctx, sup, metadataBytes, fanoutBytes, size, masterKey, ec)
 }
 
-// managedCreateSkylinkFromFileNode creates a skylink from a file node.
-//
-// The name needs to be passed in explicitly because a file node does not track
-// its own name, which allows the file to be renamed concurrently without
-// causing any race conditions.
+// managedCreateSkylinkRawMD creates a skylink from the provided parameters
+// using already encoded metadata.
 func (r *Renter) managedCreateSkylinkRawMD(ctx context.Context, sup skymodules.SkyfileUploadParameters, metadataBytes, fanoutBytes []byte, size uint64, masterKey crypto.CipherKey, ec skymodules.ErasureCoder) (skymodules.Skylink, error) {
 	// Check that the encryption key and erasure code is compatible with the
 	// skyfile format. This is intentionally done before any heavy computation
