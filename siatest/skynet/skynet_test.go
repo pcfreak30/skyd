@@ -4629,8 +4629,6 @@ func TestSkynetSkyfileStandardUploadRedundancy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fmt.Println("UPLOAD DONE")
-
 	// Download the file, this used to trigger a race to be detected.
 	_, err = r.SkynetSkylinkGet(skylink)
 	if err != nil {

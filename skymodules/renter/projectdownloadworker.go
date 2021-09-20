@@ -930,7 +930,6 @@ func (pdc *projectDownloadChunk) createWorkerSet(downloadWorkers []downloadWorke
 
 	// loop state
 	var bestSet *workerSet
-	var bestSetFound bool
 
 	// can't create a workerset without download workers
 	if len(downloadWorkers) == 0 {
@@ -945,7 +944,7 @@ OUTER:
 			// exit early if ppms in combination with the bucket duration
 			// already exceeds the adjusted cost of the current best set,
 			// workers would be too slow by definition
-			if bestSetFound && bDur > bestSet.adjustedDuration(ppms) {
+			if bestSet != nil && bDur > bestSet.adjustedDuration(ppms) {
 				fmt.Printf("best set found with %v OD, breaking at %v\n", numOverdrive, bDur)
 				break OUTER
 			}
@@ -989,6 +988,9 @@ OUTER:
 					continue
 				}
 
+				// if the cheaper set's chance of completing before the given
+				// duration is not greater than half we can break because the
+				// `lessLikely` workers were sorted by chance
 				if !cheaperSet.chanceGreaterThanHalf(bDur) {
 					break
 				}
@@ -996,13 +998,10 @@ OUTER:
 			}
 
 			// perform price per ms comparison
-			if !bestSetFound {
+			if bestSet == nil {
 				bestSet = mostLikelySet
-				bestSetFound = true
-			} else {
-				if mostLikelySet.adjustedDuration(ppms) < bestSet.adjustedDuration(ppms) {
-					bestSet = mostLikelySet
-				}
+			} else if mostLikelySet.adjustedDuration(ppms) < bestSet.adjustedDuration(ppms) {
+				bestSet = mostLikelySet
 			}
 		}
 	}
