@@ -818,7 +818,7 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) {
 
 		// launch the piece
 		isOverdrive := len(pdc.launchedWorkers) >= minPieces
-		fmt.Printf("launching %v for %v\n", w.identifier(), piece)
+		// fmt.Printf("launching %v for %v\n", w.identifier(), piece)
 		_, launched = pdc.launchWorker(w.worker(), piece, isOverdrive)
 		if launched {
 			iw.launchedAt = time.Now()
@@ -834,8 +834,6 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) {
 // and launch every worker that can be launched from that set. Every iteration
 // we check whether the download was finished.
 func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
-	fmt.Println("LAUNCH PROJECT DOWNLOAD")
-
 	// grab some variables
 	ec := pdc.workerSet.staticErasureCoder
 	minPieces := ec.MinPieces()
@@ -909,7 +907,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			// replace the worker update channel
 			workerUpdateChan = ws.managedRegisterForWorkerUpdate()
 		case jrr := <-pdc.workerResponseChan:
-			fmt.Printf("worker completed DL for piece %v with err %v\n", jrr.staticMetadata.staticPieceRootIndex, jrr.staticErr)
+			// fmt.Printf("worker completed DL for piece %v with err %v\n", jrr.staticMetadata.staticPieceRootIndex, jrr.staticErr)
 			pdc.handleJobReadResponse(jrr)
 		case <-pdc.ctx.Done():
 			// fmt.Println("DOWNLOAD TIMED OUT", err)
@@ -945,13 +943,13 @@ OUTER:
 			// already exceeds the adjusted cost of the current best set,
 			// workers would be too slow by definition
 			if bestSet != nil && bDur > bestSet.adjustedDuration(ppms) {
-				fmt.Printf("best set found with %v OD, breaking at %v\n", numOverdrive, bDur)
+				// fmt.Printf("best set found with %v OD, breaking at %v\n", numOverdrive, bDur)
 				break OUTER
 			}
 
 			// divide the workers in most likely and less likely
 			mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(downloadWorkers, bDur, workersNeeded)
-			fmt.Printf("%v workers split in %v most likely and %v less\n", len(downloadWorkers), len(mostLikely), len(lessLikely))
+			// fmt.Printf("%v workers split in %v most likely and %v less\n", len(downloadWorkers), len(mostLikely), len(lessLikely))
 
 			// if there aren't even likely workers, escape early
 			if len(mostLikely) == 0 {
@@ -970,13 +968,13 @@ OUTER:
 			}
 
 			// fmt.Printf("%v workers split into %v most likely and %v less likely\n", len(downloadWorkers), len(mostLikely), len(lessLikely))
-			fmt.Println("mostlikely set", mostLikelySet)
+			// fmt.Println("mostlikely set", mostLikelySet)
 
 			// if the chance of the most likely set does not exceed 50%, it is
 			// not high enough to continue, no need to continue this iteration,
 			// we need to try a slower and thus more likely bucket
 			if !mostLikelySet.chanceGreaterThanHalf(bDur) {
-				fmt.Println("mostlikely set not good enough")
+				// fmt.Println("mostlikely set not good enough")
 				continue
 			}
 
@@ -1006,7 +1004,7 @@ OUTER:
 		}
 	}
 
-	fmt.Println("best set", bestSet)
+	// fmt.Println("best set", bestSet)
 	return bestSet, nil
 }
 

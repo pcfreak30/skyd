@@ -403,7 +403,7 @@ func (pdc *projectDownloadChunk) finalize() {
 
 	// Update the sector download statistics
 	minPieces := ec.MinPieces()
-	numOverdriveWorkers := uint64(len(pdc.launchedWorkers) - minPieces)
+	numOverdriveWorkers := uint64(len(pdc.launchedPiecesByWorker) - minPieces)
 	if numOverdriveWorkers < 0 {
 		build.Critical("num overdrive workers should never be less than zero")
 	} else {

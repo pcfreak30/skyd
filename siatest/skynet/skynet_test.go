@@ -953,9 +953,29 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
+	// Upload and download a small and large file
+	ss := modules.SectorSize
+	// skylink, _, _, err := r.UploadNewSkyfileBlocking("smallfile", ss/2, false)
+	// if err != nil {
+	// 	t.Fatal("unexpected error on uploading a small file", err)
+	// }
+	// _, err = r.SkynetSkylinkGet(skylink)
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+	skylink, _, _, err := r.UploadNewSkyfileBlocking("largefile", ss*2, false)
+	if err != nil {
+		t.Fatal("unexpected error on uploading a large file", err)
+	}
+	_, err = r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return
+
 	// This test relies on state from the previous tests. Make sure we are
 	// starting from a place of updated metadata
-	err := r.RenterBubblePost(skymodules.RootSiaPath(), true)
+	err = r.RenterBubblePost(skymodules.RootSiaPath(), true)
 	if err != nil {
 		t.Error(err)
 	}
@@ -1224,12 +1244,28 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	}
 	skylinks = append(skylinks, sshp.Skylink)
 
-	// Download all skyfiles.
-	for _, skylink := range skylinks {
-		_, err := r.SkynetSkylinkGet(skylink)
-		if err != nil {
-			t.Fatal(err)
-		}
+	// Download all skyfiles in separate go routines, this to ensure we
+	// overdrive on some and the stats get updated accordingly.
+	var wg sync.WaitGroup
+	var downloadMu sync.Mutex
+	var downloadErr error
+	for i := 0; i < 10; i++ {
+		go func(t *testing.T) {
+			wg.Add(1)
+			defer wg.Done()
+			for _, skylink := range skylinks {
+				_, err := r.SkynetSkylinkGet(skylink)
+				if err != nil {
+					downloadMu.Lock()
+					downloadErr = errors.Compose(downloadErr, err)
+					downloadMu.Unlock()
+				}
+			}
+		}(t)
+	}
+	wg.Wait()
+	if downloadErr != nil {
+		t.Fatal(downloadErr)
 	}
 
 	// Fetch the stats again and verify all sector download stats are present
