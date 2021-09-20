@@ -122,11 +122,11 @@ func (u *skynetInMemoryUpload) CommitFinishPartialUpload() error {
 
 // CommitWriteChunk commits the changes to the upload after successfully writing
 // a chunk to the store.
-func (u *skynetInMemoryUpload) CommitWriteChunk(newOffset int64, newLastWrite time.Time, fanout []byte) error {
+func (u *skynetInMemoryUpload) CommitWriteChunk(newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	u.fanout = append(u.fanout, fanout...)
-	return u.commitWriteChunk(newOffset, newLastWrite, u.isSmallFile)
+	return u.commitWriteChunk(newOffset, newLastWrite, isSmall)
 }
 
 // CommitWriteChunkSmallFile commits the changes to the upload after

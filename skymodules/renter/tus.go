@@ -249,9 +249,10 @@ func (u *ongoingTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.
 	}
 
 	// If the offset is 0, we try to determine if the upload is large or small.
+	var isSmall bool
 	if offset == 0 {
 		var smallFileData []byte
-		smallFileData, isSmall, err := u.tryUploadSmallFile(ctx, src)
+		smallFileData, isSmall, err = u.tryUploadSmallFile(ctx, src)
 		if err != nil {
 			return 0, err
 		}
@@ -263,14 +264,15 @@ func (u *ongoingTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.
 			return int64(len(smallFileData)), err
 		}
 		src = io.MultiReader(bytes.NewReader(smallFileData), src)
+	} else {
+		isSmall, err = u.staticUpload.IsSmallUpload(ctx)
+		if err != nil {
+			return 0, err
+		}
 	}
 
 	// If we get to this point with a small file, something is wrong.
 	// Theoretically this is not possible but return an error for extra safety.
-	isSmall, err := u.staticUpload.IsSmallUpload(ctx)
-	if err != nil {
-		return 0, err
-	}
 	if isSmall && !fi.IsPartial {
 		return 0, errors.New("can't upload another chunk to a small file upload")
 	}
@@ -356,7 +358,7 @@ func (u *ongoingTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.
 			return 0, errors.AddContext(err, "failed to upload chunk")
 		}
 	}
-	return n, u.staticUpload.CommitWriteChunk(fi.Offset+n, time.Now(), cr.Fanout())
+	return n, u.staticUpload.CommitWriteChunk(fi.Offset+n, time.Now(), isSmall, cr.Fanout())
 }
 
 // GetInfo returns the file info.

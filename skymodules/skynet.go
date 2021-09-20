@@ -307,7 +307,7 @@ type (
 
 		// CommitWriteChunk commits writing a chunk of either a small or
 		// large file with fanout.
-		CommitWriteChunk(newOffset int64, newLastWrite time.Time, fanout []byte) error
+		CommitWriteChunk(newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error
 
 		// CommitFinishUpload commits a finalised upload.
 		CommitFinishUpload(skylink Skylink) error
