@@ -1,18 +1,31 @@
 package renter
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
+	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
 	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
 )
+
+// PersistedStats contains the information about the renter's stats which is
+// persisted to disk.
+type PersistedStats struct {
+	RegistryReadStats     skymodules.PersistedDistributionTracker `json:"registryreadstats"`
+	RegistryWriteStats    skymodules.PersistedDistributionTracker `json:"registrywritestats"`
+	BaseSectorUploadStats skymodules.PersistedDistributionTracker `json:"basesectoruploadstats"`
+	ChunkUploadStats      skymodules.PersistedDistributionTracker `json:"chunkuploadstats"`
+	StreamBufferStats     skymodules.PersistedDistributionTracker `json:"streambufferstats"`
+}
 
 const (
 	logFile       = skymodules.RenterDir + ".log"
@@ -22,6 +35,9 @@ const (
 	PersistFilename = "renter.json"
 	// SiaDirMetadata is the name of the metadata file for the sia directory
 	SiaDirMetadata = ".siadir"
+	// StatsFilename is the name of the file persisting the stats of the
+	// renter.
+	StatsFilename = "stats.json"
 	// walFile is the filename of the renter's writeaheadlog's file.
 	walFile = skymodules.RenterDir + ".wal"
 )
@@ -46,6 +62,20 @@ var (
 	shareHeader  = [15]byte{'S', 'i', 'a', ' ', 'S', 'h', 'a', 'r', 'e', 'd', ' ', 'F', 'i', 'l', 'e'}
 	shareVersion = "0.4"
 
+	// statsPersistInterval defines the interval the renter uses for
+	// persisting its stats.
+	statsPersistInterval = build.Select(build.Var{
+		Dev:      time.Minute,
+		Standard: 30 * time.Minute,
+		Testing:  2 * time.Second,
+	}).(time.Duration)
+
+	// statsMetadata is the metadata used when persisting the renter stats.
+	statsMetadata = persist.Metadata{
+		Header:  "Stats",
+		Version: "1.5.7",
+	}
+
 	// Persist Version Numbers
 	persistVersion040 = "0.4"
 	persistVersion133 = "1.3.3"
@@ -69,6 +99,36 @@ type (
 // saveSync stores the current renter data to disk and then syncs to disk.
 func (r *Renter) saveSync() error {
 	return persist.SaveJSON(settingsMetadata, r.persist, filepath.Join(r.persistDir, PersistFilename))
+}
+
+// threadedStatsPersister periodically persists the renter's collected stats.
+func (r *Renter) threadedStatsPersister() {
+	if err := r.tg.Add(); err != nil {
+		return
+	}
+	defer r.tg.Done()
+
+	ticker := time.NewTicker(statsPersistInterval)
+	for {
+		statsPath := filepath.Join(r.persistDir, StatsFilename)
+		err := persist.SaveJSON(statsMetadata, PersistedStats{
+			RegistryReadStats:     r.staticRegistryReadStats.Persist(),
+			RegistryWriteStats:    r.staticRegWriteStats.Persist(),
+			BaseSectorUploadStats: r.staticBaseSectorUploadStats.Persist(),
+			ChunkUploadStats:      r.staticChunkUploadStats.Persist(),
+			StreamBufferStats:     r.staticStreamBufferStats.Persist(),
+		}, statsPath)
+		if err != nil {
+			r.staticLog.Print("Failed to persist stats object:", err)
+		}
+
+		// Sleep
+		select {
+		case <-r.tg.StopCtx().Done():
+			return // shutdown
+		case <-ticker.C:
+		}
+	}
 }
 
 // managedLoadSettings fetches the saved renter data from disk.
@@ -195,6 +255,11 @@ func (r *Renter) managedInitPersist() error {
 		return errors.AddContext(err, "failed to load renter's persistence structrue")
 	}
 
+	// Load the stats.
+	if err := r.managedInitStats(); err != nil {
+		return errors.AddContext(err, "failed to initialize the renter's distribution trackers")
+	}
+
 	// Create the essential dirs in the filesystem.
 	err = fs.NewSiaDir(skymodules.HomeFolder, skymodules.DefaultDirPerm)
 	if err != nil && !errors.Contains(err, filesystem.ErrExists) {
@@ -211,6 +276,51 @@ func (r *Renter) managedInitPersist() error {
 	err = fs.NewSiaDir(skymodules.SkynetFolder, skymodules.DefaultDirPerm)
 	if err != nil && !errors.Contains(err, filesystem.ErrExists) {
 		return err
+	}
+	return nil
+}
+
+// managedInitStats initializes the distribution trackers of the renter.
+func (r *Renter) managedInitStats() error {
+	// Init the trackers.
+	r.staticRegistryReadStats = skymodules.NewDistributionTrackerStandard()
+	r.staticRegWriteStats = skymodules.NewDistributionTrackerStandard()
+	r.staticBaseSectorUploadStats = skymodules.NewDistributionTrackerStandard()
+	r.staticChunkUploadStats = skymodules.NewDistributionTrackerStandard()
+	r.staticStreamBufferStats = skymodules.NewDistributionTrackerStandard()
+
+	// Load the existing stats.
+	statsPath := filepath.Join(r.persistDir, StatsFilename)
+	var stats PersistedStats
+	err := persist.LoadJSON(statsMetadata, &stats, statsPath)
+	if os.IsNotExist(err) {
+		// No persistence yet. Seed the trackers.
+		r.staticRegistryReadStats.AddDataPoint(readRegistryStatsSeed) // Seed the stats so that startup doesn't say 0.
+		r.staticRegWriteStats.AddDataPoint(5 * time.Second)           // Seed the stats so that startup doesn't say 0.
+		r.staticBaseSectorUploadStats.AddDataPoint(15 * time.Second)  // Seed the stats so that startup doesn't say 0.
+		r.staticChunkUploadStats.AddDataPoint(15 * time.Second)       // Seed the stats so that startup doesn't say 0.
+		r.staticStreamBufferStats.AddDataPoint(5 * time.Second)       // Seed the stats so that startup doesn't say 0.
+		return nil
+	} else if err != nil {
+		if build.Release == "testing" {
+			build.Critical(err)
+		}
+		fmt.Println("WARN: reset stats after failing to load them", err)
+		return nil // ignore and overwrite
+	}
+
+	// Found stats. Seed with existing values.
+	err1 := r.staticRegistryReadStats.Load(stats.RegistryReadStats)
+	err2 := r.staticRegWriteStats.Load(stats.RegistryWriteStats)
+	err3 := r.staticBaseSectorUploadStats.Load(stats.BaseSectorUploadStats)
+	err4 := r.staticChunkUploadStats.Load(stats.ChunkUploadStats)
+	err5 := r.staticStreamBufferStats.Load(stats.StreamBufferStats)
+	if err := errors.Compose(err1, err2, err3, err4, err5); err != nil {
+		if build.Release == "testing" {
+			build.Critical(err)
+		}
+		fmt.Println("WARN: failed to load one or more distribution trackers")
+		return nil // ignore and overwrite
 	}
 	return nil
 }

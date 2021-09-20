@@ -76,6 +76,9 @@ const (
 	// can cover a greater range of data in fewer buckets at the cost of
 	// granularity. This saves computation and memory.
 	distributionTrackerStepChangeMultiple = 4
+
+	// numBuckets is the number of buckets a distribution consists of.
+	numBuckets = 64 + 48*distributionTrackerNumIncrements
 )
 
 type (
@@ -97,7 +100,7 @@ type (
 		// spaced 64ms apart, the spacings multiplying by 4 every 48 buckets.
 		// The final bucket is just over an hour, anything over will be put into
 		// that bucket as well.
-		timings [64 + 48*distributionTrackerNumIncrements]float64
+		timings [numBuckets]float64
 	}
 
 	// DistributionTracker will track the performance distribution of a series
@@ -117,7 +120,35 @@ type (
 		Nines      [][]time.Duration
 		DataPoints []float64
 	}
+
+	// PersistedDistribution contains the information about a distribution
+	// that is persisted to disk.
+	PersistedDistribution struct {
+		Timings [numBuckets]float64 `json:"timings"`
+	}
+
+	// PersistedDistributionTracker contains the information about a
+	// distributiontracker that is persisted to disk.
+	PersistedDistributionTracker struct {
+		Distributions []PersistedDistribution `json:"distributions"`
+	}
 )
+
+// Persist returns a PersistedDistributionTracker for the DistributionTracker by
+// copying all of its buckets.
+func (dt *DistributionTracker) Persist() PersistedDistributionTracker {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+	distributions := make([]PersistedDistribution, 0, len(dt.distributions))
+	for _, d := range dt.distributions {
+		distributions = append(distributions, PersistedDistribution{
+			Timings: d.timings,
+		})
+	}
+	return PersistedDistributionTracker{
+		Distributions: distributions,
+	}
+}
 
 // DistributionDurationForBucketIndex converts the index of a timing bucket into
 // a timing.
@@ -399,6 +430,22 @@ func (dt *DistributionTracker) AddDataPoint(dur time.Duration) {
 	for _, tr := range dt.distributions {
 		tr.AddDataPoint(dur)
 	}
+}
+
+// Load loads the buckets of a PersistedDistributionTracker into the tracker
+// that this method is called on, overwriting the buckets in the process.
+func (dt *DistributionTracker) Load(tracker PersistedDistributionTracker) error {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+	if len(dt.distributions) != len(tracker.Distributions) {
+		return fmt.Errorf("failed to load distribution tracker -  number of persisted distributions doesn't match the expectations: %v != %v", len(dt.distributions), len(tracker.Distributions))
+	}
+	for i := range tracker.Distributions {
+		for j := range dt.distributions[i].timings {
+			dt.distributions[i].timings[j] = tracker.Distributions[i].Timings[j]
+		}
+	}
+	return nil
 }
 
 // Percentiles returns the percentiles for 4 timings for each distribution in
