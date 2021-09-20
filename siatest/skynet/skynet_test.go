@@ -5538,7 +5538,7 @@ func testHostsForRegistryUpdate(t *testing.T, tg *siatest.TestGroup) {
 
 	// Store them in a map for easier lookup.
 	hostMap := make(map[string]struct{})
-	for _, hpk := range hg.Pubkeys {
+	for _, hpk := range hg.Hosts {
 		hostMap[hpk.String()] = struct{}{}
 	}
 
@@ -5547,8 +5547,8 @@ func testHostsForRegistryUpdate(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rc.ActiveContracts) != len(hg.Pubkeys) {
-		t.Fatal("wrong length", len(rc.ActiveContracts), len(hg.Pubkeys))
+	if len(rc.ActiveContracts) != len(hg.Hosts) {
+		t.Fatal("wrong length", len(rc.ActiveContracts), len(hg.Hosts))
 	}
 	for _, c := range rc.ActiveContracts {
 		_, ok := hostMap[c.HostPublicKey.String()]

@@ -76,7 +76,7 @@ type (
 	// HostsForRegistryUpdateGET is the response that the api returns after
 	// a request to /skynet/registry/hosts.
 	HostsForRegistryUpdateGET struct {
-		Pubkeys []types.SiaPublicKey `json:"pubkeys"`
+		Hosts []types.SiaPublicKey `json:"hosts"`
 	}
 
 	// SkynetSkyfileHandlerPOST is the response that the api returns after the
@@ -1666,6 +1666,6 @@ func (api *API) skynetHostsForRegistryUpdateGET(w http.ResponseWriter, req *http
 		return
 	}
 	WriteJSON(w, HostsForRegistryUpdateGET{
-		Pubkeys: hosts,
+		Hosts: hosts,
 	})
 }
