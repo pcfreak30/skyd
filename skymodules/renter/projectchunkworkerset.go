@@ -247,6 +247,17 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 		worker:       w,
 		pieceIndices: indices,
 	})
+	fmt.Printf("worker %v resolved w/pieces %v\n", w.staticHostPubKey.ShortString(), indices)
+}
+
+// managedRegisterForWorkerUpdate will create a channel and append it to the
+// list of update chans in the worker state. When there is more information
+// available about which worker is the best worker to select, the channel will
+// be closed.
+func (ws *pcwsWorkerState) managedRegisterForWorkerUpdate() <-chan struct{} {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	return ws.registerForWorkerUpdate()
 }
 
 // WaitForResults waits for all workers of the state to resolve up until ctx is
@@ -507,8 +518,10 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 
 		availablePieces:         make([][]*pieceDownload, ec.NumPieces()),
 		availablePiecesByWorker: make(map[string][]uint64),
-		launchedPiecesByWorker:  make(map[string]map[uint64]time.Time),
 		dataPieces:              make([][]byte, ec.NumPieces()),
+
+		completedPiecesByWorker: make(map[string]completedPieces),
+		launchedPiecesByWorker:  make(map[string]launchedPieces),
 
 		staticSkipRecovery: skipRecovery,
 

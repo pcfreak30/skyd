@@ -99,10 +99,14 @@ type (
 		// finished check.
 		unresolvedWorkersRemaining int
 
+		// completedPiecesByWorker keeps track of what workers completed what
+		// piece.
+		//
 		// launchedPiecesByWorker keeps track of what workers have launched what
 		// pieces at what time. The download code needs this information quite
 		// often so by having this map we can do constant time lookups.
-		launchedPiecesByWorker map[string]map[uint64]time.Time
+		completedPiecesByWorker map[string]completedPieces
+		launchedPiecesByWorker  map[string]launchedPieces
 
 		// dataPieces is the buffer that is used to place data as it comes back.
 		// There is one piece per chunk, and pieces can be nil. To know if the
@@ -167,6 +171,14 @@ type (
 		staticWorker *worker
 	}
 
+	// completedPieces is a helper type that maps the piece index to a boolean
+	// that indicates whether the piece download was successful
+	completedPieces map[uint64]bool
+
+	// launchedPieces is a helper type that maps the piece index to the time a
+	// worker was launched to download the piece
+	launchedPieces map[uint64]time.Time
+
 	// downloadResponse is sent via a channel to the caller of
 	// 'projectChunkWorkerSet.managedDownload'.
 	downloadResponse struct {
@@ -230,12 +242,20 @@ func (pd *pieceDownload) successful() bool {
 // updateAvailablePieces updates the available pieces with new pieces coming
 // from freshly resolved workers. Essentially this is pulling new information
 // from the overarching PCWS worker state.
-func (pdc *projectDownloadChunk) updateAvailablePieces() {
+func (pdc *projectDownloadChunk) updateAvailablePieces() bool {
 	ws := pdc.workerState
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 
-	// Add any new resolved workers to the pdc's list of available pieces.
+	// always update the remaining unresolved workers
+	pdc.unresolvedWorkersRemaining = len(ws.unresolvedWorkers)
+
+	// check whether an update is needed, if not return early
+	if pdc.workersConsideredIndex == len(ws.resolvedWorkers) {
+		return false
+	}
+
+	// add any new resolved workers to the pdc's list of available pieces.
 	for i := pdc.workersConsideredIndex; i < len(ws.resolvedWorkers); i++ {
 		// Add the returned worker to available pieces for each piece that the
 		// resolved worker has.
@@ -247,19 +267,21 @@ func (pdc *projectDownloadChunk) updateAvailablePieces() {
 		}
 	}
 	pdc.workersConsideredIndex = len(ws.resolvedWorkers)
-	pdc.unresolvedWorkersRemaining = len(ws.unresolvedWorkers)
+	return true
 }
 
 // updateAvailablePiecesWithResult will update the available piece for the given
 // worker and piece index with the download error.
 func (pdc *projectDownloadChunk) updateAvailablePiecesWithResult(w *worker, pieceIndex uint64, downloadErr error) {
+	workerKey := w.staticHostPubKeyStr
+
 	// ensure available pieces is up to date
 	pdc.updateAvailablePieces()
 
 	// update the available piece with the result of the download
 	pieceFound := false
 	for i := 0; i < len(pdc.availablePieces[pieceIndex]); i++ {
-		if pdc.availablePieces[pieceIndex][i].worker.staticHostPubKeyStr == w.staticHostPubKeyStr {
+		if pdc.availablePieces[pieceIndex][i].worker.staticHostPubKeyStr == workerKey {
 			// sanity check we are marking only a single piece
 			if pieceFound {
 				build.Critical("the list of available pieces contains duplicates.")
@@ -274,6 +296,12 @@ func (pdc *projectDownloadChunk) updateAvailablePiecesWithResult(w *worker, piec
 	if !pieceFound {
 		build.Critical("could not mark piece as complete, the piece was not found in he list of available pieces")
 	}
+
+	// mark the piece as completed
+	if _, exists := pdc.completedPiecesByWorker[workerKey]; !exists {
+		pdc.completedPiecesByWorker[workerKey] = make(completedPieces)
+	}
+	pdc.completedPiecesByWorker[workerKey][pieceIndex] = downloadErr == nil
 }
 
 // handleJobReadResponse will take a jobReadResponse from a worker job
@@ -495,7 +523,7 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 
 	// Track the launched piece
 	if _, exists := pdc.launchedPiecesByWorker[worker]; !exists {
-		pdc.launchedPiecesByWorker[worker] = make(map[uint64]time.Time)
+		pdc.launchedPiecesByWorker[worker] = make(launchedPieces)
 	}
 	pdc.launchedPiecesByWorker[worker][pieceIndex] = time.Now()
 

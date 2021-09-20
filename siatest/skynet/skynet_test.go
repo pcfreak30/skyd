@@ -4624,10 +4624,12 @@ func TestSkynetSkyfileStandardUploadRedundancy(t *testing.T) {
 
 	// Upload a large file
 	ss := modules.SectorSize
-	skylink, _, _, err := r.UploadNewSkyfileBlocking("largefile", ss*2, false)
+	skylink, _, _, err := r.UploadNewSkyfileBlocking("largefile", ss, false)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	fmt.Println("UPLOAD DONE")
 
 	// Download the file, this used to trigger a race to be detected.
 	_, err = r.SkynetSkylinkGet(skylink)

@@ -22,7 +22,6 @@ package skymodules
 
 import (
 	"fmt"
-	"reflect"
 	"sync"
 	"time"
 
@@ -242,12 +241,15 @@ func (d *Distribution) Clone() *Distribution {
 		c.timings[i] = b
 	}
 
+	// TODO: re-enable? maybe? this function is called in a ridiculously tight
+	// loop so even in testing it adds a lot of slowness, multiple seconds...
+	//
 	// sanity check using reflect package, only executed in testing
-	if build.Release == "testing" {
-		if !reflect.DeepEqual(d, c) {
-			build.Critical("cloned distribution not equal")
-		}
-	}
+	// if build.Release == "testing" {
+	// 	if !reflect.DeepEqual(d, c) {
+	// 		build.Critical("cloned distribution not equal")
+	// 	}
+	// }
 
 	return c
 }
