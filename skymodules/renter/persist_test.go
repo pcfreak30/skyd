@@ -15,7 +15,6 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/types"
 )
 
 // testingFileParams generates the ErasureCoder with random dataPieces and
@@ -82,16 +81,6 @@ func TestRenterSaveLoad(t *testing.T) {
 	if settings.MaxUploadSpeed != DefaultMaxUploadSpeed {
 		t.Error("default max upload speed not set at init")
 	}
-	if !settings.MonetizationBase.IsZero() {
-		t.Error("monetization base should default to zero")
-	}
-	if len(settings.CurrencyConversionRates) != 1 {
-		t.Error("invalid currency conversion")
-	}
-	usd, exists := settings.CurrencyConversionRates[skymodules.CurrencyUSD]
-	if !exists || !usd.Equals(types.ZeroCurrency) {
-		t.Error("wrong usd rate")
-	}
 
 	// The stats should be seeded.
 	trackers := []struct {
@@ -140,8 +129,6 @@ func TestRenterSaveLoad(t *testing.T) {
 	newUpSpeed := int64(500e3)
 	settings.MaxDownloadSpeed = newDownSpeed
 	settings.MaxUploadSpeed = newUpSpeed
-	settings.MonetizationBase = types.SiacoinPrecision
-	settings.CurrencyConversionRates[skymodules.CurrencyUSD] = types.SiacoinPrecision
 	err = rt.renter.SetSettings(settings)
 	if err != nil {
 		t.Fatal(err)
@@ -195,19 +182,6 @@ func TestRenterSaveLoad(t *testing.T) {
 	}
 	if newSettings.MaxUploadSpeed != newUpSpeed {
 		t.Error("upload settings not being persisted correctly")
-	}
-	if !newSettings.MonetizationBase.Equals(types.SiacoinPrecision) {
-		t.Error("monetization base should be 1")
-	}
-	if len(newSettings.CurrencyConversionRates) != 1 {
-		t.Error("currency conversion should have 1 currency")
-	}
-	usdRate, exists := newSettings.CurrencyConversionRates[skymodules.CurrencyUSD]
-	if !exists {
-		t.Error("rate doesn't exist")
-	}
-	if !usdRate.Equals(types.SiacoinPrecision) {
-		t.Error("wrong usd rate")
 	}
 
 	// Check that SiaFileSet loaded the renter's file

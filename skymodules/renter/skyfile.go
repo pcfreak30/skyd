@@ -230,10 +230,9 @@ func (r *Renter) CreateSkylinkFromSiafile(sup skymodules.SkyfileUploadParameters
 
 	// Override the metadata with the info from the fileNode.
 	metadata := skymodules.SkyfileMetadata{
-		Filename:     siaPath.Name(),
-		Mode:         fileNode.Mode(),
-		Monetization: sup.Monetization,
-		Length:       fileNode.Size(),
+		Filename: siaPath.Name(),
+		Mode:     fileNode.Mode(),
+		Length:   fileNode.Size(),
 	}
 
 	// Generate the fanoutBytes

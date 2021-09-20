@@ -631,10 +631,8 @@ func (r *Renter) SetSettings(s skymodules.RenterSettings) error {
 
 	// Save the changes.
 	id := r.mu.Lock()
-	r.persist.ConversionRates = s.CurrencyConversionRates
 	r.persist.MaxDownloadSpeed = s.MaxDownloadSpeed
 	r.persist.MaxUploadSpeed = s.MaxUploadSpeed
-	r.persist.MonetizationBase = s.MonetizationBase
 	err = r.saveSync()
 	r.mu.Unlock(id)
 	if err != nil {
@@ -845,16 +843,11 @@ func (r *Renter) Settings() (skymodules.RenterSettings, error) {
 		return skymodules.RenterSettings{}, errors.AddContext(err, "error getting IPViolationsCheck:")
 	}
 	paused, endTime := r.staticUploadHeap.managedPauseStatus()
-	id := r.mu.RLock()
-	mb, ccr := r.persist.MonetizationBase, r.persist.ConversionRates
-	r.mu.RUnlock(id)
 	return skymodules.RenterSettings{
-		Allowance:               r.staticHostContractor.Allowance(),
-		CurrencyConversionRates: ccr,
-		IPViolationCheck:        enabled,
-		MaxDownloadSpeed:        download,
-		MaxUploadSpeed:          upload,
-		MonetizationBase:        mb,
+		Allowance:        r.staticHostContractor.Allowance(),
+		IPViolationCheck: enabled,
+		MaxDownloadSpeed: download,
+		MaxUploadSpeed:   upload,
 		UploadsStatus: skymodules.UploadsStatus{
 			Paused:       paused,
 			PauseEndTime: endTime,
