@@ -4279,9 +4279,8 @@ func TestRegistryHealth(t *testing.T) {
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
-		Renters: 1,
-		Miners:  1,
-		Hosts:   renter.MinUpdateRegistrySuccesses,
+		Miners: 1,
+		Hosts:  renter.MinUpdateRegistrySuccesses,
 	}
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
@@ -4292,7 +4291,17 @@ func TestRegistryHealth(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	r := tg.Renters()[0]
+
+	// Add a renter with dependency.
+	params := node.RenterTemplate
+	deps := dependencies.NewDependencyDelayRegistryHealthResponses()
+	deps.Disable()
+	params.RenterDeps = deps
+	nodes, err := tg.AddNodes(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
 
 	// Get one of the hosts' pubkey and choose one of the existing hosts to
 	// be stopped later. They can't be the same host.
@@ -4313,25 +4322,22 @@ func TestRegistryHealth(t *testing.T) {
 
 	// Helper function to check the health.
 	assertHealth := func(expected skymodules.RegistryEntryHealth) error {
-		// Get the health both ways.
-		reh1, err := r.RegistryEntryHealth(spk, dataKey)
+		// Randomly decide what endpoint to use.
+		var reh skymodules.RegistryEntryHealth
+		var err error
+		choice := fastrand.Intn(2)
+		if choice == 0 {
+			reh, err = r.RegistryEntryHealth(spk, dataKey)
+		} else {
+			reh, err = r.RegistryEntryHealthRID(rid)
+		}
 		if err != nil {
 			return err
 		}
-		reh2, err := r.RegistryEntryHealthRID(rid)
-		if err != nil {
-			return err
-		}
-
-		// They should be the same.
-		if !reflect.DeepEqual(reh1, reh2) {
-			return fmt.Errorf("health responses don't match: %v %v", reh1, reh2)
-		}
-
-		if !reflect.DeepEqual(reh1, expected) {
-			got := siatest.PrintJSON(reh1)
+		if !reflect.DeepEqual(reh, expected) {
+			got := siatest.PrintJSON(reh)
 			expected := siatest.PrintJSON(expected)
-			return fmt.Errorf("health doesn't match expected \n got: %v \n expected: %v", got, expected)
+			return fmt.Errorf("health doesn't match expected (choice %v) \n got: %v \n expected: %v", choice, got, expected)
 		}
 		return nil
 	}
@@ -4349,10 +4355,11 @@ func TestRegistryHealth(t *testing.T) {
 
 	// Check the health.
 	err = assertHealth(skymodules.RegistryEntryHealth{
-		NumBestEntries:        3,
-		NumEntries:            3,
-		NumBestPrimaryEntries: 0,
-		RevisionNumber:        srv.Revision,
+		NumBestEntries:             3,
+		NumBestEntriesBeforeCutoff: 2, // cutoff is at 2 of 3 hosts
+		NumEntries:                 3,
+		NumBestPrimaryEntries:      0,
+		RevisionNumber:             srv.Revision,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -4380,10 +4387,11 @@ func TestRegistryHealth(t *testing.T) {
 
 	// Check the health.
 	err = assertHealth(skymodules.RegistryEntryHealth{
-		RevisionNumber:        revision,
-		NumEntries:            uint64(len(tg.Hosts())) - 1,
-		NumBestEntries:        uint64(len(tg.Hosts())) - 1,
-		NumBestPrimaryEntries: 0,
+		RevisionNumber:             revision,
+		NumEntries:                 uint64(len(tg.Hosts())) - 1,
+		NumBestEntries:             uint64(len(tg.Hosts())) - 1,
+		NumBestEntriesBeforeCutoff: 2, // cutoff is at 2 of 3 hosts
+		NumBestPrimaryEntries:      0,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -4405,11 +4413,26 @@ func TestRegistryHealth(t *testing.T) {
 		// We expect len(hosts)-1 best entries since one entry is
 		// outdated and does therefore not count towards the health.
 		return assertHealth(skymodules.RegistryEntryHealth{
-			RevisionNumber:        revision,
-			NumEntries:            uint64(len(tg.Hosts())),
-			NumBestEntries:        uint64(len(tg.Hosts())) - 1,
-			NumBestPrimaryEntries: 0,
+			RevisionNumber:             revision,
+			NumEntries:                 uint64(len(tg.Hosts())),
+			NumBestEntries:             uint64(len(tg.Hosts())) - 1,
+			NumBestEntriesBeforeCutoff: 2, // cutoff is at 3 of 4 hosts
+			NumBestPrimaryEntries:      0,
 		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Enable the delay dependency and test again. None of the lookups
+	// should return before the timeout.
+	deps.Enable()
+	err = assertHealth(skymodules.RegistryEntryHealth{
+		RevisionNumber:             revision,
+		NumEntries:                 uint64(len(tg.Hosts())),
+		NumBestEntries:             uint64(len(tg.Hosts())) - 1,
+		NumBestEntriesBeforeCutoff: 0,
+		NumBestPrimaryEntries:      0,
 	})
 	if err != nil {
 		t.Fatal(err)

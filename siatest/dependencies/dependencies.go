@@ -225,6 +225,12 @@ type (
 	}
 )
 
+// NewDependencyDelayRegistryHealthResponses simulates a delay to the
+// staticComplete time of all responses in managedRegistryEntryHealth.`
+func NewDependencyDelayRegistryHealthResponses() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("DelayRegistryHealthResponses")
+}
+
 // NewDependencyTUSConnectionDrop creates a new DependencyTUSConnectionDrop
 // which simulates a dropped connection during a TUS upload.
 func NewDependencyTUSConnectionDrop() *DependencyInterruptOnceOnKeyword {
