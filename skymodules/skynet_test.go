@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/persist"
@@ -101,21 +102,42 @@ func TestSkyfileLayout_DecodeFanoutIntoChunks(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 
-	// valid fanout bytes
-	fanoutBytes = fastrand.Bytes(3 * crypto.HashSize)
+	// valid fanout
+	chunkSize := ChunkSize(sl.CipherType, uint64(sl.FanoutDataPieces))
+	expectedChunks := sl.Filesize / chunkSize
+	if sl.Filesize%chunkSize != 0 {
+		expectedChunks++
+	}
+	fanoutBytes = fastrand.Bytes(int(expectedChunks * crypto.HashSize))
 	chunks, err = sl.DecodeFanoutIntoChunks(fanoutBytes)
 	if err != nil {
-		t.Fatal("unexpected")
+		t.Fatal(err)
 	}
-	if len(chunks) != 3 || len(chunks[0]) != 1 {
+	if len(chunks) != int(expectedChunks) || len(chunks[0]) != 1 {
 		t.Fatal("unexpected")
 	}
 	if !bytes.Equal(chunks[0][0][:], fanoutBytes[:crypto.HashSize]) {
 		t.Fatal("unexpected")
 	}
 
+	// short fanout
+	fanoutBytes = fastrand.Bytes(int(expectedChunks-1) * crypto.HashSize)
+	chunks, err = sl.DecodeFanoutIntoChunks(fanoutBytes)
+	if !errors.Contains(err, ErrMalformedBaseSector) {
+		t.Fatal(err)
+	}
+
+	// long fanout
+	fanoutBytes = fastrand.Bytes(int(expectedChunks+1) * crypto.HashSize)
+	chunks, err = sl.DecodeFanoutIntoChunks(fanoutBytes)
+	if !errors.Contains(err, ErrMalformedBaseSector) {
+		t.Fatal(err)
+	}
+
 	// not 1-N
 	sl.FanoutDataPieces = 4
+	chunkSize = ChunkSize(sl.CipherType, uint64(sl.FanoutDataPieces))
+	sl.Filesize = chunkSize * 3
 	ppc := int(sl.FanoutDataPieces + sl.FanoutParityPieces) // pieces per chunk
 	fanoutBytes = fastrand.Bytes(3 * ppc * crypto.HashSize) // 3 chunks
 	chunks, err = sl.DecodeFanoutIntoChunks(fanoutBytes)

@@ -356,6 +356,15 @@ func TestParseSkyfileMetadata(t *testing.T) {
 	randData = fastrand.Bytes(int(modules.SectorSize))
 	copy(randData, layoutBytes)
 	ParseSkyfileMetadata(randData) // no error check, just want to know it doesn't panic
+	// No fanout
+	layout.FanoutSize = 0
+	layoutBytes = layout.Encode()
+	randData = fastrand.Bytes(int(modules.SectorSize))
+	copy(randData, layoutBytes)
+	_, _, _, _, _, err := ParseSkyfileMetadata(randData)
+	if errors.Contains(err, ErrMalformedBaseSector) {
+		t.Fatal(err)
+	}
 
 	// Try a bunch of random data.
 	for i := 0; i < 10e3; i++ {

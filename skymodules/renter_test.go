@@ -12,6 +12,7 @@ import (
 
 	"gitlab.com/SkynetLabs/skyd/build"
 	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
 )
@@ -526,4 +527,46 @@ func TestContractUtilityMerge(t *testing.T) {
 	u = utility(false, false, true, true, 1)
 	result = goodUtility.Merge(u)
 	assert(result, u)
+}
+
+// TestNumChunks is a unit test for NumChunks.
+func TestNumChunks(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		fileSize  uint64
+		numChunks uint64
+	}{
+		{
+			name:      "EmptyFile",
+			fileSize:  0,
+			numChunks: 0,
+		},
+		{
+			name:      "SingleByte",
+			fileSize:  1,
+			numChunks: 1,
+		},
+		{
+			name:      "FullChunks",
+			fileSize:  modules.SectorSize,
+			numChunks: 1,
+		},
+		{
+			name:      "SingleByteOver",
+			fileSize:  modules.SectorSize + 1,
+			numChunks: 2,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Use plaintext and 1 datapiece for chunksize to equal
+			// sectorsize.
+			numChunks := NumChunks(crypto.TypePlain, test.fileSize, 1)
+			if numChunks != test.numChunks {
+				t.Errorf("mismatch %v != %v", numChunks, test.numChunks)
+			}
+		})
+	}
 }
