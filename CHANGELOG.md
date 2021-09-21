@@ -10,8 +10,8 @@ Version History
 
 Latest:
 
-## Sep 14, 2021:
-### deploy-2021-09-14
+## Sep 21, 2021:
+### deploy-2021-09-21
 **Key Updates**
 - Add tryfiles metadata field which lists potential subfiles to serve in case the requested files don't exist.
 - Add errorpages metadata field which defines custom content to be served in case specific error codes are to be returned.
