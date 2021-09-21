@@ -176,7 +176,7 @@ func (us *skynetTUSMongoUploadStore) CreateUpload(ctx context.Context, fi handle
 		Complete:    false,
 		FanoutBytes: nil,
 		FileInfo:    fi,
-		LastWrite:   time.Now(),
+		LastWrite:   time.Now().UTC(),
 		FileName:    fileName,
 		SiaPath:     sp,
 
@@ -285,23 +285,24 @@ func (u *mongoTUSUpload) CommitWriteChunkSmallFile(ctx context.Context, newOffse
 // CommitWriteChunk commits writing a chunk of either a small or
 // large file with fanout.
 func (u *mongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error {
+	// NOTE: This could potentially be improved to append to the fanout
+	// instead of replacing it.
 	return u.commitWriteChunk(ctx, bson.M{
-		"$push": bson.M{
-			"fanout": bson.M{
-				"$each": fanout,
-			},
-		},
+		"fanoutbytes": append(u.FanoutBytes, fanout...),
 	}, newOffset, newLastWrite, isSmall)
 }
 
 // commitWriteChunk commits a chunk write and also applies the updates provided
 // by update.
-func (u *mongoTUSUpload) commitWriteChunk(ctx context.Context, update bson.M, newOffset int64, newLastWrite time.Time, smallFile bool) error {
+func (u *mongoTUSUpload) commitWriteChunk(ctx context.Context, set bson.M, newOffset int64, newLastWrite time.Time, smallFile bool) error {
 	fi := u.FileInfo
 	fi.Offset = newOffset
-	update["fileinfo"] = fi
-	update["lastwrite"] = newLastWrite
-	update["issmallfile"] = smallFile
+	set["fileinfo"] = fi
+	set["lastwrite"] = newLastWrite.UTC()
+	set["issmallfile"] = smallFile
+	update := bson.M{
+		"$set": set,
+	}
 	result := u.staticUploads.FindOneAndUpdate(ctx, bson.M{"_id": u.FileInfo.ID}, update)
 	return result.Err()
 }
@@ -311,8 +312,10 @@ func (u *mongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodu
 	fi := u.FileInfo
 	fi.MetaData["Skylink"] = skylink.String()
 	result := u.staticUploads.FindOneAndUpdate(ctx, bson.M{"_id": u.FileInfo.ID}, bson.M{
-		"fileinfo": fi,
-		"complete": true,
+		"$set": bson.M{
+			"fileinfo": fi,
+			"complete": true,
+		},
 	})
 	return result.Err()
 }
@@ -320,7 +323,9 @@ func (u *mongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodu
 // CommitFinishPartialUpload commits a finalised partial upload.
 func (u *mongoTUSUpload) CommitFinishPartialUpload(ctx context.Context) error {
 	result := u.staticUploads.FindOneAndUpdate(ctx, bson.M{"_id": u.FileInfo.ID}, bson.M{
-		"complete": true,
+		"$set": bson.M{
+			"complete": true,
+		},
 	})
 	return result.Err()
 }

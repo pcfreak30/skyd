@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"reflect"
@@ -210,7 +211,7 @@ func TestToPrune(t *testing.T) {
 	// The recent upload won't be pruned.
 	uploadRecent := mongoTUSUpload{
 		ID:         "recent",
-		LastWrite:  time.Now(),
+		LastWrite:  time.Now().UTC(),
 		PortalName: us.staticPortalHostname,
 	}
 
@@ -293,10 +294,6 @@ func TestCreateGetUpload(t *testing.T) {
 	if err := collection.Drop(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-
-	// Create an upload.
-	_, cancelFunc := context.WithCancel(context.Background())
-	defer cancelFunc()
 
 	fi := handler.FileInfo{
 		ID:             "id",
@@ -382,4 +379,98 @@ func TestCreateGetUpload(t *testing.T) {
 		fmt.Println(*mu)
 		t.Fatal("mismatch")
 	}
+}
+
+// TestCommitWriteChunk tests committing small and large uploads.
+func TestCommitWriteChunk(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	us, err := newMongoTestStore(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := us.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Reset collection.
+	collection := us.staticUploadCollection()
+	if err := collection.Drop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Large upload.
+	largeUpload, err := us.CreateUpload(context.Background(), handler.FileInfo{ID: "large"}, skymodules.RandomSiaPath(), "large", 1, 1, 1, []byte{}, crypto.TypePlain)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// First commit.
+	lastWrite := time.Now().UTC()
+	fanout1 := fastrand.Bytes(crypto.HashSize)
+	newOffset := int64(10)
+	err = largeUpload.CommitWriteChunk(context.Background(), newOffset, lastWrite, false, fanout1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check upload.
+	u, err := us.GetUpload(context.Background(), "large")
+	if err != nil {
+		t.Fatal(err)
+	}
+	upload := u.(*mongoTUSUpload)
+	if !bytes.Equal(upload.FanoutBytes, fanout1) {
+		t.Fatal("wrong fanout", len(upload.FanoutBytes), len(fanout1))
+	}
+	if upload.FileInfo.Offset != newOffset {
+		t.Fatal("wrong offset", upload.FileInfo.Offset, newOffset)
+	}
+	if upload.LastWrite.Unix() != lastWrite.Unix() {
+		t.Fatal("wrong lastWrite", upload.LastWrite, lastWrite)
+	}
+	if upload.IsSmallFile != false {
+		t.Fatal("wrong isSmallFile", upload.IsSmallFile, false)
+	}
+
+	// Second commit.
+	lastWrite = time.Now().UTC()
+	fanout2 := fastrand.Bytes(crypto.HashSize)
+	newOffset = 20
+	err = u.CommitWriteChunk(context.Background(), 20, lastWrite, false, fanout2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check upload again.
+	u, err = us.GetUpload(context.Background(), "large")
+	if err != nil {
+		t.Fatal(err)
+	}
+	upload = u.(*mongoTUSUpload)
+	if !bytes.Equal(upload.FanoutBytes, append(fanout1, fanout2...)) {
+		t.Fatal("wrong fanout", len(upload.FanoutBytes))
+	}
+	if upload.FileInfo.Offset != newOffset {
+		t.Fatal("wrong offset", upload.FileInfo.Offset, newOffset)
+	}
+	if upload.LastWrite.Unix() != lastWrite.Unix() {
+		t.Fatal("wrong lastWrite", upload.LastWrite, lastWrite)
+	}
+	if upload.IsSmallFile != false {
+		t.Fatal("wrong isSmallFile", upload.IsSmallFile, false)
+	}
+
+	// Small upload.
+	_, err = us.CreateUpload(context.Background(), handler.FileInfo{}, skymodules.RandomSiaPath(), "small", 1, 1, 1, []byte{}, crypto.TypePlain)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// TODO: finish test.
 }
