@@ -122,13 +122,13 @@ staticcheck:
 
 start-mongo:
 # Remove existing container.
-	-docker stop mongo1
+	-docker stop mongo-test
 
 # Start primary node.
 	docker run \
       --rm \
       --detach \
-      --name mongo1 \
+      --name mongo-test \
       -p 127.0.0.1:27017:27017 \
       -e MONGODB_ADVERTISED_HOSTNAME=localhost \
       -e MONGODB_REPLICA_SET_MODE=primary \
@@ -138,7 +138,7 @@ start-mongo:
       bitnami/mongodb:4.4.1
 
 stop-mongo:
-	-docker stop mongo1
+	-docker stop mongo-test
 
 # debug builds and installs debug binaries. This will also install the utils.
 debug:

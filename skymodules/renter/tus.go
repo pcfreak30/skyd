@@ -52,20 +52,18 @@ type (
 		staticUploadStore skymodules.SkynetTUSUploadStore
 
 		ongoingUploads map[string]*ongoingTUSUpload
-
-		staticRenter *Renter
-		mu           sync.Mutex
+		staticRenter   *Renter
+		mu             sync.Mutex
 	}
 
 	// ongoingTUSUpload implements multiple TUS interfaces for uploads.
 	ongoingTUSUpload struct {
-		// The underlying upload.
-		staticUpload skymodules.SkynetTUSUpload
-
-		fileNode       *filesystem.FileNode
+		staticUpload   skymodules.SkynetTUSUpload
 		staticUploader *skynetTUSUploader
-		closed         bool
-		mu             sync.Mutex
+
+		fileNode *filesystem.FileNode
+		closed   bool
+		mu       sync.Mutex
 	}
 )
 
@@ -176,27 +174,25 @@ func (stu *skynetTUSUploader) managedCreateUpload(fi handler.FileInfo, sp skymod
 
 // GetUpload returns an existing upload.
 func (stu *skynetTUSUploader) GetUpload(ctx context.Context, id string) (handler.Upload, error) {
-	// Search for ongoing upload.
-	stu.mu.Lock()
-	ou, exists := stu.ongoingUploads[id]
-	if exists {
-		stu.mu.Unlock()
-		return ou, nil
-	}
-	stu.mu.Unlock()
-
-	// If it doesn't exist create one.
+	// Get the upload from the db first.
 	upload, err := stu.staticUploadStore.GetUpload(ctx, id)
 	if err != nil {
 		return nil, err
 	}
+	// Search for ongoing upload.
+	stu.mu.Lock()
+	defer stu.mu.Unlock()
+	ou, exists := stu.ongoingUploads[id]
+	if exists {
+		return ou, nil
+	}
+
+	// If it doesn't exist create one.
 	ou = &ongoingTUSUpload{
 		staticUpload:   upload,
 		staticUploader: stu,
 	}
-	stu.mu.Lock()
 	stu.ongoingUploads[id] = ou
-	stu.mu.Unlock()
 	return ou, nil
 }
 
@@ -274,6 +270,7 @@ func (u *ongoingTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.
 			return 0, err
 		}
 	}
+
 	// If we get to this point with a small file, something is wrong.
 	// Theoretically this is not possible but return an error for extra safety.
 	if isSmall && !fi.IsPartial {
@@ -420,7 +417,7 @@ func (u *ongoingTUSUpload) FinishUpload(ctx context.Context) (err error) {
 	if err != nil {
 		return errors.AddContext(err, "failed to fetch smBytes")
 	}
-	smallUploadData, err := u.staticUpload.SmallUploadData(ctx)
+	smallUploadData, err := u.staticUpload.SmallFileData(ctx)
 	if err != nil {
 		return errors.AddContext(err, "failed to fetch smallUploadData")
 	}
@@ -476,13 +473,24 @@ func (r *Renter) threadedPruneTUSUploads() {
 		for _, upload := range toDelete {
 			uploadID, sp, err := upload.PruneInfo(r.tg.StopCtx())
 			if err != nil {
-				r.staticLog.Critical("failed to fetch prune info from upload", err)
-			} else {
-				// Delete on disk.
-				spFanout, _ := sp.AddSuffixStr(skymodules.ExtendedSuffix)
-				_ = r.DeleteFile(sp)
-				_ = r.DeleteFile(spFanout)
+				r.staticLog.Print("WARN: failed to fetch prune info from upload", err)
+				continue
 			}
+
+			// Delete on disk. We don't care if the extended siapath
+			// didn't exist but we print some loging if the regular
+			// deletion failed.
+			spFanout, err := sp.AddSuffixStr(skymodules.ExtendedSuffix)
+			if err != nil {
+				r.staticLog.Critical("Failed to append ExtededSuffix to SiaPath", err)
+			}
+			if err := r.DeleteFile(sp); err != nil {
+				r.staticLog.Printf("WARN: failed to delete SiaPath %v: %v", sp.String(), err)
+			}
+			if err := r.DeleteFile(spFanout); err != nil && !errors.Contains(err, filesystem.ErrNotExist) {
+				r.staticLog.Printf("WARN: failed to delete extended SiaPath %v: %v", sp.String(), err)
+			}
+
 			// Delete from store.
 			_ = r.staticSkynetTUSUploader.staticUploadStore.Prune(uploadID)
 
@@ -599,7 +607,7 @@ func (u *ongoingTUSUpload) ConcatUploads(ctx context.Context, partialUploads []h
 	// from being pruned.
 	var errs error
 	for i := range partialUploads {
-		// Commit the partial upload as complete as well. This
+		// Commit the partial upload as complete as well.
 		pu = partialUploads[i].(*ongoingTUSUpload)
 		errs = errors.Compose(errs, pu.staticUpload.CommitFinishPartialUpload())
 	}
