@@ -2,6 +2,7 @@ package skynet
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -22,9 +23,25 @@ import (
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 )
+
+// mongoTestCreds are the credentials for the test mongodb.
+var mongoTestCreds = options.Credential{
+	Username: "root",
+	Password: "pwd",
+}
+
+// newMongoTestStore creates a skynetTUSMongoUploadStore for testing.
+func newMongoTestStore(name string) (skymodules.SkynetTUSUploadStore, error) {
+	uri, ok := build.MongoDBURI()
+	if !ok {
+		build.Critical("uri not set")
+	}
+	return renter.NewSkynetTUSMongoUploadStore(context.Background(), uri, name, mongoTestCreds)
+}
 
 // TestSkynetTUSUploader runs all skynetTUSUploader related tests.
 func TestSkynetTUSUploader(t *testing.T) {
@@ -33,44 +50,69 @@ func TestSkynetTUSUploader(t *testing.T) {
 	}
 	t.Parallel()
 
-	// Prepare a testgroup.
-	groupParams := siatest.GroupParams{
-		Hosts:   3,
-		Miners:  1,
-		Renters: 1,
-	}
-	groupDir := skynetTestDir(t.Name())
-	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := tg.Close(); err != nil {
+	// Helper to run tests.
+	runTests := func(t *testing.T, mongo bool) {
+		// Prepare a testgroup.
+		groupParams := siatest.GroupParams{
+			Hosts:  3,
+			Miners: 1,
+		}
+		groupDir := skynetTestDir(t.Name())
+		tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
+		if err != nil {
 			t.Fatal(err)
 		}
-	}()
+		defer func() {
+			if err := tg.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
 
-	// Run tests.
-	t.Run("PruneIdle", func(t *testing.T) {
-		testTUSUploaderPruneIdle(t, tg.Renters()[0]) // first to avoid ndf
+		// Create a mongo test store if necessary.
+		rt := node.RenterTemplate
+		if mongo {
+			ts, err := newMongoTestStore(t.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			rt.TUSUploadStore = ts
+		}
+		if _, err := tg.AddNodes(rt); err != nil {
+			t.Fatal(err)
+		}
+
+		// Run tests.
+		t.Run("PruneIdle", func(t *testing.T) {
+			testTUSUploaderPruneIdle(t, tg.Renters()[0]) // first to avoid ndf
+		})
+		t.Run("Basic", func(t *testing.T) {
+			testTUSUploaderBasic(t, tg.Renters()[0])
+		})
+		t.Run("Options", func(t *testing.T) {
+			testOptionsHandler(t, tg.Renters()[0])
+		})
+		t.Run("Concat", func(t *testing.T) {
+			testTUSUploaderConcat(t, tg.Renters()[0])
+		})
+		t.Run("TooLarge", func(t *testing.T) {
+			testTUSUploaderTooLarge(t, tg.Renters()[0])
+		})
+		t.Run("UnstableConnection", func(t *testing.T) {
+			testTUSUploaderUnstableConnection(t, tg)
+		})
+		t.Run("DroppedConnection", func(t *testing.T) {
+			testTUSUploaderConnectionDropped(t, tg)
+		})
+	}
+
+	// Run with in-memory db.
+	t.Run("InMemory", func(t *testing.T) {
+		runTests(t, false)
 	})
-	t.Run("Basic", func(t *testing.T) {
-		testTUSUploaderBasic(t, tg.Renters()[0])
-	})
-	t.Run("Options", func(t *testing.T) {
-		testOptionsHandler(t, tg.Renters()[0])
-	})
-	t.Run("Concat", func(t *testing.T) {
-		testTUSUploaderConcat(t, tg.Renters()[0])
-	})
-	t.Run("TooLarge", func(t *testing.T) {
-		testTUSUploaderTooLarge(t, tg.Renters()[0])
-	})
-	t.Run("UnstableConnection", func(t *testing.T) {
-		testTUSUploaderUnstableConnection(t, tg)
-	})
-	t.Run("DroppedConnection", func(t *testing.T) {
-		testTUSUploaderConnectionDropped(t, tg)
+
+	// Run with mongodb.
+	t.Run("Mongo", func(t *testing.T) {
+		runTests(t, true)
 	})
 }
 
