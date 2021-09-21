@@ -334,7 +334,7 @@ type (
 	SkynetTUSUploadStore interface {
 		// ToPrune returns the uploads which should be pruned from skyd
 		// and the store.
-		ToPrune() ([]SkynetTUSUpload, error)
+		ToPrune(ctx context.Context) ([]SkynetTUSUpload, error)
 
 		// Prune prunes the upload with the given ID from the store.
 		Prune(string) error

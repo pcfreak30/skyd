@@ -9,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readconcern"
@@ -46,7 +47,10 @@ type (
 	}
 
 	mongoTUSUpload struct {
-		ID string `bson:"_id"`
+		ID         string    `bson:"_id"`
+		Complete   bool      `bson:"complete"`
+		LastWrite  time.Time `bson:"lastwrite"`
+		PortalName string    `bson:"portalname"`
 	}
 
 	// skynetMongoLock is a lock used for locking an upload.
@@ -112,8 +116,32 @@ LOOP:
 	return err
 }
 
-func (us *skynetTUSMongoUploadStore) ToPrune() ([]skymodules.SkynetTUSUpload, error) {
-	panic("not implemented yet")
+// ToPrune returns the uploads which should be pruned by the portal.
+func (us *skynetTUSMongoUploadStore) ToPrune(ctx context.Context) ([]skymodules.SkynetTUSUpload, error) {
+	c := us.staticUploadCollection()
+
+	filter := bson.M{
+		"lastwrite": bson.M{
+			"$lt": time.Now().Add(-PruneTUSUploadTimeout),
+		},
+		"complete":   false,
+		"portalname": us.staticPortalHostname,
+	}
+	// Find uploads.
+	cursor, err := c.Find(ctx, filter, options.Find().SetBatchSize(100))
+	if err != nil {
+		return nil, err
+	}
+	// Decode uploads.
+	var uploads []skymodules.SkynetTUSUpload
+	for cursor.Next(ctx) {
+		var upload mongoTUSUpload
+		if err := cursor.Decode(&upload); err != nil {
+			return nil, err
+		}
+		uploads = append(uploads, &upload)
+	}
+	return uploads, nil
 }
 
 func (us *skynetTUSMongoUploadStore) Prune(string) error {
@@ -146,6 +174,74 @@ func (us *skynetTUSMongoUploadStore) staticLockCollection() *mongo.Collection {
 }
 
 func (us *skynetTUSMongoUploadStore) Upload(id string) (skymodules.SkynetTUSUpload, error) {
+	panic("not implemented yet")
+}
+
+// Skylink returns the upload's skylink if available already.
+func (u *mongoTUSUpload) Skylink() (skymodules.Skylink, bool) {
+	panic("not implemented yet")
+}
+
+// GetInfo returns the FileInfo of the upload.
+func (u *mongoTUSUpload) GetInfo(ctx context.Context) (handler.FileInfo, error) {
+	panic("not implemented yet")
+}
+
+// IsSmallUpload indicates whether the upload is considered a
+// small upload. That means the upload contained less than a
+// chunksize of data.
+func (u *mongoTUSUpload) IsSmallUpload(ctx context.Context) (bool, error) {
+	panic("not implemented yet")
+}
+
+// PruneInfo returns the info required to prune uploads.
+func (u *mongoTUSUpload) PruneInfo(ctx context.Context) (id string, sp skymodules.SiaPath, err error) {
+	panic("not implemented yet")
+}
+
+// UploadParams returns the upload parameters used for the
+// upload.
+func (u *mongoTUSUpload) UploadParams(ctx context.Context) (skymodules.SkyfileUploadParameters, skymodules.FileUploadParams, error) {
+	panic("not implemented yet")
+}
+
+// CommitWriteChunkSmallFile commits writing a chunk of a small
+// file.
+func (u *mongoTUSUpload) CommitWriteChunkSmallFile(newOffset int64, newLastWrite time.Time, smallUploadData []byte) error {
+	panic("not implemented yet")
+}
+
+// CommitWriteChunk commits writing a chunk of either a small or
+// large file with fanout.
+func (u *mongoTUSUpload) CommitWriteChunk(newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error {
+	panic("not implemented yet")
+}
+
+// CommitFinishUpload commits a finalised upload.
+func (u *mongoTUSUpload) CommitFinishUpload(skylink skymodules.Skylink) error {
+	panic("not implemented yet")
+}
+
+// CommitFinishPartialUpload commits a finalised partial upload.
+func (u *mongoTUSUpload) CommitFinishPartialUpload() error {
+	panic("not implemented yet")
+}
+
+// Fanout returns the fanout of the upload. Should only be
+// called once it's done uploading.
+func (u *mongoTUSUpload) Fanout(ctx context.Context) ([]byte, error) {
+	panic("not implemented yet")
+}
+
+// SkyfileMetadata returns the metadata of the upload. Should
+// only be called once it's done uploading.
+func (u *mongoTUSUpload) SkyfileMetadata(ctx context.Context) ([]byte, error) {
+	panic("not implemented yet")
+}
+
+// SmallFileData returns the data to upload for a small file
+// upload.
+func (u *mongoTUSUpload) SmallFileData(ctx context.Context) ([]byte, error) {
 	panic("not implemented yet")
 }
 

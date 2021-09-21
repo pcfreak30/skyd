@@ -464,7 +464,7 @@ func (r *Renter) threadedPruneTUSUploads() {
 			return // shutdown
 		case <-ticker.C:
 		}
-		toDelete, err := r.staticSkynetTUSUploader.staticUploadStore.ToPrune()
+		toDelete, err := r.staticSkynetTUSUploader.staticUploadStore.ToPrune(r.tg.StopCtx())
 		if err != nil {
 			r.staticLog.Print("Failed to get TUS uploads for pruning", err)
 		}

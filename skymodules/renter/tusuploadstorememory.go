@@ -221,7 +221,7 @@ func (u *skynetInMemoryUpload) Skylink() (skymodules.Skylink, bool) {
 }
 
 // Prune removes uploads that have been idle for too long.
-func (us *skynetTUSInMemoryUploadStore) ToPrune() ([]skymodules.SkynetTUSUpload, error) {
+func (us *skynetTUSInMemoryUploadStore) ToPrune(_ context.Context) ([]skymodules.SkynetTUSUpload, error) {
 	us.mu.Lock()
 	defer us.mu.Unlock()
 	var toDelete []skymodules.SkynetTUSUpload

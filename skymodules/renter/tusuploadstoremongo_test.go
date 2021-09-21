@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/tus/tusd/pkg/handler"
 	"gitlab.com/NebulousLabs/errors"
@@ -121,31 +122,22 @@ func TestMongoLocking(t *testing.T) {
 	}()
 
 	// Create 2 uploads A and B.
-	uploadA := mongoTUSUpload{ID: t.Name() + "_A"}
-	uploadB := mongoTUSUpload{ID: t.Name() + "_B"}
-	collection := us.staticClient.Database(tusDBName).Collection(tusUploadsMongoCollectionName)
-	_, err = collection.InsertOne(context.Background(), uploadA)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = collection.InsertOne(context.Background(), uploadB)
-	if err != nil {
-		t.Fatal(err)
-	}
+	uploadAID := "uploadA"
+	uploadBID := "uploadB"
 
 	// Create 3 locks. The first two for the same upload and the second one
 	// for a different upload.
-	lockA1, err := us.NewLock(uploadA.ID)
+	lockA1, err := us.NewLock(uploadAID)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	lockA2, err := us.NewLock(uploadA.ID)
+	lockA2, err := us.NewLock(uploadAID)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	lockB, err := us.NewLock(uploadB.ID)
+	lockB, err := us.NewLock(uploadBID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,14 +177,91 @@ func TestMongoLocking(t *testing.T) {
 	if err != handler.ErrFileLocked {
 		t.Fatal(err)
 	}
+}
 
-	var readUpload mongoTUSUpload
-	sr := collection.FindOne(context.Background(), bson.M{"_id": uploadA.ID})
-	if sr.Err() != nil {
-		t.Fatal(err)
+func TestToPrune(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
 	}
-	err = sr.Decode(&readUpload)
+	t.Parallel()
+
+	us, err := newMongoTestStore(t.Name())
 	if err != nil {
 		t.Fatal(err)
+	}
+	defer func() {
+		if err := us.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Make sure the hostname was set.
+	if us.staticPortalHostname == "" {
+		t.Fatal("hostname not set")
+	}
+
+	// Create a bunch of uploads.
+
+	// The recent upload won't be pruned.
+	uploadRecent := mongoTUSUpload{
+		ID:         "recent",
+		LastWrite:  time.Now(),
+		PortalName: us.staticPortalHostname,
+	}
+
+	// The outdated one will be pruned.
+	uploadOutdated := mongoTUSUpload{
+		ID:         "outdated",
+		PortalName: us.staticPortalHostname,
+	}
+
+	// The outdated one which was set by some other portal won't be pruned.
+	uploadOutdatedButWrongPortal := mongoTUSUpload{
+		ID:         "outdatedWrongPortal",
+		PortalName: "someOtherPortal",
+	}
+
+	// The outdated one which was successfully completed won't be pruned.
+	uploadOutdatedButComplete := mongoTUSUpload{
+		ID:         "outdatedButComplete",
+		Complete:   true,
+		PortalName: us.staticPortalHostname,
+	}
+
+	// Reset collection.
+	collection := us.staticUploadCollection()
+	if err := collection.Drop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Insert the uploads.
+	_, err = collection.InsertOne(context.Background(), uploadRecent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = collection.InsertOne(context.Background(), uploadOutdated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = collection.InsertOne(context.Background(), uploadOutdatedButWrongPortal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = collection.InsertOne(context.Background(), uploadOutdatedButComplete)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Ask the upload store for the uploads to prune.
+	toPrune, err := us.ToPrune(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(toPrune) != 1 {
+		t.Fatalf("expected %v uploads but got %v", 1, len(toPrune))
+	}
+	prunedUpload := toPrune[0].(*mongoTUSUpload)
+	if !reflect.DeepEqual(*prunedUpload, uploadOutdated) {
+		t.Fatal("wrong upload", toPrune[0], uploadOutdated)
 	}
 }
