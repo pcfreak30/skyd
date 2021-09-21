@@ -109,8 +109,6 @@ func TestSkynetSuiteTwo(t *testing.T) {
 		{Name: "FanoutRegression", Test: testSkynetFanoutRegression},
 		{Name: "DownloadRange", Test: testSkynetDownloadRange},
 		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
-		{Name: "MetadataMonetization", Test: testSkynetMetadataMonetizers},
-		{Name: "Monetization", Test: testSkynetMonetization},
 		{Name: "Registry", Test: testSkynetRegistryReadWrite},
 		{Name: "Stats", Test: testSkynetStats},
 	}
@@ -811,7 +809,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	//
 	// Define test func
 	testSmallFunc := func(files []siatest.TestFile, fileName, skykeyName string) {
-		skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(fileName, files, "", false, []string{}, nil, false, nil, skykeyName, skykey.SkykeyID{})
+		skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(fileName, files, "", false, []string{}, nil, false, skykeyName, skykey.SkykeyID{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -883,7 +881,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	// Define test function
 	largeTestFunc := func(files []siatest.TestFile, fileName, skykeyName string) {
 		// Upload the skyfile
-		skylink, sup, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(fileName, files, "", false, skymodules.DefaultTryFilesValue, nil, false, nil, skykeyName, skykey.SkykeyID{})
+		skylink, sup, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(fileName, files, "", false, skymodules.DefaultTryFilesValue, nil, false, skykeyName, skykey.SkykeyID{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2231,7 +2229,7 @@ func testSkynetFanoutRegression(t *testing.T, tg *siatest.TestGroup) {
 	// to be generated.
 	size := 2*int(modules.SectorSize) + siatest.Fuzz()
 	data := fastrand.Bytes(size)
-	skylink, _, _, _, err := r.UploadSkyfileCustom("regression", data, sk.Name, 20, false, nil)
+	skylink, _, _, _, err := r.UploadSkyfileCustom("regression", data, sk.Name, 20, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4287,9 +4285,8 @@ func TestRegistryHealth(t *testing.T) {
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
-		Renters: 1,
-		Miners:  1,
-		Hosts:   renter.MinUpdateRegistrySuccesses,
+		Miners: 1,
+		Hosts:  renter.MinUpdateRegistrySuccesses,
 	}
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
@@ -4300,7 +4297,17 @@ func TestRegistryHealth(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	r := tg.Renters()[0]
+
+	// Add a renter with dependency.
+	params := node.RenterTemplate
+	deps := dependencies.NewDependencyDelayRegistryHealthResponses()
+	deps.Disable()
+	params.RenterDeps = deps
+	nodes, err := tg.AddNodes(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
 
 	// Get one of the hosts' pubkey and choose one of the existing hosts to
 	// be stopped later. They can't be the same host.
@@ -4321,25 +4328,22 @@ func TestRegistryHealth(t *testing.T) {
 
 	// Helper function to check the health.
 	assertHealth := func(expected skymodules.RegistryEntryHealth) error {
-		// Get the health both ways.
-		reh1, err := r.RegistryEntryHealth(spk, dataKey)
+		// Randomly decide what endpoint to use.
+		var reh skymodules.RegistryEntryHealth
+		var err error
+		choice := fastrand.Intn(2)
+		if choice == 0 {
+			reh, err = r.RegistryEntryHealth(spk, dataKey)
+		} else {
+			reh, err = r.RegistryEntryHealthRID(rid)
+		}
 		if err != nil {
 			return err
 		}
-		reh2, err := r.RegistryEntryHealthRID(rid)
-		if err != nil {
-			return err
-		}
-
-		// They should be the same.
-		if !reflect.DeepEqual(reh1, reh2) {
-			return fmt.Errorf("health responses don't match: %v %v", reh1, reh2)
-		}
-
-		if !reflect.DeepEqual(reh1, expected) {
-			got := siatest.PrintJSON(reh1)
+		if !reflect.DeepEqual(reh, expected) {
+			got := siatest.PrintJSON(reh)
 			expected := siatest.PrintJSON(expected)
-			return fmt.Errorf("health doesn't match expected \n got: %v \n expected: %v", got, expected)
+			return fmt.Errorf("health doesn't match expected (choice %v) \n got: %v \n expected: %v", choice, got, expected)
 		}
 		return nil
 	}
@@ -4357,10 +4361,11 @@ func TestRegistryHealth(t *testing.T) {
 
 	// Check the health.
 	err = assertHealth(skymodules.RegistryEntryHealth{
-		NumBestEntries:        3,
-		NumEntries:            3,
-		NumBestPrimaryEntries: 0,
-		RevisionNumber:        srv.Revision,
+		NumBestEntries:             3,
+		NumBestEntriesBeforeCutoff: 2, // cutoff is at 2 of 3 hosts
+		NumEntries:                 3,
+		NumBestPrimaryEntries:      0,
+		RevisionNumber:             srv.Revision,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -4388,10 +4393,11 @@ func TestRegistryHealth(t *testing.T) {
 
 	// Check the health.
 	err = assertHealth(skymodules.RegistryEntryHealth{
-		RevisionNumber:        revision,
-		NumEntries:            uint64(len(tg.Hosts())) - 1,
-		NumBestEntries:        uint64(len(tg.Hosts())) - 1,
-		NumBestPrimaryEntries: 0,
+		RevisionNumber:             revision,
+		NumEntries:                 uint64(len(tg.Hosts())) - 1,
+		NumBestEntries:             uint64(len(tg.Hosts())) - 1,
+		NumBestEntriesBeforeCutoff: 2, // cutoff is at 2 of 3 hosts
+		NumBestPrimaryEntries:      0,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -4413,11 +4419,26 @@ func TestRegistryHealth(t *testing.T) {
 		// We expect len(hosts)-1 best entries since one entry is
 		// outdated and does therefore not count towards the health.
 		return assertHealth(skymodules.RegistryEntryHealth{
-			RevisionNumber:        revision,
-			NumEntries:            uint64(len(tg.Hosts())),
-			NumBestEntries:        uint64(len(tg.Hosts())) - 1,
-			NumBestPrimaryEntries: 0,
+			RevisionNumber:             revision,
+			NumEntries:                 uint64(len(tg.Hosts())),
+			NumBestEntries:             uint64(len(tg.Hosts())) - 1,
+			NumBestEntriesBeforeCutoff: 2, // cutoff is at 3 of 4 hosts
+			NumBestPrimaryEntries:      0,
 		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Enable the delay dependency and test again. None of the lookups
+	// should return before the timeout.
+	deps.Enable()
+	err = assertHealth(skymodules.RegistryEntryHealth{
+		RevisionNumber:             revision,
+		NumEntries:                 uint64(len(tg.Hosts())),
+		NumBestEntries:             uint64(len(tg.Hosts())) - 1,
+		NumBestEntriesBeforeCutoff: 0,
+		NumBestPrimaryEntries:      0,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -4748,332 +4769,6 @@ func TestSkynetCleanupOnError(t *testing.T) {
 	}
 	if skyfileDeleted(largePathExtended) {
 		t.Fatal("unexpected error on deleting reuploaded larde file extended", err)
-	}
-}
-
-// testSkynetMetadataMonetizers verifies that skynet uploads correctly set the
-// monetizers in the skyfile's metadata.
-func testSkynetMetadataMonetizers(t *testing.T, tg *siatest.TestGroup) {
-	r := tg.Renters()[0]
-
-	// Create monetization.
-	monetization := &skymodules.Monetization{
-		License: skymodules.LicenseMonetization,
-		Monetizers: []skymodules.Monetizer{
-			{
-				Address:  types.UnlockHash{},
-				Amount:   types.SiacoinPrecision,
-				Currency: skymodules.CurrencyUSD,
-			},
-		},
-	}
-	fastrand.Read(monetization.Monetizers[0].Address[:])
-
-	// Set conversion rate and monetization base to some value to avoid error.
-	err := r.RenterSetUSDConversionRate(types.NewCurrency64(1))
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = r.RenterSetMonetizationBase(types.NewCurrency64(1))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Test regular small file.
-	skylink, _, _, err := r.UploadNewSkyfileMonetizedBlocking("TestRegularSmall", fastrand.Bytes(1), false, monetization)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, md, err := r.SkynetMetadataGet(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(md.Monetization, monetization) {
-		t.Log("got", md.Monetization)
-		t.Log("want", monetization)
-		t.Error("wrong monetizers")
-	}
-
-	// Test regular large file.
-	skylink, _, _, err = r.UploadNewSkyfileMonetizedBlocking("TestRegularLarge", fastrand.Bytes(int(modules.SectorSize)+1), false, monetization)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, md, err = r.SkynetMetadataGet(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(md.Monetization, monetization) {
-		t.Log("got", md.Monetization)
-		t.Log("want", monetization)
-		t.Error("wrong monetizers")
-	}
-
-	// Test multipart file.
-	nestedFile1 := siatest.TestFile{Name: "nested/file1.html", Data: []byte("FileContents1")}
-	nestedFile2 := siatest.TestFile{Name: "nested/file2.html", Data: []byte("FileContents2")}
-	files := []siatest.TestFile{nestedFile1, nestedFile2}
-	skylink, _, _, err = r.UploadNewMultipartSkyfileMonetizedBlocking("TestMultipartMonetized", files, "", false, false, monetization)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Download the whole thing.
-	_, md, err = r.SkynetMetadataGet(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(md.Monetization, monetization) {
-		t.Log("got", md.Monetization)
-		t.Log("want", monetization)
-		t.Error("wrong monetizers")
-	}
-	if len(md.Subfiles) != 2 {
-		t.Fatal("wrong number of subfiles")
-	}
-
-	// Test converted file.
-	filesize := int(modules.SectorSize) + siatest.Fuzz()
-	_, rf, err := r.UploadNewFileBlocking(filesize, 2, 1, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sup := skymodules.SkyfileUploadParameters{
-		SiaPath:      skymodules.RandomSiaPath(),
-		Monetization: monetization,
-	}
-	sshp, err := r.SkynetConvertSiafileToSkyfilePost(sup, rf.SiaPath())
-	if err != nil {
-		t.Fatal("Expected conversion from Siafile to Skyfile Post to succeed.")
-	}
-	_, md, err = r.SkynetMetadataGet(sshp.Skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(md.Monetization, monetization) {
-		t.Log("got", md.Monetization)
-		t.Log("want", monetization)
-		t.Error("wrong monetizers")
-	}
-
-	// Create zero amount monetization.
-	zeroMonetization := &skymodules.Monetization{
-		License: skymodules.LicenseMonetization,
-		Monetizers: []skymodules.Monetizer{
-			{
-				Address:  types.UnlockHash{},
-				Amount:   types.ZeroCurrency,
-				Currency: skymodules.CurrencyUSD,
-			},
-		},
-	}
-	fastrand.Read(zeroMonetization.Monetizers[0].Address[:])
-
-	// Test zero amount monetization.
-	_, _, _, err = r.UploadNewSkyfileMonetizedBlocking("TestRegularZeroMonetizer", fastrand.Bytes(1), false, zeroMonetization)
-	if err == nil || !strings.Contains(err.Error(), skymodules.ErrZeroMonetizer.Error()) {
-		t.Fatal("should fail", err)
-	}
-	nestedFile1 = siatest.TestFile{Name: "nested/file.html", Data: []byte("FileContents")}
-	files = []siatest.TestFile{nestedFile1}
-	skylink, _, _, err = r.UploadNewMultipartSkyfileMonetizedBlocking("TestMultipartZeroMonetizer", files, "", false, false, zeroMonetization)
-	if err == nil || !strings.Contains(err.Error(), skymodules.ErrZeroMonetizer.Error()) {
-		t.Fatal("should fail", err)
-	}
-
-	// Create zero amount monetization.
-	unknownMonetization := &skymodules.Monetization{
-		License: skymodules.LicenseMonetization,
-		Monetizers: []skymodules.Monetizer{
-			{
-				Address:  types.UnlockHash{},
-				Amount:   types.NewCurrency64(fastrand.Uint64n(1000) + 1),
-				Currency: "",
-			},
-		},
-	}
-	fastrand.Read(unknownMonetization.Monetizers[0].Address[:])
-
-	// Test unknown currency monetization.
-	_, _, _, err = r.UploadNewSkyfileMonetizedBlocking("TestRegularUnknownMonetizer", fastrand.Bytes(1), false, unknownMonetization)
-	if err == nil || !strings.Contains(err.Error(), skymodules.ErrInvalidCurrency.Error()) {
-		t.Fatal("should fail", err)
-	}
-	nestedFile1 = siatest.TestFile{Name: "nested/file.html", Data: []byte("FileContents")}
-	files = []siatest.TestFile{nestedFile1}
-	skylink, _, _, err = r.UploadNewMultipartSkyfileMonetizedBlocking("TestMultipartUnknownMonetizer", files, "", false, false, unknownMonetization)
-	if err == nil || !strings.Contains(err.Error(), skymodules.ErrInvalidCurrency.Error()) {
-		t.Fatal("should fail", err)
-	}
-
-	// Unknown license.
-	unknownLicense := &skymodules.Monetization{
-		License: "",
-		Monetizers: []skymodules.Monetizer{
-			{
-				Address:  types.UnlockHash{},
-				Amount:   types.NewCurrency64(fastrand.Uint64n(1000) + 1),
-				Currency: skymodules.CurrencyUSD,
-			},
-		},
-	}
-	fastrand.Read(monetization.Monetizers[0].Address[:])
-
-	// Test unknown license.
-	_, _, _, err = r.UploadNewSkyfileMonetizedBlocking("TestRegularUnknownLicense", fastrand.Bytes(1), false, unknownLicense)
-	if err == nil || !strings.Contains(err.Error(), skymodules.ErrUnknownLicense.Error()) {
-		t.Fatal("should fail", err)
-	}
-}
-
-// testSkynetMonetization tests the payout mechanism of the monetization code.
-func testSkynetMonetization(t *testing.T, tg *siatest.TestGroup) {
-	r := tg.Renters()[0]
-
-	// Prepare a base of 1SC and a usd conversion rate of USD 1 == 100SC.
-	mb := types.SiacoinPrecision
-	cr := types.SiacoinPrecision.Mul64(100)
-	err := r.RenterSetMonetizationBase(mb)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = r.RenterSetUSDConversionRate(cr)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Prepare a clean node.
-	testDir := skynetTestDir(t.Name())
-	monetizer, err := siatest.NewCleanNode(node.Wallet(testDir))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Connect it to the renter.
-	err = r.GatewayConnectPost(monetizer.GatewayAddress())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Get an address from the monetizer.
-	wag, err := monetizer.WalletAddressGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := wag.Address
-
-	// Create monetization with a $1 price to guarantee a 100% chance of payment
-	// since that's equal to 100SC which is greater than the base.
-	monetization := &skymodules.Monetization{
-		License: skymodules.LicenseMonetization,
-		Monetizers: []skymodules.Monetizer{
-			{
-				Address:  addr,
-				Amount:   types.SiacoinPrecision, // $1
-				Currency: skymodules.CurrencyUSD,
-			},
-		},
-	}
-
-	// Upload a file.
-	skylink, _, _, err := r.UploadNewSkyfileMonetizedBlocking("Test", fastrand.Bytes(100), false, monetization)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Download it raw.
-	_, err = r.SkynetSkylinkGet(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Download it with the concat format.
-	_, err = r.SkynetSkylinkConcatGet(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Download it as tar.
-	_, reader, err := r.SkynetSkylinkTarReaderGet(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := io.Copy(ioutil.Discard, reader); err != nil {
-		t.Fatal(err)
-	}
-	if err := reader.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	// Download it as tar gz.
-	_, reader, err = r.SkynetSkylinkTarGzReaderGet(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := io.Copy(ioutil.Discard, reader); err != nil {
-		t.Fatal(err)
-	}
-	if err := reader.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	// Download it as zip.
-	_, reader, err = r.SkynetSkylinkZipReaderGet(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := io.Copy(ioutil.Discard, reader); err != nil {
-		t.Fatal(err)
-	}
-	if err := reader.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	// Wait for the miner to become aware of the txns.
-	m := tg.Miners()[0]
-	nTxns := 5
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		tgtg, err := m.TransactionPoolTransactionsGet()
-		if err != nil {
-			t.Fatal(err)
-		}
-		nFound := 0
-		for _, txn := range tgtg.Transactions {
-			for _, sco := range txn.SiacoinOutputs {
-				if sco.UnlockHash == addr {
-					nFound++
-				}
-			}
-		}
-		if nFound < nTxns {
-			return fmt.Errorf("found %v out of %v txns", nFound, nTxns)
-		}
-		return nil
-	})
-
-	// Wait a bit more just to be safe. This catches the case where we try to
-	// pay the same monetizer multiple times.
-	time.Sleep(time.Second)
-
-	// Mine a block to confirm the txn.
-	err = tg.Miners()[0].MineBlock()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Wait for the balance to be updated.
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		// Get balance.
-		wg, err := monetizer.WalletGet()
-		if err != nil {
-			t.Fatal(err)
-		}
-		// The balance should be $5 == 500SC due to 5 downloads.
-		expectedBalance := types.SiacoinPrecision.Mul64(100).Mul64(uint64(nTxns))
-		if !wg.ConfirmedSiacoinBalance.Equals(expectedBalance) {
-			return fmt.Errorf("wrong balance: %v != %v", wg.ConfirmedSiacoinBalance, expectedBalance)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -5745,7 +5440,7 @@ func TestSkynetSkylinkHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 	skylink2BaseSectorRedundancy := uint64(5)
-	skylink2, _, _, err := r.UploadSkyfileBlockingCustom(t.Name()+"2", fastrand.Bytes(int(size)), "key", uint8(skylink2BaseSectorRedundancy), false, nil)
+	skylink2, _, _, err := r.UploadSkyfileBlockingCustom(t.Name()+"2", fastrand.Bytes(int(size)), "key", uint8(skylink2BaseSectorRedundancy), false)
 	if err != nil {
 		t.Fatal(err)
 	}

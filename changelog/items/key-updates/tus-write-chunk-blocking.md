@@ -1,0 +1,2 @@
+- Uploading in TUS will now block until the chunk is available on the network
+- Concatenation has been implemented in TUS to support uploading multiple pieces of a file in parallel

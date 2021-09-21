@@ -743,9 +743,6 @@ type RenterSettings struct {
 	MaxUploadSpeed   int64         `json:"maxuploadspeed"`
 	MaxDownloadSpeed int64         `json:"maxdownloadspeed"`
 	UploadsStatus    UploadsStatus `json:"uploadsstatus"`
-
-	CurrencyConversionRates map[string]types.Currency `json:"currencyconversionrates"`
-	MonetizationBase        types.Currency            `json:"monetizationbase"`
 }
 
 // UploadsStatus contains information about the Renter's Uploads
@@ -779,6 +776,17 @@ func (mrs MerkleRootSet) MarshalJSON() ([]byte, error) {
 func ChunkSize(ct crypto.CipherType, dataPieces uint64) uint64 {
 	pieceSize := modules.SectorSize - ct.Overhead()
 	return pieceSize * dataPieces
+}
+
+// NumChunks returns the number of chunks a file has given its CipherType, size
+// and number of data pieces.
+func NumChunks(ct crypto.CipherType, fileSize, dataPieces uint64) uint64 {
+	chunkSize := ChunkSize(ct, dataPieces)
+	numChunks := fileSize / chunkSize
+	if fileSize%chunkSize != 0 {
+		numChunks++
+	}
+	return numChunks
 }
 
 // UnmarshalJSON attempts to decode a MerkleRootSet, falling back on the legacy

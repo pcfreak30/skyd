@@ -631,10 +631,8 @@ func (r *Renter) SetSettings(s skymodules.RenterSettings) error {
 
 	// Save the changes.
 	id := r.mu.Lock()
-	r.persist.ConversionRates = s.CurrencyConversionRates
 	r.persist.MaxDownloadSpeed = s.MaxDownloadSpeed
 	r.persist.MaxUploadSpeed = s.MaxUploadSpeed
-	r.persist.MonetizationBase = s.MonetizationBase
 	err = r.saveSync()
 	r.mu.Unlock(id)
 	if err != nil {
@@ -845,16 +843,11 @@ func (r *Renter) Settings() (skymodules.RenterSettings, error) {
 		return skymodules.RenterSettings{}, errors.AddContext(err, "error getting IPViolationsCheck:")
 	}
 	paused, endTime := r.staticUploadHeap.managedPauseStatus()
-	id := r.mu.RLock()
-	mb, ccr := r.persist.MonetizationBase, r.persist.ConversionRates
-	r.mu.RUnlock(id)
 	return skymodules.RenterSettings{
-		Allowance:               r.staticHostContractor.Allowance(),
-		CurrencyConversionRates: ccr,
-		IPViolationCheck:        enabled,
-		MaxDownloadSpeed:        download,
-		MaxUploadSpeed:          upload,
-		MonetizationBase:        mb,
+		Allowance:        r.staticHostContractor.Allowance(),
+		IPViolationCheck: enabled,
+		MaxDownloadSpeed: download,
+		MaxUploadSpeed:   upload,
 		UploadsStatus: skymodules.UploadsStatus{
 			Paused:       paused,
 			PauseEndTime: endTime,
@@ -1121,18 +1114,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		mu:                   siasync.New(modules.SafeMutexDelay, 1),
 		staticTPool:          tpool,
 	}
-	r.staticRegistryReadStats = skymodules.NewDistributionTrackerStandard()
-	r.staticRegistryReadStats.AddDataPoint(readRegistryStatsSeed) // Seed the stats so that startup doesn't say 0.
-	r.staticRegWriteStats = skymodules.NewDistributionTrackerStandard()
-	r.staticRegWriteStats.AddDataPoint(5 * time.Second) // Seed the stats so that startup doesn't say 0.
-	r.staticBaseSectorUploadStats = skymodules.NewDistributionTrackerStandard()
-	r.staticBaseSectorUploadStats.AddDataPoint(15 * time.Second) // Seed the stats so that startup doesn't say 0.
-	r.staticChunkUploadStats = skymodules.NewDistributionTrackerStandard()
-	r.staticChunkUploadStats.AddDataPoint(15 * time.Second) // Seed the stats so that startup doesn't say 0.
-	r.staticStreamBufferStats = skymodules.NewDistributionTrackerStandard()
-	r.staticStreamBufferStats.AddDataPoint(5 * time.Second) // Seed the stats so that startup doesn't say 0.
 	r.staticSkynetTUSUploader = newSkynetTUSUploader(r)
-	r.staticStreamBufferSet = newStreamBufferSet(r.staticStreamBufferStats, &r.tg)
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
 	close(r.staticUploadHeap.pauseChan)
 
@@ -1205,6 +1187,9 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		return nil, err
 	}
 
+	// Init stream buffer now that the stats are initialised.
+	r.staticStreamBufferSet = newStreamBufferSet(r.staticStreamBufferStats, &r.tg)
+
 	// After persist is initialized, create the worker pool.
 	r.staticWorkerPool = r.newWorkerPool()
 
@@ -1226,6 +1211,9 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	// the utilities regularly.
 	r.managedUpdateRenterContractsAndUtilities()
 	go r.threadedUpdateRenterContractsAndUtilities()
+
+	// Launch the stat persisting thread.
+	go r.threadedStatsPersister()
 
 	// Spin up background threads which are not depending on the renter being
 	// up-to-date with consensus.
