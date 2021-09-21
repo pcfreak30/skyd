@@ -277,6 +277,7 @@ func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
 
 	pdc := new(projectDownloadChunk)
 	pdc.workerState = new(pcwsWorkerState)
+	pdc.downloadedPiecesByIndex = make(map[uint64]struct{}, 0)
 	pdc.completedPiecesByWorker = make(map[string]completedPieces, 0)
 	pdc.launchedPiecesByWorker = make(map[string]launchedPieces, 0)
 	pdc.workerSet = pcws
@@ -394,6 +395,7 @@ func TestProjectDownloadChunk_launchWorker(t *testing.T) {
 
 	// mock a pdc, ensure available pieces is not nil
 	pdc := new(projectDownloadChunk)
+	pdc.downloadedPiecesByIndex = make(map[uint64]struct{}, 0)
 	pdc.completedPiecesByWorker = make(map[string]completedPieces, 0)
 	pdc.launchedPiecesByWorker = make(map[string]launchedPieces, 0)
 	pdc.ctx = context.Background()

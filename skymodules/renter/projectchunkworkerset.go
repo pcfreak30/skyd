@@ -520,6 +520,7 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		availablePiecesByWorker: make(map[string][]uint64),
 		dataPieces:              make([][]byte, ec.NumPieces()),
 
+		downloadedPiecesByIndex: make(map[uint64]struct{}),
 		completedPiecesByWorker: make(map[string]completedPieces),
 		launchedPiecesByWorker:  make(map[string]launchedPieces),
 

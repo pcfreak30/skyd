@@ -1037,6 +1037,7 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 	// mock the PDC
 	pdc := new(projectDownloadChunk)
 	pdc.workerState = new(pcwsWorkerState)
+	pdc.downloadedPiecesByIndex = make(map[uint64]struct{}, 0)
 	pdc.completedPiecesByWorker = make(map[string]completedPieces, 0)
 	pdc.launchedPiecesByWorker = make(map[string]launchedPieces, 0)
 

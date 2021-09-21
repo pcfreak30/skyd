@@ -105,6 +105,7 @@ type (
 		// launchedPiecesByWorker keeps track of what workers have launched what
 		// pieces at what time. The download code needs this information quite
 		// often so by having this map we can do constant time lookups.
+		downloadedPiecesByIndex map[uint64]struct{}
 		completedPiecesByWorker map[string]completedPieces
 		launchedPiecesByWorker  map[string]launchedPieces
 
@@ -302,6 +303,10 @@ func (pdc *projectDownloadChunk) updateAvailablePiecesWithResult(w *worker, piec
 		pdc.completedPiecesByWorker[workerKey] = make(completedPieces)
 	}
 	pdc.completedPiecesByWorker[workerKey][pieceIndex] = downloadErr == nil
+
+	if downloadErr == nil {
+		pdc.downloadedPiecesByIndex[pieceIndex] = struct{}{}
+	}
 }
 
 // handleJobReadResponse will take a jobReadResponse from a worker job
@@ -465,6 +470,8 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 			hopefulPieces++
 		}
 	}
+
+	// fmt.Printf("completed: %v/%v\n", completedPieces, ec.MinPieces())
 	if completedPieces >= ec.MinPieces() {
 		return true, nil
 	}
@@ -522,10 +529,13 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 	expectedCompleteTime, added := jrq.callAddWithEstimate(jrs)
 
 	// Track the launched piece
+	// pdcId := hex.EncodeToString(pdc.uid[:])
 	if _, exists := pdc.launchedPiecesByWorker[worker]; !exists {
 		pdc.launchedPiecesByWorker[worker] = make(launchedPieces)
+		// fmt.Printf("%v creating pieces %v %v\n", w.staticHostPubKey.ShortString(), worker, pdcId)
 	}
 	pdc.launchedPiecesByWorker[worker][pieceIndex] = time.Now()
+	// fmt.Printf("%v mark piece %v\n", w.staticHostPubKey.ShortString(), pieceIndex)
 
 	// Track the launched worker
 	if added {

@@ -18,7 +18,7 @@ const (
 	// maxWaitUnresolvedWorkerUpdate defines the amount of time we want to wait
 	// for unresolved workers to become resolved when trying to create the
 	// initial worker set.
-	maxWaitUnresolvedWorkerUpdate = 10 * time.Millisecond
+	maxWaitUnresolvedWorkerUpdate = 1 * time.Second // TODO
 )
 
 var (
@@ -812,18 +812,19 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) {
 		// continue if the worker is already launched
 		piece, launched, _ := pdc.currentDownload(w)
 		if launched {
-			// fmt.Printf("already launched worker %v for piece %v\n", w.identifier(), piece)
 			continue
+		} else {
+			// fmt.Printf("- %v is not launched yet for %v\n", w.identifier(), piece)
 		}
 
 		// launch the piece
 		isOverdrive := len(pdc.launchedWorkers) >= minPieces
-		// fmt.Printf("launching %v for %v\n", w.identifier(), piece)
 		_, launched = pdc.launchWorker(w.worker(), piece, isOverdrive)
+		// fmt.Printf("- %v launched for %v success %v\n", w.identifier(), piece, launched)
 		if launched {
 			iw.launchedAt = time.Now()
 		} else {
-			fmt.Println("launch failed")
+			// fmt.Println("launch failed")
 		}
 	}
 	return
@@ -872,6 +873,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			// we have to avoid rebuilding it as much as possible because it
 			// recomputes the chances after duration, which is a computationally
 			// very intensive
+			// fmt.Println("rebuild download workers")
 			downloadWorkers = buildDownloadWorkers(workers, numPieces)
 		}
 
@@ -886,19 +888,6 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			pdc.launchWorkerSet(workerSet)
 		}
 
-		// check whether the download is completed
-		completed, err := pdc.finished()
-		if completed {
-			// fmt.Println("DOWNLOAD COMPLETED")
-			pdc.finalize()
-			return
-		}
-		if err != nil {
-			// fmt.Println("DOWNLOAD FAILED", err)
-			pdc.fail(err)
-			return
-		}
-
 		// iterate
 		select {
 		case <-time.After(maxWaitUnresolvedWorkerUpdate):
@@ -907,8 +896,21 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			// replace the worker update channel
 			workerUpdateChan = ws.managedRegisterForWorkerUpdate()
 		case jrr := <-pdc.workerResponseChan:
-			// fmt.Printf("worker completed DL for piece %v with err %v\n", jrr.staticMetadata.staticPieceRootIndex, jrr.staticErr)
+			// fmt.Printf("+ %v completed piece %v with err %v\n", jrr.staticMetadata.staticWorker.staticHostPubKey.ShortString(), jrr.staticMetadata.staticPieceRootIndex, jrr.staticErr)
 			pdc.handleJobReadResponse(jrr)
+
+			// check whether the download is completed
+			completed, err := pdc.finished()
+			if completed {
+				// fmt.Println("DOWNLOAD COMPLETED")
+				pdc.finalize()
+				return
+			}
+			if err != nil {
+				// fmt.Println("DOWNLOAD FAILED", err)
+				pdc.fail(err)
+				return
+			}
 		case <-pdc.ctx.Done():
 			// fmt.Println("DOWNLOAD TIMED OUT", err)
 			pdc.fail(errors.New("download timed out"))
@@ -1132,6 +1134,10 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 			added[w.identifier()] = struct{}{}
 			pieces[piece] = struct{}{}
 		}
+	}
+
+	for downloaded := range pdc.downloadedPiecesByIndex {
+		pieces[downloaded] = struct{}{}
 	}
 
 	// loop over the download workers again
