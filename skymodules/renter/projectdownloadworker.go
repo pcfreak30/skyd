@@ -18,7 +18,7 @@ const (
 	// maxWaitUnresolvedWorkerUpdate defines the amount of time we want to wait
 	// for unresolved workers to become resolved when trying to create the
 	// initial worker set.
-	maxWaitUnresolvedWorkerUpdate = 1 * time.Second // TODO
+	maxWaitUnresolvedWorkerUpdate = 10 * time.Millisecond
 )
 
 var (
