@@ -261,7 +261,7 @@ func (u *ongoingTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.
 		// upload. In that case we still upload it the same way as a
 		// large upload to receive a fanout.
 		if isSmall && !fi.IsPartial {
-			err = u.staticUpload.CommitWriteChunkSmallFile(fi.Size, time.Now(), smallFileData)
+			err = u.staticUpload.CommitWriteChunkSmallFile(ctx, fi.Size, time.Now(), smallFileData)
 			return int64(len(smallFileData)), err
 		}
 		src = io.MultiReader(bytes.NewReader(smallFileData), src)
@@ -359,7 +359,7 @@ func (u *ongoingTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.
 			return 0, errors.AddContext(err, "failed to upload chunk")
 		}
 	}
-	return n, u.staticUpload.CommitWriteChunk(fi.Offset+n, time.Now(), isSmall, cr.Fanout())
+	return n, u.staticUpload.CommitWriteChunk(ctx, fi.Offset+n, time.Now(), isSmall, cr.Fanout())
 }
 
 // GetInfo returns the file info.
@@ -437,7 +437,7 @@ func (u *ongoingTUSUpload) FinishUpload(ctx context.Context) (err error) {
 		return errors.AddContext(err, "failed to finish upload")
 	}
 
-	return u.staticUpload.CommitFinishUpload(skylink)
+	return u.staticUpload.CommitFinishUpload(ctx, skylink)
 }
 
 // managedClose closes the upload and underlying filenode.
@@ -610,7 +610,7 @@ func (u *ongoingTUSUpload) ConcatUploads(ctx context.Context, partialUploads []h
 	for i := range partialUploads {
 		// Commit the partial upload as complete as well.
 		pu = partialUploads[i].(*ongoingTUSUpload)
-		errs = errors.Compose(errs, pu.staticUpload.CommitFinishPartialUpload())
+		errs = errors.Compose(errs, pu.staticUpload.CommitFinishPartialUpload(ctx))
 	}
-	return errors.Compose(errs, u.staticUpload.CommitFinishUpload(skylink))
+	return errors.Compose(errs, u.staticUpload.CommitFinishUpload(ctx, skylink))
 }

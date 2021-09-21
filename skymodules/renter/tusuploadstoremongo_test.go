@@ -338,6 +338,12 @@ func TestCreateGetUpload(t *testing.T) {
 	}
 	expectedUpload.LastWrite = mu.LastWrite
 
+	// Check the pointer separately.
+	if mu.staticUploads == nil {
+		t.Fatal("staticUploads not set")
+	}
+	mu.staticUploads = nil
+
 	// Compare the remaining fields.
 	if !reflect.DeepEqual(expectedUpload, *mu) {
 		fmt.Println(expectedUpload)
@@ -363,6 +369,12 @@ func TestCreateGetUpload(t *testing.T) {
 		t.Fatal("lastWrite not set")
 	}
 	expectedUpload.LastWrite = mu.LastWrite
+
+	// Check the pointer separately.
+	if mu.staticUploads == nil {
+		t.Fatal("staticUploads not set")
+	}
+	mu.staticUploads = nil
 
 	// Compare the remaining fields.
 	if !reflect.DeepEqual(expectedUpload, *mu) {

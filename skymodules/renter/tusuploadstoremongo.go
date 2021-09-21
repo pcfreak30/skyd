@@ -65,6 +65,8 @@ type (
 
 		IsSmallFile     bool   `bson:"issmallfile"`
 		SmallUploadData []byte `bson:"smallfiledata"`
+
+		staticUploads *mongo.Collection
 	}
 
 	// skynetMongoLock is a lock used for locking an upload.
@@ -185,6 +187,8 @@ func (us *skynetTUSMongoUploadStore) CreateUpload(ctx context.Context, fi handle
 		FanoutDataPieces:   fanoutDataPieces,
 		FanoutParityPieces: fanoutParityPieces,
 		CipherType:         ct,
+
+		staticUploads: us.staticUploadCollection(),
 	}
 	// Insert into db.
 	_, err := us.staticUploadCollection().InsertOne(ctx, upload)
@@ -204,6 +208,7 @@ func (us *skynetTUSMongoUploadStore) GetUpload(ctx context.Context, id string) (
 	if err := r.Decode(&upload); err != nil {
 		return nil, errors.AddContext(err, "failed to decode upload")
 	}
+	upload.staticUploads = us.staticUploadCollection()
 	return &upload, nil
 }
 
@@ -271,24 +276,53 @@ func (u *mongoTUSUpload) UploadParams(ctx context.Context) (skymodules.SkyfileUp
 
 // CommitWriteChunkSmallFile commits writing a chunk of a small
 // file.
-func (u *mongoTUSUpload) CommitWriteChunkSmallFile(newOffset int64, newLastWrite time.Time, smallUploadData []byte) error {
-	panic("not implemented yet")
+func (u *mongoTUSUpload) CommitWriteChunkSmallFile(ctx context.Context, newOffset int64, newLastWrite time.Time, smallFileData []byte) error {
+	return u.commitWriteChunk(ctx, bson.M{
+		"smalluploaddata": smallFileData,
+	}, newOffset, newLastWrite, true)
 }
 
 // CommitWriteChunk commits writing a chunk of either a small or
 // large file with fanout.
-func (u *mongoTUSUpload) CommitWriteChunk(newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error {
-	panic("not implemented yet")
+func (u *mongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error {
+	return u.commitWriteChunk(ctx, bson.M{
+		"$push": bson.M{
+			"fanout": bson.M{
+				"$each": fanout,
+			},
+		},
+	}, newOffset, newLastWrite, isSmall)
+}
+
+// commitWriteChunk commits a chunk write and also applies the updates provided
+// by update.
+func (u *mongoTUSUpload) commitWriteChunk(ctx context.Context, update bson.M, newOffset int64, newLastWrite time.Time, smallFile bool) error {
+	fi := u.FileInfo
+	fi.Offset = newOffset
+	update["fileinfo"] = fi
+	update["lastwrite"] = newLastWrite
+	update["issmallfile"] = smallFile
+	result := u.staticUploads.FindOneAndUpdate(ctx, bson.M{"_id": u.FileInfo.ID}, update)
+	return result.Err()
 }
 
 // CommitFinishUpload commits a finalised upload.
-func (u *mongoTUSUpload) CommitFinishUpload(skylink skymodules.Skylink) error {
-	panic("not implemented yet")
+func (u *mongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodules.Skylink) error {
+	fi := u.FileInfo
+	fi.MetaData["Skylink"] = skylink.String()
+	result := u.staticUploads.FindOneAndUpdate(ctx, bson.M{"_id": u.FileInfo.ID}, bson.M{
+		"fileinfo": fi,
+		"complete": true,
+	})
+	return result.Err()
 }
 
 // CommitFinishPartialUpload commits a finalised partial upload.
-func (u *mongoTUSUpload) CommitFinishPartialUpload() error {
-	panic("not implemented yet")
+func (u *mongoTUSUpload) CommitFinishPartialUpload(ctx context.Context) error {
+	result := u.staticUploads.FindOneAndUpdate(ctx, bson.M{"_id": u.FileInfo.ID}, bson.M{
+		"complete": true,
+	})
+	return result.Err()
 }
 
 // Fanout returns the fanout of the upload. Should only be

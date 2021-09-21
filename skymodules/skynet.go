@@ -303,17 +303,17 @@ type (
 
 		// CommitWriteChunkSmallFile commits writing a chunk of a small
 		// file.
-		CommitWriteChunkSmallFile(newOffset int64, newLastWrite time.Time, smallUploadData []byte) error
+		CommitWriteChunkSmallFile(ctx context.Context, newOffset int64, newLastWrite time.Time, smallUploadData []byte) error
 
 		// CommitWriteChunk commits writing a chunk of either a small or
 		// large file with fanout.
-		CommitWriteChunk(newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error
+		CommitWriteChunk(ctx context.Context, newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error
 
 		// CommitFinishUpload commits a finalised upload.
-		CommitFinishUpload(skylink Skylink) error
+		CommitFinishUpload(ctx context.Context, skylink Skylink) error
 
 		// CommitFinishPartialUpload commits a finalised partial upload.
-		CommitFinishPartialUpload() error
+		CommitFinishPartialUpload(ctx context.Context) error
 
 		// Fanout returns the fanout of the upload. Should only be
 		// called once it's done uploading.

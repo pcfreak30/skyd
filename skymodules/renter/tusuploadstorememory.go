@@ -101,7 +101,7 @@ func (us *skynetTUSInMemoryUploadStore) NewLock(id string) (handler.Lock, error)
 
 // CommitFinishUpload commits a finished upload to the upload store. This means
 // setting the skylink of the finished upload.
-func (u *skynetInMemoryUpload) CommitFinishUpload(skylink skymodules.Skylink) error {
+func (u *skynetInMemoryUpload) CommitFinishUpload(_ context.Context, skylink skymodules.Skylink) error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	u.complete = true
@@ -111,7 +111,7 @@ func (u *skynetInMemoryUpload) CommitFinishUpload(skylink skymodules.Skylink) er
 
 // CommitFinishPartialUpload commits a finished upload to the upload store by
 // setting it to be completed.
-func (u *skynetInMemoryUpload) CommitFinishPartialUpload() error {
+func (u *skynetInMemoryUpload) CommitFinishPartialUpload(_ context.Context) error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	u.complete = true
@@ -120,7 +120,7 @@ func (u *skynetInMemoryUpload) CommitFinishPartialUpload() error {
 
 // CommitWriteChunk commits the changes to the upload after successfully writing
 // a chunk to the store.
-func (u *skynetInMemoryUpload) CommitWriteChunk(newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error {
+func (u *skynetInMemoryUpload) CommitWriteChunk(_ context.Context, newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	u.fanout = append(u.fanout, fanout...)
@@ -129,7 +129,7 @@ func (u *skynetInMemoryUpload) CommitWriteChunk(newOffset int64, newLastWrite ti
 
 // CommitWriteChunkSmallFile commits the changes to the upload after
 // successfully writing a chunk to the store.
-func (u *skynetInMemoryUpload) CommitWriteChunkSmallFile(newOffset int64, newLastWrite time.Time, smallFileData []byte) error {
+func (u *skynetInMemoryUpload) CommitWriteChunkSmallFile(_ context.Context, newOffset int64, newLastWrite time.Time, smallFileData []byte) error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	u.smallFileData = smallFileData
