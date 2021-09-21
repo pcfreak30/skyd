@@ -124,10 +124,9 @@ func (stu *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileIn
 
 	// Create metadata.
 	sm := skymodules.SkyfileMetadata{
-		Filename:     sup.Filename,
-		Length:       uint64(info.Size),
-		Mode:         sup.Mode,
-		Monetization: sup.Monetization,
+		Filename: sup.Filename,
+		Length:   uint64(info.Size),
+		Mode:     sup.Mode,
 		Subfiles: skymodules.SkyfileSubfiles{
 			sup.Filename: skymodules.SkyfileSubfileMetadata{
 				Filename:    fileName,
