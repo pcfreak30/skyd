@@ -898,22 +898,22 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		case jrr := <-pdc.workerResponseChan:
 			// fmt.Printf("+ %v completed piece %v with err %v\n", jrr.staticMetadata.staticWorker.staticHostPubKey.ShortString(), jrr.staticMetadata.staticPieceRootIndex, jrr.staticErr)
 			pdc.handleJobReadResponse(jrr)
-
-			// check whether the download is completed
-			completed, err := pdc.finished()
-			if completed {
-				// fmt.Println("DOWNLOAD COMPLETED")
-				pdc.finalize()
-				return
-			}
-			if err != nil {
-				// fmt.Println("DOWNLOAD FAILED", err)
-				pdc.fail(err)
-				return
-			}
 		case <-pdc.ctx.Done():
 			// fmt.Println("DOWNLOAD TIMED OUT", err)
 			pdc.fail(errors.New("download timed out"))
+			return
+		}
+
+		// check whether the download is completed
+		completed, err := pdc.finished()
+		if completed {
+			// fmt.Println("DOWNLOAD COMPLETED")
+			pdc.finalize()
+			return
+		}
+		if err != nil {
+			// fmt.Println("DOWNLOAD FAILED", err)
+			pdc.fail(err)
 			return
 		}
 	}
