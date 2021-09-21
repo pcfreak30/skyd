@@ -62,6 +62,9 @@ type (
 		FanoutDataPieces    int               `bson:"fanoutdatapieces"`
 		FanoutParityPieces  int               `bson:"fanoutparitypieces"`
 		CipherType          crypto.CipherType `bson:"ciphertype"`
+
+		IsSmallFile     bool   `bson:"issmallfile"`
+		SmallUploadData []byte `bson:"smallfiledata"`
 	}
 
 	// skynetMongoLock is a lock used for locking an upload.
@@ -216,7 +219,16 @@ func (us *skynetTUSMongoUploadStore) staticLockCollection() *mongo.Collection {
 
 // Skylink returns the upload's skylink if available already.
 func (u *mongoTUSUpload) Skylink() (skymodules.Skylink, bool) {
-	panic("not implemented yet")
+	sl, exists := u.FileInfo.MetaData["Skylink"]
+	if !exists {
+		return skymodules.Skylink{}, false
+	}
+	var skylink skymodules.Skylink
+	if err := skylink.LoadString(sl); err != nil {
+		build.Critical("upload contains invalid skylink")
+		return skymodules.Skylink{}, false
+	}
+	return skylink, true
 }
 
 // GetInfo returns the FileInfo of the upload.
@@ -228,18 +240,33 @@ func (u *mongoTUSUpload) GetInfo(ctx context.Context) (handler.FileInfo, error) 
 // small upload. That means the upload contained less than a
 // chunksize of data.
 func (u *mongoTUSUpload) IsSmallUpload(ctx context.Context) (bool, error) {
-	panic("not implemented yet")
+	return u.IsSmallFile, nil
 }
 
 // PruneInfo returns the info required to prune uploads.
 func (u *mongoTUSUpload) PruneInfo(ctx context.Context) (id string, sp skymodules.SiaPath, err error) {
-	panic("not implemented yet")
+	id = u.FileInfo.ID
+	sp = u.SiaPath
+	return
 }
 
 // UploadParams returns the upload parameters used for the
 // upload.
 func (u *mongoTUSUpload) UploadParams(ctx context.Context) (skymodules.SkyfileUploadParameters, skymodules.FileUploadParams, error) {
-	panic("not implemented yet")
+	sup := skymodules.SkyfileUploadParameters{
+		BaseChunkRedundancy: u.BaseChunkRedundancy,
+		Filename:            u.FileName,
+		SiaPath:             u.SiaPath,
+	}
+	fanoutSiaPath, err := u.SiaPath.AddSuffixStr(skymodules.ExtendedSuffix)
+	if err != nil {
+		return skymodules.SkyfileUploadParameters{}, skymodules.FileUploadParams{}, err
+	}
+	up, err := fileUploadParams(fanoutSiaPath, u.FanoutDataPieces, u.FanoutParityPieces, true, u.CipherType)
+	if err != nil {
+		return skymodules.SkyfileUploadParameters{}, skymodules.FileUploadParams{}, err
+	}
+	return sup, up, nil
 }
 
 // CommitWriteChunkSmallFile commits writing a chunk of a small
@@ -267,19 +294,19 @@ func (u *mongoTUSUpload) CommitFinishPartialUpload() error {
 // Fanout returns the fanout of the upload. Should only be
 // called once it's done uploading.
 func (u *mongoTUSUpload) Fanout(ctx context.Context) ([]byte, error) {
-	panic("not implemented yet")
+	return u.FanoutBytes, nil
 }
 
 // SkyfileMetadata returns the metadata of the upload. Should
 // only be called once it's done uploading.
 func (u *mongoTUSUpload) SkyfileMetadata(ctx context.Context) ([]byte, error) {
-	panic("not implemented yet")
+	return u.Metadata, nil
 }
 
 // SmallFileData returns the data to upload for a small file
 // upload.
 func (u *mongoTUSUpload) SmallFileData(ctx context.Context) ([]byte, error) {
-	panic("not implemented yet")
+	return u.SmallUploadData, nil
 }
 
 // NewSkynetTUSMongoUploadStore creates a new upload store using a mongodb as
