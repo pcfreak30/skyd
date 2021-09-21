@@ -340,7 +340,7 @@ type (
 		Prune(string) error
 
 		// CreateUpload creates a new upload in the store.
-		CreateUpload(fi handler.FileInfo, sp SiaPath, fileName string, baseChunkRedundancy uint8, fanoutDataPieces, fanoutParityPieces int, sm []byte, force bool, ct crypto.CipherType) (SkynetTUSUpload, error)
+		CreateUpload(ctx context.Context, fi handler.FileInfo, sp SiaPath, fileName string, baseChunkRedundancy uint8, fanoutDataPieces, fanoutParityPieces int, sm []byte, ct crypto.CipherType) (SkynetTUSUpload, error)
 
 		// GetUpload fetches an upload from the store.
 		GetUpload(ctx context.Context, id string) (SkynetTUSUpload, error)

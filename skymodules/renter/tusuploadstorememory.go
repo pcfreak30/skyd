@@ -25,15 +25,14 @@ type (
 	// skynetInMemoryUpload represents an upload within the
 	// skynetTUSInMemoryUploadStore.
 	skynetInMemoryUpload struct {
-		complete          bool
-		fanout            []byte
-		fi                handler.FileInfo
-		isSmallFile       bool
-		smallFileData     []byte
-		lastWrite         time.Time
-		staticFilename    string
-		staticForceUpload bool
-		staticSP          skymodules.SiaPath
+		complete       bool
+		fanout         []byte
+		fi             handler.FileInfo
+		isSmallFile    bool
+		smallFileData  []byte
+		lastWrite      time.Time
+		staticFilename string
+		staticSP       skymodules.SiaPath
 
 		// Base chunk related fields.
 		staticBaseChunkRedundancy uint8
@@ -61,17 +60,16 @@ func NewSkynetTUSInMemoryUploadStore() skymodules.SkynetTUSUploadStore {
 func (us *skynetTUSInMemoryUploadStore) Close() error { return nil }
 
 // CreateUpload creates a new upload and adds it to the store.
-func (us *skynetTUSInMemoryUploadStore) CreateUpload(fi handler.FileInfo, sp skymodules.SiaPath, fileName string, baseChunkRedundancy uint8, fanoutDataPieces, fanoutParityPieces int, sm []byte, force bool, ct crypto.CipherType) (skymodules.SkynetTUSUpload, error) {
+func (us *skynetTUSInMemoryUploadStore) CreateUpload(_ context.Context, fi handler.FileInfo, sp skymodules.SiaPath, fileName string, baseChunkRedundancy uint8, fanoutDataPieces, fanoutParityPieces int, sm []byte, ct crypto.CipherType) (skymodules.SkynetTUSUpload, error) {
 	us.mu.Lock()
 	defer us.mu.Unlock()
 	upload := &skynetInMemoryUpload{
-		complete:          false,
-		fanout:            nil,
-		fi:                fi,
-		lastWrite:         time.Now(),
-		staticFilename:    fileName,
-		staticForceUpload: force,
-		staticSP:          sp,
+		complete:       false,
+		fanout:         nil,
+		fi:             fi,
+		lastWrite:      time.Now(),
+		staticFilename: fileName,
+		staticSP:       sp,
 
 		staticBaseChunkRedundancy: baseChunkRedundancy,
 		staticMetadata:            sm,
@@ -161,14 +159,13 @@ func (u *skynetInMemoryUpload) UploadParams(ctx context.Context) (skymodules.Sky
 	sup := skymodules.SkyfileUploadParameters{
 		BaseChunkRedundancy: u.staticBaseChunkRedundancy,
 		Filename:            u.staticFilename,
-		Force:               u.staticForceUpload,
 		SiaPath:             u.staticSP,
 	}
 	fanoutSiaPath, err := u.staticSP.AddSuffixStr(skymodules.ExtendedSuffix)
 	if err != nil {
 		return skymodules.SkyfileUploadParameters{}, skymodules.FileUploadParams{}, err
 	}
-	up, err := fileUploadParams(fanoutSiaPath, u.staticFanoutDataPieces, u.staticFanoutParityPieces, u.staticForceUpload, u.staticCipherType)
+	up, err := fileUploadParams(fanoutSiaPath, u.staticFanoutDataPieces, u.staticFanoutParityPieces, true, u.staticCipherType)
 	if err != nil {
 		return skymodules.SkyfileUploadParameters{}, skymodules.FileUploadParams{}, err
 	}

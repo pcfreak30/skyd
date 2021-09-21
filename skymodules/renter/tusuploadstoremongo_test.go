@@ -2,7 +2,9 @@ package renter
 
 import (
 	"context"
+	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -11,9 +13,11 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.sia.tech/siad/crypto"
 )
 
 var (
@@ -179,6 +183,7 @@ func TestMongoLocking(t *testing.T) {
 	}
 }
 
+// TestToPrune is a unit test for ToPrune.
 func TestToPrune(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -263,5 +268,86 @@ func TestToPrune(t *testing.T) {
 	prunedUpload := toPrune[0].(*mongoTUSUpload)
 	if !reflect.DeepEqual(*prunedUpload, uploadOutdated) {
 		t.Fatal("wrong upload", toPrune[0], uploadOutdated)
+	}
+}
+
+// TestCreateUpload is a unit test for CreateUpload.
+func TestCreateUpload(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	us, err := newMongoTestStore(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := us.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Reset collection.
+	collection := us.staticUploadCollection()
+	if err := collection.Drop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create an upload.
+	_, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
+
+	fi := handler.FileInfo{
+		ID:             "id",
+		Size:           100,
+		SizeIsDeferred: true,
+		Offset:         42,
+		MetaData:       handler.MetaData{"field": "value"},
+		IsPartial:      true,
+		IsFinal:        true,
+		PartialUploads: []string{"1", "2", "3"},
+		Storage:        map[string]string{"key": "storage"},
+	}
+	expectedUpload := mongoTUSUpload{
+		ID:         fi.ID,
+		Complete:   false,
+		PortalName: us.staticPortalHostname,
+
+		FanoutBytes: nil,
+		FileInfo:    fi,
+		FileName:    "somename",
+		SiaPath:     skymodules.RandomSiaPath(),
+
+		BaseChunkRedundancy: 1,
+		Metadata:            []byte{3, 2, 1},
+
+		FanoutDataPieces:   2,
+		FanoutParityPieces: 3,
+		CipherType:         crypto.TypePlain,
+	}
+	createdUpload, err := us.CreateUpload(context.Background(), fi, expectedUpload.SiaPath, expectedUpload.FileName, expectedUpload.BaseChunkRedundancy, expectedUpload.FanoutDataPieces, expectedUpload.FanoutParityPieces, expectedUpload.Metadata, expectedUpload.CipherType)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mu := createdUpload.(*mongoTUSUpload)
+
+	// Check the timsestamp separately.
+	if mu.LastWrite.IsZero() {
+		t.Fatal("lastWrite not set")
+	}
+	expectedUpload.LastWrite = mu.LastWrite
+
+	// Compare the remaining fields.
+	if !reflect.DeepEqual(expectedUpload, *mu) {
+		fmt.Println(expectedUpload)
+		fmt.Println(*mu)
+		t.Fatal("mismatch")
+	}
+
+	// Try again. Should fail.
+	_, err = us.CreateUpload(context.Background(), fi, expectedUpload.SiaPath, expectedUpload.FileName, expectedUpload.BaseChunkRedundancy, expectedUpload.FanoutDataPieces, expectedUpload.FanoutParityPieces, expectedUpload.Metadata, expectedUpload.CipherType)
+	if err == nil || !strings.Contains(err.Error(), "duplicate key error") {
+		t.Fatal(err)
 	}
 }

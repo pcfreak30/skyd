@@ -145,7 +145,7 @@ func (stu *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileIn
 	sup.Force = true
 
 	// Create the upload.
-	upload, err := stu.managedCreateUpload(info, sp, fileName, SkyfileDefaultBaseChunkRedundancy, skymodules.RenterDefaultDataPieces, skymodules.RenterDefaultParityPieces, sm, true, crypto.TypePlain)
+	upload, err := stu.managedCreateUpload(info, sp, fileName, SkyfileDefaultBaseChunkRedundancy, skymodules.RenterDefaultDataPieces, skymodules.RenterDefaultParityPieces, sm, crypto.TypePlain)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to save new upload")
 	}
@@ -153,12 +153,13 @@ func (stu *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileIn
 }
 
 // managedCreateUpload creates a new ongoing upload.
-func (stu *skynetTUSUploader) managedCreateUpload(fi handler.FileInfo, sp skymodules.SiaPath, fileName string, baseChunkRedundancy uint8, fanoutDataPieces, fanoutParityPieces int, sm skymodules.SkyfileMetadata, force bool, ct crypto.CipherType) (*ongoingTUSUpload, error) {
+func (stu *skynetTUSUploader) managedCreateUpload(fi handler.FileInfo, sp skymodules.SiaPath, fileName string, baseChunkRedundancy uint8, fanoutDataPieces, fanoutParityPieces int, sm skymodules.SkyfileMetadata, ct crypto.CipherType) (*ongoingTUSUpload, error) {
 	smBytes, err := json.Marshal(sm)
 	if err != nil {
 		return nil, err
 	}
-	upload, err := stu.staticUploadStore.CreateUpload(fi, sp, fileName, baseChunkRedundancy, fanoutDataPieces, fanoutParityPieces, smBytes, force, ct)
+	ctx := stu.staticRenter.tg.StopCtx()
+	upload, err := stu.staticUploadStore.CreateUpload(ctx, fi, sp, fileName, baseChunkRedundancy, fanoutDataPieces, fanoutParityPieces, smBytes, ct)
 	if err != nil {
 		return nil, errors.AddContext(err, "upload store failed to create new upload")
 	}

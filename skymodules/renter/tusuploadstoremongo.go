@@ -51,6 +51,17 @@ type (
 		Complete   bool      `bson:"complete"`
 		LastWrite  time.Time `bson:"lastwrite"`
 		PortalName string    `bson:"portalname"`
+
+		FanoutBytes []byte             `bson:"fanoutbytes"`
+		FileInfo    handler.FileInfo   `bson:"fileinfo"`
+		FileName    string             `bson:"filename"`
+		SiaPath     skymodules.SiaPath `bson:"siapath"`
+
+		BaseChunkRedundancy uint8             `bson:"basechunkredundancy"`
+		Metadata            []byte            `bson:"metadata"`
+		FanoutDataPieces    int               `bson:"fanoutdatapieces"`
+		FanoutParityPieces  int               `bson:"fanoutparitypieces"`
+		CipherType          crypto.CipherType `bson:"ciphertype"`
 	}
 
 	// skynetMongoLock is a lock used for locking an upload.
@@ -153,15 +164,34 @@ func (us *skynetTUSMongoUploadStore) Prune(string) error {
 	panic("not implemented yet")
 }
 
-func (us *skynetTUSMongoUploadStore) CreateUpload(fi handler.FileInfo, sp skymodules.SiaPath, fileName string, baseChunkRedundancy uint8, fanoutDataPieces, fanoutParityPieces int, sm []byte, force bool, ct crypto.CipherType) (skymodules.SkynetTUSUpload, error) {
-	panic("not implemented yet")
+// CreateUpload creates a new upload and adds it to the store.
+func (us *skynetTUSMongoUploadStore) CreateUpload(ctx context.Context, fi handler.FileInfo, sp skymodules.SiaPath, fileName string, baseChunkRedundancy uint8, fanoutDataPieces, fanoutParityPieces int, sm []byte, ct crypto.CipherType) (skymodules.SkynetTUSUpload, error) {
+	upload := &mongoTUSUpload{
+		ID:          fi.ID,
+		Complete:    false,
+		FanoutBytes: nil,
+		FileInfo:    fi,
+		LastWrite:   time.Now(),
+		FileName:    fileName,
+		SiaPath:     sp,
+
+		BaseChunkRedundancy: baseChunkRedundancy,
+		Metadata:            sm,
+		PortalName:          us.staticPortalHostname,
+
+		FanoutDataPieces:   fanoutDataPieces,
+		FanoutParityPieces: fanoutParityPieces,
+		CipherType:         ct,
+	}
+	// Insert into db.
+	_, err := us.staticUploadCollection().InsertOne(ctx, upload)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to insert new upload into db")
+	}
+	return upload, nil
 }
 
 func (us *skynetTUSMongoUploadStore) GetUpload(_ context.Context, id string) (skymodules.SkynetTUSUpload, error) {
-	panic("not implemented yet")
-}
-
-func (us *skynetTUSMongoUploadStore) SaveUpload(id string, upload skymodules.SkynetTUSUpload) error {
 	panic("not implemented yet")
 }
 
@@ -256,14 +286,17 @@ func NewSkynetTUSMongoUploadStore(ctx context.Context, uri, portalName string, c
 func newSkynetTUSMongoUploadStore(ctx context.Context, uri, portalName string, creds options.Credential) (*skynetTUSMongoUploadStore, error) {
 	// NOTE: Since we know that in the case of a success, an upload will
 	// only ever exist on a single portal, we choose very loose consistency
-	// guarantees here for the sake of performance. The worst thing that can
-	// happen if a user continues uploading from an outdated portal is
-	// redundant pinning.
+	// guarantees here for the sake of performance. A read happens on the
+	// local mongodb instance and writes are only required to propagate to 1
+	// other instance.
 	opts := options.Client().
 		ApplyURI(uri).
 		SetAuth(creds).
-		SetReadConcern(readconcern.Local()).
-		SetWriteConcern(writeconcern.New(writeconcern.J(true)))
+		SetReadConcern(readconcern.Local())
+	if build.Release == "release" {
+		opts = opts.SetWriteConcern(writeconcern.New(writeconcern.W(1)))
+	}
+
 	client, err := mongo.Connect(ctx, opts)
 	if err != nil {
 		return nil, err
