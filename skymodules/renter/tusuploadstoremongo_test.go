@@ -271,8 +271,8 @@ func TestToPrune(t *testing.T) {
 	}
 }
 
-// TestCreateUpload is a unit test for CreateUpload.
-func TestCreateUpload(t *testing.T) {
+// TestCreateGetUpload is a unit test for CreateUpload and Upload.
+func TestCreateGetUpload(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -349,5 +349,25 @@ func TestCreateUpload(t *testing.T) {
 	_, err = us.CreateUpload(context.Background(), fi, expectedUpload.SiaPath, expectedUpload.FileName, expectedUpload.BaseChunkRedundancy, expectedUpload.FanoutDataPieces, expectedUpload.FanoutParityPieces, expectedUpload.Metadata, expectedUpload.CipherType)
 	if err == nil || !strings.Contains(err.Error(), "duplicate key error") {
 		t.Fatal(err)
+	}
+
+	// Fetch the upload.
+	createdUpload, err = us.GetUpload(context.Background(), expectedUpload.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mu = createdUpload.(*mongoTUSUpload)
+
+	// Check the timsestamp separately.
+	if mu.LastWrite.IsZero() {
+		t.Fatal("lastWrite not set")
+	}
+	expectedUpload.LastWrite = mu.LastWrite
+
+	// Compare the remaining fields.
+	if !reflect.DeepEqual(expectedUpload, *mu) {
+		fmt.Println(expectedUpload)
+		fmt.Println(*mu)
+		t.Fatal("mismatch")
 	}
 }

@@ -191,20 +191,27 @@ func (us *skynetTUSMongoUploadStore) CreateUpload(ctx context.Context, fi handle
 	return upload, nil
 }
 
-func (us *skynetTUSMongoUploadStore) GetUpload(_ context.Context, id string) (skymodules.SkynetTUSUpload, error) {
-	panic("not implemented yet")
+// GetUpload returns the upload specified by the given id.
+func (us *skynetTUSMongoUploadStore) GetUpload(ctx context.Context, id string) (skymodules.SkynetTUSUpload, error) {
+	r := us.staticUploadCollection().FindOne(ctx, bson.M{"_id": id})
+	if r.Err() != nil {
+		return nil, r.Err()
+	}
+	var upload mongoTUSUpload
+	if err := r.Decode(&upload); err != nil {
+		return nil, errors.AddContext(err, "failed to decode upload")
+	}
+	return &upload, nil
 }
 
+// staticLockCollection returns the mongo collection for the uploads.
 func (us *skynetTUSMongoUploadStore) staticUploadCollection() *mongo.Collection {
 	return us.staticClient.Database(tusDBName).Collection(tusUploadsMongoCollectionName)
 }
 
+// staticLockCollection returns the mongo collection for the locks.
 func (us *skynetTUSMongoUploadStore) staticLockCollection() *mongo.Collection {
 	return us.staticClient.Database(tusDBName).Collection(tusLocksMongoCollectionName)
-}
-
-func (us *skynetTUSMongoUploadStore) Upload(id string) (skymodules.SkynetTUSUpload, error) {
-	panic("not implemented yet")
 }
 
 // Skylink returns the upload's skylink if available already.
@@ -214,7 +221,7 @@ func (u *mongoTUSUpload) Skylink() (skymodules.Skylink, bool) {
 
 // GetInfo returns the FileInfo of the upload.
 func (u *mongoTUSUpload) GetInfo(ctx context.Context) (handler.FileInfo, error) {
-	panic("not implemented yet")
+	return u.FileInfo, nil
 }
 
 // IsSmallUpload indicates whether the upload is considered a
