@@ -797,7 +797,7 @@ func (pdc *projectDownloadChunk) currentDownload(w downloadWorker) (uint64, bool
 // launchWorkerSet will range over the workers in the given worker set and will
 // try to launch every worker that has not yet been launched and is ready to
 // launch.
-func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) {
+func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, allWorkers []downloadWorker) {
 	// convenience variables
 	minPieces := pdc.workerSet.staticErasureCoder.MinPieces()
 
@@ -806,10 +806,18 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) {
 		// continue if the worker is a chimera worker
 		cw, ok := w.(*chimeraWorker)
 		if ok {
+			resolved := ""
+			for _, dw := range allWorkers {
+				if iw, ok := dw.(*individualWorker); ok {
+					resolved += fmt.Sprintf("%v w/ expected resolve time %v has %v chance to complete after %v\n", iw.staticWorker.staticHostPubKeyStr, iw.staticExpectedResolveTime, iw.chanceAfter(ws.staticExpectedDuration), ws.staticExpectedDuration)
+				}
+			}
 			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
 				span.LogKV(
 					"chimera", cw.cachedChancesAfter[ws.staticExpectedDuration],
-					"workers", len(cw.workers),
+					"chimeraWorkers", len(cw.workers),
+					"resolvedWorkers", resolved,
+					"workerSetExpectedDuration", ws.staticExpectedDuration,
 				)
 			}
 			// fmt.Printf("not launching chimera worker %v\n", w.identifier())
@@ -889,7 +897,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		}
 		if workerSet != nil {
 			// fmt.Println(workerSet.String())
-			pdc.launchWorkerSet(workerSet)
+			pdc.launchWorkerSet(workerSet, downloadWorkers)
 		}
 
 		// iterate
