@@ -248,6 +248,12 @@ func (us *skynetTUSInMemoryUploadStore) Prune(_ context.Context, uploadIDs []str
 	return nil
 }
 
+// WithTransaction allows for grouping multiple database operations into a
+// single atomic transaction.
+func (us *skynetTUSInMemoryUploadStore) WithTransaction(ctx context.Context, handler func(context.Context) error) error {
+	return handler(ctx)
+}
+
 // commitWriteChunk commits the changes to the upload after successfully
 // writing a chunk to the store.
 func (u *skynetInMemoryUpload) commitWriteChunk(newOffset int64, newLastWrite time.Time, smallFile bool) error {

@@ -603,8 +603,6 @@ func (u *ongoingTUSUpload) ConcatUploads(ctx context.Context, partialUploads []h
 	}
 
 	// Associate all partial upload siafiles with this skylink.
-	// TODO: Once we have the ability to upload without siafiles, we should
-	// create a single siafile here and associate it with the skylink.
 	for i := range partialUploads {
 		pu := partialUploads[i].(*ongoingTUSUpload)
 		err = pu.fileNode.AddSkylink(skylink)
@@ -614,14 +612,16 @@ func (u *ongoingTUSUpload) ConcatUploads(ctx context.Context, partialUploads []h
 	}
 
 	// Make sure the updates in mongo are atomic.
-
-	// Upon success, we mark the partial uploads as complete to prevent them
-	// from being pruned.
-	var errs error
-	for i := range partialUploads {
-		// Commit the partial upload as complete as well.
-		pu = partialUploads[i].(*ongoingTUSUpload)
-		errs = errors.Compose(errs, pu.staticUpload.CommitFinishPartialUpload(ctx))
-	}
-	return errors.Compose(errs, u.staticUpload.CommitFinishUpload(ctx, skylink))
+	return u.staticUploader.staticUploadStore.WithTransaction(ctx, func(sctx context.Context) error {
+		// Upon success, we mark the partial uploads as complete to prevent them
+		// from being pruned.
+		for i := range partialUploads {
+			// Commit the partial upload as complete as well.
+			pu = partialUploads[i].(*ongoingTUSUpload)
+			if err := pu.staticUpload.CommitFinishPartialUpload(sctx); err != nil {
+				return errors.AddContext(err, "failed to commit partial upload")
+			}
+		}
+		return errors.AddContext(u.staticUpload.CommitFinishUpload(sctx, skylink), "failed to commit concatenated upload")
+	})
 }

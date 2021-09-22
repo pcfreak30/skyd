@@ -436,3 +436,14 @@ func newSkynetTUSMongoUploadStore(ctx context.Context, uri, portalName string, c
 	us.staticLockClient = lockClient
 	return us, nil
 }
+
+// WithTransaction allows for grouping multiple database operations into a
+// single atomic transaction.
+func (us *skynetTUSMongoUploadStore) WithTransaction(ctx context.Context, handler func(context.Context) error) error {
+	return us.staticClient.UseSession(ctx, func(sctx mongo.SessionContext) error {
+		_, err := sctx.WithTransaction(ctx, func(sctx mongo.SessionContext) (interface{}, error) {
+			return nil, handler(sctx)
+		})
+		return err
+	})
+}

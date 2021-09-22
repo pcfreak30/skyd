@@ -345,6 +345,10 @@ type (
 		// GetUpload fetches an upload from the store.
 		GetUpload(ctx context.Context, id string) (SkynetTUSUpload, error)
 
+		// WithTransaction allows for grouping multiple database operations into a
+		// single atomic transaction.
+		WithTransaction(context.Context, func(context.Context) error) error
+
 		// The store also implements the Locker interface to allow TUS
 		// to automatically lock uploads.
 		handler.Locker
