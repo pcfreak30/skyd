@@ -2,7 +2,6 @@ package skynet
 
 import (
 	"bytes"
-	"context"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -34,15 +33,6 @@ var mongoTestCreds = options.Credential{
 	Password: "pwd",
 }
 
-// newMongoTestStore creates a skynetTUSMongoUploadStore for testing.
-func newMongoTestStore(name string) (skymodules.SkynetTUSUploadStore, error) {
-	uri, ok := build.MongoDBURI()
-	if !ok {
-		build.Critical("uri not set")
-	}
-	return renter.NewSkynetTUSMongoUploadStore(context.Background(), uri, name, mongoTestCreds)
-}
-
 // TestSkynetTUSUploader runs all skynetTUSUploader related tests.
 func TestSkynetTUSUploader(t *testing.T) {
 	if testing.Short() {
@@ -71,11 +61,12 @@ func TestSkynetTUSUploader(t *testing.T) {
 		// Create a mongo test store if necessary.
 		rt := node.RenterTemplate
 		if mongo {
-			ts, err := newMongoTestStore(t.Name())
-			if err != nil {
-				t.Fatal(err)
+			uri, ok := build.MongoDBURI()
+			if !ok {
+				build.Critical("uri not set")
 			}
-			rt.TUSUploadStore = ts
+			rt.MongoUploadStoreURI = uri
+			rt.MongoUploadStoreCreds = mongoTestCreds
 		}
 		if _, err := tg.AddNodes(rt); err != nil {
 			t.Fatal(err)

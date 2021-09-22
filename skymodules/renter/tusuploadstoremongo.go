@@ -78,6 +78,7 @@ type (
 	}
 )
 
+// Close closes the upload store and disconnects it from the backend.
 func (us *skynetTUSMongoUploadStore) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
@@ -295,8 +296,9 @@ func (u *mongoTUSUpload) UploadParams(ctx context.Context) (skymodules.SkyfileUp
 // CommitWriteChunkSmallFile commits writing a chunk of a small
 // file.
 func (u *mongoTUSUpload) CommitWriteChunkSmallFile(ctx context.Context, newOffset int64, newLastWrite time.Time, smallFileData []byte) error {
+	u.SmallUploadData = smallFileData
 	return u.commitWriteChunk(ctx, bson.M{
-		"smalluploaddata": smallFileData,
+		"smalluploaddata": u.SmallUploadData,
 	}, newOffset, newLastWrite, true)
 }
 
@@ -305,19 +307,21 @@ func (u *mongoTUSUpload) CommitWriteChunkSmallFile(ctx context.Context, newOffse
 func (u *mongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error {
 	// NOTE: This could potentially be improved to append to the fanout
 	// instead of replacing it.
+	u.FanoutBytes = append(u.FanoutBytes, fanout...)
 	return u.commitWriteChunk(ctx, bson.M{
-		"fanoutbytes": append(u.FanoutBytes, fanout...),
+		"fanoutbytes": u.FanoutBytes,
 	}, newOffset, newLastWrite, isSmall)
 }
 
 // commitWriteChunk commits a chunk write and also applies the updates provided
 // by update.
 func (u *mongoTUSUpload) commitWriteChunk(ctx context.Context, set bson.M, newOffset int64, newLastWrite time.Time, smallFile bool) error {
-	fi := u.FileInfo
-	fi.Offset = newOffset
-	set["fileinfo"] = fi
-	set["lastwrite"] = newLastWrite.UTC()
-	set["issmallfile"] = smallFile
+	u.FileInfo.Offset = newOffset
+	u.LastWrite = newLastWrite
+	u.IsSmallFile = smallFile
+	set["fileinfo"] = u.FileInfo
+	set["lastwrite"] = u.LastWrite.UTC()
+	set["issmallfile"] = u.IsSmallFile
 	update := bson.M{
 		"$set": set,
 	}
@@ -327,12 +331,12 @@ func (u *mongoTUSUpload) commitWriteChunk(ctx context.Context, set bson.M, newOf
 
 // CommitFinishUpload commits a finalised upload.
 func (u *mongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodules.Skylink) error {
-	fi := u.FileInfo
-	fi.MetaData["Skylink"] = skylink.String()
+	u.FileInfo.MetaData["Skylink"] = skylink.String()
+	u.Complete = true
 	result := u.staticUploads.FindOneAndUpdate(ctx, bson.M{"_id": u.FileInfo.ID}, bson.M{
 		"$set": bson.M{
-			"fileinfo": fi,
-			"complete": true,
+			"fileinfo": u.FileInfo,
+			"complete": u.Complete,
 		},
 	})
 	return result.Err()
@@ -340,9 +344,10 @@ func (u *mongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodu
 
 // CommitFinishPartialUpload commits a finalised partial upload.
 func (u *mongoTUSUpload) CommitFinishPartialUpload(ctx context.Context) error {
+	u.Complete = true
 	result := u.staticUploads.FindOneAndUpdate(ctx, bson.M{"_id": u.FileInfo.ID}, bson.M{
 		"$set": bson.M{
-			"complete": true,
+			"complete": u.Complete,
 		},
 	})
 	return result.Err()

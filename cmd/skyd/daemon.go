@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -19,10 +18,9 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 
 	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/node"
 	"gitlab.com/SkynetLabs/skyd/node/api/server"
 	"gitlab.com/SkynetLabs/skyd/profile"
-	"gitlab.com/SkynetLabs/skyd/skymodules"
-	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/uber/jaeger-lib/metrics"
@@ -30,10 +28,6 @@ import (
 	jaegercfg "github.com/uber/jaeger-client-go/config"
 	jaegerlog "github.com/uber/jaeger-client-go/log"
 )
-
-// mongoConnectionTimeout is the maximum allowed timeout for establishing a
-// mongodb connection before it is considered failed.
-var mongoConnectionTimeout = 30 * time.Second
 
 // passwordPrompt securely reads a password from stdin.
 func passwordPrompt(prompt string) (string, error) {
@@ -207,35 +201,36 @@ func tryAutoUnlock(srv *server.Server) {
 	}
 }
 
-// initMongo establishes a connection to a mongodb if specified by the
-// environment vars and creates a SkynetTUSUploadStore from it.
-func initMongo() (skymodules.SkynetTUSUploadStore, error) {
+// parseMongoConfig establishes a connection to a mongodb if specified by the
+// environment vars.
+func parseMongoConfig(params node.NodeParams) (node.NodeParams, error) {
 	// Check if the uri was set. If not, we are done
 	mongouri, ok := build.MongoDBURI()
 	if !ok {
 		fmt.Println("No MongoDB URI set - continuing with in-memory storage")
-		return nil, nil
+		return params, nil
 	}
 	fmt.Println("MongoDB URI found - trying to connect to server at", mongouri)
 	user, ok := build.MongoDBUser()
 	if !ok {
-		return nil, errors.New("No MongoDB user set")
+		return params, errors.New("No MongoDB user set")
 	}
 	password, ok := build.MongoDBPassword()
 	if !ok {
-		return nil, errors.New("No MongoDB password set")
+		return params, errors.New("No MongoDB password set")
 	}
 	portalName, ok := build.SkynetPortalHostname()
 	if !ok {
-		return nil, errors.New("No PortalName set")
+		return params, errors.New("No PortalName set")
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), mongoConnectionTimeout)
-	defer cancel()
-	return renter.NewSkynetTUSMongoUploadStore(ctx, mongouri, portalName, options.Credential{
+	// Set the parsed params.
+	params.MongoUploadStoreCreds = options.Credential{
 		Username: user,
 		Password: password,
-	})
+	}
+	params.MongoUploadStorePortalName = portalName
+	params.MongoUploadStoreURI = mongouri
+	return params, nil
 }
 
 // startDaemon uses the config parameters to initialize Sia modules and start
@@ -249,18 +244,21 @@ func startDaemon(config Config) (err error) {
 		return errors.AddContext(err, "failed to get API password")
 	}
 
-	// Load mongdb config.
-	uploadStore, err := initMongo()
-	if err != nil {
-		return errors.AddContext(err, "failed to load mongodb config")
-	}
-
 	// Print the siad Version and GitRevision
 	printVersionAndRevision()
 
 	// Install a signal handler that will catch exceptions thrown by mmap'd
 	// files.
 	installMmapSignalHandler()
+
+	// Create the node params by parsing the modules specified in the config.
+	nodeParams := parseModules(config)
+
+	// Load mongdb config.
+	nodeParams, err = parseMongoConfig(nodeParams)
+	if err != nil {
+		return errors.AddContext(err, "failed to load mongodb config")
+	}
 
 	// Init tracing.
 	closer, err := initTracer()
@@ -271,14 +269,6 @@ func startDaemon(config Config) (err error) {
 
 	// Print a startup message.
 	fmt.Println("Loading...")
-
-	// Create the node params by parsing the modules specified in the config.
-	nodeParams := parseModules(config)
-
-	// Set the upload store if available.
-	if uploadStore != nil {
-		nodeParams.TUSUploadStore = uploadStore
-	}
 
 	// Start and run the server.
 	srv, err := server.New(config.Siad.APIaddr, config.Siad.RequiredUserAgent, config.APIPassword, nodeParams, loadStart)

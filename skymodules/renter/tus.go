@@ -185,6 +185,8 @@ func (stu *skynetTUSUploader) GetUpload(ctx context.Context, id string) (handler
 	defer stu.mu.Unlock()
 	ou, exists := stu.ongoingUploads[id]
 	if exists {
+		// Only swap out the upload we just fetched.
+		ou.staticUpload = upload
 		return ou, nil
 	}
 
