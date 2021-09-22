@@ -1,0 +1,1 @@
+- renter stats are now persisted between restarts

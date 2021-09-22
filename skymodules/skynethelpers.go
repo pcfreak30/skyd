@@ -25,6 +25,10 @@ var (
 	// ErrInvalidDefaultPath is returned when the specified default path is not
 	// valid, e.g. the file it points to does not exist.
 	ErrInvalidDefaultPath = errors.New("invalid default path provided")
+
+	// ErrMalformedBaseSector is returned if a malformed base sector is
+	// detected.
+	ErrMalformedBaseSector = errors.New("base sector is malformed")
 )
 
 // AddMultipartFile is a helper function to add a file to multipart form-data.
@@ -267,12 +271,17 @@ func ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []by
 	rawSM = baseSector[offset : offset+metadataSize]
 	err = json.Unmarshal(rawSM, &sm)
 	if err != nil {
+		err = errors.Compose(ErrMalformedBaseSector, err)
 		return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, nil, errors.AddContext(err, "unable to parse SkyfileMetadata from skyfile base sector")
 	}
 	offset += metadataSize
 
 	// In version 1, the base sector payload is nil unless there is no fanout.
 	if sl.FanoutSize == 0 {
+		// Check for out-of-bounds.
+		if offset+sl.Filesize > uint64(len(baseSector)) {
+			return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, nil, errors.AddContext(ErrMalformedBaseSector, "fanout size is 0 but base sector doesn't contain full file data")
+		}
 		baseSectorPayload = baseSector[offset : offset+sl.Filesize]
 	}
 
@@ -319,9 +328,9 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 			// note that we do not check the length property of a subfile as it
 			// is possible a user might have uploaded an empty part
 		}
-		legacyFile := len(metadata.Subfiles) > 0 && metadata.Length == 0 && metadata.Monetization == nil
+		legacyFile := len(metadata.Subfiles) > 0 && metadata.Length == 0
 		if !legacyFile && metadata.Length != totalLength {
-			return fmt.Errorf("invalid length set on metadata - length: %v, totalLength: %v, subfiles: %v, monetized: %v", metadata.Length, totalLength, len(metadata.Subfiles), metadata.Monetization != nil)
+			return fmt.Errorf("invalid length set on metadata - length: %v, totalLength: %v, subfiles: %v", metadata.Length, totalLength, len(metadata.Subfiles))
 		}
 	}
 
@@ -346,30 +355,6 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 	err = ValidateErrorPages(metadata.ErrorPages, metadata.Subfiles)
 	if err != nil {
 		return errors.AddContext(err, "metadata contains invalid errorpages configuration")
-	}
-
-	// Make sure the returned metadata has valid monetization settings.
-	if err := ValidateMonetization(metadata.Monetization); err != nil {
-		return errors.AddContext(err, "metadata has invalid monetization")
-	}
-	return nil
-}
-
-// ValidateMonetization is a helper function to validate a list of monetizers.
-func ValidateMonetization(m *Monetization) error {
-	if m == nil {
-		return nil // No monetization is valid monetization.
-	}
-	if m.License != LicenseMonetization {
-		return ErrUnknownLicense
-	}
-	for _, m := range m.Monetizers {
-		if m.Amount.IsZero() {
-			return ErrZeroMonetizer
-		}
-		if m.Currency != CurrencyUSD {
-			return ErrInvalidCurrency
-		}
 	}
 	return nil
 }

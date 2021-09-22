@@ -211,6 +211,17 @@ func (hdb *HostDB) queueScan(entry skymodules.HostDBEntry) {
 	}()
 }
 
+// IsMalicious is a method to ask the hostdb for whether or not it believes
+// a host is malicious. Right now this only checks for a bad score but will be
+// extended in the future.
+func (hdb *HostDB) IsMalicious(entry skymodules.HostDBEntry) (bool, error) {
+	sb, err := hdb.managedScoreBreakdown(entry, false, false, false)
+	if err != nil {
+		return false, err
+	}
+	return sb.Score.Cmp(types.NewCurrency64(1)) <= 0, nil
+}
+
 // updateEntry updates an entry in the hostdb after a scan has taken place.
 //
 // CAUTION: This function will automatically add multiple entries to a new host
