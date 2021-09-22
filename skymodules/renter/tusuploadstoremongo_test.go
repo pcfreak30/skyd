@@ -211,28 +211,42 @@ func TestPrune(t *testing.T) {
 
 	// The recent upload won't be pruned.
 	uploadRecent := mongoTUSUpload{
-		ID:         "recent",
-		LastWrite:  time.Now().UTC(),
-		PortalName: us.staticPortalHostname,
+		ID:          "recent",
+		LastWrite:   time.Now().UTC(),
+		PortalNames: []string{us.staticPortalHostname},
 	}
 
 	// The outdated one will be pruned.
 	uploadOutdated := mongoTUSUpload{
-		ID:         "outdated",
-		PortalName: us.staticPortalHostname,
+		ID:          "outdated",
+		PortalNames: []string{us.staticPortalHostname},
+	}
+
+	// The outdated one without portal will be pruned.
+	uploadOutdatedNoPortal := mongoTUSUpload{
+		ID:          "outdatedNoPortal",
+		PortalNames: []string{},
 	}
 
 	// The outdated one which was set by some other portal won't be pruned.
 	uploadOutdatedButWrongPortal := mongoTUSUpload{
-		ID:         "outdatedWrongPortal",
-		PortalName: "someOtherPortal",
+		ID:          "outdatedWrongPortal",
+		PortalNames: []string{"someOtherPortal"},
 	}
 
 	// The outdated one which was successfully completed won't be pruned.
 	uploadOutdatedButComplete := mongoTUSUpload{
-		ID:         "outdatedButComplete",
-		Complete:   true,
-		PortalName: us.staticPortalHostname,
+		ID:          "outdatedButComplete",
+		Complete:    true,
+		PortalNames: []string{us.staticPortalHostname},
+	}
+
+	// The outdated one with multiple hosts won't be fully pruned but the portal
+	// will be removed.
+	uploadOutdatedMultiPortal := mongoTUSUpload{
+		ID:          "outdatedMultiPortal",
+		Complete:    false,
+		PortalNames: []string{us.staticPortalHostname, "otherPortal"},
 	}
 
 	// Reset collection.
@@ -250,11 +264,19 @@ func TestPrune(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	_, err = collection.InsertOne(context.Background(), uploadOutdatedNoPortal)
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, err = collection.InsertOne(context.Background(), uploadOutdatedButWrongPortal)
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, err = collection.InsertOne(context.Background(), uploadOutdatedButComplete)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = collection.InsertOne(context.Background(), uploadOutdatedMultiPortal)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,8 +286,11 @@ func TestPrune(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(toPrune) != 1 {
-		t.Fatalf("expected %v uploads but got %v", 1, len(toPrune))
+	if len(toPrune) != 3 {
+		for i, u := range toPrune {
+			t.Log(i, u.(*mongoTUSUpload).ID)
+		}
+		t.Fatalf("expected %v uploads but got %v", 4, len(toPrune))
 	}
 	prunedUpload := toPrune[0].(*mongoTUSUpload)
 	if !reflect.DeepEqual(*prunedUpload, uploadOutdated) {
@@ -296,18 +321,44 @@ func TestPrune(t *testing.T) {
 	if !os.IsNotExist(err) {
 		t.Fatal(err)
 	}
+	// The one without portal should be gone.
+	_, err = us.GetUpload(context.Background(), uploadOutdatedNoPortal.ID)
+	if !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
 	// The others should still exist.
-	_, err = us.GetUpload(context.Background(), uploadRecent.ID)
+	upload, err := us.GetUpload(context.Background(), uploadRecent.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = us.GetUpload(context.Background(), uploadOutdatedButComplete.ID)
+	portalNames := upload.(*mongoTUSUpload).PortalNames
+	if !reflect.DeepEqual(portalNames, uploadRecent.PortalNames) {
+		t.Fatal("wrong portal name", portalNames)
+	}
+	upload, err = us.GetUpload(context.Background(), uploadOutdatedButComplete.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = us.GetUpload(context.Background(), uploadOutdatedButWrongPortal.ID)
+	portalNames = upload.(*mongoTUSUpload).PortalNames
+	if !reflect.DeepEqual(portalNames, uploadOutdatedButComplete.PortalNames) {
+		t.Fatal("wrong portal name", portalNames)
+	}
+	upload, err = us.GetUpload(context.Background(), uploadOutdatedButWrongPortal.ID)
 	if err != nil {
 		t.Fatal(err)
+	}
+	portalNames = upload.(*mongoTUSUpload).PortalNames
+	if !reflect.DeepEqual(portalNames, uploadOutdatedButWrongPortal.PortalNames) {
+		t.Fatal("wrong portal name", portalNames)
+	}
+	// The one with multiple portals should exist and have 1 portal left.
+	upload, err = us.GetUpload(context.Background(), uploadOutdatedMultiPortal.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	portalNames = upload.(*mongoTUSUpload).PortalNames
+	if len(portalNames) != 1 || portalNames[0] != "otherPortal" {
+		t.Fatal("wrong portal name remains", portalNames)
 	}
 }
 
@@ -346,9 +397,9 @@ func TestCreateGetUpload(t *testing.T) {
 		Storage:        map[string]string{"key": "storage"},
 	}
 	expectedUpload := mongoTUSUpload{
-		ID:         fi.ID,
-		Complete:   false,
-		PortalName: us.staticPortalHostname,
+		ID:          fi.ID,
+		Complete:    false,
+		PortalNames: []string{us.staticPortalHostname},
 
 		FanoutBytes: nil,
 		FileInfo:    fi,

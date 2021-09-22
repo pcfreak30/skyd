@@ -613,6 +613,8 @@ func (u *ongoingTUSUpload) ConcatUploads(ctx context.Context, partialUploads []h
 		}
 	}
 
+	// Make sure the updates in mongo are atomic.
+
 	// Upon success, we mark the partial uploads as complete to prevent them
 	// from being pruned.
 	var errs error

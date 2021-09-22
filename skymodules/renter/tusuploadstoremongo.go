@@ -48,10 +48,10 @@ type (
 	}
 
 	mongoTUSUpload struct {
-		ID         string    `bson:"_id"`
-		Complete   bool      `bson:"complete"`
-		LastWrite  time.Time `bson:"lastwrite"`
-		PortalName string    `bson:"portalname"`
+		ID          string    `bson:"_id"`
+		Complete    bool      `bson:"complete"`
+		LastWrite   time.Time `bson:"lastwrite"`
+		PortalNames []string  `bson:"portalnames"`
 
 		FanoutBytes []byte             `bson:"fanoutbytes"`
 		FileInfo    handler.FileInfo   `bson:"fileinfo"`
@@ -142,11 +142,14 @@ func (us *skynetTUSMongoUploadStore) ToPrune(ctx context.Context) ([]skymodules.
 		"lastwrite": bson.M{
 			"$lt": time.Now().Add(-PruneTUSUploadTimeout),
 		},
-		"complete":   false,
-		"portalname": us.staticPortalHostname,
+		"complete": false,
+		"$or": bson.A{
+			bson.M{"portalnames": us.staticPortalHostname},
+			bson.M{"portalnames": bson.M{"$size": 0}},
+		},
 	}
 	// Find uploads.
-	cursor, err := c.Find(ctx, filter, options.Find().SetBatchSize(100))
+	cursor, err := c.Find(ctx, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -166,17 +169,37 @@ func (us *skynetTUSMongoUploadStore) ToPrune(ctx context.Context) ([]skymodules.
 func (us *skynetTUSMongoUploadStore) Prune(ctx context.Context, ids []string) error {
 	c := us.staticUploadCollection()
 
-	// Purge the uploads first.
-	_, err := c.DeleteMany(ctx, bson.M{
+	// Remove the hostname from all uploads.
+	updateFilter := bson.M{
 		"_id": bson.M{
 			"$in": ids,
+		},
+		"complete": false,
+	}
+	_, err := c.UpdateMany(ctx, updateFilter, bson.M{
+		"$pull": bson.M{
+			"portalnames": us.staticPortalHostname,
+		},
+	})
+	if err != nil {
+		return errors.AddContext(err, "failed to pull hostname for pruned entries")
+	}
+
+	// Delete all the documents that now have an empty portalnames array.
+	_, err = c.DeleteMany(ctx, bson.M{
+		"_id": bson.M{
+			"$in": ids,
+		},
+		"complete": false,
+		"$or": bson.A{
+			bson.M{"portalnames": bson.M{"$size": 0}},
 		},
 	})
 	if err != nil {
 		return errors.AddContext(err, "failed to purge uploads")
 	}
 
-	// Then purge old locks.
+	// Finally purge old locks.
 	purger := lock.NewPurger(us.staticLockClient)
 	_, err = purger.Purge(us.ctx)
 	if err != nil {
@@ -198,7 +221,7 @@ func (us *skynetTUSMongoUploadStore) CreateUpload(ctx context.Context, fi handle
 
 		BaseChunkRedundancy: baseChunkRedundancy,
 		Metadata:            sm,
-		PortalName:          us.staticPortalHostname,
+		PortalNames:         []string{us.staticPortalHostname},
 
 		FanoutDataPieces:   fanoutDataPieces,
 		FanoutParityPieces: fanoutParityPieces,
