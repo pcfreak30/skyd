@@ -28,8 +28,8 @@ require (
 	gitlab.com/NebulousLabs/siamux v0.0.0-20210824082138-a4ebafe4b9d9
 	gitlab.com/NebulousLabs/threadgroup v0.0.0-20200608151952-38921fbef213
 	gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20200618142844-c59a90f49130
-	go.mongodb.org/mongo-driver v1.4.2
-	go.sia.tech/siad v1.5.7-0.20210804035623-852125e8bdf3
+	go.mongodb.org/mongo-driver v1.7.2
+	go.sia.tech/siad v1.5.7
 	golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2
 	golang.org/x/net v0.0.0-20210410081132-afb366fc7cd1
 )

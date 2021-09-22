@@ -777,6 +777,17 @@ func ChunkSize(ct crypto.CipherType, dataPieces uint64) uint64 {
 	return pieceSize * dataPieces
 }
 
+// NumChunks returns the number of chunks a file has given its CipherType, size
+// and number of data pieces.
+func NumChunks(ct crypto.CipherType, fileSize, dataPieces uint64) uint64 {
+	chunkSize := ChunkSize(ct, dataPieces)
+	numChunks := fileSize / chunkSize
+	if fileSize%chunkSize != 0 {
+		numChunks++
+	}
+	return numChunks
+}
+
 // UnmarshalJSON attempts to decode a MerkleRootSet, falling back on the legacy
 // decoding of a []crypto.Hash if that fails.
 func (mrs *MerkleRootSet) UnmarshalJSON(b []byte) error {

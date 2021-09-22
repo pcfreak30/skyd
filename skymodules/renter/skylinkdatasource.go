@@ -8,7 +8,6 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
-	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -129,7 +128,7 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 	}
 
 	// Determine how large each chunk is.
-	chunkSize := uint64(sds.staticLayout.FanoutDataPieces) * modules.SectorSize
+	chunkSize := skymodules.ChunkSize(sds.staticLayout.CipherType, uint64(sds.staticLayout.FanoutDataPieces))
 
 	// Prepare an array of download chans on which we'll receive the data.
 	numChunks := fetchSize / chunkSize
@@ -361,6 +360,7 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, skylink skymodule
 			cancelFunc()
 			return nil, errors.AddContext(err, "error parsing skyfile fanout")
 		}
+
 		// Initialize the fanout chunk fetchers. To improve TTFB, the list is
 		// returned prior to all of the PCWS objects actually being created,
 		// because the pcws objects will sometimes block on network connections
