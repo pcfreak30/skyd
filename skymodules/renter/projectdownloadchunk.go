@@ -560,6 +560,7 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 		span.LogKV(
 			"launchWorker", worker,
 			"overdriveWorker", isOverdrive,
+			"expectedDuration", time.Until(expectedCompleteTime),
 			"success", added,
 		)
 	}
