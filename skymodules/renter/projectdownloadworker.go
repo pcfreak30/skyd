@@ -908,8 +908,18 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			// replace the worker update channel
 			workerUpdateChan = ws.managedRegisterForWorkerUpdate()
 		case jrr := <-pdc.workerResponseChan:
-			// fmt.Printf("+ %v completed piece %v with err %v\n", jrr.staticMetadata.staticWorker.staticHostPubKey.ShortString(), jrr.staticMetadata.staticPieceRootIndex, jrr.staticErr)
+			// fmt.Printf("+ %v completed piece %v with err %v\n",
+			// jrr.staticMetadata.staticWorker.staticHostPubKey.ShortString(),
+			// jrr.staticMetadata.staticPieceRootIndex, jrr.staticErr)
+			start := time.Now()
 			pdc.handleJobReadResponse(jrr)
+			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+				span.LogKV(
+					"handleJobReadResponse", jrr.staticMetadata.staticWorker.staticHostPubKeyStr,
+					"took", time.Since(start),
+					"error", jrr.staticErr,
+				)
+			}
 		case <-pdc.ctx.Done():
 			// fmt.Println("DOWNLOAD TIMED OUT", err)
 			pdc.fail(errors.New("download timed out"))
