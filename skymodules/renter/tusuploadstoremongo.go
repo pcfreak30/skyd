@@ -2,6 +2,7 @@ package renter
 
 import (
 	"context"
+	"os"
 	"time"
 
 	lock "github.com/square/mongo-lock"
@@ -160,13 +161,27 @@ func (us *skynetTUSMongoUploadStore) ToPrune(ctx context.Context) ([]skymodules.
 	return uploads, nil
 }
 
-func (us *skynetTUSMongoUploadStore) Prune(string) error {
+// Prune prunes the uploads with the provided ids from the store.
+func (us *skynetTUSMongoUploadStore) Prune(ctx context.Context, ids []string) error {
+	c := us.staticUploadCollection()
+
+	// Purge the uploads first.
+	_, err := c.DeleteMany(ctx, bson.M{
+		"_id": bson.M{
+			"$in": ids,
+		},
+	})
+	if err != nil {
+		return errors.AddContext(err, "failed to purge uploads")
+	}
+
+	// Then purge old locks.
 	purger := lock.NewPurger(us.staticLockClient)
-	_, err := purger.Purge(us.ctx)
+	_, err = purger.Purge(us.ctx)
 	if err != nil {
 		return errors.AddContext(err, "failed to purge old locks")
 	}
-	panic("not implemented yet")
+	return nil
 }
 
 // CreateUpload creates a new upload and adds it to the store.
@@ -201,6 +216,9 @@ func (us *skynetTUSMongoUploadStore) CreateUpload(ctx context.Context, fi handle
 // GetUpload returns the upload specified by the given id.
 func (us *skynetTUSMongoUploadStore) GetUpload(ctx context.Context, id string) (skymodules.SkynetTUSUpload, error) {
 	r := us.staticUploadCollection().FindOne(ctx, bson.M{"_id": id})
+	if errors.Contains(r.Err(), mongo.ErrNoDocuments) {
+		return nil, os.ErrNotExist // return os.ErrNotExist for TUS
+	}
 	if r.Err() != nil {
 		return nil, r.Err()
 	}

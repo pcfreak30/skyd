@@ -239,10 +239,12 @@ func (us *skynetTUSInMemoryUploadStore) ToPrune(_ context.Context) ([]skymodules
 }
 
 // Prune removes uploads that have been idle for too long.
-func (us *skynetTUSInMemoryUploadStore) Prune(uploadID string) error {
+func (us *skynetTUSInMemoryUploadStore) Prune(_ context.Context, uploadIDs []string) error {
 	us.mu.Lock()
 	defer us.mu.Unlock()
-	delete(us.uploads, uploadID)
+	for _, uploadID := range uploadIDs {
+		delete(us.uploads, uploadID)
+	}
 	return nil
 }
 

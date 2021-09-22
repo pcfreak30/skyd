@@ -471,6 +471,7 @@ func (r *Renter) threadedPruneTUSUploads() {
 		}
 
 		// Delete files.
+		var prunedIDs []string
 		for _, upload := range toDelete {
 			uploadID, sp, err := upload.PruneInfo(r.tg.StopCtx())
 			if err != nil {
@@ -492,8 +493,8 @@ func (r *Renter) threadedPruneTUSUploads() {
 				r.staticLog.Printf("WARN: failed to delete extended SiaPath %v: %v", sp.String(), err)
 			}
 
-			// Delete from store.
-			_ = r.staticSkynetTUSUploader.staticUploadStore.Prune(uploadID)
+			// Remember the ID to later prune it from the store.
+			prunedIDs = append(prunedIDs, uploadID)
 
 			// Delete from ongoing uploads if it exists.
 			r.staticSkynetTUSUploader.mu.Lock()
@@ -506,6 +507,12 @@ func (r *Renter) threadedPruneTUSUploads() {
 				}
 			}
 			r.staticSkynetTUSUploader.mu.Unlock()
+		}
+
+		// Prune from the store.
+		err = r.staticSkynetTUSUploader.staticUploadStore.Prune(r.tg.StopCtx(), prunedIDs)
+		if err != nil {
+			r.staticLog.Printf("WARN: failed to prune %v uploads from store: %v", len(prunedIDs), err)
 		}
 	}
 }

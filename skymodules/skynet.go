@@ -337,7 +337,7 @@ type (
 		ToPrune(ctx context.Context) ([]SkynetTUSUpload, error)
 
 		// Prune prunes the upload with the given ID from the store.
-		Prune(string) error
+		Prune(context.Context, []string) error
 
 		// CreateUpload creates a new upload in the store.
 		CreateUpload(ctx context.Context, fi handler.FileInfo, sp SiaPath, fileName string, baseChunkRedundancy uint8, fanoutDataPieces, fanoutParityPieces int, sm []byte, ct crypto.CipherType) (SkynetTUSUpload, error)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
 	"sync"
@@ -184,8 +185,8 @@ func TestMongoLocking(t *testing.T) {
 	}
 }
 
-// TestToPrune is a unit test for ToPrune.
-func TestToPrune(t *testing.T) {
+// TestPrune is a unit test for ToPrune and Prune.
+func TestPrune(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -269,6 +270,44 @@ func TestToPrune(t *testing.T) {
 	prunedUpload := toPrune[0].(*mongoTUSUpload)
 	if !reflect.DeepEqual(*prunedUpload, uploadOutdated) {
 		t.Fatal("wrong upload", toPrune[0], uploadOutdated)
+	}
+
+	// Prune the uploads.
+	var ids []string
+	for _, p := range toPrune {
+		ids = append(ids, p.(*mongoTUSUpload).ID)
+	}
+	err = us.Prune(context.Background(), ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be nothing left to prune.
+	toPrune, err = us.ToPrune(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(toPrune) != 0 {
+		t.Fatalf("expected %v uploads but got %v", 0, len(toPrune))
+	}
+
+	// The outdated upload should be gone.
+	_, err = us.GetUpload(context.Background(), uploadOutdated.ID)
+	if !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	// The others should still exist.
+	_, err = us.GetUpload(context.Background(), uploadRecent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = us.GetUpload(context.Background(), uploadOutdatedButComplete.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = us.GetUpload(context.Background(), uploadOutdatedButWrongPortal.ID)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
