@@ -347,7 +347,14 @@ func (j jobHasSectorBatch) callExecute() {
 		}
 		// If it was successful, attach the result.
 		if err == nil {
-			hsj.staticSpan.LogKV("availables", availables[i])
+			var foundOneOrMore bool
+			for _, available := range availables[i] {
+				if available {
+					foundOneOrMore = true
+					break
+				}
+			}
+			hsj.staticSpan.LogKV("availables", availables[i], "foundOneOrMore", foundOneOrMore)
 			response.staticAvailables = availables[i]
 		}
 		// Send the response.

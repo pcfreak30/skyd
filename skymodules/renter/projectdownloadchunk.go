@@ -270,6 +270,14 @@ func (pdc *projectDownloadChunk) updateAvailablePieces() bool {
 				worker: resp.worker,
 			})
 		}
+
+		// Log the resolved worker and its pieces
+		if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+			span.LogKV(
+				"resolvedWorker", resp.worker.staticHostPubKeyStr,
+				"pieces", resp.pieceIndices,
+			)
+		}
 	}
 	pdc.workersConsideredIndex = len(ws.resolvedWorkers)
 	return true
