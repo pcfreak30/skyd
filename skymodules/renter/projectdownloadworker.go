@@ -808,7 +808,7 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, allWorkers []dow
 		if ok {
 			resolved := ""
 			for _, dw := range allWorkers {
-				if iw, ok := dw.(*individualWorker); ok {
+				if iw, ok := dw.(*individualWorker); ok && len(iw.pieceIndices) > 0 {
 					resolved += fmt.Sprintf("%v w/ expected resolve time %v has %v chance to complete after %v\n", iw.staticWorker.staticHostPubKeyStr, iw.staticExpectedResolveTime, iw.chanceAfter(ws.staticExpectedDuration), ws.staticExpectedDuration)
 				}
 			}
