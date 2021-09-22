@@ -405,7 +405,8 @@ func TestCommitWriteChunk(t *testing.T) {
 	}
 
 	// Large upload.
-	largeUpload, err := us.CreateUpload(context.Background(), handler.FileInfo{ID: "large"}, skymodules.RandomSiaPath(), "large", 1, 1, 1, []byte{}, crypto.TypePlain)
+	sm := fastrand.Bytes(10)
+	largeUpload, err := us.CreateUpload(context.Background(), handler.FileInfo{ID: "large"}, skymodules.RandomSiaPath(), "large", 1, 1, 1, sm, crypto.TypePlain)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,12 +438,15 @@ func TestCommitWriteChunk(t *testing.T) {
 	if upload.IsSmallFile != false {
 		t.Fatal("wrong isSmallFile", upload.IsSmallFile, false)
 	}
+	if !bytes.Equal(upload.Metadata, sm) {
+		t.Fatal("wrong metadata")
+	}
 
 	// Second commit.
 	lastWrite = time.Now().UTC()
 	fanout2 := fastrand.Bytes(crypto.HashSize)
 	newOffset = 20
-	err = u.CommitWriteChunk(context.Background(), 20, lastWrite, false, fanout2)
+	err = u.CommitWriteChunk(context.Background(), newOffset, lastWrite, false, fanout2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -465,12 +469,45 @@ func TestCommitWriteChunk(t *testing.T) {
 	if upload.IsSmallFile != false {
 		t.Fatal("wrong isSmallFile", upload.IsSmallFile, false)
 	}
+	if !bytes.Equal(upload.Metadata, sm) {
+		t.Fatal("wrong metadata")
+	}
 
 	// Small upload.
-	_, err = us.CreateUpload(context.Background(), handler.FileInfo{}, skymodules.RandomSiaPath(), "small", 1, 1, 1, []byte{}, crypto.TypePlain)
+	sm = fastrand.Bytes(10)
+	u, err = us.CreateUpload(context.Background(), handler.FileInfo{ID: "small"}, skymodules.RandomSiaPath(), "small", 1, 1, 1, sm, crypto.TypePlain)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// TODO: finish test.
+	// Commit.
+	lastWrite = time.Now().UTC()
+	newOffset = 30
+	smallFileData := fastrand.Bytes(50)
+	err = u.CommitWriteChunkSmallFile(context.Background(), newOffset, lastWrite, smallFileData)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check upload.
+	u, err = us.GetUpload(context.Background(), "small")
+	if err != nil {
+		t.Fatal(err)
+	}
+	upload = u.(*mongoTUSUpload)
+	if !bytes.Equal(upload.SmallUploadData, smallFileData) {
+		t.Fatal("wrong file data", len(upload.SmallUploadData), len(smallFileData))
+	}
+	if upload.FileInfo.Offset != newOffset {
+		t.Fatal("wrong offset", upload.FileInfo.Offset, newOffset)
+	}
+	if upload.LastWrite.Unix() != lastWrite.Unix() {
+		t.Fatal("wrong lastWrite", upload.LastWrite, lastWrite)
+	}
+	if upload.IsSmallFile != true {
+		t.Fatal("wrong isSmallFile", upload.IsSmallFile, true)
+	}
+	if !bytes.Equal(upload.Metadata, sm) {
+		t.Fatal("wrong metadata")
+	}
 }

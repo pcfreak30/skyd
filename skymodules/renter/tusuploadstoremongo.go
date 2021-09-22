@@ -64,7 +64,7 @@ type (
 		CipherType          crypto.CipherType `bson:"ciphertype"`
 
 		IsSmallFile     bool   `bson:"issmallfile"`
-		SmallUploadData []byte `bson:"smallfiledata"`
+		SmallUploadData []byte `bson:"smalluploaddata"`
 
 		staticUploads *mongo.Collection
 	}
