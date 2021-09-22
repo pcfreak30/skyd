@@ -550,3 +550,104 @@ func TestCommitWriteChunk(t *testing.T) {
 		t.Fatal("wrong metadata")
 	}
 }
+
+// TestCommitFinishUpload is a unit test for CommitFinishUpload and
+// CommitFinishPartialUpload.
+func TestCommitFinishUpload(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	us, err := newMongoTestStore(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := us.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Reset collection.
+	collection := us.staticUploadCollection()
+	if err := collection.Drop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Test the partial finisher first.
+	partial, err := us.CreateUpload(context.Background(), handler.FileInfo{ID: "partial", MetaData: make(handler.MetaData)}, skymodules.RandomSiaPath(), "partial", 1, 1, 1, fastrand.Bytes(10), crypto.TypePlain)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check the relevant fields.
+	u, err := us.GetUpload(context.Background(), "partial")
+	if err != nil {
+		t.Fatal(err)
+	}
+	upload := u.(*mongoTUSUpload)
+	if upload.Complete {
+		t.Fatal("new upload shouldn't be complete")
+	}
+
+	// Finish it.
+	err = partial.CommitFinishPartialUpload(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check the fields again.
+	u, err = us.GetUpload(context.Background(), "partial")
+	if err != nil {
+		t.Fatal(err)
+	}
+	upload = u.(*mongoTUSUpload)
+	if !upload.Complete {
+		t.Fatal("new upload should be complete")
+	}
+
+	// Test the regular upload.
+	regular, err := us.CreateUpload(context.Background(), handler.FileInfo{ID: "regular", MetaData: make(handler.MetaData)}, skymodules.RandomSiaPath(), "regular", 1, 1, 1, fastrand.Bytes(10), crypto.TypePlain)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check the relevant fields.
+	u, err = us.GetUpload(context.Background(), "regular")
+	if err != nil {
+		t.Fatal(err)
+	}
+	upload = u.(*mongoTUSUpload)
+	if upload.Complete {
+		t.Fatal("new upload shouldn't be complete")
+	}
+	if _, set := upload.FileInfo.MetaData["Skylink"]; set {
+		t.Fatal("skylink shouldn't be set")
+	}
+
+	// Finish it.
+	var h crypto.Hash
+	fastrand.Read(h[:])
+	skylink, err := skymodules.NewSkylinkV1(h, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = regular.CommitFinishUpload(context.Background(), skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check the fields again.
+	u, err = us.GetUpload(context.Background(), "regular")
+	if err != nil {
+		t.Fatal(err)
+	}
+	upload = u.(*mongoTUSUpload)
+	if !upload.Complete {
+		t.Fatal("new upload should be complete")
+	}
+	if sl, set := upload.FileInfo.MetaData["Skylink"]; !set || !reflect.DeepEqual(sl, skylink.String()) {
+		t.Fatal("wrong skylink")
+	}
+}
