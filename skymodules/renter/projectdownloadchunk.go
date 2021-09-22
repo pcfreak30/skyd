@@ -485,6 +485,9 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 
 	// fmt.Printf("completed: %v/%v\n", completedPieces, ec.MinPieces())
 	if completedPieces >= ec.MinPieces() {
+		if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+			span.LogKV("finished", completedPieces)
+		}
 		return true, nil
 	}
 
