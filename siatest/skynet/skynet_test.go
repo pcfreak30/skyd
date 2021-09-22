@@ -955,15 +955,16 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 
 	// Upload and download a small and large file
 	ss := modules.SectorSize
-	// skylink, _, _, err := r.UploadNewSkyfileBlocking("smallfile", ss/2, false)
-	// if err != nil {
-	// 	t.Fatal("unexpected error on uploading a small file", err)
-	// }
-	// _, err = r.SkynetSkylinkGet(skylink)
-	// if err != nil {
-	// 	t.Fatal(err)
-	// }
-	skylink, _, _, err := r.UploadNewSkyfileBlocking("largefile", ss*2, false)
+	skylink, _, _, err := r.UploadNewSkyfileBlocking("smallfile", ss/2, false)
+	if err != nil {
+		t.Fatal("unexpected error on uploading a small file", err)
+	}
+	_, err = r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	skylink, _, _, err = r.UploadNewSkyfileBlocking("largefile", ss*2, false)
 	if err != nil {
 		t.Fatal("unexpected error on uploading a large file", err)
 	}
@@ -971,7 +972,6 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return
 
 	// This test relies on state from the previous tests. Make sure we are
 	// starting from a place of updated metadata
@@ -1250,8 +1250,8 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	var downloadMu sync.Mutex
 	var downloadErr error
 	for i := 0; i < 10; i++ {
+		wg.Add(1)
 		go func(t *testing.T) {
-			wg.Add(1)
 			defer wg.Done()
 			for _, skylink := range skylinks {
 				_, err := r.SkynetSkylinkGet(skylink)

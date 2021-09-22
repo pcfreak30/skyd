@@ -7,6 +7,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
@@ -803,8 +804,14 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) {
 	// range over all workers in the set and launch if possible
 	for _, w := range ws.workers {
 		// continue if the worker is a chimera worker
-		iw, ok := w.(*individualWorker)
-		if !ok {
+		cw, ok := w.(*chimeraWorker)
+		if ok {
+			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+				span.LogKV(
+					"chimera", cw.cachedChancesAfter[ws.staticExpectedDuration],
+					"workers", len(cw.workers),
+				)
+			}
 			// fmt.Printf("not launching chimera worker %v\n", w.identifier())
 			continue
 		}
@@ -813,8 +820,6 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) {
 		piece, launched, _ := pdc.currentDownload(w)
 		if launched {
 			continue
-		} else {
-			// fmt.Printf("- %v is not launched yet for %v\n", w.identifier(), piece)
 		}
 
 		// launch the piece
@@ -822,9 +827,8 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) {
 		_, launched = pdc.launchWorker(w.worker(), piece, isOverdrive)
 		// fmt.Printf("- %v launched for %v success %v\n", w.identifier(), piece, launched)
 		if launched {
+			iw := w.(*individualWorker)
 			iw.launchedAt = time.Now()
-		} else {
-			// fmt.Println("launch failed")
 		}
 	}
 	return

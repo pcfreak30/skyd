@@ -243,6 +243,10 @@ func (pd *pieceDownload) successful() bool {
 // updateAvailablePieces updates the available pieces with new pieces coming
 // from freshly resolved workers. Essentially this is pulling new information
 // from the overarching PCWS worker state.
+//
+// TODO: this can be thrown out entirely and replaced with our other state on
+// the pdc, providing we add availablePiecesByIndex, only the `finished` method
+// really needs it to count hopeful pieces
 func (pdc *projectDownloadChunk) updateAvailablePieces() bool {
 	ws := pdc.workerState
 	ws.mu.Lock()
@@ -501,15 +505,6 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 		build.Critical("pieceOffset or pieceLength is not segment aligned")
 	}
 
-	// Log the event.
-	worker := w.staticHostPubKeyStr
-	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-		span.LogKV(
-			"launchWorker", worker,
-			"overdriveWorker", isOverdrive,
-		)
-	}
-
 	// Create the read job metadata.
 	launchedWorkerIndex := uint64(len(pdc.launchedWorkers))
 	sectorRoot := pdc.workerSet.staticPieceRoots[pieceIndex]
@@ -530,9 +525,9 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 
 	// Track the launched piece
 	// pdcId := hex.EncodeToString(pdc.uid[:])
+	worker := w.staticHostPubKeyStr
 	if _, exists := pdc.launchedPiecesByWorker[worker]; !exists {
 		pdc.launchedPiecesByWorker[worker] = make(launchedPieces)
-		// fmt.Printf("%v creating pieces %v %v\n", w.staticHostPubKey.ShortString(), worker, pdcId)
 	}
 	pdc.launchedPiecesByWorker[worker][pieceIndex] = time.Now()
 	// fmt.Printf("%v mark piece %v\n", w.staticHostPubKey.ShortString(), pieceIndex)
@@ -550,6 +545,15 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 			staticPDC:    pdc,
 			staticWorker: w,
 		})
+	}
+
+	// Log the event.
+	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+		span.LogKV(
+			"launchWorker", worker,
+			"overdriveWorker", isOverdrive,
+			"success", added,
+		)
 	}
 
 	// Update the status of the piece that was launched. 'launched' should be
