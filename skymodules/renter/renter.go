@@ -1361,3 +1361,21 @@ func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpoo
 	}()
 	return renter, errChan
 }
+
+// HostsForRegistryUpdate returns a list of hosts that the renter would be using
+// for updating the registry.
+func (r *Renter) HostsForRegistryUpdate() ([]types.SiaPublicKey, error) {
+	if err := r.tg.Add(); err != nil {
+		return nil, err
+	}
+	defer r.tg.Done()
+
+	var hpks []types.SiaPublicKey
+	for _, w := range r.staticWorkerPool.callWorkers() {
+		if !isWorkerGoodForRegistryUpdate(w) {
+			continue
+		}
+		hpks = append(hpks, w.staticHostPubKey)
+	}
+	return hpks, nil
+}
