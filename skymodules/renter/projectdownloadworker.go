@@ -782,25 +782,19 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, allWorkers []dow
 		cw, ok := w.(*chimeraWorker)
 		if ok {
 			resolved := ""
-			chimeras := ""
 			for _, dw := range allWorkers {
 				if iw, ok := dw.(*individualWorker); ok && len(iw.pieceIndices) > 0 {
 					resolved += fmt.Sprintf("%v resolves in %v has %v chance to complete after %v\n", iw.staticWorker.staticHostPubKeyStr, time.Until(iw.staticExpectedResolveTime), iw.chanceAfter(
 						ws.staticBucketIndex), ws.staticExpectedDuration)
 				}
-				if cw, ok := dw.(*chimeraWorker); ok {
-					chimeras += fmt.Sprintf("%v (%v) chance: %v\n", cw.identifier(), len(cw.workers), cw.chanceAfter(ws.staticBucketIndex))
-				}
 			}
 			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
 				span.LogKV(
 					"chimera", cw.cachedChancesAfter[ws.staticBucketIndex],
-					"chimeraWorkers", chimeras,
 					"resolvedWorkers", resolved,
 					"workerSetExpectedDuration", ws.staticExpectedDuration,
 				)
 			}
-			// fmt.Printf("not launching chimera worker %v\n", w.identifier())
 			continue
 		}
 
@@ -812,9 +806,28 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, allWorkers []dow
 
 		// launch the piece
 		isOverdrive := len(pdc.launchedWorkers) >= minPieces
-		_, launched = pdc.launchWorker(ws, w, piece, isOverdrive)
+		expectedCompleteTime, launched := pdc.launchWorker(w.worker(), piece, isOverdrive)
 		// fmt.Printf("- %v launched for %v success %v\n", w.identifier(), piece, launched)
 		if launched {
+			// Log the event.
+			chimeras := ""
+			for _, dw := range allWorkers {
+				if cw, ok := dw.(*chimeraWorker); ok {
+					chimeras += fmt.Sprintf("%v (%v) chance: %v\n", cw.identifier(), len(cw.workers), cw.chanceAfter(ws.staticBucketIndex))
+				}
+			}
+			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+				span.LogKV(
+					"launchWorker", w.identifier(),
+					"overdriveWorker", isOverdrive,
+					"expectedDuration", time.Until(expectedCompleteTime),
+					"chanceAfterDur", w.chanceAfter(ws.staticBucketIndex),
+					"wsDuration", ws.staticExpectedDuration,
+					"chimeras", chimeras,
+					"success", launched,
+				)
+			}
+
 			iw := w.(*individualWorker)
 			iw.launchedAt = time.Now()
 		}

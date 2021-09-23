@@ -508,14 +508,7 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 // A time is returned which indicates the expected return time of the worker's
 // download. A bool is returned which indicates whether or not the launch was
 // successful.
-func (pdc *projectDownloadChunk) launchWorker(ws *workerSet, worker downloadWorker, pieceIndex uint64, isOverdrive bool) (time.Time, bool) {
-	iw, ok := worker.(*individualWorker)
-	if !ok {
-		build.Critical("oops")
-		return time.Time{}, false
-	}
-	w := iw.worker()
-
+func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOverdrive bool) (time.Time, bool) {
 	// Sanity check that the pieceOffset and pieceLength are segment aligned.
 	if pdc.pieceOffset%crypto.SegmentSize != 0 ||
 		pdc.pieceLength%crypto.SegmentSize != 0 {
@@ -562,18 +555,6 @@ func (pdc *projectDownloadChunk) launchWorker(ws *workerSet, worker downloadWork
 			staticPDC:    pdc,
 			staticWorker: w,
 		})
-	}
-
-	// Log the event.
-	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-		span.LogKV(
-			"launchWorker", workerKey,
-			"overdriveWorker", isOverdrive,
-			"expectedDuration", time.Until(expectedCompleteTime),
-			"chanceAfterDur", worker.chanceAfter(ws.staticBucketIndex),
-			"wsDuration", ws.staticExpectedDuration,
-			"success", added,
-		)
 	}
 
 	// Update the status of the piece that was launched. 'launched' should be
