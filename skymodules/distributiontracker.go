@@ -97,6 +97,9 @@ type (
 		// The final bucket is just over an hour, anything over will be put into
 		// that bucket as well.
 		timings [64 + 48*distributionTrackerNumIncrements]float64
+
+		// TODO
+		totalDataPoints float64
 	}
 
 	// DistributionTracker will track the performance distribution of a series
@@ -182,9 +185,12 @@ func indexForDuration(duration time.Duration) (int, float64) {
 // addDecay will decay the data in the distribution.
 func (d *Distribution) addDecay() {
 	d.Decay(func(decay float64) {
+		var total float64
 		for i := 0; i < len(d.timings); i++ {
 			d.timings[i] *= decay
+			total += d.timings[i]
 		}
+		d.totalDataPoints = total
 	})
 }
 
@@ -203,6 +209,7 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 
 	// Add the datapoint
 	d.timings[index]++
+	d.totalDataPoints++
 }
 
 // ChanceAfter returns the chance we find a data point after the given duration.
@@ -240,6 +247,7 @@ func (d *Distribution) Clone() *Distribution {
 	for i, b := range d.timings {
 		c.timings[i] = b
 	}
+	c.totalDataPoints = d.totalDataPoints
 
 	// TODO: re-enable? maybe? this function is called in a ridiculously tight
 	// loop so even in testing it adds a lot of slowness, multiple seconds...
@@ -257,16 +265,7 @@ func (d *Distribution) Clone() *Distribution {
 // DataPoints returns the total number of data points contained within the
 // distribution.
 func (d *Distribution) DataPoints() float64 {
-	// Decay is not applied automatically. If it has been a while since the last
-	// datapoint was added, decay should be applied so that the rates are
-	// correct.
-	d.addDecay()
-
-	var total float64
-	for i := 0; i < len(d.timings); i++ {
-		total += d.timings[i]
-	}
-	return total
+	return d.totalDataPoints
 }
 
 // DurationForIndex converts the index of a bucket into a duration.
