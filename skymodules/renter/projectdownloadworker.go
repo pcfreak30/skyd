@@ -22,12 +22,6 @@ const (
 	maxWaitUnresolvedWorkerUpdate = 10 * time.Millisecond
 )
 
-var (
-	// emptyUID is an empty 16 byte slice used to compare against and verify
-	// whether the uid is initialised
-	emptyUID [16]byte
-)
-
 // NOTE: all of the following defined types are used by the PDC, which is
 // inherently thread un-safe, that means that these types don't not need to be
 // thread safe either. If fields are marked `static` it is meant to signal they
@@ -111,7 +105,7 @@ type (
 		staticPieceIndices []uint64
 
 		// staticUID uniquely identifies the chimera worker
-		staticUID [16]byte
+		staticUID string
 	}
 
 	// individualWorker is a struct that represents a single worker object, both
@@ -135,6 +129,7 @@ type (
 		// in the worker are not selected for duplicate piece indices.
 		currentPiece uint64
 
+		staticIdentifier          string
 		staticExpectedCost        types.Currency
 		staticExpectedResolveTime time.Time
 		staticReadDistribution    *skymodules.Distribution
@@ -166,14 +161,18 @@ func NewChimeraWorker(numPieces int) *chimeraWorker {
 		pieceIndices[i] = uint64(i)
 	}
 
+	var staticUID [16]byte
+	fastrand.Read(staticUID[:])
+
 	ch := &chimeraWorker{
 		cachedChancesAfter: make(map[time.Duration]float64, skymodules.DistributionTrackerTotalBuckets),
 		remaining:          1,
+
 		staticPieceIndices: pieceIndices,
+		staticUID:          hex.EncodeToString(staticUID[:]),
 	}
 
 	// generate a uid for the chimera that'll serve as a unique identifier
-	fastrand.Read(ch.staticUID[:])
 	return ch
 }
 
@@ -259,12 +258,7 @@ func (cw *chimeraWorker) getPieceForDownload() uint64 {
 
 // identifier returns a unqiue identifier for this worker.
 func (cw *chimeraWorker) identifier() string {
-	identifier := hex.EncodeToString(cw.staticUID[:])
-	if identifier == hex.EncodeToString(emptyUID[:]) {
-		build.Critical("developer error, uid not initialized")
-	}
-
-	return identifier
+	return cw.staticUID
 }
 
 // markPieceForDownload takes a piece index and marks it as the piece to
@@ -357,7 +351,7 @@ func (iw *individualWorker) getPieceForDownload() uint64 {
 // identifier returns a unqiue identifier for this worker, for an individual
 // worker this is equal to the short string version of the worker's host pubkey.
 func (iw *individualWorker) identifier() string {
-	return iw.staticWorker.staticHostPubKey.ShortString()
+	return iw.staticIdentifier
 }
 
 // isLaunched returns true when this workers has been launched.
@@ -404,6 +398,7 @@ func (iw *individualWorker) split(chance float64) (*individualWorker, *individua
 		cachedChancesAfter: iw.cachedChancesAfter,
 		currentPiece:       iw.currentPiece,
 
+		staticIdentifier:          iw.staticIdentifier,
 		staticExpectedCost:        iw.staticExpectedCost,
 		staticExpectedResolveTime: iw.staticExpectedResolveTime,
 		staticReadDistribution:    iw.staticReadDistribution,
@@ -418,6 +413,7 @@ func (iw *individualWorker) split(chance float64) (*individualWorker, *individua
 		cachedChancesAfter: iw.cachedChancesAfter,
 		currentPiece:       iw.currentPiece,
 
+		staticIdentifier:          iw.staticIdentifier,
 		staticExpectedCost:        iw.staticExpectedCost,
 		staticExpectedResolveTime: iw.staticExpectedResolveTime,
 		staticReadDistribution:    iw.staticReadDistribution,
@@ -719,6 +715,7 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 
 			cachedChancesAfter: make(map[time.Duration]float64, skymodules.DistributionTrackerTotalBuckets),
 
+			staticIdentifier:       rw.worker.staticHostPubKey.ShortString(),
 			staticExpectedCost:     jrq.callExpectedJobCost(length),
 			staticReadDistribution: rdt.Distribution(0),
 			staticWorker:           rw.worker,
@@ -748,6 +745,7 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 
 			cachedChancesAfter: make(map[time.Duration]float64, skymodules.DistributionTrackerTotalBuckets),
 
+			staticIdentifier:          w.staticHostPubKey.ShortString(),
 			staticExpectedCost:        jrq.callExpectedJobCost(length),
 			staticExpectedResolveTime: uw.staticExpectedResolvedTime,
 			staticReadDistribution:    rdt.Distribution(0),
