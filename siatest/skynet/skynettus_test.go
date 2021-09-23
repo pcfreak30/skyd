@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -735,5 +736,85 @@ func testTUSUploaderConcat(t *testing.T, r *siatest.TestNode) {
 	nFilesAfter := dir.Directories[0].AggregateNumFiles
 	if nFilesAfter-nFiles != 4 {
 		t.Fatal("expected 4 .sia files to be created for the 2 parts but got", nFilesAfter-nFiles)
+	}
+}
+
+// TestSkynetResumeOnSeparatePortal tests uploading a chunk to one portal and
+// finishing the upload on another portal.
+func TestSkynetResumeOnSeparatePortal(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Prepare a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  3,
+		Miners: 1,
+	}
+	groupDir := skynetTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Create 2 portal with a mongo connection.
+	rt := node.RenterTemplate
+	rt.CreatePortal = true
+	uri, ok := build.MongoDBURI()
+	if !ok {
+		t.Fatal("uri not set")
+	}
+	rt.MongoUploadStoreURI = uri
+	rt.MongoUploadStoreCreds = mongoTestCreds
+	portals, err := tg.AddNodeN(rt, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	portalA, portalB := portals[0], portals[1]
+
+	// Prepare 3 chunks of upload data.
+	numChunks := 3
+	chunkSize := int64(numChunks) * int64(skymodules.ChunkSize(crypto.TypePlain, uint64(skymodules.RenterDefaultDataPieces)))
+	uploadData := fastrand.Bytes(int(chunkSize * 3))
+
+	// Create uploader.
+	tcA, upload, err := portalA.SkynetTUSNewUploadFromBytes(uploadData, chunkSize)
+	uploaderA, err := tcA.CreateUpload(upload)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload a chunk to portal A.
+	if err := uploaderA.UploadChunck(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a new client for portal B.
+	tcB, err := portalB.SkynetTUSClient(chunkSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Store the upload's url in tcB's storage for 'ResumeUpload' to work.
+	urlA, found := tcA.Config.Store.Get(upload.Fingerprint)
+	if !found {
+		t.Fatal("url should exist")
+	}
+	urlB := fmt.Sprintf("%s/%s", tcB.Url, filepath.Base(urlA))
+	tcB.Config.Store.Set(upload.Fingerprint, urlB)
+
+	// Finish the upload on portal B.
+	uploaderB, err := tcB.ResumeUpload(upload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := uploaderB.Upload(); err != nil {
+		t.Fatal(err)
 	}
 }

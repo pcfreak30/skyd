@@ -2,6 +2,7 @@ package renter
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"time"
 
@@ -349,6 +350,12 @@ func (u *mongoTUSUpload) commitWriteChunk(ctx context.Context, set bson.M, newOf
 		"$set": set,
 	}
 	result := u.staticUploads.FindOneAndUpdate(ctx, bson.M{"_id": u.FileInfo.ID}, update)
+	if errors.Contains(result.Err(), mongo.ErrNoDocuments) {
+		return os.ErrNotExist // return os.ErrNotExist for TUS
+	}
+	if result.Err() != nil {
+		fmt.Println("ERR:", result.Err())
+	}
 	return result.Err()
 }
 
@@ -362,6 +369,9 @@ func (u *mongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodu
 			"complete": u.Complete,
 		},
 	})
+	if errors.Contains(result.Err(), mongo.ErrNoDocuments) {
+		return os.ErrNotExist // return os.ErrNotExist for TUS
+	}
 	return result.Err()
 }
 
@@ -373,6 +383,9 @@ func (u *mongoTUSUpload) CommitFinishPartialUpload(ctx context.Context) error {
 			"complete": u.Complete,
 		},
 	})
+	if errors.Contains(result.Err(), mongo.ErrNoDocuments) {
+		return os.ErrNotExist // return os.ErrNotExist for TUS
+	}
 	return result.Err()
 }
 
@@ -407,14 +420,12 @@ func newSkynetTUSMongoUploadStore(ctx context.Context, uri, portalName string, c
 	// only ever exist on a single portal, we choose very loose consistency
 	// guarantees here for the sake of performance. A read happens on the
 	// local mongodb instance and writes are only required to propagate to 1
-	// other instance.
+	// instance.
 	opts := options.Client().
 		ApplyURI(uri).
 		SetAuth(creds).
-		SetReadConcern(readconcern.Local())
-	if build.Release == "release" {
-		opts = opts.SetWriteConcern(writeconcern.New(writeconcern.W(1)))
-	}
+		SetReadConcern(readconcern.Local()).
+		SetWriteConcern(writeconcern.New(writeconcern.W(1)))
 
 	client, err := mongo.Connect(ctx, opts)
 	if err != nil {
