@@ -782,16 +782,20 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, allWorkers []dow
 		cw, ok := w.(*chimeraWorker)
 		if ok {
 			resolved := ""
+			chimeras := ""
 			for _, dw := range allWorkers {
 				if iw, ok := dw.(*individualWorker); ok && len(iw.pieceIndices) > 0 {
 					resolved += fmt.Sprintf("%v resolves in %v has %v chance to complete after %v\n", iw.staticWorker.staticHostPubKeyStr, time.Until(iw.staticExpectedResolveTime), iw.chanceAfter(
 						ws.staticBucketIndex), ws.staticExpectedDuration)
 				}
+				if cw, ok := dw.(*chimeraWorker); ok {
+					chimeras += fmt.Sprintf("%v (%v) chance: %v\n", cw.identifier(), len(cw.workers), cw.chanceAfter(ws.staticBucketIndex))
+				}
 			}
 			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
 				span.LogKV(
 					"chimera", cw.cachedChancesAfter[ws.staticBucketIndex],
-					"chimeraWorkers", len(cw.workers),
+					"chimeraWorkers", chimeras,
 					"resolvedWorkers", resolved,
 					"workerSetExpectedDuration", ws.staticExpectedDuration,
 				)
