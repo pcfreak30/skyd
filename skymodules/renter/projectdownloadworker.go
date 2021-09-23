@@ -813,7 +813,7 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, allWorkers []dow
 			chimeras := ""
 			for _, dw := range allWorkers {
 				if cw, ok := dw.(*chimeraWorker); ok {
-					chimeras += fmt.Sprintf("%v (%v) chance: %v chanceAtIndex25: %v\n", cw.identifier(), len(cw.workers), cw.chanceAfter(ws.staticBucketIndex), cw.chanceAfter(25))
+					chimeras += fmt.Sprintf("%v (%v) chance: %v chanceAtMaxIndex: %v\n", cw.identifier(), len(cw.workers), cw.chanceAfter(ws.staticBucketIndex), cw.chanceAfter(skymodules.DistributionTrackerTotalBuckets-1))
 				}
 			}
 			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
