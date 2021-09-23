@@ -880,7 +880,15 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		}
 
 		// update the workers on every iteration
+		start := time.Now()
 		pdc.updateWorkers(workers)
+		if time.Since(start) > 100*time.Millisecond {
+			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+				span.LogKV(
+					"updateWorkersTookLong", time.Since(start),
+				)
+			}
+		}
 
 		// update the available pieces
 		updated := pdc.updateAvailablePieces()
@@ -904,7 +912,15 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		}
 
 		// create a worker set and launch it
+		start = time.Now()
 		workerSet, err := pdc.createWorkerSet(downloadWorkers, maxOverdriveWorkers)
+		if time.Since(start) > 100*time.Millisecond {
+			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+				span.LogKV(
+					"createWorkerSetTookLong", time.Since(start),
+				)
+			}
+		}
 		if err != nil {
 			pdc.fail(err)
 			return
