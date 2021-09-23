@@ -864,6 +864,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	}
 
 	// create download workers out of the workers
+	buildDownloadWorkersCnt := 1
 	downloadWorkers := buildDownloadWorkers(workers, numPieces)
 
 	// register for a worker update chan
@@ -903,6 +904,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			// fmt.Println("rebuild download workers")
 			start := time.Now()
 			downloadWorkers = buildDownloadWorkers(workers, numPieces)
+			buildDownloadWorkersCnt++
 			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
 				span.LogKV(
 					"buildDownloadWorkers", len(downloadWorkers),
@@ -959,6 +961,12 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		// check whether the download is completed
 		completed, err := pdc.finished()
 		if completed {
+			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+				span.LogKV(
+					"finished", 1,
+					"buildDownloadWorkersCnt", buildDownloadWorkersCnt,
+				)
+			}
 			// fmt.Println("DOWNLOAD COMPLETED")
 			pdc.finalize()
 			return
