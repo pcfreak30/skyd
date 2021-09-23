@@ -60,6 +60,12 @@ func (ts *tusStore) Close() {
 	ts.store = nil
 }
 
+// HostsForRegistryUpdateGET queries the /skynet/registry/hosts endpoint.
+func (c *Client) HostsForRegistryUpdateGET() (hg api.HostsForRegistryUpdateGET, err error) {
+	err = c.get("/skynet/registry/hosts", &hg)
+	return
+}
+
 // SkynetBaseSectorGet uses the /skynet/basesector endpoint to fetch a reader of
 // the basesector data.
 func (c *Client) SkynetBaseSectorGet(skylink string) (io.ReadCloser, error) {

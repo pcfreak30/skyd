@@ -141,7 +141,7 @@ func (us *skynetTUSMongoUploadStore) ToPrune(ctx context.Context) ([]skymodules.
 
 	filter := bson.M{
 		"lastwrite": bson.M{
-			"$lt": time.Now().Add(-PruneTUSUploadTimeout),
+			"$lt": time.Now().Add(-PruneTUSUploadTimeout).UTC(),
 		},
 		"complete": false,
 		"$or": bson.A{
