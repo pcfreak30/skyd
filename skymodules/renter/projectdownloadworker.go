@@ -1108,6 +1108,9 @@ func buildDownloadWorkers(workers []*individualWorker, numPieces int) []download
 	// unresolved workers to combine them into chimeras
 	var unresolvedWorkers []*individualWorker
 	for _, w := range workers {
+		if len(w.pieceIndices) == 0 {
+			continue
+		}
 		if w.resolved() {
 			downloadWorkers = append(downloadWorkers, w)
 		} else {
