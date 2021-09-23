@@ -261,11 +261,13 @@ func (pdc *projectDownloadChunk) updateAvailablePieces() bool {
 	}
 
 	// add any new resolved workers to the pdc's list of available pieces.
+	var updatedPieces bool
 	for i := pdc.workersConsideredIndex; i < len(ws.resolvedWorkers); i++ {
 		// Add the returned worker to available pieces for each piece that the
 		// resolved worker has.
 		resp := ws.resolvedWorkers[i]
 		for _, pieceIndex := range resp.pieceIndices {
+			updatedPieces = true
 			pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], &pieceDownload{
 				worker: resp.worker,
 			})
@@ -280,7 +282,7 @@ func (pdc *projectDownloadChunk) updateAvailablePieces() bool {
 		}
 	}
 	pdc.workersConsideredIndex = len(ws.resolvedWorkers)
-	return true
+	return updatedPieces
 }
 
 // updateAvailablePiecesWithResult will update the available piece for the given
