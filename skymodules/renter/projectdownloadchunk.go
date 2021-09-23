@@ -508,7 +508,14 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 // A time is returned which indicates the expected return time of the worker's
 // download. A bool is returned which indicates whether or not the launch was
 // successful.
-func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOverdrive bool) (time.Time, bool) {
+func (pdc *projectDownloadChunk) launchWorker(ws *workerSet, worker downloadWorker, pieceIndex uint64, isOverdrive bool) (time.Time, bool) {
+	iw, ok := worker.(*individualWorker)
+	if !ok {
+		build.Critical("oops")
+		return time.Time{}, false
+	}
+	w := iw.worker()
+
 	// Sanity check that the pieceOffset and pieceLength are segment aligned.
 	if pdc.pieceOffset%crypto.SegmentSize != 0 ||
 		pdc.pieceLength%crypto.SegmentSize != 0 {
@@ -535,11 +542,11 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 
 	// Track the launched piece
 	// pdcId := hex.EncodeToString(pdc.uid[:])
-	worker := w.staticHostPubKeyStr
-	if _, exists := pdc.launchedPiecesByWorker[worker]; !exists {
-		pdc.launchedPiecesByWorker[worker] = make(launchedPieces)
+	workerKey := w.staticHostPubKeyStr
+	if _, exists := pdc.launchedPiecesByWorker[workerKey]; !exists {
+		pdc.launchedPiecesByWorker[workerKey] = make(launchedPieces)
 	}
-	pdc.launchedPiecesByWorker[worker][pieceIndex] = time.Now()
+	pdc.launchedPiecesByWorker[workerKey][pieceIndex] = time.Now()
 	// fmt.Printf("%v mark piece %v\n", w.staticHostPubKey.ShortString(), pieceIndex)
 
 	// Track the launched worker
@@ -563,6 +570,8 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 			"launchWorker", worker,
 			"overdriveWorker", isOverdrive,
 			"expectedDuration", time.Until(expectedCompleteTime),
+			"chanceAfterDur", worker.chanceAfter(ws.staticBucketIndex),
+			"wsDuration", ws.staticExpectedDuration,
 			"success", added,
 		)
 	}
@@ -575,7 +584,7 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 	// in this piece, but for the sake of defensive programming we check all
 	// elements anyway.
 	for _, pieceDownload := range pdc.availablePieces[pieceIndex] {
-		if worker == pieceDownload.worker.staticHostPubKeyStr {
+		if workerKey == pieceDownload.worker.staticHostPubKeyStr {
 			pieceDownload.launched = true
 			if added {
 				pieceDownload.expectedCompleteTime = expectedCompleteTime

@@ -273,22 +273,10 @@ func (cw *chimeraWorker) pieces() []uint64 {
 // recalculateChanceAfter recalculates the chances reads complete after every
 // duration from the distribution tracker.
 func (cw *chimeraWorker) recalculateChanceAfter() {
-	if cw.remaining != 0 {
-		build.Critical("developer error, chimera is not complete")
-		return
-	}
-
-	if cw.cachedDistribution == nil && len(cw.distributions) > 0 {
-		halfLife := cw.distributions[0].HalfLife()
-		cw.cachedDistribution = skymodules.NewDistribution(halfLife)
-		for i, distribution := range cw.distributions {
-			cw.cachedDistribution.MergeWith(distribution, cw.weights[i])
-		}
-	}
-
+	distribution := cw.distribution()
 	for bI := 0; bI < skymodules.DistributionTrackerTotalBuckets; bI++ {
 		bDur := skymodules.DistributionDurationForBucketIndex(bI)
-		cw.cachedChancesAfter[bI] = cw.cachedDistribution.ChanceAfter(bDur)
+		cw.cachedChancesAfter[bI] = distribution.ChanceAfter(bDur)
 	}
 }
 
@@ -820,7 +808,7 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, allWorkers []dow
 
 		// launch the piece
 		isOverdrive := len(pdc.launchedWorkers) >= minPieces
-		_, launched = pdc.launchWorker(w.worker(), piece, isOverdrive)
+		_, launched = pdc.launchWorker(ws, w, piece, isOverdrive)
 		// fmt.Printf("- %v launched for %v success %v\n", w.identifier(), piece, launched)
 		if launched {
 			iw := w.(*individualWorker)
