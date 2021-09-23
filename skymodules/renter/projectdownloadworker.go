@@ -823,6 +823,7 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, allWorkers []dow
 					"expectedDuration", time.Until(expectedCompleteTime),
 					"chanceAfterDur", w.chanceAfter(ws.staticBucketIndex),
 					"wsDuration", ws.staticExpectedDuration,
+					"wsIndex", ws.staticBucketIndex,
 					"chimeras", chimeras,
 					"success", launched,
 				)
