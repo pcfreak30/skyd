@@ -869,8 +869,15 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	// register for a worker update chan
 	workerUpdateChan := ws.managedRegisterForWorkerUpdate()
 
+	prevLog := time.Now()
 	for {
 		// fmt.Println("ITER")
+		if span := opentracing.SpanFromContext(pdc.ctx); span != nil && time.Since(prevLog) > 100*time.Millisecond {
+			span.LogKV(
+				"downloadLoopIter", time.Since(pdc.launchTime),
+			)
+			prevLog = time.Now()
+		}
 
 		// update the workers on every iteration
 		pdc.updateWorkers(workers)
@@ -886,7 +893,14 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			// recomputes the chances after duration, which is a computationally
 			// very intensive
 			// fmt.Println("rebuild download workers")
+			start := time.Now()
 			downloadWorkers = buildDownloadWorkers(workers, numPieces)
+			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+				span.LogKV(
+					"buildDownloadWorkers", len(downloadWorkers),
+					"took", time.Since(start),
+				)
+			}
 		}
 
 		// create a worker set and launch it
