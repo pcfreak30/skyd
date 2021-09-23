@@ -55,7 +55,7 @@ type (
 		// recalculateChanceAfter recalculates the chances that are cached on
 		// the download workers because it's computationally intensive to
 		// calculate those
-		chanceAfter(dur time.Duration) float64
+		chanceAfter(index int) float64
 		recalculateChanceAfter()
 
 		// worker returns the underlying worker
@@ -74,7 +74,7 @@ type (
 		// cachedChancesAfter maps a duration to the chance this worker can
 		// download a piece in the timespan defined by that duration, we have to
 		// cache this because it's computationally expensive to compute
-		cachedChancesAfter map[time.Duration]float64
+		cachedChancesAfter [skymodules.DistributionTrackerTotalBuckets]float64
 
 		// cachedDistribution contains a distribution that is the weighted
 		// combination of all worker distrubtions in this chimera worker, it is
@@ -122,7 +122,7 @@ type (
 		// cachedChancesAfter maps a duration to the chance this worker can
 		// download a piece in the timespan defined by that duration, we have to
 		// cache this because it's computationally expensive to compute
-		cachedChancesAfter map[time.Duration]float64
+		cachedChancesAfter [skymodules.DistributionTrackerTotalBuckets]float64
 
 		// currentPiece is the piece that was marked by the download algorithm
 		// as the piece to download next, this is used to ensure that workers
@@ -141,6 +141,7 @@ type (
 	workerSet struct {
 		workers []downloadWorker
 
+		staticBucketIndex      int
 		staticExpectedDuration time.Duration
 		staticLength           uint64
 		staticMinPieces        int
@@ -165,8 +166,7 @@ func NewChimeraWorker(numPieces int) *chimeraWorker {
 	fastrand.Read(staticUID[:])
 
 	ch := &chimeraWorker{
-		cachedChancesAfter: make(map[time.Duration]float64, skymodules.DistributionTrackerTotalBuckets),
-		remaining:          1,
+		remaining: 1,
 
 		staticPieceIndices: pieceIndices,
 		staticUID:          hex.EncodeToString(staticUID[:]),
@@ -223,12 +223,8 @@ func (cw *chimeraWorker) cost(length uint64) types.Currency {
 
 // chanceAfter returns the chance this worker completes a read after the given
 // duration.
-func (cw *chimeraWorker) chanceAfter(dur time.Duration) float64 {
-	chance, exists := cw.cachedChancesAfter[dur]
-	if !exists {
-		build.Critical("developer error, unexpected duration")
-	}
-	return chance
+func (cw *chimeraWorker) chanceAfter(index int) float64 {
+	return cw.cachedChancesAfter[index]
 }
 
 // distribution implements the downloadWorker interface.
@@ -292,7 +288,7 @@ func (cw *chimeraWorker) recalculateChanceAfter() {
 
 	for bI := 0; bI < skymodules.DistributionTrackerTotalBuckets; bI++ {
 		bDur := skymodules.DistributionDurationForBucketIndex(bI)
-		cw.cachedChancesAfter[bDur] = cw.cachedDistribution.ChanceAfter(bDur)
+		cw.cachedChancesAfter[bI] = cw.cachedDistribution.ChanceAfter(bDur)
 	}
 }
 
@@ -313,12 +309,8 @@ func (iw *individualWorker) cost(length uint64) types.Currency {
 
 // chanceAfter returns the chance this worker completes a read after the given
 // duration.
-func (iw *individualWorker) chanceAfter(dur time.Duration) float64 {
-	chance, exists := iw.cachedChancesAfter[dur]
-	if !exists {
-		build.Critical("unexpected duration")
-	}
-	return chance
+func (iw *individualWorker) chanceAfter(index int) float64 {
+	return iw.cachedChancesAfter[index]
 }
 
 // recalculateChanceAfter recalculates the chances reads complete after every
@@ -339,7 +331,7 @@ func (iw *individualWorker) recalculateChanceAfter() {
 
 	for bI := 0; bI < skymodules.DistributionTrackerTotalBuckets; bI++ {
 		bDur := skymodules.DistributionDurationForBucketIndex(bI)
-		iw.cachedChancesAfter[bDur] = distribution.ChanceAfter(bDur)
+		iw.cachedChancesAfter[bI] = distribution.ChanceAfter(bDur)
 	}
 }
 
@@ -428,6 +420,7 @@ func (ws *workerSet) clone() *workerSet {
 	return &workerSet{
 		workers: append([]downloadWorker{}, ws.workers...),
 
+		staticBucketIndex:      ws.staticBucketIndex,
 		staticExpectedDuration: ws.staticExpectedDuration,
 		staticLength:           ws.staticLength,
 		staticMinPieces:        ws.staticMinPieces,
@@ -519,10 +512,10 @@ func (ws *workerSet) adjustedDuration(ppms types.Currency) time.Duration {
 
 // chancesAfter is a small helper function that returns a list of every worker's
 // chance it's completed after the given duration.
-func (ws *workerSet) chancesAfter(dur time.Duration) coinflips {
+func (ws *workerSet) chancesAfter(index int) coinflips {
 	chances := make(coinflips, len(ws.workers))
 	for i, w := range ws.workers {
-		chances[i] = w.chanceAfter(dur)
+		chances[i] = w.chanceAfter(index)
 	}
 	return chances
 }
@@ -533,9 +526,9 @@ func (ws *workerSet) chancesAfter(dur time.Duration) coinflips {
 // NOTE: this function abstracts the chance a worker resolves after the given
 // duration as a coinflip to make it easier to reason about the problem given
 // that the workerset consists out of one or more overdrive workers.
-func (ws *workerSet) chanceGreaterThanHalf(dur time.Duration) bool {
+func (ws *workerSet) chanceGreaterThanHalf(index int) bool {
 	// convert every worker into a coinflip
-	coinflips := ws.chancesAfter(dur)
+	coinflips := ws.chancesAfter(index)
 
 	var chance float64
 	switch ws.numOverdriveWorkers() {
@@ -713,8 +706,6 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 			pieceIndices:  rw.pieceIndices,
 			resolveChance: 1,
 
-			cachedChancesAfter: make(map[time.Duration]float64, skymodules.DistributionTrackerTotalBuckets),
-
 			staticIdentifier:       rw.worker.staticHostPubKey.ShortString(),
 			staticExpectedCost:     jrq.callExpectedJobCost(length),
 			staticReadDistribution: rdt.Distribution(0),
@@ -742,8 +733,6 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 		workers = append(workers, &individualWorker{
 			pieceIndices:  pieceIndices,
 			resolveChance: w.staticJobHasSectorQueue.callAvailabilityRate(ec.NumPieces()),
-
-			cachedChancesAfter: make(map[time.Duration]float64, skymodules.DistributionTrackerTotalBuckets),
 
 			staticIdentifier:          w.staticHostPubKey.ShortString(),
 			staticExpectedCost:        jrq.callExpectedJobCost(length),
@@ -807,12 +796,13 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, allWorkers []dow
 			resolved := ""
 			for _, dw := range allWorkers {
 				if iw, ok := dw.(*individualWorker); ok && len(iw.pieceIndices) > 0 {
-					resolved += fmt.Sprintf("%v resolves in %v has %v chance to complete after %v\n", iw.staticWorker.staticHostPubKeyStr, time.Until(iw.staticExpectedResolveTime), iw.chanceAfter(ws.staticExpectedDuration), ws.staticExpectedDuration)
+					resolved += fmt.Sprintf("%v resolves in %v has %v chance to complete after %v\n", iw.staticWorker.staticHostPubKeyStr, time.Until(iw.staticExpectedResolveTime), iw.chanceAfter(
+						ws.staticBucketIndex), ws.staticExpectedDuration)
 				}
 			}
 			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
 				span.LogKV(
-					"chimera", cw.cachedChancesAfter[ws.staticExpectedDuration],
+					"chimera", cw.cachedChancesAfter[ws.staticBucketIndex],
 					"chimeraWorkers", len(cw.workers),
 					"resolvedWorkers", resolved,
 					"workerSetExpectedDuration", ws.staticExpectedDuration,
@@ -868,26 +858,18 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	// register for a worker update chan
 	workerUpdateChan := ws.managedRegisterForWorkerUpdate()
 
-	prevLog := time.Now()
+	// prevLog := time.Now()
 	for {
 		// fmt.Println("ITER")
-		if span := opentracing.SpanFromContext(pdc.ctx); span != nil && time.Since(prevLog) > 100*time.Millisecond {
-			span.LogKV(
-				"downloadLoopIter", time.Since(pdc.launchTime),
-			)
-			prevLog = time.Now()
-		}
+		// if span := opentracing.SpanFromContext(pdc.ctx); span != nil && time.Since(prevLog) > 100*time.Millisecond {
+		// 	span.LogKV(
+		// 		"downloadLoopIter", time.Since(pdc.launchTime),
+		// 	)
+		// 	prevLog = time.Now()
+		// }
 
 		// update the workers on every iteration
-		start := time.Now()
 		pdc.updateWorkers(workers)
-		if time.Since(start) > 100*time.Millisecond {
-			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-				span.LogKV(
-					"updateWorkersTookLong", time.Since(start),
-				)
-			}
-		}
 
 		// update the available pieces
 		updated := pdc.updateAvailablePieces()
@@ -900,27 +882,12 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			// recomputes the chances after duration, which is a computationally
 			// very intensive
 			// fmt.Println("rebuild download workers")
-			start := time.Now()
 			downloadWorkers = buildDownloadWorkers(workers, numPieces)
 			buildDownloadWorkersCnt++
-			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-				span.LogKV(
-					"buildDownloadWorkers", len(downloadWorkers),
-					"took", time.Since(start),
-				)
-			}
 		}
 
 		// create a worker set and launch it
-		start = time.Now()
 		workerSet, err := pdc.createWorkerSet(downloadWorkers, maxOverdriveWorkers)
-		if time.Since(start) > 100*time.Millisecond {
-			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-				span.LogKV(
-					"createWorkerSetTookLong", time.Since(start),
-				)
-			}
-		}
 		if err != nil {
 			pdc.fail(err)
 			return
@@ -1008,7 +975,7 @@ OUTER:
 			}
 
 			// divide the workers in most likely and less likely
-			mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(downloadWorkers, bDur, workersNeeded)
+			mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(downloadWorkers, bI, workersNeeded)
 			// fmt.Printf("%v workers split in %v most likely and %v less\n", len(downloadWorkers), len(mostLikely), len(lessLikely))
 
 			// if there aren't even likely workers, escape early
@@ -1020,6 +987,7 @@ OUTER:
 			mostLikelySet := &workerSet{
 				workers: mostLikely,
 
+				staticBucketIndex:      bI,
 				staticExpectedDuration: bDur,
 				staticLength:           length,
 				staticMinPieces:        minPieces,
@@ -1033,7 +1001,7 @@ OUTER:
 			// if the chance of the most likely set does not exceed 50%, it is
 			// not high enough to continue, no need to continue this iteration,
 			// we need to try a slower and thus more likely bucket
-			if !mostLikelySet.chanceGreaterThanHalf(bDur) {
+			if !mostLikelySet.chanceGreaterThanHalf(bI) {
 				// fmt.Println("mostlikely set not good enough")
 				continue
 			}
@@ -1049,7 +1017,7 @@ OUTER:
 				// if the cheaper set's chance of completing before the given
 				// duration is not greater than half we can break because the
 				// `lessLikely` workers were sorted by chance
-				if !cheaperSet.chanceGreaterThanHalf(bDur) {
+				if !cheaperSet.chanceGreaterThanHalf(bI) {
 					break
 				}
 				mostLikelySet = cheaperSet
@@ -1166,12 +1134,12 @@ func buildDownloadWorkers(workers []*individualWorker, numPieces int) []download
 // workers but also takes into account an amount of overdrive workers). This
 // method will split the given workers array in a list of most likely workers,
 // and a list of less likely workers.
-func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWorker, bDur time.Duration, workersNeeded int) ([]downloadWorker, []downloadWorker) {
+func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWorker, bI int, workersNeeded int) ([]downloadWorker, []downloadWorker) {
 	// sort the workers by percentage chance they complete after the
 	// current bucket duration
 	sort.Slice(workers, func(i, j int) bool {
-		chanceI := workers[i].chanceAfter(bDur)
-		chanceJ := workers[j].chanceAfter(bDur)
+		chanceI := workers[i].chanceAfter(bI)
+		chanceJ := workers[j].chanceAfter(bI)
 		return chanceI > chanceJ
 	})
 

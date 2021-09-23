@@ -1,7 +1,6 @@
 package renter
 
 import (
-	"bytes"
 	"math"
 	"reflect"
 	"testing"
@@ -933,9 +932,6 @@ func TestBuildChimeraWorkers(t *testing.T) {
 			t.Fatal("bad")
 		}
 		if len(cw.staticPieceIndices) != numPieces {
-			t.Fatal("bad")
-		}
-		if bytes.Equal(cw.staticUID[:], emptyUID[:]) {
 			t.Fatal("bad")
 		}
 	}
