@@ -817,4 +817,32 @@ func TestSkynetResumeOnSeparatePortal(t *testing.T) {
 	if err := uploaderB.Upload(); err != nil {
 		t.Fatal(err)
 	}
+
+	// Both portal should be able to provide a skylink and download it.
+	skylinkA, err := portalA.SkylinkFromTUSID(filepath.Base(urlA))
+	if err != nil {
+		t.Fatal(err)
+	}
+	skylinkB, err := portalB.SkylinkFromTUSID(filepath.Base(urlB))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dataA, err := portalA.SkynetSkylinkGet(skylinkA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataB, err := portalB.SkynetSkylinkGet(skylinkB)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(dataA, uploadData) {
+		t.Fatal("dataA mismatch")
+	}
+	if !bytes.Equal(dataB, uploadData) {
+		t.Fatal("dataB mismatch")
+	}
+
+	// TODO: check portal names in db.
 }
