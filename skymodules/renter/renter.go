@@ -1044,7 +1044,7 @@ func (r *Renter) Skykeys() ([]skykey.Skykey, error) {
 var _ skymodules.Renter = (*Renter)(nil)
 
 // renterBlockingStartup handles the blocking portion of NewCustomRenter.
-func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb skymodules.HostDB, w modules.Wallet, hc hostContractor, mux *siamux.SiaMux, persistDir string, rl *ratelimit.RateLimit, deps skymodules.SkydDependencies) (*Renter, error) {
+func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb skymodules.HostDB, w modules.Wallet, hc hostContractor, mux *siamux.SiaMux, tus skymodules.SkynetTUSUploadStore, persistDir string, rl *ratelimit.RateLimit, deps skymodules.SkydDependencies) (*Renter, error) {
 	if g == nil {
 		return nil, errNilGateway
 	}
@@ -1114,7 +1114,10 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		mu:                   siasync.New(modules.SafeMutexDelay, 1),
 		staticTPool:          tpool,
 	}
-	r.staticSkynetTUSUploader = newSkynetTUSUploader(r)
+	r.staticSkynetTUSUploader = newSkynetTUSUploader(r, tus)
+	if err := r.tg.AfterStop(r.staticSkynetTUSUploader.Close); err != nil {
+		return nil, err
+	}
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
 	close(r.staticUploadHeap.pauseChan)
 
@@ -1311,11 +1314,11 @@ func (r *Renter) threadedUpdateRenterContractsAndUtilities() {
 }
 
 // NewCustomRenter initializes a renter and returns it.
-func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb skymodules.HostDB, w modules.Wallet, hc hostContractor, mux *siamux.SiaMux, persistDir string, rl *ratelimit.RateLimit, deps skymodules.SkydDependencies) (*Renter, <-chan error) {
+func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb skymodules.HostDB, w modules.Wallet, hc hostContractor, mux *siamux.SiaMux, tus skymodules.SkynetTUSUploadStore, persistDir string, rl *ratelimit.RateLimit, deps skymodules.SkydDependencies) (*Renter, <-chan error) {
 	errChan := make(chan error, 1)
 
 	// Blocking startup.
-	r, err := renterBlockingStartup(g, cs, tpool, hdb, w, hc, mux, persistDir, rl, deps)
+	r, err := renterBlockingStartup(g, cs, tpool, hdb, w, hc, mux, tus, persistDir, rl, deps)
 	if err != nil {
 		errChan <- err
 		return nil, errChan
@@ -1338,7 +1341,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 }
 
 // New returns an initialized renter.
-func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, mux *siamux.SiaMux, rl *ratelimit.RateLimit, persistDir string) (*Renter, <-chan error) {
+func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, mux *siamux.SiaMux, tus skymodules.SkynetTUSUploadStore, rl *ratelimit.RateLimit, persistDir string) (*Renter, <-chan error) {
 	errChan := make(chan error, 1)
 	hdb, errChanHDB := hostdb.New(g, cs, tpool, mux, persistDir)
 	if err := modules.PeekErr(errChanHDB); err != nil {
@@ -1350,7 +1353,7 @@ func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpoo
 		errChan <- err
 		return nil, errChan
 	}
-	renter, errChanRenter := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, mux, persistDir, rl, skymodules.SkydProdDependencies)
+	renter, errChanRenter := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, mux, tus, persistDir, rl, skymodules.SkydProdDependencies)
 	if err := modules.PeekErr(errChanRenter); err != nil {
 		errChan <- err
 		return nil, errChan

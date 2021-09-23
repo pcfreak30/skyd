@@ -152,7 +152,7 @@ func (r *Renter) managedInitUploadStream(up skymodules.FileUploadParams) (*files
 	}
 
 	// Create the Siafile and add to renter
-	err = r.staticFileSystem.NewSiaFile(siaPath, up.Source, up.ErasureCode, cipherKey, 0, defaultFilePerm, up.DisablePartialChunk)
+	err = r.staticFileSystem.NewSiaFile(siaPath, up.Source, up.ErasureCode, cipherKey, 0, defaultFilePerm)
 	if err != nil {
 		return nil, err
 	}

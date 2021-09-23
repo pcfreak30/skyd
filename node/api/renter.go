@@ -1970,11 +1970,10 @@ func (api *API) renterUploadHandler(w http.ResponseWriter, req *http.Request, ps
 		return
 	}
 	err = api.renter.Upload(skymodules.FileUploadParams{
-		Source:              source,
-		SiaPath:             siaPath,
-		ErasureCode:         ec,
-		Force:               force,
-		DisablePartialChunk: true, // TODO: remove this
+		Source:      source,
+		SiaPath:     siaPath,
+		ErasureCode: ec,
+		Force:       force,
 
 		// NOTE: can make this an optional param.
 		CipherType: crypto.TypeDefaultRenter,

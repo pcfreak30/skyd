@@ -48,14 +48,17 @@ func TestReadRegistryJob(t *testing.T) {
 		t.Fatal("estimate wasn't seeded", cutoffEstimate)
 	}
 
-	// Read the entry twice to make sure the stats are updated.
+	// Read the entry
 	lookedUpRV, err := wt.ReadRegistry(context.Background(), testSpan(), spk, rv.Tweak)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = wt.ReadRegistry(context.Background(), testSpan(), spk, rv.Tweak)
-	if err != nil {
-		t.Fatal(err)
+	// Read the entry a few more times to guarantee the stats are updated.
+	for i := 0; i < 3; i++ {
+		_, err = wt.ReadRegistry(context.Background(), testSpan(), spk, rv.Tweak)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// The estimate should be updated.
