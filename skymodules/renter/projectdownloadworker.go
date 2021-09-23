@@ -273,11 +273,7 @@ func (cw *chimeraWorker) pieces() []uint64 {
 // recalculateChanceAfter recalculates the chances reads complete after every
 // duration from the distribution tracker.
 func (cw *chimeraWorker) recalculateChanceAfter() {
-	distribution := cw.distribution()
-	for bI := 0; bI < skymodules.DistributionTrackerTotalBuckets; bI++ {
-		bDur := skymodules.DistributionDurationForBucketIndex(bI)
-		cw.cachedChancesAfter[bI] = distribution.ChanceAfter(bDur)
-	}
+	cw.cachedChancesAfter = cw.distribution().ChancesAfter()
 }
 
 // worker implements the downloadWorker interface, chimera workers return nil
@@ -317,10 +313,7 @@ func (iw *individualWorker) recalculateChanceAfter() {
 		distribution = clone
 	}
 
-	for bI := 0; bI < skymodules.DistributionTrackerTotalBuckets; bI++ {
-		bDur := skymodules.DistributionDurationForBucketIndex(bI)
-		iw.cachedChancesAfter[bI] = distribution.ChanceAfter(bDur)
-	}
+	iw.cachedChancesAfter = distribution.ChancesAfter()
 }
 
 // getPieceForDownload returns the piece to download next
