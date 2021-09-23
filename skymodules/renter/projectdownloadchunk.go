@@ -567,7 +567,7 @@ func (pdc *projectDownloadChunk) launchWorker(ws *workerSet, worker downloadWork
 	// Log the event.
 	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
 		span.LogKV(
-			"launchWorker", worker,
+			"launchWorker", workerKey,
 			"overdriveWorker", isOverdrive,
 			"expectedDuration", time.Until(expectedCompleteTime),
 			"chanceAfterDur", worker.chanceAfter(ws.staticBucketIndex),

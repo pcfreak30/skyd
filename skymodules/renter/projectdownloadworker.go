@@ -846,15 +846,15 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	// register for a worker update chan
 	workerUpdateChan := ws.managedRegisterForWorkerUpdate()
 
-	// prevLog := time.Now()
+	prevLog := time.Now()
 	for {
 		// fmt.Println("ITER")
-		// if span := opentracing.SpanFromContext(pdc.ctx); span != nil && time.Since(prevLog) > 100*time.Millisecond {
-		// 	span.LogKV(
-		// 		"downloadLoopIter", time.Since(pdc.launchTime),
-		// 	)
-		// 	prevLog = time.Now()
-		// }
+		if span := opentracing.SpanFromContext(pdc.ctx); span != nil && time.Since(prevLog) > 100*time.Millisecond {
+			span.LogKV(
+				"downloadLoopIter", time.Since(pdc.launchTime),
+			)
+			prevLog = time.Now()
+		}
 
 		// update the workers on every iteration
 		pdc.updateWorkers(workers)
