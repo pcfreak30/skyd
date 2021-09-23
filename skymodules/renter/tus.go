@@ -28,7 +28,7 @@ var (
 	PruneTUSUploadTimeout = build.Select(build.Var{
 		Dev:      5 * time.Minute,
 		Standard: 20 * time.Minute,
-		Testing:  5 * time.Second,
+		Testing:  10 * time.Second,
 	}).(time.Duration)
 
 	// PruneTUSUploadInterval is the time that passes between pruning attempts.
@@ -36,7 +36,7 @@ var (
 	// a time.
 	PruneTUSUploadInterval = build.Select(build.Var{
 		Dev:      time.Minute,
-		Standard: 5 * time.Minute,
+		Standard: time.Hour,
 		Testing:  time.Second,
 	}).(time.Duration)
 )
@@ -512,9 +512,11 @@ func (r *Renter) threadedPruneTUSUploads() {
 		}
 
 		// Prune from the store.
-		err = r.staticSkynetTUSUploader.staticUploadStore.Prune(r.tg.StopCtx(), prunedIDs)
-		if err != nil {
-			r.staticLog.Printf("WARN: failed to prune %v uploads from store: %v", len(prunedIDs), err)
+		if len(prunedIDs) > 0 {
+			err = r.staticSkynetTUSUploader.staticUploadStore.Prune(r.tg.StopCtx(), prunedIDs)
+			if err != nil {
+				r.staticLog.Printf("WARN: failed to prune %v uploads from store: %v", len(prunedIDs), err)
+			}
 		}
 	}
 }

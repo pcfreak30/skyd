@@ -2,6 +2,7 @@ package skynet
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -23,6 +24,8 @@ import (
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -772,7 +775,10 @@ func TestSkynetResumeOnSeparatePortal(t *testing.T) {
 	}
 	rt.MongoUploadStoreURI = uri
 	rt.MongoUploadStoreCreds = mongoTestCreds
-	portals, err := tg.AddNodeN(rt, 2)
+	rtA, rtB := rt, rt
+	rtA.MongoUploadStorePortalName = "A"
+	rtB.MongoUploadStorePortalName = "B"
+	portals, err := tg.AddNodes(rtA, rtB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -806,7 +812,8 @@ func TestSkynetResumeOnSeparatePortal(t *testing.T) {
 	if !found {
 		t.Fatal("url should exist")
 	}
-	urlB := fmt.Sprintf("%s/%s", tcB.Url, filepath.Base(urlA))
+	uploadID := filepath.Base(urlA)
+	urlB := fmt.Sprintf("%s/%s", tcB.Url, uploadID)
 	tcB.Config.Store.Set(upload.Fingerprint, urlB)
 
 	// Finish the upload on portal B.
@@ -819,11 +826,11 @@ func TestSkynetResumeOnSeparatePortal(t *testing.T) {
 	}
 
 	// Both portal should be able to provide a skylink and download it.
-	skylinkA, err := portalA.SkylinkFromTUSID(filepath.Base(urlA))
+	skylinkA, err := portalA.SkylinkFromTUSID(uploadID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	skylinkB, err := portalB.SkylinkFromTUSID(filepath.Base(urlB))
+	skylinkB, err := portalB.SkylinkFromTUSID(uploadID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -844,5 +851,53 @@ func TestSkynetResumeOnSeparatePortal(t *testing.T) {
 		t.Fatal("dataB mismatch")
 	}
 
-	// TODO: check portal names in db.
+	// Connect to db directly.
+	opts := options.Client().
+		ApplyURI(uri).
+		SetAuth(mongoTestCreds)
+
+	client, err := mongo.Connect(context.Background(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Disconnect(context.Background())
+
+	collection := client.Database(renter.TusDBName).Collection(renter.TusUploadsMongoCollectionName)
+
+	// Get all uploads.
+	c, err := collection.Find(context.Background(), bson.M{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var uploads []renter.MongoTUSUpload
+	for c.Next(context.Background()) {
+		var upload renter.MongoTUSUpload
+		err = c.Decode(&upload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		uploads = append(uploads, upload)
+	}
+
+	// Should have 1 upload.
+	if len(uploads) != 1 {
+		for _, u := range uploads {
+			t.Log(u.ID, u.PortalNames)
+		}
+		t.Fatal("expected 1 upload got", len(uploads))
+	}
+	u := uploads[0]
+
+	// Upload should contain both portal names.
+	if len(u.PortalNames) != 2 {
+		t.Fatal("expected 2 portals got", u.PortalNames)
+	}
+	if u.PortalNames[0] != "A" || u.PortalNames[1] != "B" {
+		t.Fatal("wrong portal names", u.PortalNames)
+	}
+
+	// Drop uploads at the end of the test.
+	if err := collection.Drop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 }

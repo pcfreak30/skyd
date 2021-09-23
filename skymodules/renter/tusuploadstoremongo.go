@@ -28,11 +28,11 @@ const (
 
 	// tusDBName is the name of the database all TUS related data is stored
 	// in.
-	tusDBName = "tus"
+	TusDBName = "tus"
 
 	// tusUploadsMongoCollectionName is the name of the collection within
 	// the database used to store upload info.
-	tusUploadsMongoCollectionName = "uploads"
+	TusUploadsMongoCollectionName = "uploads"
 
 	// tusLocksMongoCollectionName is the name of the collection within the
 	// database used to store locks.
@@ -48,7 +48,7 @@ type (
 		staticPortalHostname string
 	}
 
-	mongoTUSUpload struct {
+	MongoTUSUpload struct {
 		ID          string    `bson:"_id"`
 		Complete    bool      `bson:"complete"`
 		LastWrite   time.Time `bson:"lastwrite"`
@@ -68,7 +68,7 @@ type (
 		IsSmallFile     bool   `bson:"issmallfile"`
 		SmallUploadData []byte `bson:"smalluploaddata"`
 
-		staticUploads *mongo.Collection
+		staticUploadStore *skynetTUSMongoUploadStore
 	}
 
 	// skynetMongoLock is a lock used for locking an upload.
@@ -157,7 +157,7 @@ func (us *skynetTUSMongoUploadStore) ToPrune(ctx context.Context) ([]skymodules.
 	// Decode uploads.
 	var uploads []skymodules.SkynetTUSUpload
 	for cursor.Next(ctx) {
-		var upload mongoTUSUpload
+		var upload MongoTUSUpload
 		if err := cursor.Decode(&upload); err != nil {
 			return nil, err
 		}
@@ -211,7 +211,7 @@ func (us *skynetTUSMongoUploadStore) Prune(ctx context.Context, ids []string) er
 
 // CreateUpload creates a new upload and adds it to the store.
 func (us *skynetTUSMongoUploadStore) CreateUpload(ctx context.Context, fi handler.FileInfo, sp skymodules.SiaPath, fileName string, baseChunkRedundancy uint8, fanoutDataPieces, fanoutParityPieces int, sm []byte, ct crypto.CipherType) (skymodules.SkynetTUSUpload, error) {
-	upload := &mongoTUSUpload{
+	upload := &MongoTUSUpload{
 		ID:          fi.ID,
 		Complete:    false,
 		FanoutBytes: nil,
@@ -228,7 +228,7 @@ func (us *skynetTUSMongoUploadStore) CreateUpload(ctx context.Context, fi handle
 		FanoutParityPieces: fanoutParityPieces,
 		CipherType:         ct,
 
-		staticUploads: us.staticUploadCollection(),
+		staticUploadStore: us,
 	}
 	// Insert into db.
 	_, err := us.staticUploadCollection().InsertOne(ctx, upload)
@@ -247,26 +247,26 @@ func (us *skynetTUSMongoUploadStore) GetUpload(ctx context.Context, id string) (
 	if r.Err() != nil {
 		return nil, r.Err()
 	}
-	var upload mongoTUSUpload
+	var upload MongoTUSUpload
 	if err := r.Decode(&upload); err != nil {
 		return nil, errors.AddContext(err, "failed to decode upload")
 	}
-	upload.staticUploads = us.staticUploadCollection()
+	upload.staticUploadStore = us
 	return &upload, nil
 }
 
 // staticLockCollection returns the mongo collection for the uploads.
 func (us *skynetTUSMongoUploadStore) staticUploadCollection() *mongo.Collection {
-	return us.staticClient.Database(tusDBName).Collection(tusUploadsMongoCollectionName)
+	return us.staticClient.Database(TusDBName).Collection(TusUploadsMongoCollectionName)
 }
 
 // staticLockCollection returns the mongo collection for the locks.
 func (us *skynetTUSMongoUploadStore) staticLockCollection() *mongo.Collection {
-	return us.staticClient.Database(tusDBName).Collection(tusLocksMongoCollectionName)
+	return us.staticClient.Database(TusDBName).Collection(tusLocksMongoCollectionName)
 }
 
 // Skylink returns the upload's skylink if available already.
-func (u *mongoTUSUpload) Skylink() (skymodules.Skylink, bool) {
+func (u *MongoTUSUpload) Skylink() (skymodules.Skylink, bool) {
 	sl, exists := u.FileInfo.MetaData["Skylink"]
 	if !exists {
 		return skymodules.Skylink{}, false
@@ -280,19 +280,19 @@ func (u *mongoTUSUpload) Skylink() (skymodules.Skylink, bool) {
 }
 
 // GetInfo returns the FileInfo of the upload.
-func (u *mongoTUSUpload) GetInfo(ctx context.Context) (handler.FileInfo, error) {
+func (u *MongoTUSUpload) GetInfo(ctx context.Context) (handler.FileInfo, error) {
 	return u.FileInfo, nil
 }
 
 // IsSmallUpload indicates whether the upload is considered a
 // small upload. That means the upload contained less than a
 // chunksize of data.
-func (u *mongoTUSUpload) IsSmallUpload(ctx context.Context) (bool, error) {
+func (u *MongoTUSUpload) IsSmallUpload(ctx context.Context) (bool, error) {
 	return u.IsSmallFile, nil
 }
 
 // PruneInfo returns the info required to prune uploads.
-func (u *mongoTUSUpload) PruneInfo(ctx context.Context) (id string, sp skymodules.SiaPath, err error) {
+func (u *MongoTUSUpload) PruneInfo(ctx context.Context) (id string, sp skymodules.SiaPath, err error) {
 	id = u.FileInfo.ID
 	sp = u.SiaPath
 	return
@@ -300,7 +300,7 @@ func (u *mongoTUSUpload) PruneInfo(ctx context.Context) (id string, sp skymodule
 
 // UploadParams returns the upload parameters used for the
 // upload.
-func (u *mongoTUSUpload) UploadParams(ctx context.Context) (skymodules.SkyfileUploadParameters, skymodules.FileUploadParams, error) {
+func (u *MongoTUSUpload) UploadParams(ctx context.Context) (skymodules.SkyfileUploadParameters, skymodules.FileUploadParams, error) {
 	sup := skymodules.SkyfileUploadParameters{
 		BaseChunkRedundancy: u.BaseChunkRedundancy,
 		Filename:            u.FileName,
@@ -319,7 +319,7 @@ func (u *mongoTUSUpload) UploadParams(ctx context.Context) (skymodules.SkyfileUp
 
 // CommitWriteChunkSmallFile commits writing a chunk of a small
 // file.
-func (u *mongoTUSUpload) CommitWriteChunkSmallFile(ctx context.Context, newOffset int64, newLastWrite time.Time, smallFileData []byte) error {
+func (u *MongoTUSUpload) CommitWriteChunkSmallFile(ctx context.Context, newOffset int64, newLastWrite time.Time, smallFileData []byte) error {
 	u.SmallUploadData = smallFileData
 	return u.commitWriteChunk(ctx, bson.M{
 		"smalluploaddata": u.SmallUploadData,
@@ -328,7 +328,7 @@ func (u *mongoTUSUpload) CommitWriteChunkSmallFile(ctx context.Context, newOffse
 
 // CommitWriteChunk commits writing a chunk of either a small or
 // large file with fanout.
-func (u *mongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error {
+func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error {
 	// NOTE: This could potentially be improved to append to the fanout
 	// instead of replacing it.
 	u.FanoutBytes = append(u.FanoutBytes, fanout...)
@@ -337,19 +337,32 @@ func (u *mongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, 
 	}, newOffset, newLastWrite, isSmall)
 }
 
+// ensurePortalName adds a portal name to a slice if it's not already in there.
+func ensurePortalName(in []string, portalName string) []string {
+	for _, portal := range in {
+		if portal == portalName {
+			return in
+		}
+	}
+	return append(in, portalName)
+}
+
 // commitWriteChunk commits a chunk write and also applies the updates provided
 // by update.
-func (u *mongoTUSUpload) commitWriteChunk(ctx context.Context, set bson.M, newOffset int64, newLastWrite time.Time, smallFile bool) error {
+func (u *MongoTUSUpload) commitWriteChunk(ctx context.Context, set bson.M, newOffset int64, newLastWrite time.Time, smallFile bool) error {
+	uploads := u.staticUploadStore.staticUploadCollection()
+	u.PortalNames = ensurePortalName(u.PortalNames, u.staticUploadStore.staticPortalHostname)
 	u.FileInfo.Offset = newOffset
 	u.LastWrite = newLastWrite
 	u.IsSmallFile = smallFile
 	set["fileinfo"] = u.FileInfo
 	set["lastwrite"] = u.LastWrite.UTC()
 	set["issmallfile"] = u.IsSmallFile
+	set["portalnames"] = u.PortalNames
 	update := bson.M{
 		"$set": set,
 	}
-	result := u.staticUploads.FindOneAndUpdate(ctx, bson.M{"_id": u.FileInfo.ID}, update)
+	result := uploads.FindOneAndUpdate(ctx, bson.M{"_id": u.FileInfo.ID}, update)
 	if errors.Contains(result.Err(), mongo.ErrNoDocuments) {
 		return os.ErrNotExist // return os.ErrNotExist for TUS
 	}
@@ -360,10 +373,11 @@ func (u *mongoTUSUpload) commitWriteChunk(ctx context.Context, set bson.M, newOf
 }
 
 // CommitFinishUpload commits a finalised upload.
-func (u *mongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodules.Skylink) error {
+func (u *MongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodules.Skylink) error {
+	uploads := u.staticUploadStore.staticUploadCollection()
 	u.FileInfo.MetaData["Skylink"] = skylink.String()
 	u.Complete = true
-	result := u.staticUploads.FindOneAndUpdate(ctx, bson.M{"_id": u.FileInfo.ID}, bson.M{
+	result := uploads.FindOneAndUpdate(ctx, bson.M{"_id": u.FileInfo.ID}, bson.M{
 		"$set": bson.M{
 			"fileinfo": u.FileInfo,
 			"complete": u.Complete,
@@ -376,9 +390,10 @@ func (u *mongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodu
 }
 
 // CommitFinishPartialUpload commits a finalised partial upload.
-func (u *mongoTUSUpload) CommitFinishPartialUpload(ctx context.Context) error {
+func (u *MongoTUSUpload) CommitFinishPartialUpload(ctx context.Context) error {
+	uploads := u.staticUploadStore.staticUploadCollection()
 	u.Complete = true
-	result := u.staticUploads.FindOneAndUpdate(ctx, bson.M{"_id": u.FileInfo.ID}, bson.M{
+	result := uploads.FindOneAndUpdate(ctx, bson.M{"_id": u.FileInfo.ID}, bson.M{
 		"$set": bson.M{
 			"complete": u.Complete,
 		},
@@ -391,19 +406,19 @@ func (u *mongoTUSUpload) CommitFinishPartialUpload(ctx context.Context) error {
 
 // Fanout returns the fanout of the upload. Should only be
 // called once it's done uploading.
-func (u *mongoTUSUpload) Fanout(ctx context.Context) ([]byte, error) {
+func (u *MongoTUSUpload) Fanout(ctx context.Context) ([]byte, error) {
 	return u.FanoutBytes, nil
 }
 
 // SkyfileMetadata returns the metadata of the upload. Should
 // only be called once it's done uploading.
-func (u *mongoTUSUpload) SkyfileMetadata(ctx context.Context) ([]byte, error) {
+func (u *MongoTUSUpload) SkyfileMetadata(ctx context.Context) ([]byte, error) {
 	return u.Metadata, nil
 }
 
 // SmallFileData returns the data to upload for a small file
 // upload.
-func (u *mongoTUSUpload) SmallFileData(ctx context.Context) ([]byte, error) {
+func (u *MongoTUSUpload) SmallFileData(ctx context.Context) ([]byte, error) {
 	return u.SmallUploadData, nil
 }
 
