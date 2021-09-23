@@ -210,32 +210,32 @@ func TestPrune(t *testing.T) {
 	// Create a bunch of uploads.
 
 	// The recent upload won't be pruned.
-	uploadRecent := mongoTUSUpload{
+	uploadRecent := MongoTUSUpload{
 		ID:          "recent",
 		LastWrite:   time.Now().UTC(),
 		PortalNames: []string{us.staticPortalHostname},
 	}
 
 	// The outdated one will be pruned.
-	uploadOutdated := mongoTUSUpload{
+	uploadOutdated := MongoTUSUpload{
 		ID:          "outdated",
 		PortalNames: []string{us.staticPortalHostname},
 	}
 
 	// The outdated one without portal will be pruned.
-	uploadOutdatedNoPortal := mongoTUSUpload{
+	uploadOutdatedNoPortal := MongoTUSUpload{
 		ID:          "outdatedNoPortal",
 		PortalNames: []string{},
 	}
 
 	// The outdated one which was set by some other portal won't be pruned.
-	uploadOutdatedButWrongPortal := mongoTUSUpload{
+	uploadOutdatedButWrongPortal := MongoTUSUpload{
 		ID:          "outdatedWrongPortal",
 		PortalNames: []string{"someOtherPortal"},
 	}
 
 	// The outdated one which was successfully completed won't be pruned.
-	uploadOutdatedButComplete := mongoTUSUpload{
+	uploadOutdatedButComplete := MongoTUSUpload{
 		ID:          "outdatedButComplete",
 		Complete:    true,
 		PortalNames: []string{us.staticPortalHostname},
@@ -243,7 +243,7 @@ func TestPrune(t *testing.T) {
 
 	// The outdated one with multiple hosts won't be fully pruned but the portal
 	// will be removed.
-	uploadOutdatedMultiPortal := mongoTUSUpload{
+	uploadOutdatedMultiPortal := MongoTUSUpload{
 		ID:          "outdatedMultiPortal",
 		Complete:    false,
 		PortalNames: []string{us.staticPortalHostname, "otherPortal"},
@@ -288,11 +288,11 @@ func TestPrune(t *testing.T) {
 	}
 	if len(toPrune) != 3 {
 		for i, u := range toPrune {
-			t.Log(i, u.(*mongoTUSUpload).ID)
+			t.Log(i, u.(*MongoTUSUpload).ID)
 		}
 		t.Fatalf("expected %v uploads but got %v", 4, len(toPrune))
 	}
-	prunedUpload := toPrune[0].(*mongoTUSUpload)
+	prunedUpload := toPrune[0].(*MongoTUSUpload)
 	if !reflect.DeepEqual(*prunedUpload, uploadOutdated) {
 		t.Fatal("wrong upload", toPrune[0], uploadOutdated)
 	}
@@ -300,7 +300,7 @@ func TestPrune(t *testing.T) {
 	// Prune the uploads.
 	var ids []string
 	for _, p := range toPrune {
-		ids = append(ids, p.(*mongoTUSUpload).ID)
+		ids = append(ids, p.(*MongoTUSUpload).ID)
 	}
 	err = us.Prune(context.Background(), ids)
 	if err != nil {
@@ -331,7 +331,7 @@ func TestPrune(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	portalNames := upload.(*mongoTUSUpload).PortalNames
+	portalNames := upload.(*MongoTUSUpload).PortalNames
 	if !reflect.DeepEqual(portalNames, uploadRecent.PortalNames) {
 		t.Fatal("wrong portal name", portalNames)
 	}
@@ -339,7 +339,7 @@ func TestPrune(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	portalNames = upload.(*mongoTUSUpload).PortalNames
+	portalNames = upload.(*MongoTUSUpload).PortalNames
 	if !reflect.DeepEqual(portalNames, uploadOutdatedButComplete.PortalNames) {
 		t.Fatal("wrong portal name", portalNames)
 	}
@@ -347,7 +347,7 @@ func TestPrune(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	portalNames = upload.(*mongoTUSUpload).PortalNames
+	portalNames = upload.(*MongoTUSUpload).PortalNames
 	if !reflect.DeepEqual(portalNames, uploadOutdatedButWrongPortal.PortalNames) {
 		t.Fatal("wrong portal name", portalNames)
 	}
@@ -356,7 +356,7 @@ func TestPrune(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	portalNames = upload.(*mongoTUSUpload).PortalNames
+	portalNames = upload.(*MongoTUSUpload).PortalNames
 	if len(portalNames) != 1 || portalNames[0] != "otherPortal" {
 		t.Fatal("wrong portal name remains", portalNames)
 	}
@@ -396,7 +396,7 @@ func TestCreateGetUpload(t *testing.T) {
 		PartialUploads: []string{"1", "2", "3"},
 		Storage:        map[string]string{"key": "storage"},
 	}
-	expectedUpload := mongoTUSUpload{
+	expectedUpload := MongoTUSUpload{
 		ID:          fi.ID,
 		Complete:    false,
 		PortalNames: []string{us.staticPortalHostname},
@@ -417,7 +417,7 @@ func TestCreateGetUpload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mu := createdUpload.(*mongoTUSUpload)
+	mu := createdUpload.(*MongoTUSUpload)
 
 	// Check the timsestamp separately.
 	if mu.LastWrite.IsZero() {
@@ -426,10 +426,10 @@ func TestCreateGetUpload(t *testing.T) {
 	expectedUpload.LastWrite = mu.LastWrite
 
 	// Check the pointer separately.
-	if mu.staticUploads == nil {
-		t.Fatal("staticUploads not set")
+	if mu.staticUploadStore == nil {
+		t.Fatal("staticUploadStore not set")
 	}
-	mu.staticUploads = nil
+	mu.staticUploadStore = nil
 
 	// Compare the remaining fields.
 	if !reflect.DeepEqual(expectedUpload, *mu) {
@@ -449,7 +449,7 @@ func TestCreateGetUpload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mu = createdUpload.(*mongoTUSUpload)
+	mu = createdUpload.(*MongoTUSUpload)
 
 	// Check the timsestamp separately.
 	if mu.LastWrite.IsZero() {
@@ -458,10 +458,10 @@ func TestCreateGetUpload(t *testing.T) {
 	expectedUpload.LastWrite = mu.LastWrite
 
 	// Check the pointer separately.
-	if mu.staticUploads == nil {
-		t.Fatal("staticUploads not set")
+	if mu.staticUploadStore == nil {
+		t.Fatal("staticUploadStore not set")
 	}
-	mu.staticUploads = nil
+	mu.staticUploadStore = nil
 
 	// Compare the remaining fields.
 	if !reflect.DeepEqual(expectedUpload, *mu) {
@@ -478,28 +478,40 @@ func TestCommitWriteChunk(t *testing.T) {
 	}
 	t.Parallel()
 
-	us, err := newMongoTestStore(t.Name())
+	// Use different stores for creating the uploads and committing chunks
+	// with.
+	createStore, err := newMongoTestStore("create")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		if err := us.Close(); err != nil {
+		if err := createStore.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	commitStore, err := newMongoTestStore("commit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := commitStore.Close(); err != nil {
 			t.Fatal(err)
 		}
 	}()
 
 	// Reset collection.
-	collection := us.staticUploadCollection()
+	collection := createStore.staticUploadCollection()
 	if err := collection.Drop(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
 	// Large upload.
 	sm := fastrand.Bytes(10)
-	largeUpload, err := us.CreateUpload(context.Background(), handler.FileInfo{ID: "large"}, skymodules.RandomSiaPath(), "large", 1, 1, 1, sm, crypto.TypePlain)
+	largeUpload, err := createStore.CreateUpload(context.Background(), handler.FileInfo{ID: "large"}, skymodules.RandomSiaPath(), "large", 1, 1, 1, sm, crypto.TypePlain)
 	if err != nil {
 		t.Fatal(err)
 	}
+	largeUpload.(*MongoTUSUpload).staticUploadStore = commitStore
 
 	// First commit.
 	lastWrite := time.Now().UTC()
@@ -511,11 +523,11 @@ func TestCommitWriteChunk(t *testing.T) {
 	}
 
 	// Check upload.
-	u, err := us.GetUpload(context.Background(), "large")
+	u, err := commitStore.GetUpload(context.Background(), "large")
 	if err != nil {
 		t.Fatal(err)
 	}
-	upload := u.(*mongoTUSUpload)
+	upload := u.(*MongoTUSUpload)
 	if !bytes.Equal(upload.FanoutBytes, fanout1) {
 		t.Fatal("wrong fanout", len(upload.FanoutBytes), len(fanout1))
 	}
@@ -531,6 +543,9 @@ func TestCommitWriteChunk(t *testing.T) {
 	if !bytes.Equal(upload.Metadata, sm) {
 		t.Fatal("wrong metadata")
 	}
+	if !reflect.DeepEqual(upload.PortalNames, []string{"create", "commit"}) {
+		t.Fatal("wrong portalnames", upload.PortalNames)
+	}
 
 	// Second commit.
 	lastWrite = time.Now().UTC()
@@ -542,11 +557,11 @@ func TestCommitWriteChunk(t *testing.T) {
 	}
 
 	// Check upload again.
-	u, err = us.GetUpload(context.Background(), "large")
+	u, err = createStore.GetUpload(context.Background(), "large")
 	if err != nil {
 		t.Fatal(err)
 	}
-	upload = u.(*mongoTUSUpload)
+	upload = u.(*MongoTUSUpload)
 	if !bytes.Equal(upload.FanoutBytes, append(fanout1, fanout2...)) {
 		t.Fatal("wrong fanout", len(upload.FanoutBytes))
 	}
@@ -562,13 +577,17 @@ func TestCommitWriteChunk(t *testing.T) {
 	if !bytes.Equal(upload.Metadata, sm) {
 		t.Fatal("wrong metadata")
 	}
+	if !reflect.DeepEqual(upload.PortalNames, []string{"create", "commit"}) {
+		t.Fatal("wrong portalnames", upload.PortalNames)
+	}
 
 	// Small upload.
 	sm = fastrand.Bytes(10)
-	u, err = us.CreateUpload(context.Background(), handler.FileInfo{ID: "small"}, skymodules.RandomSiaPath(), "small", 1, 1, 1, sm, crypto.TypePlain)
+	u, err = createStore.CreateUpload(context.Background(), handler.FileInfo{ID: "small"}, skymodules.RandomSiaPath(), "small", 1, 1, 1, sm, crypto.TypePlain)
 	if err != nil {
 		t.Fatal(err)
 	}
+	u.(*MongoTUSUpload).staticUploadStore = commitStore
 
 	// Commit.
 	lastWrite = time.Now().UTC()
@@ -580,11 +599,11 @@ func TestCommitWriteChunk(t *testing.T) {
 	}
 
 	// Check upload.
-	u, err = us.GetUpload(context.Background(), "small")
+	u, err = commitStore.GetUpload(context.Background(), "small")
 	if err != nil {
 		t.Fatal(err)
 	}
-	upload = u.(*mongoTUSUpload)
+	upload = u.(*MongoTUSUpload)
 	if !bytes.Equal(upload.SmallUploadData, smallFileData) {
 		t.Fatal("wrong file data", len(upload.SmallUploadData), len(smallFileData))
 	}
@@ -599,6 +618,9 @@ func TestCommitWriteChunk(t *testing.T) {
 	}
 	if !bytes.Equal(upload.Metadata, sm) {
 		t.Fatal("wrong metadata")
+	}
+	if !reflect.DeepEqual(upload.PortalNames, []string{"create", "commit"}) {
+		t.Fatal("wrong portalnames", upload.PortalNames)
 	}
 }
 
@@ -637,7 +659,7 @@ func TestCommitFinishUpload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	upload := u.(*mongoTUSUpload)
+	upload := u.(*MongoTUSUpload)
 	if upload.Complete {
 		t.Fatal("new upload shouldn't be complete")
 	}
@@ -653,7 +675,7 @@ func TestCommitFinishUpload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	upload = u.(*mongoTUSUpload)
+	upload = u.(*MongoTUSUpload)
 	if !upload.Complete {
 		t.Fatal("new upload should be complete")
 	}
@@ -669,7 +691,7 @@ func TestCommitFinishUpload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	upload = u.(*mongoTUSUpload)
+	upload = u.(*MongoTUSUpload)
 	if upload.Complete {
 		t.Fatal("new upload shouldn't be complete")
 	}
@@ -694,7 +716,7 @@ func TestCommitFinishUpload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	upload = u.(*mongoTUSUpload)
+	upload = u.(*MongoTUSUpload)
 	if !upload.Complete {
 		t.Fatal("new upload should be complete")
 	}

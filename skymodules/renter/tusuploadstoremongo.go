@@ -26,11 +26,11 @@ const (
 	// then crashes before unlocking it.
 	mongoLockTTL = 300 // 5 minutes
 
-	// tusDBName is the name of the database all TUS related data is stored
+	// TusDBName is the name of the database all TUS related data is stored
 	// in.
 	TusDBName = "tus"
 
-	// tusUploadsMongoCollectionName is the name of the collection within
+	// TusUploadsMongoCollectionName is the name of the collection within
 	// the database used to store upload info.
 	TusUploadsMongoCollectionName = "uploads"
 
@@ -48,6 +48,7 @@ type (
 		staticPortalHostname string
 	}
 
+	// MongoTUSUpload describes an upload in mongodb.
 	MongoTUSUpload struct {
 		ID          string    `bson:"_id"`
 		Complete    bool      `bson:"complete"`
