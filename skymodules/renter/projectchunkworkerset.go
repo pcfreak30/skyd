@@ -446,6 +446,9 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// Convenience variables.
 	ec := pcws.staticErasureCoder
 
+	// Start a span for the PDC.
+	_, ctx = opentracing.StartSpanFromContext(ctx, "managedDownload")
+
 	// Depending on the encryption type we might have to download the entire
 	// entire chunk. For the ciphers we support, this will be the case when the
 	// overhead is not zero. This is due to the overhead being a checksum that
@@ -460,9 +463,14 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	}
 
 	// Refresh the pcws. This will only cause a refresh if one is necessary.
+	start := time.Now()
 	err := pcws.managedTryUpdateWorkerState()
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to initiate download")
+	}
+	if span := opentracing.SpanFromContext(ctx); span != nil && time.Since(start) > 50*time.Millisecond {
+		span.LogKV("managedTryUpdateWorkerState", time.Since(start))
+		span.SetTag("slow", true)
 	}
 
 	// After refresh, grab the worker state.
@@ -500,9 +508,6 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// as with the goroutine-on-block method, exceeding the limit merely causes
 	// extra goroutines to be spawned.
 	workerResponseChan := make(chan *jobReadResponse, ec.NumPieces()*5)
-
-	// Start a span for the PDC.
-	_, ctx = opentracing.StartSpanFromContext(ctx, "managedDownload")
 
 	// Build the full pdc.
 	pdc := &projectDownloadChunk{
