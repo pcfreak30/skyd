@@ -111,6 +111,7 @@ func TestSkynetSuiteTwo(t *testing.T) {
 		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
 		{Name: "Registry", Test: testSkynetRegistryReadWrite},
 		{Name: "Stats", Test: testSkynetStats},
+		{Name: "HostsForRegistryUpdate", Test: testHostsForRegistryUpdate},
 	}
 
 	// Run tests
@@ -5522,6 +5523,38 @@ func TestHostLosingRegistryEntry(t *testing.T) {
 	_, err = r.RegistryRead(spk, srv.Tweak)
 	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryEntryNotFound.Error()) {
 		t.Fatal(err)
+	}
+}
+
+// testHostsForRegistryUpdate is a basic smoke test for /skynet/registry/hosts.
+func testHostsForRegistryUpdate(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Get the hosts for updating the registry.
+	hg, err := r.HostsForRegistryUpdateGET()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Store them in a map for easier lookup.
+	hostMap := make(map[string]struct{})
+	for _, hpk := range hg.Hosts {
+		hostMap[hpk.String()] = struct{}{}
+	}
+
+	// Compare them to the active contracts.
+	rc, err := r.RenterAllContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rc.ActiveContracts) != len(hg.Hosts) {
+		t.Fatal("wrong length", len(rc.ActiveContracts), len(hg.Hosts))
+	}
+	for _, c := range rc.ActiveContracts {
+		_, ok := hostMap[c.HostPublicKey.String()]
+		if !ok {
+			t.Fatal("wrong host")
+		}
 	}
 }
 

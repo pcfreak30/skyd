@@ -561,23 +561,8 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 		if skip {
 			continue
 		}
-
-		// Check version.
-		cache := worker.staticCache()
-		if build.VersionCmp(cache.staticHostVersion, minRegistryVersion) < 0 {
-			continue
-		}
-
-		// Skip !goodForUpload workers.
-		if !cache.staticContractUtility.GoodForUpload {
-			continue
-		}
-
-		// check for price gouging
-		pt := worker.staticPriceTable().staticPriceTable
-		err = checkUploadGougingPT(pt, cache.staticRenterAllowance)
-		if err != nil {
-			r.staticLog.Debugf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
+		// Check if worker is good for updating the registry.
+		if !isWorkerGoodForRegistryUpdate(worker) {
 			continue
 		}
 
@@ -758,6 +743,27 @@ func (r *Renter) threadedHandleRegistryRepairs(ctx context.Context, parentSpan o
 	if err != nil {
 		r.staticLog.Debugln("threadedHandleRegistryRepairs: failed to update registry", err)
 	}
+}
+
+// isWorkerGoodForRegistryUpdate is a helper function which returns 'true' if a
+// worker can be used for updating the registry.
+func isWorkerGoodForRegistryUpdate(worker *worker) bool {
+	cache := worker.staticCache()
+	if build.VersionCmp(cache.staticHostVersion, minRegistryVersion) < 0 {
+		return false
+	}
+	// Skip !goodForUpload workers.
+	if !cache.staticContractUtility.GoodForUpload {
+		return false
+	}
+
+	// check for price gouging
+	pt := worker.staticPriceTable().staticPriceTable
+	err := checkUploadGougingPT(pt, cache.staticRenterAllowance)
+	if err != nil {
+		return false
+	}
+	return true
 }
 
 // regReadCutoffWorkers returns the workers to wait for before considering the

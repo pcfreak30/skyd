@@ -539,12 +539,11 @@ type DownloadInfo struct {
 // FileUploadParams contains the information used by the Renter to upload a
 // file.
 type FileUploadParams struct {
-	Source              string
-	SiaPath             SiaPath
-	ErasureCode         ErasureCoder
-	Force               bool
-	DisablePartialChunk bool
-	Repair              bool
+	Source      string
+	SiaPath     SiaPath
+	ErasureCode ErasureCoder
+	Force       bool
+	Repair      bool
 
 	// CipherType was added later. If it is left blank, the renter will use the
 	// default encryption method (as of writing, Threefish)
@@ -1335,6 +1334,10 @@ type Renter interface {
 
 	// Host provides the DB entry and score breakdown for the requested host.
 	Host(pk types.SiaPublicKey) (HostDBEntry, bool, error)
+
+	// HostsForRegistryUpdate returns a list of hosts that the renter would be using
+	// for updating the registry.
+	HostsForRegistryUpdate() ([]types.SiaPublicKey, error)
 
 	// InitialScanComplete returns a boolean indicating if the initial scan of the
 	// hostdb is completed.
