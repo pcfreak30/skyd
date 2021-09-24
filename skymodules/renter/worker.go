@@ -20,6 +20,7 @@ import (
 	"unsafe"
 
 	"gitlab.com/NebulousLabs/threadgroup"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 
@@ -35,7 +36,6 @@ const (
 	// registry cache.
 	registryCacheSize = 1 << 20 // 1 MiB
 )
-
 const (
 	// These variables define the total amount of data that a worker is willing
 	// to queue at once when performing async tasks. If the worker has more data
@@ -84,6 +84,9 @@ type (
 		staticJobUpdateRegistryQueue   *jobUpdateRegistryQueue
 		staticJobUploadSnapshotQueue   *jobUploadSnapshotQueue
 
+		// Stats
+		staticJobReadRegistryDT *skymodules.DistributionTracker
+
 		// Upload variables.
 		unprocessedChunks         *uploadChunks // Yet unprocessed work items.
 		uploadConsecutiveFailures int           // How many times in a row uploading has failed.
@@ -130,6 +133,15 @@ type (
 		wakeChan     chan struct{} // Worker will check queues if given a wake signal.
 	}
 )
+
+// callReadQueue returns the appropriate read queue depending on the priority of
+// the download.
+func (w *worker) callReadQueue(lowPrio bool) *jobReadQueue {
+	if lowPrio {
+		return w.staticJobLowPrioReadQueue
+	}
+	return w.staticJobReadQueue
+}
 
 // downloadChunks is a queue of download chunks.
 type downloadChunks struct {
@@ -229,7 +241,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		staticAccount:       account,
 		staticBalanceTarget: balanceTarget,
 
-		staticRegistryCache: newRegistryCache(registryCacheSize),
+		staticRegistryCache: newRegistryCache(registryCacheSize, hostPubKey),
 
 		staticSubscriptionInfo: &subscriptionInfos{
 			subscriptions:  make(map[modules.RegistryEntryID]*subscription),
@@ -249,11 +261,19 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		wakeChan:          make(chan struct{}, 1),
 		staticRenter:      r,
 	}
+	// Share the read stats between the read queues. That way a repair
+	// download will contribute to user download estimations and vice versa.
+	jrs := &jobReadStats{}
+
+	// staticJobReadRegistryDT will be seeded when the first price table is
+	// fetched.
+	w.staticJobReadRegistryDT = skymodules.NewDistributionTrackerStandard()
+
 	w.newPriceTable()
 	w.newMaintenanceState()
 	w.initJobHasSectorQueue()
-	w.initJobReadQueue()
-	w.initJobLowPrioReadQueue()
+	w.initJobReadQueue(jrs)
+	w.initJobLowPrioReadQueue(jrs)
 	w.initJobRenewQueue()
 	w.initJobDownloadSnapshotQueue()
 	w.initJobReadRegistryQueue()
@@ -280,4 +300,10 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		return nil, errors.New("unable to build a cache for the worker")
 	}
 	return w, nil
+}
+
+// ReadRegCutoffEstimate is the estimate to use for deciding whether a worker is
+// good enough to be part of the regread cutoff estimate.
+func (w *worker) ReadRegCutoffEstimate() time.Duration {
+	return w.staticJobReadRegistryDT.Percentiles()[0][0] // p90
 }

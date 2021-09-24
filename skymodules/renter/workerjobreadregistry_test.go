@@ -10,7 +10,9 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // TestReadRegistryJob tests running a ReadRegistry job on a host.
@@ -39,14 +41,34 @@ func TestReadRegistryJob(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create a ReadRegistry job to read the entry.
+	// The read registry stats should be seeded and therefore the cutoff
+	// estimate shouldn't be 0.
+	cutoffEstimate := wt.ReadRegCutoffEstimate()
+	if cutoffEstimate == 0 {
+		t.Fatal("estimate wasn't seeded", cutoffEstimate)
+	}
+
+	// Read the entry
 	lookedUpRV, err := wt.ReadRegistry(context.Background(), testSpan(), spk, rv.Tweak)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Read the entry a few more times to guarantee the stats are updated.
+	for i := 0; i < 3; i++ {
+		_, err = wt.ReadRegistry(context.Background(), testSpan(), spk, rv.Tweak)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// The estimate should be updated.
+	newCutoffEstimate := wt.ReadRegCutoffEstimate()
+	if newCutoffEstimate == 0 || newCutoffEstimate == cutoffEstimate {
+		t.Error("estimate wasn't updated", newCutoffEstimate, cutoffEstimate)
+	}
 
 	// The entries should match.
-	if !reflect.DeepEqual(*lookedUpRV, rv) {
+	if !reflect.DeepEqual(lookedUpRV.SignedRegistryValue, rv) {
 		t.Log(lookedUpRV)
 		t.Log(rv)
 		t.Fatal("entries don't match")
@@ -59,7 +81,7 @@ func TestReadRegistryJob(t *testing.T) {
 	}
 
 	// The entries should match.
-	if !reflect.DeepEqual(*lookedUpRV, rv) {
+	if !reflect.DeepEqual(lookedUpRV.SignedRegistryValue, rv) {
 		t.Log(lookedUpRV)
 		t.Log(rv)
 		t.Fatal("entries don't match")
@@ -110,17 +132,17 @@ func TestReadRegistryJobManual(t *testing.T) {
 	lookedUpRV := resp.staticSignedRegistryValue
 
 	// The entries should match.
-	if !reflect.DeepEqual(*lookedUpRV, rv) {
+	if !reflect.DeepEqual(lookedUpRV.SignedRegistryValue, rv) {
 		t.Log(lookedUpRV)
 		t.Log(rv)
 		t.Fatal("entries don't match")
 	}
 
 	// The worker, eid, spk and tweak should be set.
-	if *resp.staticTweak != rv.Tweak {
+	if resp.staticSignedRegistryValue.Tweak != rv.Tweak {
 		t.Fatal("wrong tweak")
 	}
-	if !resp.staticSPK.Equals(spk) {
+	if !resp.staticSignedRegistryValue.PubKey.Equals(spk) {
 		t.Fatal("wrong spk")
 	}
 	if resp.staticEID != eid {
@@ -142,17 +164,19 @@ func TestReadRegistryJobManual(t *testing.T) {
 	lookedUpRV = resp.staticSignedRegistryValue
 
 	// The entries should match.
-	if !reflect.DeepEqual(*lookedUpRV, rv) {
+	if !reflect.DeepEqual(lookedUpRV.SignedRegistryValue, rv) {
 		t.Log(lookedUpRV)
 		t.Log(rv)
 		t.Fatal("entries don't match")
 	}
 
 	// The worker and eid should be set.
-	if resp.staticTweak != nil {
+	emptyHash := crypto.Hash{}
+	if resp.staticSignedRegistryValue.Tweak == emptyHash {
 		t.Fatal("wrong tweak")
 	}
-	if resp.staticSPK != nil {
+	emptyKey := types.SiaPublicKey{}
+	if reflect.DeepEqual(resp.staticSignedRegistryValue.PubKey, emptyKey) {
 		t.Fatal("wrong spk")
 	}
 	if resp.staticEID != eid {
@@ -207,13 +231,13 @@ func TestReadRegistryInvalidCached(t *testing.T) {
 	// Read the value. This should result in an error due to the host providing a
 	// lower revision number than expected.
 	_, err = wt.ReadRegistry(context.Background(), testSpan(), spk, rv.Tweak)
-	if !errors.Contains(err, errHostLowerRevisionThanCache) {
+	if !errors.Contains(err, errHostCheating) {
 		t.Fatal(err)
 	}
 
 	// Make sure there is a recent error and cooldown.
 	wt.staticJobReadRegistryQueue.mu.Lock()
-	if !errors.Contains(wt.staticJobReadRegistryQueue.recentErr, errHostLowerRevisionThanCache) {
+	if !errors.Contains(wt.staticJobReadRegistryQueue.recentErr, errHostCheating) {
 		t.Fatal("wrong recent error", wt.staticJobReadRegistryQueue.recentErr)
 	}
 	if wt.staticJobReadRegistryQueue.cooldownUntil == (time.Time{}) {
@@ -254,7 +278,7 @@ func TestReadRegistryCachedUpdated(t *testing.T) {
 
 	// Make sure the value is in the cache.
 	rev, cached := wt.staticRegistryCache.Get(sid)
-	if !cached || rev != rv.Revision {
+	if !cached || !reflect.DeepEqual(rev, rv.RegistryValue) {
 		t.Fatal("invalid cached value")
 	}
 
@@ -264,19 +288,24 @@ func TestReadRegistryCachedUpdated(t *testing.T) {
 	if cached {
 		t.Fatal("value wasn't removed")
 	}
+	wt.staticRegistryCache.mu.Lock()
+	if len(wt.staticRegistryCache.entryList) != 0 {
+		t.Fatal("value wasn't removed")
+	}
+	wt.staticRegistryCache.mu.Unlock()
 
 	// Read the registry value.
 	readRV, err := wt.ReadRegistry(context.Background(), testSpan(), spk, rv.Tweak)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(rv, *readRV) {
+	if !reflect.DeepEqual(rv, readRV.SignedRegistryValue) {
 		t.Fatal("read value doesn't match set value")
 	}
 
 	// Revision should be cached again.
 	rev, cached = wt.staticRegistryCache.Get(sid)
-	if !cached || rev != rv.Revision {
+	if !cached || !reflect.DeepEqual(rev, rv.RegistryValue) {
 		t.Fatal("invalid cached value")
 	}
 
@@ -291,14 +320,14 @@ func TestReadRegistryCachedUpdated(t *testing.T) {
 
 	// Make sure the value is in the cache.
 	rev, cached = wt.staticRegistryCache.Get(sid)
-	if !cached || rev != rv2.Revision {
+	if !cached || !reflect.DeepEqual(rev, rv2.RegistryValue) {
 		t.Fatal("invalid cached value")
 	}
 
 	// Set the cache to the earlier revision of rv.
 	wt.staticRegistryCache.Set(sid, rv, true)
 	rev, cached = wt.staticRegistryCache.Get(sid)
-	if !cached || rev != rv.Revision {
+	if !cached || !reflect.DeepEqual(rev, rv.RegistryValue) {
 		t.Fatal("invalid cached value")
 	}
 
@@ -307,13 +336,13 @@ func TestReadRegistryCachedUpdated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(rv2, *readRV) {
+	if !reflect.DeepEqual(rv2, readRV.SignedRegistryValue) {
 		t.Fatal("read value doesn't match set value")
 	}
 
 	// Revision from rv2 should be cached again.
 	rev, cached = wt.staticRegistryCache.Get(sid)
-	if !cached || rev != rv2.Revision {
+	if !cached || !reflect.DeepEqual(rev, rv2.RegistryValue) {
 		t.Fatal("invalid cached value")
 	}
 }

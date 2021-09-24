@@ -1,7 +1,7 @@
 package api
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -9,10 +9,11 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 	"github.com/tus/tusd/pkg/handler"
-	"gitlab.com/NebulousLabs/log"
 	siaapi "go.sia.tech/siad/node/api"
 
+	"gitlab.com/NebulousLabs/log"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 )
 
 var (
@@ -127,12 +128,14 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/skynet/basesector/*skylink", api.skynetBaseSectorHandlerGET)
 		router.GET("/skynet/blocklist", api.skynetBlocklistHandlerGET)
 		router.POST("/skynet/blocklist", RequirePassword(api.skynetBlocklistHandlerPOST, requiredPassword))
+		router.GET("/skynet/health/entry", api.registryEntryHealthHandlerGET)
 		router.GET("/skynet/metadata/:skylink", api.skynetMetadataHandlerGET)
 		router.POST("/skynet/pin/:skylink", RequirePassword(api.skynetSkylinkPinHandlerPOST, requiredPassword))
 		router.GET("/skynet/portals", api.skynetPortalsHandlerGET)
 		router.POST("/skynet/portals", RequirePassword(api.skynetPortalsHandlerPOST, requiredPassword))
 		router.POST("/skynet/registry", RequirePassword(api.registryHandlerPOST, requiredPassword))
 		router.GET("/skynet/registry", api.registryHandlerGET)
+		router.GET("/skynet/registry/hosts", api.skynetHostsForRegistryUpdateGET)
 		router.GET("/skynet/resolve/:skylink", api.skylinkResolveGET)
 		router.POST("/skynet/restore", RequirePassword(api.skynetRestoreHandlerPOST, requiredPassword))
 		router.GET("/skynet/root", api.skynetRootHandlerGET)
@@ -141,6 +144,7 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/skynet/skyfile/*siapath", RequirePassword(api.skynetSkyfileHandlerPOST, requiredPassword))
 		router.GET("/skynet/stats", api.skynetStatsHandlerGET)
 		router.POST("/skynet/unpin/:skylink", RequirePassword(api.skynetSkylinkUnpinHandlerPOST, requiredPassword))
+		router.GET("/skynet/health/skylink/:skylink", api.skynetSkylinkHealthGET)
 
 		// Skykey endpoints
 		router.GET("/skynet/skykey", RequirePassword(api.skykeyHandlerGET, requiredPassword))
@@ -157,6 +161,12 @@ func (api *API) buildHTTPRoutes() {
 		// uploading a file with a known size in chunks.
 		storeComposer.UseCore(sds)
 
+		// Enable concatenating uploads.
+		storeComposer.UseConcater(sds)
+
+		// Enable locking the upload.
+		storeComposer.UseLocker(sds)
+
 		// Check if the maxsize can be read from the environment.  Otherwise
 		// it's unlimited.
 		maxSize, ok := build.TUSMaxSize()
@@ -166,6 +176,7 @@ func (api *API) buildHTTPRoutes() {
 
 		// Create the TUS handler and register its routes.
 		tusHandler, err := handler.NewUnroutedHandler(handler.Config{
+			PreUploadCreateCallback: renter.TUSPreUploadCreateCallback,
 			BasePath:                "/skynet/tus",
 			MaxSize:                 maxSize,
 			RespectForwardedHeaders: true,
@@ -178,10 +189,13 @@ func (api *API) buildHTTPRoutes() {
 			build.Critical("failed to create skynet TUS handler", err)
 			return
 		}
+		optionsHandler := func(w http.ResponseWriter, req *http.Request) {}
 		router.POST("/skynet/tus", RequireTUSMiddleware(tusHandler.PostFile, tusHandler))
+		router.OPTIONS("/skynet/tus", RequireTUSMiddleware(optionsHandler, tusHandler))
 		router.HEAD("/skynet/tus/:id", RequireTUSMiddleware(tusHandler.HeadFile, tusHandler))
 		router.PATCH("/skynet/tus/:id", RequireTUSMiddleware(tusHandler.PatchFile, tusHandler))
 		router.GET("/skynet/tus/:id", RequireTUSMiddleware(tusHandler.GetFile, tusHandler))
+		router.OPTIONS("/skynet/tus/:id", RequireTUSMiddleware(optionsHandler, tusHandler))
 		router.GET("/skynet/upload/tus/:id", api.skynetTUSUploadSkylinkGET)
 
 		// Directory endpoints
@@ -217,15 +231,23 @@ func (api *API) buildHTTPRoutes() {
 	}
 
 	// Apply UserAgent middleware and return the Router
-	timeoutErr := Error{fmt.Sprintf("HTTP call exceeded the timeout of %v", httpServerTimeout)}
-	jsonErr, err := json.Marshal(timeoutErr)
-	if err != nil {
-		build.Critical("marshalling error on object that should be safe to marshal:", err)
-	}
 	api.routerMu.Lock()
-	api.router = http.TimeoutHandler(RequireUserAgent(router, requiredUserAgent), httpServerTimeout, string(jsonErr))
+	api.router = TimeoutHandler(RequireUserAgent(router, requiredUserAgent), httpServerTimeout)
 	api.routerMu.Unlock()
 	return
+}
+
+// TimeoutHandler is a middleware that enforces a specific timeout on the route
+// by closing the context after the httpServerTimeout.
+func TimeoutHandler(h http.Handler, timeout time.Duration) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		// Create a new context with timeout.
+		ctx, cancel := context.WithTimeout(req.Context(), httpServerTimeout)
+		defer cancel()
+
+		// Add the new context to the request and call the handler.
+		h.ServeHTTP(w, req.WithContext(ctx))
+	})
 }
 
 // RequireUserAgent is middleware that requires all requests to set a

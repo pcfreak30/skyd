@@ -1,6 +1,7 @@
 package skymodules
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -22,6 +23,10 @@ import (
 )
 
 const (
+	// DefaultSkynetDefaultPath is the defaultPath value we use when the user
+	// hasn't specified one and `index.html` exists in the skyfile.
+	DefaultSkynetDefaultPath = "index.html"
+
 	// SkyfileLayoutSize describes the amount of space within the first sector
 	// of a skyfile used to describe the rest of the skyfile.
 	SkyfileLayoutSize = 99
@@ -42,12 +47,11 @@ const (
 	monetizationLotteryEntropy = 32
 )
 
-const (
-	// CurrencyUSD the specifier for USD in the monetizer.
-	CurrencyUSD = "usd"
-
-	// LicenseMonetization is the first skynet monetization license.
-	LicenseMonetization = "CAB-Ra8Zi6jew3w63SJUAKnsBRiZdpmQGLehLJbTd-b_Mg"
+var (
+	// DefaultTryFilesValue is the value of tryfiles we set on each skyfile,
+	// if none is specified and defaultpath and disabledefaultpath are also
+	// unspecified.
+	DefaultTryFilesValue = []string{"index.html"}
 )
 
 var (
@@ -150,10 +154,6 @@ type (
 		// Mode indicates the file permissions of the skyfile.
 		Mode os.FileMode
 
-		// Monetization contains a list of monetization info for the upload. It
-		// will be added to the SkyfileMetadata of the uploaded file.
-		Monetization *Monetization
-
 		// DefaultPath indicates what content to serve if the user has not
 		// specified a path and the user is not trying to download the Skylink
 		// as an archive. If left empty, it will be interpreted as "index.html"
@@ -179,6 +179,13 @@ type (
 		// a Skykey will be derived from the Master Skykey found under that
 		// name/ID to be used for this specific upload.
 		FileSpecificSkykey skykey.Skykey
+
+		// TryFiles is an ordered list of files which to serve in case the
+		// requested file does not exist.
+		TryFiles []string
+
+		// ErrorPages overrides the content we serve for some error codes.
+		ErrorPages map[int]string
 	}
 
 	// SkyfileMultipartUploadParameters defines the parameters specific to
@@ -203,12 +210,16 @@ type (
 		// content will be automatically served for the skyfile.
 		DisableDefaultPath bool
 
+		// TryFiles specifies an ordered list of files to serve, in case the
+		// requested file does not exist.
+		TryFiles []string
+
+		// ErrorPages overrides the content served for the specified error
+		// codes.
+		ErrorPages map[int]string
+
 		// ContentType indicates the media of the data supplied by the reader.
 		ContentType string
-
-		// Monetization contains a list of monetization info for the upload. It
-		// will be added to the SkyfileMetadata of the uploaded file.
-		Monetization *Monetization
 	}
 
 	// SkyfilePinParameters defines the parameters specific to pinning a
@@ -233,7 +244,8 @@ type (
 		Subfiles           SkyfileSubfiles `json:"subfiles,omitempty"`
 		DefaultPath        string          `json:"defaultpath,omitempty"`
 		DisableDefaultPath bool            `json:"disabledefaultpath,omitempty"`
-		Monetization       *Monetization   `json:"monetization,omitempty"`
+		TryFiles           []string        `json:"tryfiles,omitempty"`
+		ErrorPages         map[int]string  `json:"errorpages,omitempty"`
 	}
 
 	// SkynetPortal contains information identifying a Skynet portal.
@@ -243,28 +255,101 @@ type (
 
 	}
 
-	// Monetization contains the monetization information for a skyfile.
-	Monetization struct {
-		Monetizers []Monetizer `json:"monetizers"`
-		License    string      `json:"license"`
-	}
-
-	// Monetizer refers to a single content provider being paid.
-	Monetizer struct {
-		Address  types.UnlockHash `json:"address"`
-		Amount   types.Currency   `json:"amount"`
-		Currency string           `json:"currency"`
-	}
-
 	// SkynetTUSDataStore is the combined interface of all TUS interfaces that
 	// the renter implements for skynet.
 	SkynetTUSDataStore interface {
 		handler.DataStore
+		handler.ConcaterDataStore
+		handler.Locker
 
 		// Skylink returns the Skylink for an upload with a given ID.  If the
 		// upload can't be found or isn't finished, "false" will be returned
 		// alongside an empty string.
 		Skylink(id string) (Skylink, bool)
+	}
+
+	// RegistryEntryHealth contains information about a registry entry's
+	// health on the network.
+	RegistryEntryHealth struct {
+		NumBestEntries             uint64 `json:"numbestentries"`
+		NumBestEntriesBeforeCutoff uint64 `json:"numbestentriesbeforecutoff"`
+		NumBestPrimaryEntries      uint64 `json:"numbestprimaryentries"`
+		NumEntries                 uint64 `json:"numentries"`
+		RevisionNumber             uint64 `json:"revisionnumber"`
+	}
+)
+
+type (
+	// SkynetTUSUpload is the interface for a TUS upload in the
+	// SkynetTUSUploadStore.
+	SkynetTUSUpload interface {
+		// Skylink returns the upload's skylink if available already.
+		Skylink() (Skylink, bool)
+
+		// GetInfo returns the FileInfo of the upload.
+		GetInfo(ctx context.Context) (handler.FileInfo, error)
+
+		// IsSmallUpload indicates whether the upload is considered a
+		// small upload. That means the upload contained less than a
+		// chunksize of data.
+		IsSmallUpload(ctx context.Context) (bool, error)
+
+		// PruneInfo returns the info required to prune uploads.
+		PruneInfo(ctx context.Context) (id string, sp SiaPath, err error)
+
+		// UploadParams returns the upload parameters used for the
+		// upload.
+		UploadParams(ctx context.Context) (SkyfileUploadParameters, FileUploadParams, error)
+
+		// CommitWriteChunkSmallFile commits writing a chunk of a small
+		// file.
+		CommitWriteChunkSmallFile(newOffset int64, newLastWrite time.Time, smallUploadData []byte) error
+
+		// CommitWriteChunk commits writing a chunk of either a small or
+		// large file with fanout.
+		CommitWriteChunk(newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error
+
+		// CommitFinishUpload commits a finalised upload.
+		CommitFinishUpload(skylink Skylink) error
+
+		// CommitFinishPartialUpload commits a finalised partial upload.
+		CommitFinishPartialUpload() error
+
+		// Fanout returns the fanout of the upload. Should only be
+		// called once it's done uploading.
+		Fanout(ctx context.Context) ([]byte, error)
+
+		// SkyfileMetadata returns the metadata of the upload. Should
+		// only be called once it's done uploading.
+		SkyfileMetadata(ctx context.Context) ([]byte, error)
+
+		// SmallFileData returns the data to upload for a small file
+		// upload.
+		SmallFileData(ctx context.Context) ([]byte, error)
+	}
+
+	// SkynetTUSUploadStore defines an interface for a storage backend that is
+	// capable of storing upload information as well as locking uploads and pruning
+	// them.
+	SkynetTUSUploadStore interface {
+		// ToPrune returns the uploads which should be pruned from skyd
+		// and the store.
+		ToPrune() ([]SkynetTUSUpload, error)
+
+		// Prune prunes the upload with the given ID from the store.
+		Prune(string) error
+
+		// CreateUpload creates a new upload in the store.
+		CreateUpload(fi handler.FileInfo, sp SiaPath, fileName string, baseChunkRedundancy uint8, fanoutDataPieces, fanoutParityPieces int, sm []byte, force bool, ct crypto.CipherType) (SkynetTUSUpload, error)
+
+		// GetUpload fetches an upload from the store.
+		GetUpload(ctx context.Context, id string) (SkynetTUSUpload, error)
+
+		// The store also implements the Locker interface to allow TUS
+		// to automatically lock uploads.
+		handler.Locker
+
+		io.Closer
 	}
 )
 
@@ -277,9 +362,10 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 	// All paths must be absolute.
 	path = EnsurePrefix(path, "/")
 	metadata := SkyfileMetadata{
-		Filename:     path,
-		Monetization: sm.Monetization,
-		Subfiles:     make(SkyfileSubfiles),
+		Filename:   path,
+		Subfiles:   make(SkyfileSubfiles),
+		TryFiles:   sm.TryFiles,
+		ErrorPages: sm.ErrorPages,
 	}
 
 	// Try to find an exact match
@@ -313,21 +399,6 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 	for _, file := range metadata.Subfiles {
 		metadata.Length += file.Len
 	}
-	// Adjust the monetization using the ratio between the previous total length
-	// and the new one.
-	if sm.Monetization != nil {
-		// Deep copy parent monetization.
-		var md Monetization
-		md = *sm.Monetization
-		md.Monetizers = append([]Monetizer{}, sm.Monetization.Monetizers...)
-		// Adjust individual monetizers.
-		for i, m := range md.Monetizers {
-			m.Amount = m.Amount.Mul64(metadata.Length).Div64(sm.Length)
-			md.Monetizers[i] = m
-		}
-		// Assign to metadata.
-		metadata.Monetization = &md
-	}
 	return metadata, isFile, offset, metadata.size()
 }
 
@@ -341,6 +412,30 @@ func (sm SkyfileMetadata) ContentType() string {
 		}
 	}
 	return ""
+}
+
+// EffectiveDefaultPath returns the default path based not only on what value is
+// set in the metadata struct but also on disabledefaultpath, the number of
+// subfiles, etc.
+func (sm SkyfileMetadata) EffectiveDefaultPath() string {
+	if sm.DisableDefaultPath {
+		return ""
+	}
+	if sm.DefaultPath == "" {
+		// If `defaultpath` and `disabledefaultpath` are not set and the
+		// skyfile has a single subfile we automatically default to it.
+		if len(sm.Subfiles) == 1 {
+			for filename := range sm.Subfiles {
+				return EnsurePrefix(filename, "/")
+			}
+		}
+		// If the `defaultpath` is not set but the skyfiles has an `/index.html`
+		// subfile then we automatically default to that.
+		if _, exists := sm.Subfiles[DefaultSkynetDefaultPath]; exists {
+			return EnsurePrefix(DefaultSkynetDefaultPath, "/")
+		}
+	}
+	return sm.DefaultPath
 }
 
 // IsDirectory returns true if the SkyfileMetadata represents a directory.
@@ -359,6 +454,33 @@ func (sm SkyfileMetadata) IsDirectory() bool {
 		}
 	}
 	return false
+}
+
+// ServePath takes a requested path and determines what path should be served
+// based on the existence of the requested path, defaultpath, tryfiles, etc.
+func (sm SkyfileMetadata) ServePath(path string) string {
+	// If there's a single subfile in the skyfile we want to serve it. We don't
+	// even need to check the tryfiles.
+	if path == "/" && len(sm.Subfiles) == 1 && !sm.DisableDefaultPath {
+		for filename := range sm.Subfiles {
+			return EnsurePrefix(filename, "/")
+		}
+	}
+
+	// If there are tryfiles, determine the servePath based on those.
+	if len(sm.TryFiles) > 0 {
+		return sm.determinePathBasedOnTryfiles(path)
+	}
+
+	// Check the defaultpath to determine the servePath.
+	defaultPath := sm.EffectiveDefaultPath()
+	if defaultPath != "" && path == "/" {
+		_, exists := sm.Subfiles[strings.TrimPrefix(defaultPath, "/")]
+		if exists {
+			return EnsurePrefix(defaultPath, "/")
+		}
+	}
+	return path
 }
 
 // size returns the total size, which is the sum of the length of all subfiles.
@@ -382,6 +504,32 @@ func (sm SkyfileMetadata) offset() uint64 {
 		}
 	}
 	return min
+}
+
+// determinePathBasedOnTryfiles determines if we should serve a different path
+// based on the given metadata.
+func (sm SkyfileMetadata) determinePathBasedOnTryfiles(path string) string {
+	if sm.Subfiles == nil {
+		return path
+	}
+	file := strings.Trim(path, "/")
+	if _, exists := sm.Subfiles[file]; !exists {
+		for _, tf := range sm.TryFiles {
+			// If we encounter an absolute-path tryfile, and it exists, we stop
+			// searching.
+			_, exists = sm.Subfiles[strings.Trim(tf, "/")]
+			if strings.HasPrefix(tf, "/") && exists {
+				return tf
+			}
+			// Assume the request is for a directory and check if a
+			// tryfile matches.
+			potentialFilename := strings.Trim(strings.TrimSuffix(file, "/")+EnsurePrefix(tf, "/"), "/")
+			if _, exists = sm.Subfiles[potentialFilename]; exists {
+				return EnsurePrefix(potentialFilename, "/")
+			}
+		}
+	}
+	return path
 }
 
 // SkyfileLayout explains the layout information that is used for storing data
@@ -464,6 +612,12 @@ func (sl *SkyfileLayout) DecodeFanoutIntoChunks(fanoutBytes []byte) ([][]crypto.
 		}
 		chunks = append(chunks, chunk)
 	}
+
+	// Make sure the fanout chunks match the filesize.
+	expectedFanoutChunks := NumChunks(sl.CipherType, sl.Filesize, uint64(sl.FanoutDataPieces))
+	if uint64(numChunks) != expectedFanoutChunks {
+		return nil, errors.AddContext(ErrMalformedBaseSector, fmt.Sprintf("unexpected fanout length %v != %v", numChunks, expectedFanoutChunks))
+	}
 	return chunks, nil
 }
 
@@ -513,12 +667,6 @@ type SkyfileSubfileMetadata struct {
 // IsDir implements the os.FileInfo interface for SkyfileSubfileMetadata.
 func (sm SkyfileSubfileMetadata) IsDir() bool {
 	return false
-}
-
-// IsHTML returns whether or not this subfile is an HTML file
-func (sm SkyfileSubfileMetadata) IsHTML() bool {
-	extension := filepath.Ext(sm.Filename)
-	return extension == ".html" || extension == ".htm"
 }
 
 // Mode implements the os.FileInfo interface for SkyfileSubfileMetadata.
@@ -590,74 +738,6 @@ func IsSkynetDir(sp SiaPath) bool {
 	return strings.HasPrefix(sp.String(), SkynetFolder.String())
 }
 
-// PayMonetizers is a helper method for paying out monetizers.
-func PayMonetizers(w modules.SiacoinSenderMulti, monetization *Monetization, downloadedData, totalData uint64, conversionRates map[string]types.Currency, monetizationBase types.Currency) error {
-	return payMonetizers(w, monetization, downloadedData, totalData, conversionRates, monetizationBase, fastrand.Reader)
-}
-
-// payMonetizers is a helper method for paying out monetizers.
-func payMonetizers(w modules.SiacoinSenderMulti, monetization *Monetization, downloadedData, totalData uint64, conversionRates map[string]types.Currency, monetizationBase types.Currency, rand io.Reader) error {
-	// If there is no monetization, there is nothing for us to do.
-	if monetization == nil {
-		return nil
-	}
-	// If no data was downloaded, there is nothing to pay for.
-	if downloadedData == 0 {
-		return nil
-	}
-	// If there are no monetizers, there is nothing to do.
-	if len(monetization.Monetizers) == 0 {
-		return nil
-	}
-	// There are monetizers, but the base is 0.
-	if monetizationBase.IsZero() {
-		return ErrZeroBase
-	}
-	// Pay out monetizers.
-	var payouts []types.SiacoinOutput
-	for _, monetizer := range monetization.Monetizers {
-		// Check conversion rate.
-		conversion, valid := conversionRates[monetizer.Currency]
-		if !valid {
-			return ErrInvalidCurrency
-		}
-		// Check if the conversion rate is zero.
-		if conversion.IsZero() {
-			return errors.AddContext(ErrZeroConversionRate, monetizer.Currency)
-		}
-		// Convert money to SC.
-		sc := monetizer.Amount.Mul(conversion).Div(types.SiacoinPrecision)
-
-		// Adjust money to percentage of downloaded content. Unless we download
-		// a 0 byte file.
-		if totalData > 0 {
-			sc = sc.Mul64(downloadedData).Div64(totalData)
-		}
-
-		// Figure out how much to pay.
-		payout, err := computeMonetizationPayout(sc, monetizationBase, rand)
-		if err != nil {
-			return err
-		}
-
-		// Ignore 0 payouts.
-		if payout.IsZero() {
-			continue
-		}
-		payouts = append(payouts, types.SiacoinOutput{
-			Value:      payout,
-			UnlockHash: monetizer.Address,
-		})
-	}
-	// If no payouts remain, there is nothing to do.
-	if len(payouts) == 0 {
-		return nil
-	}
-	// Send money.
-	_, err := w.SendSiacoinsMulti(payouts)
-	return err
-}
-
 // computeMonetizationPayout is a helper function to decide how much money to
 // pay out to a monetizer depending on a given amount and base. The amount is
 // the amount the monetizer should be paid for a single access of their
@@ -698,4 +778,24 @@ func computeMonetizationPayout(amt, base types.Currency, rand io.Reader) (types.
 		return base, nil
 	}
 	return types.ZeroCurrency, nil
+}
+
+// RegistryEntry is a complete registry entry including the pubkey needed to
+// verify it.
+type RegistryEntry struct {
+	modules.SignedRegistryValue
+	PubKey types.SiaPublicKey
+}
+
+// Verify verifies the entry.
+func (re RegistryEntry) Verify() error {
+	return re.SignedRegistryValue.Verify(re.PubKey.ToPublicKey())
+}
+
+// NewRegistryEntry creates a new RegistryEntry.
+func NewRegistryEntry(spk types.SiaPublicKey, srv modules.SignedRegistryValue) RegistryEntry {
+	return RegistryEntry{
+		SignedRegistryValue: srv,
+		PubKey:              spk,
+	}
 }

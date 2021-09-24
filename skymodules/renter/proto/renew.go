@@ -14,6 +14,10 @@ import (
 	"go.sia.tech/siad/types/typesutil"
 )
 
+// FileContractTxnEstimateMultiplier is a multiplier for the estimation of the
+// size of a renew txn including a file contract and revision.
+const FileContractTxnEstimateMultiplier = 3
+
 // Renew negotiates a new contract for data already stored with a host, and
 // submits the new contract transaction to tpool. The new contract is added to
 // the ContractSet and its metadata is returned.
@@ -415,7 +419,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 
 	// RHP3 contains both the contract and final revision. So we double the
 	// estimation.
-	txnFee := pt.TxnFeeMaxRecommended.Mul64(3 * skymodules.EstimatedFileContractTransactionSetSize)
+	txnFee := pt.TxnFeeMaxRecommended.Mul64(FileContractTxnEstimateMultiplier * skymodules.EstimatedFileContractTransactionSetSize)
 
 	// Calculate the base cost. This includes the RPC cost.
 	basePrice, baseCollateral := skymodules.RenewBaseCosts(oldRev, pt, endHeight)

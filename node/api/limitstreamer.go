@@ -35,13 +35,14 @@ type limitStreamer struct {
 // downloading subfiles.
 func NewLimitStreamer(s skymodules.SkyfileStreamer, md skymodules.SkyfileMetadata, rawMD []byte, sl skymodules.Skylink, layout skymodules.SkyfileLayout, offset, size uint64) (skymodules.SkyfileStreamer, error) {
 	ls := &limitStreamer{
-		stream:       s,
-		base:         offset,
-		off:          offset,
-		limit:        offset + size,
-		staticLayout: layout,
-		staticMD:     md,
-		staticRawMD:  rawMD,
+		stream:        s,
+		base:          offset,
+		off:           offset,
+		limit:         offset + size,
+		staticLayout:  layout,
+		staticMD:      md,
+		staticRawMD:   rawMD,
+		staticSkylink: sl,
 	}
 	_, err := ls.Seek(0, io.SeekStart) // SeekStart to ensure the initial offset
 	if err != nil {

@@ -63,7 +63,7 @@ const (
 	pcwsGougingFractionDenom = 25
 )
 
-// pcwsUnreseovledWorker tracks an unresolved worker that is associated with a
+// pcwsUnresolvedWorker tracks an unresolved worker that is associated with a
 // specific projectChunkWorkerSet. The timestamp indicates when the unresolved
 // worker is expected to have a resolution, and is an estimate based on historic
 // performance from the worker.
@@ -176,12 +176,12 @@ type projectChunkWorkerSet struct {
 // chunkFetcher is an interface that exposes a download function, the PCWS
 // implements this interface.
 type chunkFetcher interface {
-	Download(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error)
+	Download(ctx context.Context, pricePerMS types.Currency, offset, length uint64, skipRecovery, lowPrio bool) (chan *downloadResponse, error)
 }
 
 // Download will download a range from a chunk.
-func (pcws *projectChunkWorkerSet) Download(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error) {
-	return pcws.managedDownload(ctx, pricePerMS, offset, length)
+func (pcws *projectChunkWorkerSet) Download(ctx context.Context, pricePerMS types.Currency, offset, length uint64, skipRecovery, lowPrio bool) (chan *downloadResponse, error) {
+	return pcws.managedDownload(ctx, pricePerMS, offset, length, skipRecovery, lowPrio)
 }
 
 // checkPCWSGouging verifies the cost of grabbing the HasSector information from
@@ -314,6 +314,32 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	})
 }
 
+// WaitForResults waits for all workers of the state to resolve up until ctx is
+// closed. Once the ctx is closed, all available responses are returned.
+func (ws *pcwsWorkerState) WaitForResults(ctx context.Context) []*pcwsWorkerResponse {
+	for {
+		ws.mu.Lock()
+		rw := ws.resolvedWorkers
+		noUnresolvedWorkers := len(ws.unresolvedWorkers) == 0
+		updateChan := ws.registerForWorkerUpdate()
+		ws.mu.Unlock()
+
+		// If there are no more unresolved workers, we are done.
+		if noUnresolvedWorkers {
+			return rw
+		}
+
+		// Otherwise we wait for either an update or the timeout.
+		select {
+		case <-updateChan:
+			continue
+		case <-ctx.Done():
+			// Timeout reached. Return what we got.
+			return rw
+		}
+	}
+}
+
 // managedLaunchWorker will launch a job to determine which sectors of a chunk
 // are available through that worker. The resulting unresolved worker is
 // returned so it can be added to the pending worker state.
@@ -344,7 +370,7 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 	jhs := w.newJobHasSectorWithPostExecutionHook(ctx, responseChan, func(resp *jobHasSectorResponse) {
 		ws.managedHandleResponse(resp)
 		cancel()
-	}, pcws.staticPieceRoots...)
+	}, pcws.staticErasureCoder.NumPieces(), pcws.staticPieceRoots...)
 
 	expectedJobTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs, pcwsHasSectorTimeout)
 	if err != nil {
@@ -465,7 +491,7 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 // expected to trim 100 milliseconds off of the download time, the download code
 // will select those workers only if the additional expense of using those
 // workers is less than 100 * pricePerMS.
-func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error) {
+func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePerMS types.Currency, offset, length uint64, skipRecovery, lowPrio bool) (chan *downloadResponse, error) {
 	// Potentially force a timeout via a disrupt for testing.
 	if pcws.staticRenter.staticDeps.Disrupt("timeoutProjectDownloadByRoot") {
 		return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
@@ -540,10 +566,15 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		pieceOffset: pieceOffset,
 		pieceLength: pieceLength,
 
+		staticIsLowPrio: lowPrio,
+
 		pricePerMS: pricePerMS,
 
-		availablePieces: make([][]*pieceDownload, ec.NumPieces()),
-		dataPieces:      make([][]byte, ec.NumPieces()),
+		availablePieces:         make([][]*pieceDownload, ec.NumPieces()),
+		availablePiecesByWorker: make(map[string][]uint64),
+		dataPieces:              make([][]byte, ec.NumPieces()),
+
+		staticSkipRecovery: skipRecovery,
 
 		ctx:                  ctx,
 		workerResponseChan:   workerResponseChan,
@@ -573,7 +604,9 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 // set of sector roots associated with the pieces. The hosts that correspond to
 // the roots will be determined by scanning the network with a large number of
 // HasSector queries. Once opened, the projectChunkWorkerSet can be used to
-// initiate many downloads.
+// initiate many downloads. If it is already known what pieces a worker is
+// expected to have, it can be provided as a seedWorker. A seedWorker is
+// considered to be resolved right away.
 func (r *Renter) newPCWSByRoots(ctx context.Context, roots []crypto.Hash, ec skymodules.ErasureCoder, masterKey crypto.CipherKey, chunkIndex uint64) (*projectChunkWorkerSet, error) {
 	// Check that the number of roots provided is consistent with the erasure
 	// coder provided.

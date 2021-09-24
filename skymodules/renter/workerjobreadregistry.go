@@ -34,6 +34,10 @@ const (
 
 type (
 	// jobReadRegistry contains information about a ReadRegistry query.
+	// Only a registry entry ID is required to read an entry but if the public key
+	// and tweak are also specified, a different MDM program can be used that
+	// doesn't require the host to respond with the public key and tweak since they
+	// are already known.
 	jobReadRegistry struct {
 		staticRegistryEntryID modules.RegistryEntryID
 		staticSiaPublicKey    *types.SiaPublicKey
@@ -57,13 +61,11 @@ type (
 
 	// jobReadRegistryResponse contains the result of a ReadRegistry query.
 	jobReadRegistryResponse struct {
-		staticSignedRegistryValue *modules.SignedRegistryValue
+		staticSignedRegistryValue *skymodules.RegistryEntry
 		staticErr                 error
 		staticCompleteTime        time.Time
 		staticExecuteTime         time.Time
 		staticEID                 modules.RegistryEntryID
-		staticSPK                 *types.SiaPublicKey
-		staticTweak               *crypto.Hash
 		staticWorker              *worker
 	}
 )
@@ -89,7 +91,7 @@ func (jq *jobReadRegistryQueue) staticMaxWeight() uint64 {
 
 // parseSignedRegistryValueResponse is a helper function to parse a response
 // containing a signed registry value.
-func parseSignedRegistryValueResponse(resp []byte, needPKAndTweak bool) (spk types.SiaPublicKey, tweak crypto.Hash, data []byte, rev uint64, sig crypto.Signature, err error) {
+func parseSignedRegistryValueResponse(resp []byte, needPKAndTweak bool, version modules.ReadRegistryVersion) (spk types.SiaPublicKey, tweak crypto.Hash, data []byte, rev uint64, sig crypto.Signature, rrv modules.RegistryEntryType, err error) {
 	dec := encoding.NewDecoder(bytes.NewReader(resp), encoding.DefaultAllocLimit)
 	if needPKAndTweak {
 		err = dec.DecodeAll(&spk, &tweak, &sig, &rev)
@@ -100,11 +102,22 @@ func parseSignedRegistryValueResponse(resp []byte, needPKAndTweak bool) (spk typ
 		return
 	}
 	data, err = ioutil.ReadAll(dec)
+
+	// Last byte might be the entry type.
+	rrv = modules.RegistryTypeWithoutPubkey
+	if version == modules.ReadRegistryVersionWithType {
+		if len(data) < 1 {
+			err = errors.New("parsing the registry value failed - not enough data to contain entry type")
+			return
+		}
+		rrv = modules.RegistryEntryType(data[len(data)-1])
+		data = data[:len(data)-1]
+	}
 	return
 }
 
 // lookupsRegistry looks up a registry on the host and verifies its signature.
-func lookupRegistry(w *worker, sid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) (*modules.SignedRegistryValue, error) {
+func lookupRegistry(w *worker, sid modules.RegistryEntryID, spk *types.SiaPublicKey, tweak *crypto.Hash) (*skymodules.RegistryEntry, error) {
 	// Create the program.
 	pt := w.staticPriceTable().staticPriceTable
 	pb := modules.NewProgramBuilder(&pt, 0) // 0 duration since ReadRegistry doesn't depend on it.
@@ -112,14 +125,18 @@ func lookupRegistry(w *worker, sid modules.RegistryEntryID, spk *types.SiaPublic
 
 	var refund types.Currency
 	var err error
+	version := modules.ReadRegistryVersionNoType
 	if build.VersionCmp(w.staticCache().staticHostVersion, minRegistryVersion) < 0 {
 		err = errors.New("lookupRegistry called on host with version < minRegistryVersion")
 		build.Critical(err)
 		return nil, err
 	} else if build.VersionCmp(w.staticCache().staticHostVersion, minReadRegistrySIDVersion) < 0 {
 		refund, err = pb.V156AddReadRegistryInstruction(*spk, *tweak)
-	} else {
+	} else if build.VersionCmp(w.staticCache().staticHostVersion, minUpdateRegistryEntryTypeVersion) < 0 {
 		refund, err = pb.V156AddReadRegistryEIDInstruction(sid, needPKAndTweak)
+	} else {
+		version = modules.ReadRegistryVersionWithType
+		refund, err = pb.AddReadRegistryEIDInstruction(sid, needPKAndTweak, version)
 	}
 	if err != nil {
 		return nil, errors.AddContext(err, "Unable to add read registry instruction")
@@ -157,7 +174,7 @@ func lookupRegistry(w *worker, sid modules.RegistryEntryID, spk *types.SiaPublic
 	}
 
 	// Parse response.
-	spkHost, tweakHost, data, revision, sig, err := parseSignedRegistryValueResponse(resp.Output, needPKAndTweak)
+	spkHost, tweakHost, data, revision, sig, entryType, err := parseSignedRegistryValueResponse(resp.Output, needPKAndTweak, version)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to parse signed revision response")
 	}
@@ -171,13 +188,14 @@ func lookupRegistry(w *worker, sid modules.RegistryEntryID, spk *types.SiaPublic
 		spk = &spkHost
 		tweak = &tweakHost
 	}
-	rv := modules.NewSignedRegistryValue(*tweak, data, revision, sig, modules.RegistryTypeWithoutPubkey)
+	rv := modules.NewSignedRegistryValue(*tweak, data, revision, sig, entryType)
+	entry := skymodules.NewRegistryEntry(*spk, rv)
 
 	// Verify signature.
-	if rv.Verify(spk.ToPublicKey()) != nil {
+	if entry.Verify() != nil {
 		return nil, errors.New("failed to verify returned registry value's signature")
 	}
-	return &rv, nil
+	return &entry, nil
 }
 
 // newJobReadRegistry is a helper method to create a new ReadRegistry job.
@@ -213,8 +231,6 @@ func (j *jobReadRegistry) callDiscard(err error) {
 			staticErr:          errors.Extend(err, ErrJobDiscarded),
 			staticCompleteTime: time.Now(),
 			staticEID:          j.staticRegistryEntryID,
-			staticSPK:          j.staticSiaPublicKey,
-			staticTweak:        j.staticTweak,
 			staticWorker:       w,
 		}
 		select {
@@ -241,7 +257,7 @@ func (j *jobReadRegistry) callExecute() {
 	defer span.Finish()
 
 	// Prepare a method to send a response asynchronously.
-	sendResponse := func(srv *modules.SignedRegistryValue, err error) {
+	sendResponse := func(srv *skymodules.RegistryEntry, err error) {
 		errLaunch := w.staticRenter.tg.Launch(func() {
 			response := &jobReadRegistryResponse{
 				staticCompleteTime:        time.Now(),
@@ -249,8 +265,6 @@ func (j *jobReadRegistry) callExecute() {
 				staticErr:                 err,
 				staticExecuteTime:         start,
 				staticEID:                 j.staticRegistryEntryID,
-				staticSPK:                 j.staticSiaPublicKey,
-				staticTweak:               j.staticTweak,
 				staticWorker:              w,
 			}
 			select {
@@ -269,7 +283,6 @@ func (j *jobReadRegistry) callExecute() {
 	spk, tweak := j.staticSiaPublicKey, j.staticTweak
 	if build.VersionCmp(w.staticCache().staticHostVersion, minReadRegistrySIDVersion) < 0 && (spk == nil || tweak == nil) {
 		err := errors.New("can't call lookupRegistry without pubkey/tweak on legacy hosts")
-		build.Critical(err)
 		sendResponse(nil, err)
 		j.staticQueue.callReportFailure(err)
 		span.LogKV("error", err)
@@ -299,24 +312,33 @@ func (j *jobReadRegistry) callExecute() {
 		j.staticSpan.SetTag("success", false)
 		return
 	}
+	var signedValue *modules.SignedRegistryValue
+	if srv != nil {
+		signedValue = &srv.SignedRegistryValue
+	}
+
+	// Simulate the host returning no entry.
+	if j.staticQueue.staticWorker().staticRenter.staticDeps.Disrupt("ReadRegistryNoEntry") {
+		srv = nil
+		signedValue = nil
+	}
 
 	// Check if we have a cached version of the looked up entry. If the new entry
 	// has a higher revision number we update it. If it has a lower one we know that
 	// the host should be punished for losing it or trying to cheat us.
-	// TODO: update the cache to store the hash in addition to the revision
-	// number for verifying the pow.
-	if srv != nil {
-		cachedRevision, cached := w.staticRegistryCache.Get(j.staticRegistryEntryID)
-		if cached && cachedRevision > srv.Revision {
-			sendResponse(nil, errHostLowerRevisionThanCache)
-			j.staticQueue.callReportFailure(errHostLowerRevisionThanCache)
-			span.LogKV("error", errHostLowerRevisionThanCache)
-			j.staticSpan.SetTag("success", false)
-			w.staticRegistryCache.Set(j.staticRegistryEntryID, *srv, true) // adjust the cache
-			return
-		} else if !cached || srv.Revision > cachedRevision {
-			w.staticRegistryCache.Set(j.staticRegistryEntryID, *srv, false) // adjust the cache
+	errCheating := w.managedCheckHostCheating(j.staticRegistryEntryID, signedValue, true)
+	if errCheating != nil {
+		sendResponse(nil, errCheating)
+		j.staticQueue.callReportFailure(errCheating)
+		span.LogKV("error", errCheating)
+		j.staticSpan.SetTag("success", false)
+		// Update the cache.
+		if srv != nil {
+			w.staticRegistryCache.Set(j.staticRegistryEntryID, srv.SignedRegistryValue, true)
+		} else {
+			w.staticRegistryCache.Delete(j.staticRegistryEntryID)
 		}
+		return
 	}
 
 	// Success.
@@ -335,6 +357,7 @@ func (j *jobReadRegistry) callExecute() {
 	jq.mu.Lock()
 	jq.weightedJobTime = expMovingAvgHotStart(jq.weightedJobTime, float64(jobTime), jobReadRegistryPerformanceDecay)
 	jq.mu.Unlock()
+	jq.staticWorkerObj.staticJobReadRegistryDT.AddDataPoint(jobTime)
 }
 
 // callExpectedBandwidth returns the bandwidth that is expected to be consumed
@@ -357,7 +380,7 @@ func (w *worker) initJobReadRegistryQueue() {
 }
 
 // ReadRegistry is a helper method to run a ReadRegistry job on a worker.
-func (w *worker) ReadRegistry(ctx context.Context, parentSpan opentracing.Span, spk types.SiaPublicKey, tweak crypto.Hash) (*modules.SignedRegistryValue, error) {
+func (w *worker) ReadRegistry(ctx context.Context, parentSpan opentracing.Span, spk types.SiaPublicKey, tweak crypto.Hash) (*skymodules.RegistryEntry, error) {
 	readRegistryRespChan := make(chan *jobReadRegistryResponse)
 	span := opentracing.GlobalTracer().StartSpan("ReadRegistry", opentracing.ChildOf(parentSpan.Context()))
 	defer span.Finish()
@@ -386,7 +409,7 @@ func (w *worker) ReadRegistry(ctx context.Context, parentSpan opentracing.Span, 
 
 // ReadRegistryEID is a helper method to run a ReadRegistry job on a worker
 // without a pubkey or tweak.
-func (w *worker) ReadRegistryEID(ctx context.Context, parentSpan opentracing.Span, sid modules.RegistryEntryID) (*modules.SignedRegistryValue, error) {
+func (w *worker) ReadRegistryEID(ctx context.Context, parentSpan opentracing.Span, sid modules.RegistryEntryID) (*skymodules.RegistryEntry, error) {
 	readRegistryRespChan := make(chan *jobReadRegistryResponse)
 	span := opentracing.GlobalTracer().StartSpan("ReadRegistryEID", opentracing.ChildOf(parentSpan.Context()))
 	defer span.Finish()

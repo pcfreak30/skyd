@@ -13,34 +13,13 @@ import (
 	"go.sia.tech/siad/types"
 )
 
-// Delete deltes an entry from the cache without replacing it. Should only be
-// used in testing.
-func (rc *registryRevisionCache) Delete(sid modules.RegistryEntryID) {
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
-
-	entry, exists := rc.entryMap[sid]
-	if !exists {
-		return
-	}
-	delete(rc.entryMap, sid)
-	for idx := range rc.entryList {
-		if rc.entryList[idx] != entry {
-			continue
-		}
-		rc.entryList[idx] = rc.entryList[len(rc.entryList)-1]
-		rc.entryList = rc.entryList[:len(rc.entryList)-1]
-		break
-	}
-}
-
 // TestRegistryCache tests the in-memory registry type.
 func TestRegistryCache(t *testing.T) {
 	numEntries := uint64(100)
 	cacheSize := numEntries * cachedEntryEstimatedSize
 
 	// Create the cache and check its maxEntries field.
-	cache := newRegistryCache(cacheSize)
+	cache := newRegistryCache(cacheSize, types.SiaPublicKey{})
 	if cache.maxEntries != numEntries {
 		t.Fatalf("maxEntries %v != %v", cache.maxEntries, numEntries)
 	}
@@ -81,7 +60,7 @@ func TestRegistryCache(t *testing.T) {
 
 	// Make sure the value can be retrieved.
 	readRev, exists := cache.Get(modules.DeriveRegistryEntryID(pk, rv.Tweak))
-	if !exists || readRev != 1 {
+	if !exists || readRev.Revision != 1 {
 		t.Fatal("get returned wrong value", exists, readRev)
 	}
 
@@ -112,7 +91,7 @@ func TestRegistryCache(t *testing.T) {
 		// Both datastructures should contain an entry with number 2.
 		found := false
 		for _, v := range cache.entryMap {
-			if v.revision == 2 {
+			if v.rv.Revision == 2 {
 				found = true
 				break
 			}
@@ -122,7 +101,7 @@ func TestRegistryCache(t *testing.T) {
 		}
 		found = false
 		for _, v := range cache.entryList {
-			if v.revision == 2 {
+			if v.rv.Revision == 2 {
 				found = true
 				break
 			}
@@ -138,7 +117,7 @@ func TestRegistryCache(t *testing.T) {
 
 	// Get should return the same entry.
 	readRev, exists = cache.Get(modules.DeriveRegistryEntryID(pk, rv.Tweak))
-	if !exists || readRev != 2 {
+	if !exists || readRev.Revision != 2 {
 		t.Fatal("get returned wrong value", exists, readRev)
 	}
 }

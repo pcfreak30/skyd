@@ -8,16 +8,15 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
-	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 
 	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
-	// skylinkDataSourceRequestSize is the size that is suggested by the data
+	// SkylinkDataSourceRequestSize is the size that is suggested by the data
 	// source to be used when reading data from it.
-	skylinkDataSourceRequestSize = build.Select(build.Var{
+	SkylinkDataSourceRequestSize = build.Select(build.Var{
 		Dev:      uint64(1 << 18), // 256 KiB
 		Standard: uint64(1 << 20), // 1 MiB
 		Testing:  uint64(1 << 9),  // 512 B
@@ -86,7 +85,7 @@ func (sds *skylinkDataSource) RawMetadata() []byte {
 
 // RequestSize implements streamBufferDataSource
 func (sds *skylinkDataSource) RequestSize() uint64 {
-	return skylinkDataSourceRequestSize
+	return SkylinkDataSourceRequestSize
 }
 
 // Skylink implements streamBufferDataSource
@@ -129,7 +128,7 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 	}
 
 	// Determine how large each chunk is.
-	chunkSize := uint64(sds.staticLayout.FanoutDataPieces) * modules.SectorSize
+	chunkSize := skymodules.ChunkSize(sds.staticLayout.CipherType, uint64(sds.staticLayout.FanoutDataPieces))
 
 	// Prepare an array of download chans on which we'll receive the data.
 	numChunks := fetchSize / chunkSize
@@ -173,7 +172,7 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 		}
 
 		// Schedule the download.
-		respChan, err := sds.staticChunkFetchers[chunkIndex].Download(ctx, pricePerMS, offsetInChunk, downloadSize)
+		respChan, err := sds.staticChunkFetchers[chunkIndex].Download(ctx, pricePerMS, offsetInChunk, downloadSize, false, false)
 		if err != nil {
 			responseChan <- &readResponse{
 				staticErr: errors.AddContext(err, "unable to start download"),
@@ -219,7 +218,7 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 }
 
 // managedDownloadByRoot will fetch data using the merkle root of that data.
-func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, offset, length uint64, pricePerMS types.Currency) ([]byte, error) {
+func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, offset, length uint64, pricePerMS types.Currency) ([]byte, *pcwsWorkerState, error) {
 	// Create a context that dies when the function ends, this will cancel all
 	// of the worker jobs that get created by this function.
 	ctx, cancel := context.WithCancel(ctx)
@@ -239,11 +238,11 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 	ptec := skymodules.NewPassthroughErasureCoder()
 	tpsk, err := crypto.NewSiaKey(crypto.TypePlain, nil)
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to create plain skykey")
+		return nil, nil, errors.AddContext(err, "unable to create plain skykey")
 	}
 	pcws, err := r.newPCWSByRoots(ctx, []crypto.Hash{root}, ptec, tpsk, 0)
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to create the worker set for this skylink")
+		return nil, nil, errors.AddContext(err, "unable to create the worker set for this skylink")
 	}
 
 	// Download the base sector. The base sector contains the metadata, without
@@ -251,20 +250,20 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 	//
 	// NOTE: we pass in the provided context here, if the user imposed a timeout
 	// on the download request, this will fire if it takes too long.
-	respChan, err := pcws.managedDownload(ctx, pricePerMS, offset, length)
+	respChan, err := pcws.managedDownload(ctx, pricePerMS, offset, length, false, false)
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to start download")
+		return nil, nil, errors.AddContext(err, "unable to start download")
 	}
 	resp := <-respChan
 	if resp.err != nil {
-		return nil, errors.AddContext(resp.err, "base sector download did not succeed")
+		return nil, nil, errors.AddContext(resp.err, "base sector download did not succeed")
 	}
 	baseSector := resp.data
 	if len(baseSector) < skymodules.SkyfileLayoutSize {
-		return nil, errors.New("download did not fetch enough data, layout cannot be decoded")
+		return nil, nil, errors.New("download did not fetch enough data, layout cannot be decoded")
 	}
 
-	return baseSector, nil
+	return baseSector, pcws.managedWorkerState(), nil
 }
 
 // managedSkylinkDataSource will create a streamBufferDataSource for the data
@@ -289,7 +288,7 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, skylink skymodule
 	//
 	// NOTE: we pass in the provided context here, if the user imposed a timeout
 	// on the download request, this will fire if it takes too long.
-	baseSector, err := r.managedDownloadByRoot(ctx, skylink.MerkleRoot(), offset, fetchSize, pricePerMS)
+	baseSector, _, err := r.managedDownloadByRoot(ctx, skylink.MerkleRoot(), offset, fetchSize, pricePerMS)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to download base sector")
 	}
@@ -361,6 +360,7 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, skylink skymodule
 			cancelFunc()
 			return nil, errors.AddContext(err, "error parsing skyfile fanout")
 		}
+
 		// Initialize the fanout chunk fetchers. To improve TTFB, the list is
 		// returned prior to all of the PCWS objects actually being created,
 		// because the pcws objects will sometimes block on network connections

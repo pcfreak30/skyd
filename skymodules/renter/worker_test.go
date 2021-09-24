@@ -194,8 +194,9 @@ func TestReadOffsetCorruptedProof(t *testing.T) {
 func TestManagedAsyncReady(t *testing.T) {
 	w := new(worker)
 	w.initJobHasSectorQueue()
-	w.initJobReadQueue()
-	w.initJobLowPrioReadQueue()
+	jrs := &jobReadStats{}
+	w.initJobReadQueue(jrs)
+	w.initJobLowPrioReadQueue(jrs)
 	w.initJobReadRegistryQueue()
 	w.initJobUpdateRegistryQueue()
 
@@ -253,8 +254,76 @@ func TestJobQueueInitialEstimate(t *testing.T) {
 	if w.staticJobHasSectorQueue.callExpectedJobTime() == 0 {
 		t.Fatal("unexpected")
 	}
-	if w.staticJobReadQueue.callExpectedJobTime(fastrand.Uint64n(1<<24)) == 0 {
+	if w.staticJobReadQueue.staticStats.callExpectedJobTime(fastrand.Uint64n(1<<24)) == 0 {
 		t.Fatal("unexpected")
+	}
+}
+
+// TestWorkerOfflineHost verifies that we do not create a worker for hosts that
+// are offline and kill off workers for hosts that went offline.
+func TestWorkerOfflineHost(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a dependency that allows interrupting host scans, simulating the
+	// behaviour of a host going offline
+	deps := dependencies.NewDependencyInterruptHostScan()
+	deps.Disable()
+
+	// create a worker tester with that dependency
+	wt, err := newWorkerTesterCustomDependency(t.Name(), deps, skymodules.SkydProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// assert the worker pool has a worker
+	//
+	// NOTE: this is redundant because the worker tester will have verified this
+	// already, we check it anyway here to ensure this check takes place
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		workers := wt.rt.renter.staticWorkerPool.callWorkers()
+		if len(workers) == 0 {
+			return errors.New("no workers in pool")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// assert the worker gets removed from the pool if its host appears offline
+	deps.Enable()
+	err = build.Retry(600, 100*time.Millisecond, func() error {
+		workers := wt.rt.renter.staticWorkerPool.callWorkers()
+		if len(workers) != 0 {
+			wt.rt.renter.staticWorkerPool.callUpdate()
+			return errors.New("worker not removed")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// assert the worker gets re-added to the pool if its host comes online
+	deps.Disable()
+	err = build.Retry(600, 100*time.Millisecond, func() error {
+		workers := wt.rt.renter.staticWorkerPool.callWorkers()
+		if len(workers) == 0 {
+			wt.rt.renter.staticWorkerPool.callUpdate()
+			return errors.New("no workers in pool")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
