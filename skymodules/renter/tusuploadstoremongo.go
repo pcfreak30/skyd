@@ -242,7 +242,22 @@ func (us *skynetTUSMongoUploadStore) CreateUpload(ctx context.Context, fi handle
 // GetUpload returns the upload specified by the given id. The upload will also
 // have this portal's name added to it.
 func (us *skynetTUSMongoUploadStore) GetUpload(ctx context.Context, id string) (skymodules.SkynetTUSUpload, error) {
-	r := us.staticUploadCollection().FindOneAndUpdate(ctx, bson.M{"_id": id}, bson.M{
+	r := us.staticUploadCollection().FindOneAndUpdate(ctx, bson.M{
+		"_id": id,
+		// Ignore uploads which are ready to be pruned to avoid a loop
+		// where portals keep adding themselves back and then remove
+		// themselves again as part of the pruning process.
+		"$or": bson.A{
+			bson.M{
+				"lastwrite": bson.M{
+					"$gte": time.Now().Add(-PruneTUSUploadTimeout).UTC(),
+				},
+			},
+			bson.M{
+				"complete": true,
+			},
+		},
+	}, bson.M{
 		"$addToSet": bson.M{
 			"portalnames": us.staticPortalHostname,
 		},

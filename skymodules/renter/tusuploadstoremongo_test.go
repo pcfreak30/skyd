@@ -326,7 +326,7 @@ func TestPrune(t *testing.T) {
 	if !os.IsNotExist(err) {
 		t.Fatal(err)
 	}
-	// The others should still exist.
+	// The recent one should still exist.
 	upload, err := us.GetUpload(context.Background(), uploadRecent.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -335,6 +335,7 @@ func TestPrune(t *testing.T) {
 	if !reflect.DeepEqual(portalNames, uploadRecent.PortalNames) {
 		t.Fatal("wrong portal name", portalNames)
 	}
+	// The outdated but complete one should still exist.
 	upload, err = us.GetUpload(context.Background(), uploadOutdatedButComplete.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -343,21 +344,31 @@ func TestPrune(t *testing.T) {
 	if !reflect.DeepEqual(portalNames, uploadOutdatedButComplete.PortalNames) {
 		t.Fatal("wrong portal name", portalNames)
 	}
+	// The outdated one with the wrong portal should still exist but is no
+	// longer fetchable using GetUpload since it's waiting to be pruned.
 	upload, err = us.GetUpload(context.Background(), uploadOutdatedButWrongPortal.ID)
-	if err != nil {
+	if !os.IsNotExist(err) {
+		t.Fatal("upload shouldn't be fetchable with GetUpload since it's about to be pruned")
+	}
+	var mu MongoTUSUpload
+	r := us.staticUploadCollection().FindOne(context.Background(), bson.M{"_id": uploadOutdatedButWrongPortal.ID})
+	if err = r.Decode(&mu); err != nil {
 		t.Fatal(err)
 	}
-	portalNames = upload.(*MongoTUSUpload).PortalNames
-	if !reflect.DeepEqual(portalNames, uploadOutdatedButWrongPortal.PortalNames) {
-		t.Fatal("wrong portal name", portalNames)
+	if !reflect.DeepEqual(mu.PortalNames, uploadOutdatedButWrongPortal.PortalNames) {
+		t.Fatal("wrong portal name", mu.PortalNames)
 	}
-	// The one with multiple portals should exist and have 1 portal left.
+	// The one with multiple portals should exist and have 1 portal left but
+	// it's also no longer fetchable using GetUpload.
 	upload, err = us.GetUpload(context.Background(), uploadOutdatedMultiPortal.ID)
-	if err != nil {
+	if !os.IsNotExist(err) {
+		t.Fatal("upload shouldn't be fetchable with GetUpload since it's about to be pruned")
+	}
+	r = us.staticUploadCollection().FindOne(context.Background(), bson.M{"_id": uploadOutdatedMultiPortal.ID})
+	if err = r.Decode(&mu); err != nil {
 		t.Fatal(err)
 	}
-	portalNames = upload.(*MongoTUSUpload).PortalNames
-	if len(portalNames) != 1 || portalNames[0] != "otherPortal" {
+	if len(mu.PortalNames) != 1 || mu.PortalNames[0] != "otherPortal" {
 		t.Fatal("wrong portal name remains", portalNames)
 	}
 }

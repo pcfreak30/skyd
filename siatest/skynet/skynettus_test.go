@@ -892,7 +892,8 @@ func TestSkynetResumeOnSeparatePortal(t *testing.T) {
 	if len(u.PortalNames) != 2 {
 		t.Fatal("expected 2 portals got", u.PortalNames)
 	}
-	if u.PortalNames[0] != "A" || u.PortalNames[1] != "B" {
+	portalNames := strings.Join(u.PortalNames, "")
+	if portalNames != "AB" && portalNames != "BA" {
 		t.Fatal("wrong portal names", u.PortalNames)
 	}
 
