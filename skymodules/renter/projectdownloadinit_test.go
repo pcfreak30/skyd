@@ -79,7 +79,6 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 			staticUpdateTime: time.Now().Add(time.Minute),
 		}
 		w.staticSetPriceTable(pt)
-		w.staticJobReadQueue.staticStats.weightedJobTime64k = float64(expectedJobTime)
 		w.staticLoopState = &workerLoopState{}
 		w.staticAccount = &account{syncAt: time.Now().Add(time.Minute)}
 		w.initJobReadQueue(&jobReadStats{
