@@ -39,6 +39,10 @@ const (
 	tusLocksMongoCollectionName = "locks"
 )
 
+// ErrUploadFinished is returned if we try to finish an upload that is already
+// complete.
+var ErrUploadFinished = errors.New("upload already finished")
+
 type (
 	skynetTUSMongoUploadStore struct {
 		ctx context.Context
@@ -384,27 +388,15 @@ func (u *MongoTUSUpload) commitWriteChunk(ctx context.Context, set bson.M, newOf
 
 // CommitFinishUpload commits a finalised upload.
 func (u *MongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodules.Skylink) error {
+	if u.Complete {
+		return ErrUploadFinished
+	}
 	uploads := u.staticUploadStore.staticUploadCollection()
 	u.FileInfo.MetaData["Skylink"] = skylink.String()
 	u.Complete = true
 	result := uploads.FindOneAndUpdate(ctx, bson.M{"_id": u.FileInfo.ID}, bson.M{
 		"$set": bson.M{
 			"fileinfo": u.FileInfo,
-			"complete": u.Complete,
-		},
-	})
-	if errors.Contains(result.Err(), mongo.ErrNoDocuments) {
-		return os.ErrNotExist // return os.ErrNotExist for TUS
-	}
-	return result.Err()
-}
-
-// CommitFinishPartialUpload commits a finalised partial upload.
-func (u *MongoTUSUpload) CommitFinishPartialUpload(ctx context.Context) error {
-	uploads := u.staticUploadStore.staticUploadCollection()
-	u.Complete = true
-	result := uploads.FindOneAndUpdate(ctx, bson.M{"_id": u.FileInfo.ID}, bson.M{
-		"$set": bson.M{
 			"complete": u.Complete,
 		},
 	})

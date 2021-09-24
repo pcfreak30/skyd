@@ -109,15 +109,6 @@ func (u *skynetInMemoryUpload) CommitFinishUpload(_ context.Context, skylink sky
 	return nil
 }
 
-// CommitFinishPartialUpload commits a finished upload to the upload store by
-// setting it to be completed.
-func (u *skynetInMemoryUpload) CommitFinishPartialUpload(_ context.Context) error {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	u.complete = true
-	return nil
-}
-
 // CommitWriteChunk commits the changes to the upload after successfully writing
 // a chunk to the store.
 func (u *skynetInMemoryUpload) CommitWriteChunk(_ context.Context, newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error {

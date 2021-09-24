@@ -312,9 +312,6 @@ type (
 		// CommitFinishUpload commits a finalised upload.
 		CommitFinishUpload(ctx context.Context, skylink Skylink) error
 
-		// CommitFinishPartialUpload commits a finalised partial upload.
-		CommitFinishPartialUpload(ctx context.Context) error
-
 		// Fanout returns the fanout of the upload. Should only be
 		// called once it's done uploading.
 		Fanout(ctx context.Context) ([]byte, error)

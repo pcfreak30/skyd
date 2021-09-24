@@ -620,7 +620,7 @@ func (u *ongoingTUSUpload) ConcatUploads(ctx context.Context, partialUploads []h
 		for i := range partialUploads {
 			// Commit the partial upload as complete as well.
 			pu = partialUploads[i].(*ongoingTUSUpload)
-			if err := pu.staticUpload.CommitFinishPartialUpload(sctx); err != nil {
+			if err := pu.staticUpload.CommitFinishUpload(sctx, skylink); err != nil {
 				return errors.AddContext(err, "failed to commit partial upload")
 			}
 		}

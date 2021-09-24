@@ -657,50 +657,18 @@ func TestCommitFinishUpload(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Test the partial finisher first.
-	partial, err := us.CreateUpload(context.Background(), handler.FileInfo{ID: "partial", MetaData: make(handler.MetaData)}, skymodules.RandomSiaPath(), "partial", 1, 1, 1, fastrand.Bytes(10), crypto.TypePlain)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Check the relevant fields.
-	u, err := us.GetUpload(context.Background(), "partial")
-	if err != nil {
-		t.Fatal(err)
-	}
-	upload := u.(*MongoTUSUpload)
-	if upload.Complete {
-		t.Fatal("new upload shouldn't be complete")
-	}
-
-	// Finish it.
-	err = partial.CommitFinishPartialUpload(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Check the fields again.
-	u, err = us.GetUpload(context.Background(), "partial")
-	if err != nil {
-		t.Fatal(err)
-	}
-	upload = u.(*MongoTUSUpload)
-	if !upload.Complete {
-		t.Fatal("new upload should be complete")
-	}
-
-	// Test the regular upload.
+	// Create the upload.
 	regular, err := us.CreateUpload(context.Background(), handler.FileInfo{ID: "regular", MetaData: make(handler.MetaData)}, skymodules.RandomSiaPath(), "regular", 1, 1, 1, fastrand.Bytes(10), crypto.TypePlain)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Check the relevant fields.
-	u, err = us.GetUpload(context.Background(), "regular")
+	u, err := us.GetUpload(context.Background(), "regular")
 	if err != nil {
 		t.Fatal(err)
 	}
-	upload = u.(*MongoTUSUpload)
+	upload := u.(*MongoTUSUpload)
 	if upload.Complete {
 		t.Fatal("new upload shouldn't be complete")
 	}
@@ -717,6 +685,12 @@ func TestCommitFinishUpload(t *testing.T) {
 	}
 	err = regular.CommitFinishUpload(context.Background(), skylink)
 	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Finishing it again shouldn't work.
+	err = regular.CommitFinishUpload(context.Background(), skylink)
+	if !errors.Contains(err, ErrUploadFinished) {
 		t.Fatal(err)
 	}
 
