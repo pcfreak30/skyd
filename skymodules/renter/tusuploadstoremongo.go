@@ -239,9 +239,14 @@ func (us *skynetTUSMongoUploadStore) CreateUpload(ctx context.Context, fi handle
 	return upload, nil
 }
 
-// GetUpload returns the upload specified by the given id.
+// GetUpload returns the upload specified by the given id. The upload will also
+// have this portal's name added to it.
 func (us *skynetTUSMongoUploadStore) GetUpload(ctx context.Context, id string) (skymodules.SkynetTUSUpload, error) {
-	r := us.staticUploadCollection().FindOne(ctx, bson.M{"_id": id})
+	r := us.staticUploadCollection().FindOneAndUpdate(ctx, bson.M{"_id": id}, bson.M{
+		"$addToSet": bson.M{
+			"portalnames": us.staticPortalHostname,
+		},
+	}, options.FindOneAndUpdate().SetReturnDocument(options.After))
 	if errors.Contains(r.Err(), mongo.ErrNoDocuments) {
 		return nil, os.ErrNotExist // return os.ErrNotExist for TUS
 	}
@@ -338,21 +343,10 @@ func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, 
 	}, newOffset, newLastWrite, isSmall)
 }
 
-// ensurePortalName adds a portal name to a slice if it's not already in there.
-func ensurePortalName(in []string, portalName string) []string {
-	for _, portal := range in {
-		if portal == portalName {
-			return in
-		}
-	}
-	return append(in, portalName)
-}
-
 // commitWriteChunk commits a chunk write and also applies the updates provided
 // by update.
 func (u *MongoTUSUpload) commitWriteChunk(ctx context.Context, set bson.M, newOffset int64, newLastWrite time.Time, smallFile bool) error {
 	uploads := u.staticUploadStore.staticUploadCollection()
-	u.PortalNames = ensurePortalName(u.PortalNames, u.staticUploadStore.staticPortalHostname)
 	u.FileInfo.Offset = newOffset
 	u.LastWrite = newLastWrite
 	u.IsSmallFile = smallFile

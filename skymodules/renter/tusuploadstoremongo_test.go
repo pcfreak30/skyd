@@ -471,15 +471,15 @@ func TestCreateGetUpload(t *testing.T) {
 	}
 }
 
-// TestCommitWriteChunk tests committing small and large uploads.
+// TestCommitWriteChunk tests committing small and large uploads. It also
+// verifies that GetUpload adds the portal name to the upload when fetching it.
 func TestCommitWriteChunk(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
 	t.Parallel()
 
-	// Use different stores for creating the uploads and committing chunks
-	// with.
+	// Use different stores for creating the uploads and getting the upload.
 	createStore, err := newMongoTestStore("create")
 	if err != nil {
 		t.Fatal(err)
@@ -489,12 +489,12 @@ func TestCommitWriteChunk(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	commitStore, err := newMongoTestStore("commit")
+	getUploadStore, err := newMongoTestStore("commit")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		if err := commitStore.Close(); err != nil {
+		if err := getUploadStore.Close(); err != nil {
 			t.Fatal(err)
 		}
 	}()
@@ -511,7 +511,6 @@ func TestCommitWriteChunk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	largeUpload.(*MongoTUSUpload).staticUploadStore = commitStore
 
 	// First commit.
 	lastWrite := time.Now().UTC()
@@ -523,7 +522,7 @@ func TestCommitWriteChunk(t *testing.T) {
 	}
 
 	// Check upload.
-	u, err := commitStore.GetUpload(context.Background(), "large")
+	u, err := getUploadStore.GetUpload(context.Background(), "large")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -587,7 +586,6 @@ func TestCommitWriteChunk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	u.(*MongoTUSUpload).staticUploadStore = commitStore
 
 	// Commit.
 	lastWrite = time.Now().UTC()
@@ -599,7 +597,7 @@ func TestCommitWriteChunk(t *testing.T) {
 	}
 
 	// Check upload.
-	u, err = commitStore.GetUpload(context.Background(), "small")
+	u, err = getUploadStore.GetUpload(context.Background(), "small")
 	if err != nil {
 		t.Fatal(err)
 	}
