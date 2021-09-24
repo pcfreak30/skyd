@@ -136,6 +136,7 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/skynet/registry", RequirePassword(api.registryHandlerPOST, requiredPassword))
 		router.POST("/skynet/registrymulti", RequirePassword(api.registryMultiHandlerPOST, requiredPassword))
 		router.GET("/skynet/registry", api.registryHandlerGET)
+		router.GET("/skynet/registry/hosts", api.skynetHostsForRegistryUpdateGET)
 		router.GET("/skynet/resolve/:skylink", api.skylinkResolveGET)
 		router.POST("/skynet/restore", RequirePassword(api.skynetRestoreHandlerPOST, requiredPassword))
 		router.GET("/skynet/root", api.skynetRootHandlerGET)
@@ -160,6 +161,9 @@ func (api *API) buildHTTPRoutes() {
 		// Add the skynet datastore. This covers the basic functionality of
 		// uploading a file with a known size in chunks.
 		storeComposer.UseCore(sds)
+
+		// Enable concatenating uploads.
+		storeComposer.UseConcater(sds)
 
 		// Enable locking the upload.
 		storeComposer.UseLocker(sds)

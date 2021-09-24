@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/ratelimit"
@@ -14,7 +15,6 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/types"
 )
 
 // testingFileParams generates the ErasureCoder with random dataPieces and
@@ -81,24 +81,45 @@ func TestRenterSaveLoad(t *testing.T) {
 	if settings.MaxUploadSpeed != DefaultMaxUploadSpeed {
 		t.Error("default max upload speed not set at init")
 	}
-	if !settings.MonetizationBase.IsZero() {
-		t.Error("monetization base should default to zero")
-	}
-	if len(settings.CurrencyConversionRates) != 1 {
-		t.Error("invalid currency conversion")
-	}
-	usd, exists := settings.CurrencyConversionRates[skymodules.CurrencyUSD]
-	if !exists || !usd.Equals(types.ZeroCurrency) {
-		t.Error("wrong usd rate")
-	}
 
-	// The registry stats should be seeded.
-	allNines := rt.renter.staticRegReadStats.Percentiles()
-	for i, distribution := range allNines {
-		for j, nine := range distribution {
-			if nine < (readRegistryStatsSeed*95/100) || nine > (readRegistryStatsSeed*105/11) {
-				t.Fatalf("registry stats aren't seeded correctly %v != %v -- %v %v", nine, readRegistryStatsSeed, i, j)
+	// The stats should be seeded.
+	trackers := []struct {
+		t    *skymodules.DistributionTracker
+		seed time.Duration
+	}{
+		{
+			t:    rt.renter.staticRegistryReadStats,
+			seed: readRegistryStatsSeed,
+		},
+		{
+			t:    rt.renter.staticRegWriteStats,
+			seed: 5 * time.Second,
+		},
+		{
+			t:    rt.renter.staticBaseSectorUploadStats,
+			seed: 15 * time.Second,
+		},
+		{
+			t:    rt.renter.staticChunkUploadStats,
+			seed: 15 * time.Second,
+		},
+		{
+			t:    rt.renter.staticStreamBufferStats,
+			seed: 5 * time.Second,
+		},
+	}
+	for _, tracker := range trackers {
+		allNines := tracker.t.Percentiles()
+		for i, distribution := range allNines {
+			for j, nine := range distribution {
+				if nine < (tracker.seed*95/100) || nine > (tracker.seed*105/11) {
+					t.Fatalf("registry stats aren't seeded correctly %v != %v -- %v %v", nine, tracker.seed, i, j)
+				}
 			}
+		}
+		// Add lots of high datapoints to move the percentiles up.
+		for i := 0; i < 1000; i++ {
+			tracker.t.AddDataPoint(time.Hour)
 		}
 	}
 
@@ -108,8 +129,6 @@ func TestRenterSaveLoad(t *testing.T) {
 	newUpSpeed := int64(500e3)
 	settings.MaxDownloadSpeed = newDownSpeed
 	settings.MaxUploadSpeed = newUpSpeed
-	settings.MonetizationBase = types.SiacoinPrecision
-	settings.CurrencyConversionRates[skymodules.CurrencyUSD] = types.SiacoinPrecision
 	err = rt.renter.SetSettings(settings)
 	if err != nil {
 		t.Fatal(err)
@@ -138,6 +157,8 @@ func TestRenterSaveLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Wait for stats to sync.
+	time.Sleep(2 * statsPersistInterval)
 	err = rt.renter.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -146,7 +167,8 @@ func TestRenterSaveLoad(t *testing.T) {
 	// load should now load the files into memory.
 	var errChan <-chan error
 	rl := ratelimit.NewRateLimit(0, 0, 0)
-	rt.renter, errChan = New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, rl, filepath.Join(rt.dir, skymodules.RenterDir))
+	tus := NewSkynetTUSInMemoryUploadStore()
+	rt.renter, errChan = New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, tus, rl, filepath.Join(rt.dir, skymodules.RenterDir))
 	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
@@ -161,24 +183,33 @@ func TestRenterSaveLoad(t *testing.T) {
 	if newSettings.MaxUploadSpeed != newUpSpeed {
 		t.Error("upload settings not being persisted correctly")
 	}
-	if !newSettings.MonetizationBase.Equals(types.SiacoinPrecision) {
-		t.Error("monetization base should be 1")
-	}
-	if len(newSettings.CurrencyConversionRates) != 1 {
-		t.Error("currency conversion should have 1 currency")
-	}
-	usdRate, exists := newSettings.CurrencyConversionRates[skymodules.CurrencyUSD]
-	if !exists {
-		t.Error("rate doesn't exist")
-	}
-	if !usdRate.Equals(types.SiacoinPrecision) {
-		t.Error("wrong usd rate")
-	}
 
 	// Check that SiaFileSet loaded the renter's file
 	_, err = rt.renter.staticFileSystem.OpenSiaFile(siapath)
 	if err != nil {
 		t.Fatal("SiaFile not found in the renter's staticFileSet after load")
+	}
+
+	// The stats should be higher than the seed now.
+	trackers[0].t = rt.renter.staticRegistryReadStats
+	trackers[1].t = rt.renter.staticRegWriteStats
+	trackers[2].t = rt.renter.staticBaseSectorUploadStats
+	trackers[3].t = rt.renter.staticChunkUploadStats
+	trackers[4].t = rt.renter.staticStreamBufferStats
+	for _, tracker := range trackers {
+		allNines := tracker.t.Percentiles()
+		for _, distribution := range allNines {
+			for _, nine := range distribution {
+				// We added a bunch of 1 hour datapoints before.
+				// It's safe to assume that the percentiles were
+				// pushed to at least 1 hour.
+				if nine < time.Hour {
+					t.Fatalf("registry stats should now be strictly greater than the seed %v %v", nine, tracker.seed)
+				}
+			}
+		}
+		// Add a very high datapoint.
+		tracker.t.AddDataPoint(time.Hour)
 	}
 }
 
@@ -260,7 +291,8 @@ func TestRenterPaths(t *testing.T) {
 	}
 	var errChan <-chan error
 	rl := ratelimit.NewRateLimit(0, 0, 0)
-	rt.renter, errChan = New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, rl, filepath.Join(rt.dir, skymodules.RenterDir))
+	tus := NewSkynetTUSInMemoryUploadStore()
+	rt.renter, errChan = New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, tus, rl, filepath.Join(rt.dir, skymodules.RenterDir))
 	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}

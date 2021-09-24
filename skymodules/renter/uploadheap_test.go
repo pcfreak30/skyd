@@ -78,7 +78,7 @@ func testManagedBuildUnfinishedChunks(t *testing.T) {
 		SiaPath:     siaPath,
 		ErasureCode: rsc,
 	}
-	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, persist.DefaultDiskPermissionsTest, false)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func testManagedBuildChunkHeap(t *testing.T) {
 		SiaPath:     skymodules.RandomSiaPath(),
 		ErasureCode: rsc,
 	}
-	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, persist.DefaultDiskPermissionsTest, false)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -436,7 +436,7 @@ func testManagedAddChunksToHeap(t *testing.T) {
 		}
 		up.SiaPath = siaPath
 		// File size 100 to help ensure only 1 chunk per file
-		err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, persist.DefaultDiskPermissionsTest, false)
+		err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, persist.DefaultDiskPermissionsTest)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -556,7 +556,7 @@ func testAddRemoteChunksToHeap(t *testing.T) {
 		// to each only have one chunk. This is because there are 4 files and
 		// the uploadHeap size for testing is 5. If there are more than 5 chunks
 		// total the test will fail and not hit the intended test case.
-		err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, persist.DefaultDiskPermissionsTest, false)
+		err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, persist.DefaultDiskPermissionsTest)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -649,7 +649,7 @@ func testAddDirectoryBackToHeap(t *testing.T) {
 		SiaPath:     siaPath,
 		ErasureCode: rsc,
 	}
-	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), modules.SectorSize, persist.DefaultDiskPermissionsTest, false)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), modules.SectorSize, persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		t.Fatal(err)
 	}

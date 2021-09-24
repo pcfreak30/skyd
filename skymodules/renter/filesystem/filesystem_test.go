@@ -140,7 +140,7 @@ func (fs *FileSystem) addTestSiaFileWithErr(siaPath skymodules.SiaPath) error {
 	if err != nil {
 		return err
 	}
-	err = fs.NewSiaFile(siaPath, "", ec, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), uint64(fastrand.Intn(100)), persist.DefaultDiskPermissionsTest, false)
+	err = fs.NewSiaFile(siaPath, "", ec, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), uint64(fastrand.Intn(100)), persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		return err
 	}
@@ -1126,12 +1126,11 @@ func TestSiaFileSetDeleteOpen(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		// Create SiaFile
 		up := skymodules.FileUploadParams{
-			Source:              source,
-			SiaPath:             siaPath,
-			ErasureCode:         rc,
-			DisablePartialChunk: true,
+			Source:      source,
+			SiaPath:     siaPath,
+			ErasureCode: rc,
 		}
-		err := sfs.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, sk, fileSize, fileMode, up.DisablePartialChunk)
+		err := sfs.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, sk, fileSize, fileMode)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1557,7 +1556,7 @@ func TestSiaDirDelete(t *testing.T) {
 		}
 		ec, _ := skymodules.NewRSSubCode(10, 20, crypto.SegmentSize)
 		up := skymodules.FileUploadParams{Source: "", SiaPath: fileSP, ErasureCode: ec}
-		err = fs.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), 100, persist.DefaultDiskPermissionsTest, up.DisablePartialChunk)
+		err = fs.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), 100, persist.DefaultDiskPermissionsTest)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1692,7 +1691,7 @@ func TestSiaDirRenameWithFiles(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = fs.NewSiaFile(fileSP, source, rc, sk, fileSize, fileMode, true)
+		err = fs.NewSiaFile(fileSP, source, rc, sk, fileSize, fileMode)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -3,6 +3,7 @@ package renter
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -48,43 +49,30 @@ type (
 	// skynetTUSUploader implements multiple TUS interfaces for skynet uploads
 	// allowing for resumable uploads.
 	skynetTUSUploader struct {
-		staticUploads skynetTUSUploadStore
+		staticUploadStore skymodules.SkynetTUSUploadStore
 
-		staticRenter *Renter
-		mu           sync.Mutex
+		ongoingUploads map[string]*ongoingTUSUpload
+		staticRenter   *Renter
+		mu             sync.Mutex
 	}
 
-	// skynetTUSUpload implements multiple TUS interfaces for uploads.
-	skynetTUSUpload struct {
-		fi             handler.FileInfo
-		lastWrite      time.Time
-		closed         bool
-		complete       bool
-		sm             skymodules.SkyfileMetadata
-		sl             skymodules.Skylink
+	// ongoingTUSUpload implements multiple TUS interfaces for uploads.
+	ongoingTUSUpload struct {
+		staticUpload   skymodules.SkynetTUSUpload
 		staticUploader *skynetTUSUploader
-		staticSUP      skymodules.SkyfileUploadParameters
 
-		// large upload related fields.
-		fanout   []byte
 		fileNode *filesystem.FileNode
-		staticUP skymodules.FileUploadParams
-		chunks   []*unfinishedUploadChunk
-
-		// small upload related fields.
-		isSmall bool
-		smBytes []byte
-		buf     []byte
-
-		mu sync.Mutex
+		closed   bool
+		mu       sync.Mutex
 	}
 )
 
 // newSkynetTUSUploader creates a new uploader.
-func newSkynetTUSUploader(renter *Renter) *skynetTUSUploader {
+func newSkynetTUSUploader(renter *Renter, tus skymodules.SkynetTUSUploadStore) *skynetTUSUploader {
 	return &skynetTUSUploader{
-		staticUploads: newSkynetTUSInMemoryUploadStore(renter),
-		staticRenter:  renter,
+		staticUploadStore: tus,
+		staticRenter:      renter,
+		ongoingUploads:    make(map[string]*ongoingTUSUpload),
 	}
 }
 
@@ -93,221 +81,214 @@ func (r *Renter) SkynetTUSUploader() skymodules.SkynetTUSDataStore {
 	return r.staticSkynetTUSUploader
 }
 
+// Close closes the underlying upload store.
+func (stu *skynetTUSUploader) Close() error {
+	return stu.staticUploadStore.Close()
+}
+
+// AsConcatableUpload implements the ConcaterDataStore interface.
+func (stu *skynetTUSUploader) AsConcatableUpload(upload handler.Upload) handler.ConcatableUpload {
+	return upload.(*ongoingTUSUpload)
+}
+
 // NewLock implements the handler.Locker interface by passing on the call to the
 // upload storage backend.
 func (stu *skynetTUSUploader) NewLock(id string) (handler.Lock, error) {
-	return stu.staticUploads.NewLock(id)
+	return stu.staticUploadStore.NewLock(id)
 }
 
 // NewUpload creates a new upload from fileinfo.
 func (stu *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileInfo) (handler.Upload, error) {
-	stu.mu.Lock()
-	defer stu.mu.Unlock()
-
 	// Create the upload object.
 	info.ID = persist.UID()
-	upload := &skynetTUSUpload{
-		fi:             info,
-		lastWrite:      time.Now(),
-		staticUploader: stu,
-	}
 
 	// Get a siapath.
 	sp := skymodules.RandomSkynetFilePath()
 
 	// Get the filename from either the metadata or path.
 	fileName := sp.Name()
-	fileNameMD, fileNameFound := upload.fi.MetaData["filename"]
+	fileNameMD, fileNameFound := info.MetaData["filename"]
 	if fileNameFound {
 		fileName = fileNameMD
 	}
-	fileType := upload.fi.MetaData["filetype"]
+	fileType := info.MetaData["filetype"]
 
 	// Create the skyfile upload params.
-	// TODO: use info.metadata to create skyfileuploadparameters different from
-	// the default.
-	upload.staticSUP = skymodules.SkyfileUploadParameters{
+	sup := skymodules.SkyfileUploadParameters{
 		SiaPath:             sp,
 		Filename:            fileName,
 		BaseChunkRedundancy: SkyfileDefaultBaseChunkRedundancy,
 	}
-	sup := upload.staticSUP
 
 	// Create metadata.
-	upload.sm = skymodules.SkyfileMetadata{
-		Filename:     sup.Filename,
-		Mode:         sup.Mode,
-		Monetization: sup.Monetization,
+	sm := skymodules.SkyfileMetadata{
+		Filename: sup.Filename,
+		Length:   uint64(info.Size),
+		Mode:     sup.Mode,
 		Subfiles: skymodules.SkyfileSubfiles{
 			sup.Filename: skymodules.SkyfileSubfileMetadata{
 				Filename:    fileName,
 				ContentType: fileType,
+				Len:         uint64(info.Size),
 				Offset:      0,
 			},
 		},
 	}
 
-	// Create the FileUploadParams
-	extendedSP, err := sp.AddSuffixStr(skymodules.ExtendedSuffix)
+	// Check whether it's valid
+	err := skymodules.ValidateSkyfileMetadata(sm)
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to create SiaPath for large skyfile extended data")
-	}
-	upload.staticUP, err = fileUploadParams(extendedSP, skymodules.RenterDefaultDataPieces, skymodules.RenterDefaultParityPieces, upload.staticUP.Force, crypto.TypePlain)
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to create FileUploadParams for large file")
+		return nil, errors.AddContext(err, "invalid metadata")
 	}
 
 	// Set the upload params to 'force' to allow overwriting the fileNode.
-	upload.staticUP.Force = true
+	sup.Force = true
 
-	// Generate a Cipher Key for the FileUploadParams.
-	err = generateCipherKey(&upload.staticUP, upload.staticSUP)
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to create Cipher key for FileUploadParams")
-	}
-
-	// Add the upload to the map of uploads.
-	err = stu.staticUploads.SaveUpload(upload)
+	// Create the upload.
+	upload, err := stu.managedCreateUpload(info, sp, fileName, SkyfileDefaultBaseChunkRedundancy, skymodules.RenterDefaultDataPieces, skymodules.RenterDefaultParityPieces, sm, true, crypto.TypePlain)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to save new upload")
 	}
 	return upload, nil
 }
 
+// managedCreateUpload creates a new ongoing upload.
+func (stu *skynetTUSUploader) managedCreateUpload(fi handler.FileInfo, sp skymodules.SiaPath, fileName string, baseChunkRedundancy uint8, fanoutDataPieces, fanoutParityPieces int, sm skymodules.SkyfileMetadata, force bool, ct crypto.CipherType) (*ongoingTUSUpload, error) {
+	smBytes, err := json.Marshal(sm)
+	if err != nil {
+		return nil, err
+	}
+	upload, err := stu.staticUploadStore.CreateUpload(fi, sp, fileName, baseChunkRedundancy, fanoutDataPieces, fanoutParityPieces, smBytes, force, ct)
+	if err != nil {
+		return nil, errors.AddContext(err, "upload store failed to create new upload")
+	}
+	stu.mu.Lock()
+	defer stu.mu.Unlock()
+	ou := &ongoingTUSUpload{
+		staticUpload:   upload,
+		staticUploader: stu,
+	}
+	stu.ongoingUploads[fi.ID] = ou
+	return ou, nil
+}
+
 // GetUpload returns an existing upload.
 func (stu *skynetTUSUploader) GetUpload(ctx context.Context, id string) (handler.Upload, error) {
-	return stu.staticUploads.Upload(id)
+	// Get the upload from the db first.
+	upload, err := stu.staticUploadStore.GetUpload(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	// Search for ongoing upload.
+	stu.mu.Lock()
+	defer stu.mu.Unlock()
+	ou, exists := stu.ongoingUploads[id]
+	if exists {
+		return ou, nil
+	}
+
+	// If it doesn't exist create one.
+	ou = &ongoingTUSUpload{
+		staticUpload:   upload,
+		staticUploader: stu,
+	}
+	stu.ongoingUploads[id] = ou
+	return ou, nil
 }
 
 // Skylink returns the skylink for the upload with the given ID.
 func (stu *skynetTUSUploader) Skylink(id string) (skymodules.Skylink, bool) {
-	upload, err := stu.staticUploads.Upload(id)
+	u, err := stu.staticUploadStore.GetUpload(stu.staticRenter.tg.StopCtx(), id)
 	if err != nil {
 		return skymodules.Skylink{}, false
 	}
-	upload.mu.Lock()
-	defer upload.mu.Unlock()
-	_, exists := upload.fi.MetaData["Skylink"]
-	return upload.sl, exists
+	return u.Skylink()
 }
 
 // Close closes the upload and underlying filenode.
-func (u *skynetTUSUpload) Close() error {
+func (u *ongoingTUSUpload) Close() error {
 	return u.managedClose()
 }
 
 // tryUploadSmallFile checks if the file to upload and its metadata fit within a
 // single sector. It returns true or false depending on whether the file is
 // small and any buffered data.
-func (u *skynetTUSUpload) tryUploadSmallFile(reader io.Reader) ([]byte, bool, error) {
-	// For files where we know the size ahead of time, we can save time by
-	// checking against the specified size first.
-	if u.fi.Size > int64(modules.SectorSize) {
+func (u *ongoingTUSUpload) tryUploadSmallFile(ctx context.Context, reader io.Reader) ([]byte, bool, error) {
+	// Get skyfile metadata.
+	fi, err := u.staticUpload.GetInfo(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	smBytes, err := u.staticUpload.SkyfileMetadata(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+
+	// Check if the file is indeed a small file.
+	headerSize := uint64(skymodules.SkyfileLayoutSize + len(smBytes))
+	if uint64(fi.Size)+headerSize > modules.SectorSize {
 		return nil, false, nil
 	}
 
-	// see if we can fit the entire upload in a single chunk
-	buf := make([]byte, modules.SectorSize)
-	numBytes, err := io.ReadFull(reader, buf)
-	buf = buf[:numBytes] // truncate the buffer
-
-	maybeSmall := errors.Contains(err, io.EOF) || errors.Contains(err, io.ErrUnexpectedEOF)
-	if !maybeSmall {
-		return buf, false, err
-	}
-
-	// prepare the metadata.
-	sm := u.sm
-	sm.Length = uint64(numBytes)
-	ssm := sm.Subfiles[sm.Filename]
-	ssm.Len = sm.Length
-	sm.Subfiles[sm.Filename] = ssm
-
-	// check whether it's valid
-	err = skymodules.ValidateSkyfileMetadata(sm)
-	if err != nil {
-		return nil, false, errors.AddContext(err, "invalid metadata")
-	}
-	// marshal the skyfile metadata into bytes
-	smBytes, err := skymodules.SkyfileMetadataBytes(sm)
-	if err != nil {
-		return nil, false, errors.AddContext(err, "failed to marshal skyfile metadata")
-	}
-
-	// verify if it fits in a single chunk
-	headerSize := uint64(skymodules.SkyfileLayoutSize + len(smBytes))
-	if uint64(numBytes)+headerSize > modules.SectorSize {
-		return buf, false, nil
-	}
-
-	// small upload detected. Remember the necessary information to upload the
-	// base sector later.
-	u.isSmall = true
-	u.smBytes = smBytes
-	u.buf = buf
-	return buf, true, nil
+	// Download the data and save it.
+	buf := make([]byte, fi.Size)
+	_, err = io.ReadFull(reader, buf)
+	return buf, true, err
 }
 
 // WriteChunk writes the chunk to the provided offset.
-func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.Reader) (n int64, err error) {
+func (u *ongoingTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.Reader) (_ int64, err error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	uploader := u.staticUploader
 
-	// Quickly scan past chunks for errors and remove the ones that are done
-	// already.
-	i := 0
-	for _, chunk := range u.chunks {
-		select {
-		case <-chunk.staticAvailableChan:
-			chunk.mu.Lock()
-			err = chunk.err
-			chunk.mu.Unlock()
-			if err != nil {
-				return
-			}
-		default:
-			// keep the chunks that are not yet done.
-			u.chunks[i] = chunk
-			i++
-		}
+	// Get fileinfo from upload.
+	fi, err := u.staticUpload.GetInfo(ctx)
+	if err != nil {
+		return 0, errors.AddContext(err, "failed to get fileinfo")
 	}
-	u.chunks = u.chunks[:i]
-
-	// Update the lastWrite time if more than 0 bytes were written.
-	defer func() {
-		if n > 0 {
-			u.lastWrite = time.Now()
-		}
-	}()
 
 	// If the offset is 0, we try to determine if the upload is large or small.
+	var isSmall bool
 	if offset == 0 {
-		buf, smallFile, err := u.tryUploadSmallFile(src)
+		var smallFileData []byte
+		smallFileData, isSmall, err = u.tryUploadSmallFile(ctx, src)
 		if err != nil {
 			return 0, err
 		}
-		// If it is a small file we are done.
-		n = int64(len(buf))
-		if smallFile {
-			u.fi.Offset += n
-			return n, nil
+		// If it is a small file we are done. Unless it's a partial
+		// upload. In that case we still upload it the same way as a
+		// large upload to receive a fanout.
+		if isSmall && !fi.IsPartial {
+			err = u.staticUpload.CommitWriteChunkSmallFile(fi.Size, time.Now(), smallFileData)
+			return int64(len(smallFileData)), err
 		}
-		// If not, prepend the src with the buffer and initialize the upload
-		// stream.
-		src = io.MultiReader(bytes.NewReader(buf), src)
-		u.fileNode, err = uploader.staticRenter.managedInitUploadStream(u.staticUP)
+		src = io.MultiReader(bytes.NewReader(smallFileData), src)
+	} else {
+		isSmall, err = u.staticUpload.IsSmallUpload(ctx)
 		if err != nil {
 			return 0, err
 		}
 	}
+
 	// If we get to this point with a small file, something is wrong.
 	// Theoretically this is not possible but return an error for extra safety.
-	if u.isSmall {
+	if isSmall && !fi.IsPartial {
 		return 0, errors.New("can't upload another chunk to a small file upload")
 	}
 
-	// Upload is a large upload.
+	// Upload is a large upload - we need a filenode for the fanout. If it
+	// doesn't exist yet, create it.
+	if u.fileNode == nil {
+		_, up, err := u.staticUpload.UploadParams(ctx)
+		if err != nil {
+			return 0, err
+		}
+		u.fileNode, err = uploader.staticRenter.managedInitUploadStream(up)
+		if err != nil {
+			return 0, err
+		}
+	}
 	fileNode := u.fileNode
 	ec := fileNode.ErasureCode()
 
@@ -339,7 +320,7 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 	onlyOnePieceNeeded := ec.MinPieces() == 1 && fileNode.MasterKey().Type() == crypto.TypePlain
 	cr := NewFanoutChunkReader(src, ec, onlyOnePieceNeeded, fileNode.MasterKey())
 	var chunks []*unfinishedUploadChunk
-	chunks, n, err = uploader.staticRenter.callUploadStreamFromReaderWithFileNodeNoBlock(ctx, fileNode, cr, offset)
+	chunks, n, err := uploader.staticRenter.callUploadStreamFromReaderWithFileNodeNoBlock(ctx, fileNode, cr, offset)
 
 	// Simulate loss of connection one byte early.
 	if deps.Disrupt("TUSConnectionDropped") {
@@ -351,8 +332,8 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 	// that's not the case, the connection was closed early. That means the chunk
 	// was incorrectly padded and needs to be removed again by shrinking the siafile
 	// by one chunk before the user can retry the upload.
-	if n%int64(fileNode.ChunkSize()) != 0 && u.fi.Offset+n != u.fi.Size {
-		shrinkErr := fileNode.Shrink(uint64(u.fi.Offset) / fileNode.ChunkSize())
+	if n%int64(fileNode.ChunkSize()) != 0 && fi.Offset+n != fi.Size {
+		shrinkErr := fileNode.Shrink(uint64(fi.Offset) / fileNode.ChunkSize())
 		if shrinkErr != nil {
 			return 0, shrinkErr
 		}
@@ -366,18 +347,23 @@ func (u *skynetTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.R
 		return 0, err
 	}
 
-	// Increment offset and append fanout.
-	u.fi.Offset += n
-	u.fanout = append(u.fanout, cr.Fanout()...)
-	u.chunks = append(u.chunks, chunks...)
-	return n, err
+	// Wait for chunks to become available.
+	for _, chunk := range chunks {
+		select {
+		case <-ctx.Done():
+			return 0, errors.New("reached timeout before chunks became available")
+		case <-chunk.staticAvailableChan:
+		}
+		if chunk.err != nil {
+			return 0, errors.AddContext(err, "failed to upload chunk")
+		}
+	}
+	return n, u.staticUpload.CommitWriteChunk(fi.Offset+n, time.Now(), isSmall, cr.Fanout())
 }
 
 // GetInfo returns the file info.
-func (u *skynetTUSUpload) GetInfo(ctx context.Context) (handler.FileInfo, error) {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	return u.fi, nil
+func (u *ongoingTUSUpload) GetInfo(ctx context.Context) (handler.FileInfo, error) {
+	return u.staticUpload.GetInfo(ctx)
 }
 
 // GetReader returns a reader for the upload.
@@ -385,111 +371,76 @@ func (u *skynetTUSUpload) GetInfo(ctx context.Context) (handler.FileInfo, error)
 // required for uploads to work. It is not necessary for this to work on
 // incomplete uploads and it's recommended to implement this for completed
 // uploads.
-func (u *skynetTUSUpload) GetReader(ctx context.Context) (io.Reader, error) {
+func (u *ongoingTUSUpload) GetReader(ctx context.Context) (io.Reader, error) {
 	return bytes.NewReader([]byte{}), handler.ErrNotImplemented
 }
 
 // finishUploadLarge handles finishing up a large upload.
-func (u *skynetTUSUpload) finishUploadLarge(ctx context.Context) (skylink skymodules.Skylink, err error) {
-	// Finish metadata and check its validity.
+func (u *ongoingTUSUpload) finishUploadLarge(ctx context.Context, fanout []byte, sup skymodules.SkyfileUploadParameters, fi handler.FileInfo, masterKey crypto.CipherKey, ec skymodules.ErasureCoder, smBytes []byte) (skylink skymodules.Skylink, err error) {
 	r := u.staticUploader.staticRenter
-	sup := u.staticSUP
-	sm := u.sm
-	sm.Length = uint64(u.fi.Size)
-	ssm := sm.Subfiles[sm.Filename]
-	ssm.Len = sm.Length
-	sm.Subfiles[sm.Filename] = ssm
-	err = skymodules.ValidateSkyfileMetadata(sm)
-	if err != nil {
-		return skymodules.Skylink{}, errors.AddContext(err, "metadata is invalid")
-	}
-
-	// Get fanout.
-	fanout := u.fanout
-
-	// Convert the new siafile we just uploaded into a skyfile using the
-	// convert function.
-	return r.managedCreateSkylinkFromFileNode(ctx, sup, sm, u.fileNode, fanout)
+	return r.managedCreateSkylinkRawMD(ctx, sup, smBytes, fanout, uint64(fi.Size), masterKey, ec)
 }
 
 // finishUploadSmall handles finishing up a small upload.
-func (u *skynetTUSUpload) finishUploadSmall(ctx context.Context) (skylink skymodules.Skylink, err error) {
+func (u *ongoingTUSUpload) finishUploadSmall(ctx context.Context, sup skymodules.SkyfileUploadParameters, smBytes, smallUploadData []byte) (skylink skymodules.Skylink, err error) {
 	r := u.staticUploader.staticRenter
-	sup := u.staticSUP
-	// edge case 0 byte file
-	if u.fi.Size == 0 {
-		u.smBytes, err = skymodules.SkyfileMetadataBytes(u.sm)
-		if err != nil {
-			return
-		}
-	}
-	return r.managedUploadSkyfileSmallFile(ctx, sup, u.smBytes, u.buf)
+	return r.managedUploadSkyfileSmallFile(ctx, sup, smBytes, smallUploadData)
 }
 
 // FinishUpload is called when the upload is done.
-func (u *skynetTUSUpload) FinishUpload(ctx context.Context) (err error) {
+func (u *ongoingTUSUpload) FinishUpload(ctx context.Context) (err error) {
 	// Close upload when done.
 	defer func() {
 		err = errors.Compose(err, u.Close())
 	}()
 
 	u.mu.Lock()
-	chunks := u.chunks
-
-	// Update the last write before starting to wait for the chunks to avoid
-	// having the chunk pruned. This mostly happens in testing but won't
-	// hurt now that we no longer wait for every chunk to become available
-	// right away.
-	u.lastWrite = time.Now()
-	u.mu.Unlock()
-
-	// Wait for potentially unfinished chunks to finish.
-	for _, chunk := range chunks {
-		select {
-		case <-ctx.Done():
-			err = errors.New("upload timed out")
-		case <-chunk.staticAvailableChan:
-			// Update the last write time every time a chunk becomes
-			// available for some extra time before pruning.
-			u.mu.Lock()
-			u.lastWrite = time.Now()
-			u.mu.Unlock()
-			chunk.mu.Lock()
-			err = chunk.err
-			chunk.mu.Unlock()
-		}
-		if err != nil {
-			return err
-		}
-	}
-
-	u.mu.Lock()
 	defer u.mu.Unlock()
 
-	// Clear the chunks.
-	u.chunks = nil
+	fi, err := u.staticUpload.GetInfo(ctx)
+	if err != nil {
+		return errors.AddContext(err, "failed to fetch fileinfo")
+	}
+	sup, _, err := u.staticUpload.UploadParams(ctx)
+	if err != nil {
+		return errors.AddContext(err, "failed to fetch upload params")
+	}
+	isSmall, err := u.staticUpload.IsSmallUpload(ctx)
+	if err != nil {
+		return errors.AddContext(err, "failed to fetch isSmall")
+	}
+	fanout, err := u.staticUpload.Fanout(ctx)
+	if err != nil {
+		return errors.AddContext(err, "failed to fetch fanout")
+	}
+	smBytes, err := u.staticUpload.SkyfileMetadata(ctx)
+	if err != nil {
+		return errors.AddContext(err, "failed to fetch smBytes")
+	}
+	smallUploadData, err := u.staticUpload.SmallFileData(ctx)
+	if err != nil {
+		return errors.AddContext(err, "failed to fetch smallUploadData")
+	}
 
 	var skylink skymodules.Skylink
-	if u.isSmall || u.fi.Size == 0 {
-		skylink, err = u.finishUploadSmall(ctx)
+	if fi.IsPartial {
+		// If the upload is a partial upload we are done. We don't need to
+		// upload the metadata or create a skylink.
+		return nil
+	} else if isSmall || fi.Size == 0 {
+		skylink, err = u.finishUploadSmall(ctx, sup, smBytes, smallUploadData)
 	} else {
-		skylink, err = u.finishUploadLarge(ctx)
+		skylink, err = u.finishUploadLarge(ctx, fanout, sup, fi, u.fileNode.MasterKey(), u.fileNode.ErasureCode(), smBytes)
 	}
 	if err != nil {
 		return errors.AddContext(err, "failed to finish upload")
 	}
 
-	// Set the skylink on the metadata.
-	u.sl = skylink
-	u.fi.MetaData["Skylink"] = skylink.String()
-
-	// Mark it as complete.
-	u.complete = true
-	return nil
+	return u.staticUpload.CommitFinishUpload(skylink)
 }
 
 // managedClose closes the upload and underlying filenode.
-func (u *skynetTUSUpload) managedClose() error {
+func (u *ongoingTUSUpload) managedClose() error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	if u.closed {
@@ -513,7 +464,48 @@ func (r *Renter) threadedPruneTUSUploads() {
 			return // shutdown
 		case <-ticker.C:
 		}
-		r.staticSkynetTUSUploader.staticUploads.Prune()
+		toDelete, err := r.staticSkynetTUSUploader.staticUploadStore.ToPrune()
+		if err != nil {
+			r.staticLog.Print("Failed to get TUS uploads for pruning", err)
+		}
+
+		// Delete files.
+		for _, upload := range toDelete {
+			uploadID, sp, err := upload.PruneInfo(r.tg.StopCtx())
+			if err != nil {
+				r.staticLog.Print("WARN: failed to fetch prune info from upload", err)
+				continue
+			}
+
+			// Delete on disk. We don't care if the extended siapath
+			// didn't exist but we print some loging if the regular
+			// deletion failed.
+			spFanout, err := sp.AddSuffixStr(skymodules.ExtendedSuffix)
+			if err != nil {
+				r.staticLog.Critical("Failed to append ExtededSuffix to SiaPath", err)
+			}
+			if err := r.DeleteFile(sp); err != nil {
+				r.staticLog.Printf("WARN: failed to delete SiaPath %v: %v", sp.String(), err)
+			}
+			if err := r.DeleteFile(spFanout); err != nil && !errors.Contains(err, filesystem.ErrNotExist) {
+				r.staticLog.Printf("WARN: failed to delete extended SiaPath %v: %v", sp.String(), err)
+			}
+
+			// Delete from store.
+			_ = r.staticSkynetTUSUploader.staticUploadStore.Prune(uploadID)
+
+			// Delete from ongoing uploads if it exists.
+			r.staticSkynetTUSUploader.mu.Lock()
+			ongoingUpload, exists := r.staticSkynetTUSUploader.ongoingUploads[uploadID]
+			if exists {
+				delete(r.staticSkynetTUSUploader.ongoingUploads, uploadID)
+				err = ongoingUpload.Close()
+				if err != nil {
+					r.staticLog.Critical("failed to close ongoing upload", err)
+				}
+			}
+			r.staticSkynetTUSUploader.mu.Unlock()
+		}
 	}
 }
 
@@ -544,4 +536,80 @@ func TUSPreUploadCreateCallback(hook handler.HookEvent) error {
 		return handler.NewHTTPError(err, http.StatusRequestEntityTooLarge)
 	}
 	return nil
+}
+
+// ConcatUploads implements the handler.ConcatableUpload interface. It combines
+// the provided partial uploads into a single one.
+func (u *ongoingTUSUpload) ConcatUploads(ctx context.Context, partialUploads []handler.Upload) error {
+	// Get fileinfo.
+	fi, err := u.GetInfo(ctx)
+	if err != nil {
+		return errors.AddContext(err, "failed to fetch fileinfo")
+	}
+
+	// Concatenate the uploads by combining their fanouts. Concatenated
+	// uploads may never consist of small uploads except for the last
+	// upload.
+	pu := partialUploads[0].(*ongoingTUSUpload)
+	sup, _, err := u.staticUpload.UploadParams(ctx)
+	if err != nil {
+		return err
+	}
+	ec := pu.fileNode.ErasureCode()
+	masterKey := pu.fileNode.MasterKey()
+	var fanout []byte
+	for i := range partialUploads {
+		pu := partialUploads[i].(*ongoingTUSUpload)
+		isSmall, err := pu.staticUpload.IsSmallUpload(ctx)
+		if err != nil {
+			return errors.AddContext(err, "failed to fetch whether partial upload is small or not")
+		}
+		if i < len(partialUploads)-1 && isSmall {
+			return errors.New("only last upload is allowed to be small")
+		}
+		if pu.fileNode.ErasureCode().Identifier() != ec.Identifier() {
+			return errors.New("all partial uploads need to use the same erasure coding")
+		}
+		if pu.fileNode.MasterKey().Type() != masterKey.Type() {
+			return errors.New("all masterkeys need to have the same type")
+		}
+		if !bytes.Equal(pu.fileNode.MasterKey().Key(), masterKey.Key()) {
+			return errors.New("all masterkeys need to be the same")
+		}
+		partialFanout, err := pu.staticUpload.Fanout(ctx)
+		if err != nil {
+			return errors.AddContext(err, "failed to fetch fanout of partial upload")
+		}
+		fanout = append(fanout, partialFanout...)
+	}
+	smBytes, err := u.staticUpload.SkyfileMetadata(ctx)
+	if err != nil {
+		return err
+	}
+	sup.SiaPath = skymodules.RandomSkynetFilePath()
+	skylink, err := u.finishUploadLarge(ctx, fanout, sup, fi, masterKey, ec, smBytes)
+	if err != nil {
+		return err
+	}
+
+	// Associate all partial upload siafiles with this skylink.
+	// TODO: Once we have the ability to upload without siafiles, we should
+	// create a single siafile here and associate it with the skylink.
+	for i := range partialUploads {
+		pu := partialUploads[i].(*ongoingTUSUpload)
+		err = pu.fileNode.AddSkylink(skylink)
+		if err != nil {
+			return errors.AddContext(err, "failed to add skylink to partial uploads")
+		}
+	}
+
+	// Upon success, we mark the partial uploads as complete to prevent them
+	// from being pruned.
+	var errs error
+	for i := range partialUploads {
+		// Commit the partial upload as complete as well.
+		pu = partialUploads[i].(*ongoingTUSUpload)
+		errs = errors.Compose(errs, pu.staticUpload.CommitFinishPartialUpload())
+	}
+	return errors.Compose(errs, u.staticUpload.CommitFinishUpload(skylink))
 }
