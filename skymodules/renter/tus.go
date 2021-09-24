@@ -27,7 +27,7 @@ var (
 	// the time passed since WriteChunk was called.
 	PruneTUSUploadTimeout = build.Select(build.Var{
 		Dev:      5 * time.Minute,
-		Standard: 20 * time.Minute,
+		Standard: 24 * time.Hour, // 24 hours to give plenty of time to finish an upload
 		Testing:  10 * time.Second,
 	}).(time.Duration)
 
