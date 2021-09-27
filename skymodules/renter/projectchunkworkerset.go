@@ -511,6 +511,8 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 
 	// Build the full pdc.
 	pdc := &projectDownloadChunk{
+		launchTime: time.Now(),
+
 		offsetInChunk: offset,
 		lengthInChunk: length,
 
@@ -540,7 +542,6 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 
 	// Set debug variables on the pdc
 	fastrand.Read(pdc.uid[:])
-	pdc.launchTime = time.Now()
 
 	// Launch the download project in a separate go routine
 	go pdc.threadedLaunchProjectDownload()

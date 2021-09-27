@@ -290,10 +290,10 @@ func (cw *chimeraWorker) pieces() []uint64 {
 // duration from the distribution tracker.
 func (cw *chimeraWorker) recalculateChanceAfter(shift time.Duration) {
 	lookupDistribution, readDistribution := cw.distributions()
-	lookupDistribution = lookupDistribution.Clone()
-	lookupDistribution.Shift(shift)
+	clonedLookupDistribution := lookupDistribution.Clone()
+	clonedLookupDistribution.Shift(shift)
 
-	lookupChances := lookupDistribution.ChancesAfter()
+	lookupChances := clonedLookupDistribution.ChancesAfter()
 	readChances := readDistribution.ChancesAfter()
 
 	chances := readChances
@@ -849,7 +849,7 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, allWorkers []dow
 			}
 			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
 				span.LogKV(
-					"launchWorker", w.identifier(),
+					"aWorkerLaunched", w.identifier(),
 					"overdriveWorker", isOverdrive,
 					"expectedDuration", time.Until(expectedCompleteTime),
 					"chanceAfterDur", w.chanceAfter(ws.staticBucketIndex),
