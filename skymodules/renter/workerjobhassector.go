@@ -43,11 +43,6 @@ const (
 	// the sector was available.
 	jobHasSectorQueueMinAvailabilityRate = 0.001
 
-	// jobHasSectorQueueMaxAvailabilityRate is the maximum availability rate we
-	// return, it is strictly less than one because we consider a worker with an
-	// availability rate of 1 as resolved at all times
-	jobHasSectorQueueMaxAvailabilityRate = 0.99
-
 	// hasSectorBatchSize is the number of has sector jobs batched together upon
 	// calling callNext.
 	// This number is the result of empirical testing which determined that 13
@@ -510,9 +505,6 @@ func (jq *jobHasSectorQueue) callAvailabilityRate(numPieces int) float64 {
 	}
 
 	availabilityRate := bucket.totalAvailable / bucket.totalLookups
-	if availabilityRate > jobHasSectorQueueMaxAvailabilityRate {
-		return jobHasSectorQueueMaxAvailabilityRate
-	}
 	return availabilityRate
 }
 

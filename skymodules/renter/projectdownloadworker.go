@@ -129,9 +129,9 @@ type (
 		// in the worker are not selected for duplicate piece indices.
 		currentPiece uint64
 
-		staticIdentifier          string
 		staticExpectedCost        types.Currency
 		staticExpectedResolveTime time.Time
+		staticIdentifier          string
 		staticReadDistribution    *skymodules.Distribution
 		staticWorker              *worker
 	}
@@ -335,6 +335,19 @@ func (iw *individualWorker) isLaunched() bool {
 // markPieceForDownload takes a piece index and marks it as the piece to
 // download next for this worker.
 func (iw *individualWorker) markPieceForDownload(pieceIndex uint64) {
+	// sanity check the given piece is a piece present in the worker's pieces
+	if build.Release == "testing" {
+		var found bool
+		for _, availPieceIndex := range iw.pieceIndices {
+			if pieceIndex == availPieceIndex {
+				found = true
+				break
+			}
+		}
+		if !found {
+			build.Critical("markPieceForDownload is marking a piece that is not present in the worker's piece indices")
+		}
+	}
 	iw.currentPiece = pieceIndex
 }
 
@@ -346,7 +359,7 @@ func (iw *individualWorker) pieces() []uint64 {
 // resolved returns whether this individual worker is a resolved worker or not,
 // which is the case if it's resolve chance is exactly 1.
 func (iw *individualWorker) resolved() bool {
-	return iw.resolveChance == 1
+	return iw.staticExpectedResolveTime.IsZero()
 }
 
 // worker implements the downloadWorker interface.
@@ -371,9 +384,9 @@ func (iw *individualWorker) split(chance float64) (*individualWorker, *individua
 		cachedChancesAfter: iw.cachedChancesAfter,
 		currentPiece:       iw.currentPiece,
 
-		staticIdentifier:          iw.staticIdentifier,
 		staticExpectedCost:        iw.staticExpectedCost,
 		staticExpectedResolveTime: iw.staticExpectedResolveTime,
+		staticIdentifier:          iw.staticIdentifier,
 		staticReadDistribution:    iw.staticReadDistribution,
 		staticWorker:              iw.staticWorker,
 	}
@@ -386,9 +399,9 @@ func (iw *individualWorker) split(chance float64) (*individualWorker, *individua
 		cachedChancesAfter: iw.cachedChancesAfter,
 		currentPiece:       iw.currentPiece,
 
-		staticIdentifier:          iw.staticIdentifier,
 		staticExpectedCost:        iw.staticExpectedCost,
 		staticExpectedResolveTime: iw.staticExpectedResolveTime,
+		staticIdentifier:          iw.staticIdentifier,
 		staticReadDistribution:    iw.staticReadDistribution,
 		staticWorker:              iw.staticWorker,
 	}
@@ -687,8 +700,8 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 			pieceIndices:  rw.pieceIndices,
 			resolveChance: 1,
 
-			staticIdentifier:       rw.worker.staticHostPubKey.ShortString(),
 			staticExpectedCost:     jrq.callExpectedJobCost(length),
+			staticIdentifier:       rw.worker.staticHostPubKey.ShortString(),
 			staticReadDistribution: rdt.Distribution(0),
 			staticWorker:           rw.worker,
 		})
@@ -1102,12 +1115,13 @@ func buildChimeraWorkers(workers []*individualWorker, numPieces int) []downloadW
 // buildDownloadWorkers is a helper function that takes a list of individual
 // workers and turns them into download workers.
 func buildDownloadWorkers(workers []*individualWorker, numPieces int) []downloadWorker {
+	// turn the given workers into download workers, if an individual worker is
+	// resolved it can be added straight away, unresolved workers are combined
+	// into chimera workers
 	var downloadWorkers []downloadWorker
-
-	// add all resolved workers as download workers straight away, collect all
-	// unresolved workers to combine them into chimeras
 	var unresolvedWorkers []*individualWorker
 	for _, w := range workers {
+		// workers that can't download any pieces are ignored
 		if len(w.pieceIndices) == 0 {
 			continue
 		}
@@ -1147,8 +1161,12 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 
 	// group 'workersNeeded' from the workers as the most likely, and
 	// group the rest as less likely
-	var mostLikely []downloadWorker
-	var lessLikely []downloadWorker
+	mostLikely := make([]downloadWorker, 0, workersNeeded)
+	var lessLikelyCap int
+	if len(workers) > workersNeeded {
+		lessLikelyCap = len(workers) - workersNeeded
+	}
+	lessLikely := make([]downloadWorker, 0, lessLikelyCap)
 
 	// loop over the download workers once, we want to add all workers
 	// that have already launched a piece and make sure they are in the
