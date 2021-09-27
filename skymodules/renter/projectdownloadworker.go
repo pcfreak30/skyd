@@ -579,7 +579,7 @@ func (ws *workerSet) String() string {
 		if !chimera {
 			selected = int(w.getPieceForDownload())
 		}
-		output += fmt.Sprintf("%v) worker: %v chimera: %v chance: %v cost: %v pieces: %v selected: %v\n", i+1, w.identifier(), chimera, w.chanceAfter(int(ws.staticExpectedDuration)), w.cost(ws.staticLength), w.pieces(), selected)
+		output += fmt.Sprintf("%v) worker: %v chimera: %v chance: %v cost: %v pieces: %v selected: %v\n", i+1, w.identifier(), chimera, w.chanceAfter(ws.staticBucketIndex), w.cost(ws.staticLength), w.pieces(), selected)
 	}
 	return output
 }
