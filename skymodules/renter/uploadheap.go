@@ -25,6 +25,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/types"
 )
@@ -638,7 +639,7 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 	}
 	// Now that we have calculated the completed pieces for the chunk we can
 	// calculate the health of the chunk to avoid a call to ChunkHealth
-	uuc.health = 1 - (float64(uuc.piecesCompleted-uuc.staticMinimumPieces) / float64(uuc.staticPiecesNeeded-uuc.staticMinimumPieces))
+	uuc.health = siafile.CalculateHealth(uuc.piecesCompleted, uuc.staticMinimumPieces, uuc.staticPiecesNeeded)
 	return uuc, nil
 }
 
@@ -1396,7 +1397,7 @@ func (r *Renter) managedRepairLoop() error {
 		if nextChunk == nil {
 			// The heap is empty so reset it to free memory and return.
 			println("pop reset")
-			r.staticUploadHeap.managedReset()
+			//r.staticUploadHeap.managedReset()
 			return nil
 		}
 		chunkPath := nextChunk.staticSiaPath
