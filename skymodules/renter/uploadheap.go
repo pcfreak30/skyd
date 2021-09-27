@@ -597,7 +597,8 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 		return nil, errors.AddContext(err, "error trying to get the pieces for the chunk")
 	}
 	for pieceIndex, pieceSet := range pieces {
-		for _, piece := range pieceSet {
+		for index, piece := range pieceSet {
+			fmt.Printf("Piece %v/%v\n", pieceIndex, index)
 			// Determine whether this piece counts towards the redundancy.
 			// Several criteria must be met:
 			//
@@ -616,6 +617,8 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 			if exists && goodForRenew && exists2 && !offline && exists3 && !redundantPiece {
 				uuc.pieceUsage[pieceIndex] = true
 				uuc.piecesCompleted++
+			} else if redundantPiece {
+				fmt.Println("REDUNDANT PIECE!!!")
 			}
 
 			// In all cases, if this host already has a piece, the host cannot
