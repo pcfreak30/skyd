@@ -397,6 +397,9 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 func (uh *uploadHeap) managedReset() error {
 	uh.mu.Lock()
 	defer uh.mu.Unlock()
+	if len(uh.unstuckHeapChunks)+len(uh.stuckHeapChunks) > 0 {
+		fmt.Println("  resetting filled heap")
+	}
 	uh.unstuckHeapChunks = make(map[uploadChunkID]*unfinishedUploadChunk)
 	uh.stuckHeapChunks = make(map[uploadChunkID]*unfinishedUploadChunk)
 	return uh.heap.reset()
@@ -1392,6 +1395,7 @@ func (r *Renter) managedRepairLoop() error {
 		nextChunk := r.staticUploadHeap.managedPop()
 		if nextChunk == nil {
 			// The heap is empty so reset it to free memory and return.
+			println("pop reset")
 			r.staticUploadHeap.managedReset()
 			return nil
 		}

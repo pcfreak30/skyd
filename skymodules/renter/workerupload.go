@@ -303,7 +303,7 @@ func (w *worker) managedPerformUploadChunkJob() {
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return
 	}
-	fmt.Println("Added piece", pieceIndex, uc.staticIndex, root)
+	fmt.Println("Added piece", pieceIndex, root)
 
 	id := w.staticRenter.mu.Lock()
 	w.staticRenter.mu.Unlock(id)
