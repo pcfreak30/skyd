@@ -147,6 +147,7 @@ type (
 		staticExpectedDuration time.Duration
 		staticLength           uint64
 		staticMinPieces        int
+		staticNumOverdrive     int
 
 		staticPDC *projectDownloadChunk
 	}
@@ -423,6 +424,7 @@ func (ws *workerSet) clone() *workerSet {
 		staticExpectedDuration: ws.staticExpectedDuration,
 		staticLength:           ws.staticLength,
 		staticMinPieces:        ws.staticMinPieces,
+		staticNumOverdrive:     ws.staticNumOverdrive,
 
 		staticPDC: ws.staticPDC,
 	}
@@ -861,6 +863,8 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	// register for a worker update chan
 	workerUpdateChan := ws.managedRegisterForWorkerUpdate()
 
+	var currWorkerSet *workerSet
+	var odConsidered bool
 	prevLog := time.Now()
 	prevRecalc := time.Now()
 	for {
@@ -868,6 +872,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		if span := opentracing.SpanFromContext(pdc.ctx); span != nil && time.Since(prevLog) > 100*time.Millisecond {
 			span.LogKV(
 				"downloadLoopIter", time.Since(pdc.launchTime),
+				"currWorkerSet", currWorkerSet,
 			)
 			prevLog = time.Now()
 		}
@@ -906,6 +911,15 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			return
 		}
 		if workerSet != nil {
+			currWorkerSet = workerSet
+			if workerSet.staticNumOverdrive > 0 && !odConsidered {
+				odConsidered = true
+				if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+					span.LogKV(
+						"overdriveConsidered", true,
+					)
+				}
+			}
 			// fmt.Println(workerSet.String())
 			pdc.launchWorkerSet(workerSet, downloadWorkers)
 		}
@@ -1002,6 +1016,7 @@ OUTER:
 
 				staticBucketIndex:      bI,
 				staticExpectedDuration: bDur,
+				staticNumOverdrive:     numOverdrive,
 				staticLength:           length,
 				staticMinPieces:        minPieces,
 
