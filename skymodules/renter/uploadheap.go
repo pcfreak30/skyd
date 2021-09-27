@@ -334,7 +334,7 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk, ct chunkType) (*un
 	// Check if chunk is in any of the heap maps
 	uh.mu.Lock()
 	defer uh.mu.Unlock()
-	fmt.Println("  push locked", uuc.id)
+	fmt.Println("  push locked", uuc.id, uuc.pieceUsage)
 	defer fmt.Println("  push unlocked", uuc.id)
 	uucUnstuck, existsUnstuckHeap := uh.unstuckHeapChunks[uuc.id]
 	uucRepairing, existsRepairing := uh.repairingChunks[uuc.id]
