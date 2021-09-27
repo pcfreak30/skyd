@@ -76,11 +76,12 @@ type (
 		// cache this because it's computationally expensive to compute
 		cachedChancesAfter [skymodules.DistributionTrackerTotalBuckets]float64
 
-		// cachedDistribution contains a distribution that is the weighted
-		// combination of all worker distrubtions in this chimera worker, it is
-		// cached meaning it will only be calculated the first time the
+		// cachedReadDistribution contains a distribution that is the weighted
+		// combination of all worker read distrubtions in this chimera worker,
+		// it is cached meaning it will only be calculated the first time the
 		// distribution is requested after the chimera worker was finalized.
-		cachedDistribution *skymodules.Distribution
+		cachedLookupDistribution *skymodules.Distribution
+		cachedReadDistribution   *skymodules.Distribution
 
 		// remaining keeps track of how much "chance" is remaining until the
 		// chimeraworker is comprised of enough to workers to be able to resolve
@@ -90,7 +91,8 @@ type (
 
 		// distributions contains the read distribution for every worker that is
 		// part of the chimera worker
-		distributions []*skymodules.Distribution
+		readDistributions   []*skymodules.Distribution
+		lookupDistributions []*skymodules.Distribution
 
 		// weights contains the weight for every worker, the weight represents
 		// the chance the worker will resolve and influences how much each
@@ -134,6 +136,7 @@ type (
 		staticExpectedCost        types.Currency
 		staticExpectedResolveTime time.Time
 		staticIdentifier          string
+		staticLookupDistribution  *skymodules.Distribution
 		staticReadDistribution    *skymodules.Distribution
 		staticWorker              *worker
 	}
@@ -199,7 +202,8 @@ func (cw *chimeraWorker) addWorker(w *individualWorker) *individualWorker {
 	cw.remaining -= toAdd.resolveChance
 
 	// add the worker to the chimera
-	cw.distributions = append(cw.distributions, toAdd.staticReadDistribution)
+	cw.readDistributions = append(cw.readDistributions, toAdd.staticReadDistribution)
+	cw.lookupDistributions = append(cw.lookupDistributions, toAdd.staticLookupDistribution)
 	cw.weights = append(cw.weights, toAdd.resolveChance)
 	cw.workers = append(cw.workers, toAdd.staticWorker)
 	return remainder
@@ -231,20 +235,29 @@ func (cw *chimeraWorker) chanceAfter(index int) float64 {
 }
 
 // distribution implements the downloadWorker interface.
-func (cw *chimeraWorker) distribution() *skymodules.Distribution {
+func (cw *chimeraWorker) distributions() (*skymodules.Distribution, *skymodules.Distribution) {
 	if cw.remaining != 0 {
 		build.Critical("developer error, chimera is not complete")
-		return nil
+		return nil, nil
 	}
 
-	if cw.cachedDistribution == nil && len(cw.distributions) > 0 {
-		halfLife := cw.distributions[0].HalfLife()
-		cw.cachedDistribution = skymodules.NewDistribution(halfLife)
-		for i, distribution := range cw.distributions {
-			cw.cachedDistribution.MergeWith(distribution, cw.weights[i])
+	if cw.cachedReadDistribution == nil && len(cw.readDistributions) > 0 {
+		halfLife := cw.readDistributions[0].HalfLife()
+		cw.cachedReadDistribution = skymodules.NewDistribution(halfLife)
+		for i, distribution := range cw.readDistributions {
+			cw.cachedReadDistribution.MergeWith(distribution, cw.weights[i])
 		}
 	}
-	return cw.cachedDistribution
+
+	if cw.cachedLookupDistribution == nil && len(cw.lookupDistributions) > 0 {
+		halfLife := cw.lookupDistributions[0].HalfLife()
+		cw.cachedLookupDistribution = skymodules.NewDistribution(halfLife)
+		for i, distribution := range cw.lookupDistributions {
+			cw.cachedLookupDistribution.MergeWith(distribution, cw.weights[i])
+		}
+	}
+
+	return cw.cachedLookupDistribution, cw.cachedReadDistribution
 }
 
 // getPieceForDownload returns the piece to download next, for a chimera worker
@@ -276,7 +289,15 @@ func (cw *chimeraWorker) pieces() []uint64 {
 // recalculateChanceAfter recalculates the chances reads complete after every
 // duration from the distribution tracker.
 func (cw *chimeraWorker) recalculateChanceAfter() {
-	cw.cachedChancesAfter = cw.distribution().ChancesAfter()
+	lookupDistribution, readDistribution := cw.distributions()
+	lookupChances := lookupDistribution.ChancesAfter()
+	readChances := readDistribution.ChancesAfter()
+
+	chances := readChances
+	for i := range readChances {
+		chances[i] *= lookupChances[i]
+	}
+	cw.cachedChancesAfter = chances
 }
 
 // worker implements the downloadWorker interface, chimera workers return nil
@@ -391,6 +412,7 @@ func (iw *individualWorker) split(chance float64) (*individualWorker, *individua
 		staticExpectedCost:        iw.staticExpectedCost,
 		staticExpectedResolveTime: iw.staticExpectedResolveTime,
 		staticIdentifier:          iw.staticIdentifier,
+		staticLookupDistribution:  iw.staticLookupDistribution,
 		staticReadDistribution:    iw.staticReadDistribution,
 		staticWorker:              iw.staticWorker,
 	}
@@ -408,6 +430,7 @@ func (iw *individualWorker) split(chance float64) (*individualWorker, *individua
 		staticExpectedCost:        iw.staticExpectedCost,
 		staticExpectedResolveTime: iw.staticExpectedResolveTime,
 		staticIdentifier:          iw.staticIdentifier,
+		staticLookupDistribution:  iw.staticLookupDistribution,
 		staticReadDistribution:    iw.staticReadDistribution,
 		staticWorker:              iw.staticWorker,
 	}
@@ -698,6 +721,8 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 
 		jrq := rw.worker.staticJobReadQueue
 		rdt := jrq.staticStats.distributionTrackerForLength(length)
+		jhsq := rw.worker.staticJobHasSectorQueue
+		ldt := jhsq.staticDT
 
 		workers = append(workers, &individualWorker{
 			pieceIndices: rw.pieceIndices,
@@ -705,10 +730,11 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 			resolveChance: 1,
 			hasResolved:   true,
 
-			staticExpectedCost:     jrq.callExpectedJobCost(length),
-			staticIdentifier:       rw.worker.staticHostPubKey.ShortString(),
-			staticReadDistribution: rdt.Distribution(0),
-			staticWorker:           rw.worker,
+			staticExpectedCost:       jrq.callExpectedJobCost(length),
+			staticIdentifier:         rw.worker.staticHostPubKey.ShortString(),
+			staticLookupDistribution: ldt.Distribution(0),
+			staticReadDistribution:   rdt.Distribution(0),
+			staticWorker:             rw.worker,
 		})
 	}
 
@@ -717,6 +743,8 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 		w := uw.staticWorker
 		jrq := w.staticJobReadQueue
 		rdt := jrq.staticStats.distributionTrackerForLength(length)
+		jhsq := w.staticJobHasSectorQueue
+		ldt := jhsq.staticDT
 
 		// exclude workers that are not useful
 		if !isGoodForDownload(w) {
@@ -738,6 +766,7 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 			staticIdentifier:          w.staticHostPubKey.ShortString(),
 			staticExpectedCost:        jrq.callExpectedJobCost(length),
 			staticExpectedResolveTime: uw.staticExpectedResolvedTime,
+			staticLookupDistribution:  ldt.Distribution(0),
 			staticReadDistribution:    rdt.Distribution(0),
 			staticWorker:              w,
 		})
