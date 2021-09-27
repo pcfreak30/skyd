@@ -174,9 +174,11 @@ func testIndividualWorker_distribution(t *testing.T) {
 	// get the chance after 100ms and mock the worker has launched, requesting
 	// the distribution from the worker should return a distribution that got
 	// shifted by the time since it launched
-	chanceAfter100MS := d.ChanceAfter(100 * time.Millisecond)
+	chanceAfter := d.ChanceAfter(100)
 	iw.launchedAt = time.Now().Add(time.Duration(-500) * time.Millisecond)
-	if iw.chanceAfter(100*time.Millisecond) >= chanceAfter100MS {
+	iw.recalculateChanceAfter()
+
+	if iw.chanceAfter(100) >= chanceAfter {
 		t.Fatal("bad")
 	}
 }
@@ -503,21 +505,21 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 			point := DistributionDurationForBucketIndex(i)
 			distribution.AddDataPoint(point)
 		}
+		w.recalculateChanceAfter()
 	}
 
-	// durationForPct is a helper function that returns a duration at which the
+	// indexForPct is a helper function that returns the index at which the
 	// chance is exactly the requested percentage, this helper function will
 	// also ensure that it is the case and fail otherwise
-	durationForPct := func(pct float64) time.Duration {
+	indexForPct := func(pct float64) int {
 		index := distributionTotalBuckets * int(pct*100) / 100
-		duration := DistributionDurationForBucketIndex(index)
 
 		// assert it against the distribution of the first worker, they are all
 		// identical
-		if iw1.chanceAfter(duration) != pct {
+		if iw1.chanceAfter(index) != pct {
 			t.Fatal("bad duration pct")
 		}
-		return duration
+		return index
 	}
 
 	// build a worker set with 0 overdrive workers
@@ -529,25 +531,25 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 	}
 
 	// assert chance is not greater than .5 (it's exactly half)
-	if ws.chanceGreaterThanHalf(durationForPct(.5)) {
+	if ws.chanceGreaterThanHalf(indexForPct(.5)) {
 		t.Fatal("bad")
 	}
 
 	// push it right over the 50% mark
-	if !ws.chanceGreaterThanHalf(durationForPct(.51)) {
+	if !ws.chanceGreaterThanHalf(indexForPct(.51)) {
 		t.Fatal("bad")
 	}
 
 	// add another worker, seeing as the chances are multiplied and both workers
 	// have a chance ~= 50% the total chance should not be greater than half
 	ws.workers = append(ws.workers, iw2)
-	if ws.chanceGreaterThanHalf(durationForPct(.51)) {
+	if ws.chanceGreaterThanHalf(indexForPct(.51)) {
 		t.Fatal("bad")
 	}
 
 	// at 75% chance per worker the total chance should be ~56% which is greater
 	// than half
-	if !ws.chanceGreaterThanHalf(durationForPct(.75)) {
+	if !ws.chanceGreaterThanHalf(indexForPct(.75)) {
 		t.Fatal("bad")
 	}
 
@@ -565,13 +567,13 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 	// 0.5*0.5*0.5 = 0.125 is the chance they're all able to complete after dur
 	// 0.125/0.5*0.5 = 0.125 is the chance one is tails and the others are heads
 	// 0.125+(0.125*3) = 0.5 because every worker can be the one that's tails
-	if ws.chanceGreaterThanHalf(durationForPct(.5)) {
+	if ws.chanceGreaterThanHalf(indexForPct(.5)) {
 		t.Fatal("bad")
 	}
 
 	// now redo the calculation with a duration that's just over half of the
 	// distributand assert the chance is now greater than half
-	if !ws.chanceGreaterThanHalf(durationForPct(.51)) {
+	if !ws.chanceGreaterThanHalf(indexForPct(.51)) {
 		t.Fatal("bad")
 	}
 
@@ -604,7 +606,7 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 	// which is n choose k and equal to n!/k(n-k)! or in our case 4!/2*2! = 6
 	//
 	// the toal chance is thus ~= 0.4 which is not greater than half
-	if ws.chanceGreaterThanHalf(durationForPct(.33)) {
+	if ws.chanceGreaterThanHalf(indexForPct(.33)) {
 		t.Fatal("bad")
 	}
 
@@ -614,7 +616,7 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 	// (0,6^2*0,4^2)*6 ~= 0,35
 	//
 	// the toal chance is thus ~= 0.525 which is not greater than half
-	if !ws.chanceGreaterThanHalf(durationForPct(.4)) {
+	if !ws.chanceGreaterThanHalf(indexForPct(.4)) {
 		t.Fatal("bad")
 	}
 
@@ -625,10 +627,10 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 	//
 	// we have two minpieces and 5 workers so we have to exceed 40% per worker
 	ws.workers = append(ws.workers, iw5)
-	if ws.chanceGreaterThanHalf(durationForPct(.4)) {
+	if ws.chanceGreaterThanHalf(indexForPct(.4)) {
 		t.Fatal("bad")
 	}
-	if !ws.chanceGreaterThanHalf(durationForPct(.41)) {
+	if !ws.chanceGreaterThanHalf(indexForPct(.41)) {
 		t.Fatal("bad")
 	}
 }
@@ -949,9 +951,9 @@ func TestBuildDownloadWorkers(t *testing.T) {
 	newTestIndividualWorker := func(resolveChance float64) *individualWorker {
 		dt := skymodules.NewDistributionTrackerStandard().Distribution(0)
 		return &individualWorker{
-			cachedChancesAfter:     make(map[time.Duration]float64, skymodules.DistributionTrackerTotalBuckets),
 			resolveChance:          resolveChance,
 			staticReadDistribution: dt,
+			pieceIndices:           []uint64{0},
 		}
 	}
 
@@ -1027,7 +1029,7 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 	t.Parallel()
 
 	// define some variables
-	dur := 4 * time.Millisecond
+	bucketIndex := 0
 	workersNeeded := 2
 
 	// mock the PDC
@@ -1050,15 +1052,17 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 	// chance is higher for the chimeras, meaning they are more likely to end up
 	// in the most likely set
 	iw1 := &individualWorker{
-		cachedChancesAfter: map[time.Duration]float64{dur: .1},
-		resolveChance:      1,
-		pieceIndices:       []uint64{1, 2},
-		staticWorker:       worker,
+		resolveChance: 1,
+		pieceIndices:  []uint64{1, 2},
+		staticWorker:  worker,
 	}
 	cw1 := NewChimeraWorker(5)
-	cw1.cachedChancesAfter = map[time.Duration]float64{dur: .2}
 	cw2 := NewChimeraWorker(5)
-	cw2.cachedChancesAfter = map[time.Duration]float64{dur: .3}
+
+	// set chances after
+	iw1.cachedChancesAfter[0] = .1
+	cw1.cachedChancesAfter[0] = .2
+	cw2.cachedChancesAfter[0] = .3
 
 	// helper variables
 	iw1Key := iw1.identifier()
@@ -1067,7 +1071,7 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 
 	// split the workers in most likely and less likely
 	workers := []downloadWorker{iw1, cw1, cw2}
-	mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(workers, dur, workersNeeded)
+	mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(workers, bucketIndex, workersNeeded)
 
 	// expect the most likely to consist of the 2 chimeras
 	if len(mostLikely) != 2 {
@@ -1095,7 +1099,7 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 	iw1.markPieceForDownload(1)
 
 	// now the resolved worker should have claimed a spot in the most likely set
-	mostLikely, lessLikely = pdc.splitMostlikelyLessLikely(workers, dur, workersNeeded)
+	mostLikely, lessLikely = pdc.splitMostlikelyLessLikely(workers, bucketIndex, workersNeeded)
 
 	// expect the most likely to consist of the 2 chimeras
 	if len(mostLikely) != 2 {
