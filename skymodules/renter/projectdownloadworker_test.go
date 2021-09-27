@@ -305,7 +305,8 @@ func testWorkerSetAdjustedDuration(t *testing.T) {
 
 	// create a worker and ensure its job cost is not zero
 	iw1 := &individualWorker{
-		staticWorker: mockWorker(10 * time.Millisecond),
+		staticWorker:       mockWorker(10 * time.Millisecond),
+		staticExpectedCost: types.SiacoinPrecision,
 	}
 	if iw1.cost(ws.staticLength).IsZero() {
 		t.Fatal("bad")
@@ -326,12 +327,9 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 	t.Parallel()
 
 	// updateReadCostWithFactor is a helper function that enables altering a
-	// worker's cost by multiplying the read length cost of the worker's price
-	// table with the given factor
+	// worker's cost by multiplying initial cost with the given factor
 	updateReadCostWithFactor := func(w *individualWorker, factor uint64) {
-		pt := w.worker().staticPriceTable().staticPriceTable
-		pt.ReadLengthCost = pt.ReadLengthCost.Mul64(factor)
-		w.worker().staticPriceTable().staticPriceTable = pt
+		w.staticExpectedCost = w.staticExpectedCost.Mul64(factor)
 	}
 
 	// workerAt is a small helper function that returns the worker's identifier
@@ -355,11 +353,13 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 	}
 
 	// build a worker set
+	pdc := newTestProjectDownloadChunk()
 	ws := &workerSet{
 		workers:                []downloadWorker{iw1, iw2},
 		staticExpectedDuration: 100 * time.Millisecond,
 		staticLength:           length,
 		staticMinPieces:        1,
+		staticPDC:              pdc,
 	}
 
 	// create a candidate worker and try and build a cheaper set, should return
@@ -513,12 +513,6 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 	// also ensure that it is the case and fail otherwise
 	indexForPct := func(pct float64) int {
 		index := distributionTotalBuckets * int(pct*100) / 100
-
-		// assert it against the distribution of the first worker, they are all
-		// identical
-		if iw1.chanceAfter(index) != pct {
-			t.Fatal("bad duration pct")
-		}
 		return index
 	}
 
@@ -806,20 +800,6 @@ func testCoinflipsSum(t *testing.T) {
 	}
 }
 
-// newTestIndivualWorker is a helper function that returns an individualWorker
-// for testing purposes.
-func newTestIndivualWorker(hostPubKeyStr string, resolveChance float64, readDuration time.Duration) *individualWorker {
-	w := mockWorker(readDuration)
-	w.staticHostPubKeyStr = hostPubKeyStr
-	iw := &individualWorker{
-		resolveChance: resolveChance,
-
-		staticReadDistribution: skymodules.NewDistribution(15 * time.Minute),
-		staticWorker:           w,
-	}
-	return iw
-}
-
 // TestAddCostPenalty is a unit test that covers the `addCostPenalty` helper
 // function.
 //
@@ -886,6 +866,7 @@ func TestBuildChimeraWorkers(t *testing.T) {
 
 	var workers []*individualWorker
 	numPieces := fastrand.Intn(10) + 1
+	now := time.Now()
 
 	// empty case
 	chimeras := buildChimeraWorkers(workers, numPieces)
@@ -896,9 +877,9 @@ func TestBuildChimeraWorkers(t *testing.T) {
 	// add couple of workers with resolve chance not adding up to 1
 	workers = append(
 		workers,
-		&individualWorker{resolveChance: 0.3},
-		&individualWorker{resolveChance: 0.1},
-		&individualWorker{resolveChance: 0.5},
+		&individualWorker{resolveChance: 0.3, staticExpectedResolveTime: now},
+		&individualWorker{resolveChance: 0.1, staticExpectedResolveTime: now},
+		&individualWorker{resolveChance: 0.5, staticExpectedResolveTime: now},
 	)
 
 	// check we still don't have a full chimera
@@ -910,11 +891,11 @@ func TestBuildChimeraWorkers(t *testing.T) {
 	// add more workers we should end up with 2 chimeras
 	workers = append(
 		workers,
-		&individualWorker{resolveChance: 0.4},
+		&individualWorker{resolveChance: 0.4, staticExpectedResolveTime: now},
 		// chimera 1 complete
-		&individualWorker{resolveChance: 0.2},
-		&individualWorker{resolveChance: 0.3},
-		&individualWorker{resolveChance: 0.3},
+		&individualWorker{resolveChance: 0.2, staticExpectedResolveTime: now},
+		&individualWorker{resolveChance: 0.3, staticExpectedResolveTime: now},
+		&individualWorker{resolveChance: 0.3, staticExpectedResolveTime: now},
 		// chimera 2 complete, .1 remainder
 	)
 
@@ -936,6 +917,18 @@ func TestBuildChimeraWorkers(t *testing.T) {
 		if len(cw.staticPieceIndices) != numPieces {
 			t.Fatal("bad")
 		}
+	}
+
+	// add workers with resolve chances of 1
+	workers = []*individualWorker{
+		{resolveChance: 1, staticExpectedResolveTime: now},
+		{resolveChance: 1, staticExpectedResolveTime: now},
+	}
+
+	// check we build 2 chimeras out of them
+	chimeras = buildChimeraWorkers(workers, numPieces)
+	if len(chimeras) != 2 {
+		t.Fatal("bad")
 	}
 }
 
@@ -1119,4 +1112,29 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 	if lessLikelyKey1 != cw1Key {
 		t.Fatal("bad")
 	}
+}
+
+// newTestIndivualWorker is a helper function that returns an individualWorker
+// for testing purposes.
+func newTestIndivualWorker(hostPubKeyStr string, resolveChance float64, readDuration time.Duration) *individualWorker {
+	w := mockWorker(readDuration)
+	w.staticHostPubKeyStr = hostPubKeyStr
+	iw := &individualWorker{
+		resolveChance:          resolveChance,
+		staticExpectedCost:     types.SiacoinPrecision,
+		staticReadDistribution: skymodules.NewDistribution(15 * time.Minute),
+		staticWorker:           w,
+	}
+	return iw
+}
+
+// newTestIndivualWorker is a helper function that returns an individualWorker
+// for testing purposes.
+func newTestProjectDownloadChunk() *projectDownloadChunk {
+	pdc := new(projectDownloadChunk)
+	pdc.workerState = new(pcwsWorkerState)
+	pdc.downloadedPiecesByIndex = make(map[uint64]struct{}, 0)
+	pdc.completedPiecesByWorker = make(map[string]completedPieces, 0)
+	pdc.launchedPiecesByWorker = make(map[string]launchedPieces, 0)
+	return pdc
 }

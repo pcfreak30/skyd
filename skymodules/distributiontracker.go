@@ -22,6 +22,7 @@ package skymodules
 
 import (
 	"fmt"
+	"reflect"
 	"sync"
 	"time"
 
@@ -236,25 +237,6 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 	d.timings[index]++
 }
 
-func (d *Distribution) ChancesAfter() [DistributionTrackerTotalBuckets]float64 {
-	var chances [DistributionTrackerTotalBuckets]float64
-
-	// Get the total data points.
-	total := d.DataPoints()
-	if total == 0 {
-		return chances
-	}
-
-	// Loop over every bucket once and calculate the chance at that bucket
-	count := float64(0)
-	for i := 0; i < DistributionTrackerTotalBuckets; i++ {
-		count += d.timings[i]
-		chances[i] = count / total
-	}
-
-	return chances
-}
-
 // ChanceAfter returns the chance we find a data point after the given duration.
 func (d *Distribution) ChanceAfter(dur time.Duration) float64 {
 	// Check for negative inputs.
@@ -284,6 +266,28 @@ func (d *Distribution) ChanceAfter(dur time.Duration) float64 {
 	return chance
 }
 
+// ChancesAfter returns an array of chances, every entry represents the chance
+// we find a data point after the duration that corresponds with the bucket at
+// the index of the entry.
+func (d *Distribution) ChancesAfter() [DistributionTrackerTotalBuckets]float64 {
+	var chances [DistributionTrackerTotalBuckets]float64
+
+	// Get the total data points.
+	total := d.DataPoints()
+	if total == 0 {
+		return chances
+	}
+
+	// Loop over every bucket once and calculate the chance at that bucket
+	count := float64(0)
+	for i := 0; i < DistributionTrackerTotalBuckets; i++ {
+		count += d.timings[i]
+		chances[i] = count / total
+	}
+
+	return chances
+}
+
 // Clone returns a deep copy of the distribution.
 func (d *Distribution) Clone() *Distribution {
 	c := &Distribution{GenericDecay: d.GenericDecay.Clone()}
@@ -291,15 +295,11 @@ func (d *Distribution) Clone() *Distribution {
 		c.timings[i] = b
 	}
 
-	// TODO: re-enable? maybe? this function is called in a ridiculously tight
-	// loop so even in testing it adds a lot of slowness, multiple seconds...
-	//
-	// sanity check using reflect package, only executed in testing
-	// if build.Release == "testing" {
-	// 	if !reflect.DeepEqual(d, c) {
-	// 		build.Critical("cloned distribution not equal")
-	// 	}
-	// }
+	if build.Release == "testing" {
+		if !reflect.DeepEqual(d, c) {
+			build.Critical("cloned distribution not equal")
+		}
+	}
 
 	return c
 }
