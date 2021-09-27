@@ -1229,6 +1229,7 @@ func TestLowAllowanceAlert(t *testing.T) {
 	renterParams.Allowance.Period = 10
 	renterParams.Allowance.RenewWindow = 5
 	renterParams.ContractorDeps = &dependencies.DependencyLowFundsRenewalFail{}
+	renterParams.SkipActivePriceTableCheck = true
 	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
@@ -1260,6 +1261,7 @@ func TestLowAllowanceAlert(t *testing.T) {
 	renterParams.Allowance.Hosts = 2
 	renterParams.RenterDeps = &dependencies.DependencyDisableUploadGougingCheck{}
 	renterParams.ContractorDeps = &dependencies.DependencyLowFundsRefreshFail{}
+	renterParams.SkipActivePriceTableCheck = true
 	nodes, err = tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
@@ -1289,6 +1291,7 @@ func TestLowAllowanceAlert(t *testing.T) {
 	renterParams = node.Renter(filepath.Join(testDir, "renter_form"))
 	renterParams.SkipSetAllowance = true
 	renterParams.ContractorDeps = &dependencies.DependencyLowFundsFormationFail{}
+	renterParams.SkipActivePriceTableCheck = true
 	nodes, err = tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
@@ -1591,16 +1594,16 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 		t.Fatal(err)
 	}
 	// Connect the miner to the renter.
-	gg, err := renter.GatewayGet()
+	gg, err := reorgMiner.GatewayGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := reorgMiner.GatewayConnectPost(gg.NetAddress); err != nil {
+	if err := renter.GatewayConnectPost(gg.NetAddress); err != nil && !errors.Contains(err, client.ErrPeerExists) {
 		t.Fatal(err)
 	}
 
 	// Sync the renter to the reorg miner.
-	err = build.Retry(50, 250*time.Millisecond, func() error {
+	err = build.Retry(100, 250*time.Millisecond, func() error {
 		renterCG, err := renter.ConsensusGet()
 		if err != nil {
 			return err
@@ -2671,15 +2674,15 @@ func TestFreshSettingsForRenew(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	blocksToMine := endHeight - cg.Height - renewWindow + 1
+	blocksToMine := endHeight - cg.Height - renewWindow/2 + 1
 	err = mineAndSync(int(blocksToMine))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Even though we are in the renew period we should not be renewing the
-	// contract due to the host settings.  The contract should be !GFU because
-	// of the renew window so we should only see 1 passive contract.
+	// contract due to the host settings. The contract should be !GFU
+	// because of the renew window so we should only see 1 passive contract.
 	err = checkContracts(0, 1, 0, 0)
 	if err != nil {
 		r.PrintDebugInfo(t, true, true, true)

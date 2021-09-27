@@ -102,21 +102,42 @@ func TestSkyfileLayout_DecodeFanoutIntoChunks(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 
-	// valid fanout bytes
-	fanoutBytes = fastrand.Bytes(3 * crypto.HashSize)
+	// valid fanout
+	chunkSize := ChunkSize(sl.CipherType, uint64(sl.FanoutDataPieces))
+	expectedChunks := sl.Filesize / chunkSize
+	if sl.Filesize%chunkSize != 0 {
+		expectedChunks++
+	}
+	fanoutBytes = fastrand.Bytes(int(expectedChunks * crypto.HashSize))
 	chunks, err = sl.DecodeFanoutIntoChunks(fanoutBytes)
 	if err != nil {
-		t.Fatal("unexpected")
+		t.Fatal(err)
 	}
-	if len(chunks) != 3 || len(chunks[0]) != 1 {
+	if len(chunks) != int(expectedChunks) || len(chunks[0]) != 1 {
 		t.Fatal("unexpected")
 	}
 	if !bytes.Equal(chunks[0][0][:], fanoutBytes[:crypto.HashSize]) {
 		t.Fatal("unexpected")
 	}
 
+	// short fanout
+	fanoutBytes = fastrand.Bytes(int(expectedChunks-1) * crypto.HashSize)
+	chunks, err = sl.DecodeFanoutIntoChunks(fanoutBytes)
+	if !errors.Contains(err, ErrMalformedBaseSector) {
+		t.Fatal(err)
+	}
+
+	// long fanout
+	fanoutBytes = fastrand.Bytes(int(expectedChunks+1) * crypto.HashSize)
+	chunks, err = sl.DecodeFanoutIntoChunks(fanoutBytes)
+	if !errors.Contains(err, ErrMalformedBaseSector) {
+		t.Fatal(err)
+	}
+
 	// not 1-N
 	sl.FanoutDataPieces = 4
+	chunkSize = ChunkSize(sl.CipherType, uint64(sl.FanoutDataPieces))
+	sl.Filesize = chunkSize * 3
 	ppc := int(sl.FanoutDataPieces + sl.FanoutParityPieces) // pieces per chunk
 	fanoutBytes = fastrand.Bytes(3 * ppc * crypto.HashSize) // 3 chunks
 	chunks, err = sl.DecodeFanoutIntoChunks(fanoutBytes)
@@ -493,115 +514,6 @@ func TestComputeMonetizationPayout(t *testing.T) {
 	ComputeMonetizationPayout(types.NewCurrency64(1), types.ZeroCurrency)
 }
 
-// TestPayMonetizers is a unit test for payMonetizers.
-func TestPayMonetizers(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create test wallet.
-	w := &monetizationWalletTester{}
-
-	// Monetization base..
-	base := types.SiacoinPrecision.Mul64(1000) // 1KS payouts
-
-	// Declare a helper to create valid monetizers.
-	validMonetization := func() *Monetization {
-		m := &Monetization{
-			License: LicenseMonetization,
-			Monetizers: []Monetizer{
-				{
-					Amount:   types.SiacoinPrecision.Div64(100000), // $0.00001
-					Currency: CurrencyUSD,
-				},
-			},
-		}
-		fastrand.Read(m.Monetizers[0].Address[:])
-		return m
-	}
-
-	// Declare a test helper.
-	test := func(rate types.Currency) {
-		conversionRates := map[string]types.Currency{
-			CurrencyUSD: rate,
-		}
-
-		// no data
-		m := validMonetization()
-		err := PayMonetizers(w, m, 0, 100, conversionRates, base)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// invalid currency
-		m = validMonetization()
-		m.Monetizers[0].Currency = ""
-		err = PayMonetizers(w, m, 100, 100, conversionRates, base)
-		if !errors.Contains(err, ErrInvalidCurrency) {
-			t.Fatal(err)
-		}
-
-		// Run the remaining test 1000 times to make sure the success test cases
-		// don't just pass by accident.
-		for i := 0; i < 1000; i++ {
-			// pay out base - lottery success
-			m = validMonetization()
-			n := m.Monetizers[0].Amount.Mul(rate).Div(types.SiacoinPrecision).Sub64(1) // n < amt -> success
-			err = payMonetizers(w, m, 100, 100, conversionRates, base, newMonetizationReader(n))
-			if err != nil {
-				t.Fatal(err)
-			}
-			// there should be 1 payout of amount 'base' to the right address.
-			if len(w.lastPayout) != 1 {
-				t.Fatal("wrong number of payouts", len(w.lastPayout))
-			}
-			if !w.lastPayout[0].Value.Equals(base) {
-				t.Fatal("wrong payout amount", w.lastPayout[0].Value, base)
-			}
-			if w.lastPayout[0].UnlockHash != m.Monetizers[0].Address {
-				t.Fatal("wrong payout address")
-			}
-			w.Reset()
-
-			// pay out base - lottery failure
-			m = validMonetization()
-			n = m.Monetizers[0].Amount.Mul(rate).Div(types.SiacoinPrecision) // n == amt -> failure
-			err = payMonetizers(w, m, 100, 100, conversionRates, base, newMonetizationReader(n))
-			if err != nil {
-				t.Fatal(err)
-			}
-			// there should be no payout
-			if len(w.lastPayout) != 0 {
-				t.Fatal("wrong number of payouts", len(w.lastPayout))
-			}
-			w.Reset()
-		}
-	}
-
-	// Run the test twice. Once with a positive and once with a negative
-	// conversion rate.
-	test(types.SiacoinPrecision.Mul64(10)) // $1 = 10SC
-	test(types.SiacoinPrecision.Div64(10)) // $1 = 0.1SC
-
-	// Make sure a 0 base or conversion rate is not accepted.
-	m := validMonetization()
-	conversionRates := map[string]types.Currency{
-		CurrencyUSD: types.SiacoinPrecision,
-	}
-	err := PayMonetizers(w, m, 100, 100, conversionRates, types.ZeroCurrency)
-	if !errors.Contains(err, ErrZeroBase) {
-		t.Fatal(err)
-	}
-	conversionRates = map[string]types.Currency{
-		CurrencyUSD: types.ZeroCurrency,
-	}
-	err = PayMonetizers(w, m, 100, 100, conversionRates, base)
-	if !errors.Contains(err, ErrZeroConversionRate) {
-		t.Fatal(err)
-	}
-}
-
 // TestIsSkynetDir probes the IsSkynetDir function
 func TestIsSkynetDir(t *testing.T) {
 	// Define tests
@@ -630,5 +542,191 @@ func TestIsSkynetDir(t *testing.T) {
 		if IsSkynetDir(test.sp) != test.res {
 			t.Error("unexpected", test)
 		}
+	}
+}
+
+// TestDeterminePathBasedOnTryFiles makes sure we make the right decisions
+// when choosing paths.
+func TestDeterminePathBasedOnTryFiles(t *testing.T) {
+	t.Parallel()
+
+	tfWithGlobalIndex := []string{"good-news/index.html", "index.html", "/index.html"}
+	tfNoGlobalIndex := []string{"index.html", "good-news/index.html"}
+	tfNoIndex := []string{"good-news/index.html"}
+
+	subfiles := SkyfileSubfiles{
+		"index.html": SkyfileSubfileMetadata{
+			Filename: "index.html",
+		},
+		"404.html": SkyfileSubfileMetadata{
+			Filename: "404.html",
+		},
+		"about/index.html": SkyfileSubfileMetadata{
+			Filename: "about/index.html",
+		},
+		"news/good-news/index.html": SkyfileSubfileMetadata{
+			Filename: "news/good-news/index.html",
+		},
+		"img/image.html": SkyfileSubfileMetadata{
+			Filename: "img/image.html",
+		},
+	}
+
+	tests := []struct {
+		name         string
+		tryfiles     []string
+		requestPath  string
+		expectedPath string
+	}{
+		// Global index
+		{
+			name:         "global index, request path ''",
+			tryfiles:     tfWithGlobalIndex,
+			requestPath:  "",
+			expectedPath: "/index.html",
+		},
+		{
+			name:         "global index, request path '/about'",
+			tryfiles:     tfWithGlobalIndex,
+			requestPath:  "/about",
+			expectedPath: "/about/index.html",
+		},
+		{
+			name:         "global index, request path '/news/noexist.html'",
+			tryfiles:     tfWithGlobalIndex,
+			requestPath:  "/news/noexist.html",
+			expectedPath: "/index.html",
+		},
+		{
+			name:         "global index, request path '/news/bad-news'",
+			tryfiles:     tfWithGlobalIndex,
+			requestPath:  "/news/bad-news",
+			expectedPath: "/index.html",
+		},
+		{
+			name:         "global index, request path '/news/good-news'",
+			tryfiles:     tfWithGlobalIndex,
+			requestPath:  "/news/good-news",
+			expectedPath: "/news/good-news/index.html",
+		},
+		{
+			name:         "global index, request path '/img/noexist.png'",
+			tryfiles:     tfWithGlobalIndex,
+			requestPath:  "/img/noexist.png",
+			expectedPath: "/index.html",
+		},
+		// No global index
+		{
+			name:         "no global index, request path ''",
+			tryfiles:     tfNoGlobalIndex,
+			requestPath:  "",
+			expectedPath: "/index.html",
+		},
+		{
+			name:         "no global index, request path '/index.html'",
+			tryfiles:     tfNoGlobalIndex,
+			requestPath:  "/index.html",
+			expectedPath: "/index.html",
+		},
+		{
+			name:         "no global index, request path '/about'",
+			tryfiles:     tfNoGlobalIndex,
+			requestPath:  "/about",
+			expectedPath: "/about/index.html",
+		},
+		{
+			name:         "no global index, request path '/about/index.html'",
+			tryfiles:     tfNoGlobalIndex,
+			requestPath:  "/about/index.html",
+			expectedPath: "/about/index.html",
+		},
+		{
+			name:         "no global index, request path '/news/noexist.html'",
+			tryfiles:     tfNoGlobalIndex,
+			requestPath:  "/news/noexist.html",
+			expectedPath: "/news/noexist.html",
+		},
+		{
+			name:         "no global index, request path '/news/bad-news'",
+			tryfiles:     tfNoGlobalIndex,
+			requestPath:  "/news/bad-news",
+			expectedPath: "/news/bad-news",
+		},
+		{
+			name:         "no global index, request path '/news/good-news'",
+			tryfiles:     tfNoGlobalIndex,
+			requestPath:  "/news/good-news",
+			expectedPath: "/news/good-news/index.html",
+		},
+		// No index
+		{
+			name:         "no index, request path ''",
+			requestPath:  "",
+			expectedPath: "",
+		},
+		{
+			name:         "no index, request path '/index.html'",
+			tryfiles:     tfNoIndex,
+			requestPath:  "/index.html",
+			expectedPath: "/index.html",
+		},
+		{
+			name:         "no index, request path '/about'",
+			tryfiles:     tfNoIndex,
+			requestPath:  "/about",
+			expectedPath: "/about",
+		},
+		{
+			name:         "no index, request path '/about/index.html'",
+			tryfiles:     tfNoIndex,
+			requestPath:  "/about/index.html",
+			expectedPath: "/about/index.html",
+		},
+		{
+			name:         "no index, request path '/news/noexist.html'",
+			tryfiles:     tfNoIndex,
+			requestPath:  "/news/noexist.html",
+			expectedPath: "/news/noexist.html",
+		},
+		{
+			name:         "no index, request path '/news/bad-news'",
+			tryfiles:     tfNoIndex,
+			requestPath:  "/news/bad-news",
+			expectedPath: "/news/bad-news",
+		},
+		{
+			name:         "no index, request path '/news'",
+			tryfiles:     tfNoIndex,
+			requestPath:  "/news",
+			expectedPath: "/news/good-news/index.html",
+		},
+		{
+			name:         "no index, request path '/news/good-news'",
+			tryfiles:     tfNoIndex,
+			requestPath:  "/news/good-news",
+			expectedPath: "/news/good-news",
+		},
+	}
+
+	meta := SkyfileMetadata{
+		TryFiles: tfWithGlobalIndex,
+	}
+	path := meta.determinePathBasedOnTryfiles("anypath")
+	if path != "anypath" {
+		t.Fatalf("Expected path to be 'anypath', got '%s'", path)
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			meta := SkyfileMetadata{
+				Subfiles: subfiles,
+				TryFiles: tt.tryfiles,
+			}
+			path = meta.determinePathBasedOnTryfiles(tt.requestPath)
+			if path != tt.expectedPath {
+				t.Log("Test name:", tt.name)
+				t.Fatalf("Expected path to be '%s', got '%s'", tt.expectedPath, path)
+			}
+		})
 	}
 }

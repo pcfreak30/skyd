@@ -1381,18 +1381,6 @@ hostdb. It's turned on by default and causes Sia to not form contracts with
 hosts from the same subnet and if such contracts already exist, it will
 deactivate the contract which has occupied that subnet for the shorter time.  
 
-**usdconversionrate** | Currency  
-Specifies the conversion rate between USD and SC. e.g. if $1 equals 100H,
-this value should be set to 100.  
-
-**monetizationbase** | Currency  
-Specifies the minimum payment in SC for monetized content. If the content
-costs more than the base, it will be paid in full. If the content costs less
-than the base, a dice roll decides whether the base is paid out. e.g. if a
-file costs $1 and the base is $2, there is a 50% chance that the creator is
-paid $1 and a 50% chance that the creator is paid $0. This is a scaling
-method to avoid spamming the blockchain with microtransactions.  
-
 ### Response
 
 standard success or error response. See [standard
@@ -3258,6 +3246,8 @@ The protocol is implemented on the following endpoints:
 
 For detailed information about the protocol check out the [specification](https://tus.io/protocols/resumable-upload.html).
 
+### Chunk Size
+
 For uploads to work with Skyd, you need to make sure that the chunk size of
 your TUS client is configured correctly. Otherwise, the upload will return an
 error which contains the expected chunk size. Right now the chunk size is
@@ -3270,9 +3260,19 @@ When using the defaults, the overhead is 0 and the dataPieces are 10. That's
 because all files uploaded using this protocol are automatically considered
 large uploads.
 
+### Skylink
+
 The Skylink for a TUS upload can be found at the following endpoint once the
 upload finished successfully.  It will be returned both as a JSON object in
 the response body as well as the http response header `"Skynet-Skylink"`.
+
+### Max Upload Size
+
+To limit the upload size of a file globally, set the `TUS_MAXSIZE` environment
+variable to the maximum number of bytes any user can upload. In addition to that
+global limit, the `SkynetMaxUploadSize` http header needs to be set on TUS
+requests for creating a new upload. This is the local limit for the specific
+upload. For security, both the global and local limit need to be set. 
 
 ## /skynet/upload/tus/:id [GET]
 > curl example  
@@ -3385,6 +3385,11 @@ curl -A "Sia-Agent" --user "":<apipassword> --data '{"remove" : ["GAC38Gan6YHVpL
 
 updates the list of skylinks that should be blocked from Skynet. This endpoint
 can be used to both add and remove skylinks from the blocklist.
+
+**NOTE:** this endpoint accepts both V1 and V2 skylinks. When a V2 skylink is
+submitted, it is resolved into a V1 skylink so that the data behind the V1
+skylink is blocked. This allows for the V2 skylink to be updated to point to new
+content that isn't blocked.
 
 ### Path Parameters
 ### REQUIRED
@@ -3600,6 +3605,37 @@ value of 5 minutes. The minimum is 1 second.
 }
 ```
 
+## /skynet/resolve/:skylink [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/skynet/resolve/AQBUUNFGvF261JuvCZjEBQILdfB1UqVmaWuLS8MKPv82Yw"
+```
+
+This curl command performs a GET request that resolves a version 2 skylink to a version 1 skylink.
+
+### Path Parameters
+### REQUIRED
+**skylink** | string  
+The version 2 skylink that should be resolved.
+
+### Query String Parameters
+### OPTIONAL
+**timeout** | uint64  
+The timeout in seconds. Specifies how long it takes the request to time out
+in case no registry entry can be found. The default is the maximum allowed
+value of 5 minutes. The minimum is 1 second.
+
+### Response
+> JSON Response Example
+
+```go
+{
+  "skylink": "EAAm6tEKCIostb5TT8o-lkawuWhICWqegs-Ar_kFdr1vBg", // string
+}
+```
+
+
 ## /skynet/restore [POST]
 > curl example  
 
@@ -3793,6 +3829,10 @@ the download which is why it is not returned by default. Cases that require the
 layout include backing up skylinks where all the original upload information
 about a skylink is needed.
 
+**start | end** | uint64  
+The `start` and `end` params can be used for range requests when the client is
+unable to use the range field in the Header.
+
 **timeout** | int  
 If 'timeout' is set, the download will fail if the Skyfile cannot be retrieved 
 before it expires. Note that this timeout does not cover the actual download 
@@ -3933,6 +3973,17 @@ nor to the single file in directory upload. This parameter is mutually exclusive
 with `defaultpath` and specifying both will result in an error. Neither one is 
 applicable to skyfiles without subfiles.
 
+**tryfiles** | []string
+The `tryfiles` field allows us to set a list of potential subfiles to return in
+case the requested one does not exist or is a directory. Those subfiles might
+be listed with relative or absolute paths. If the path is absolute the files
+must exist.
+
+**errorpages** | JSON
+The `errorpages` JSON object defines a mapping of error codes and subfiles which
+are to be served in case we are serving the respective error code. All subfiles 
+referred like this must be defined with absolute paths and must exist.
+
 **filename** | string  
 The name of the file. This name will be encoded into the skyfile metadata, and
 will be a part of the skylink. If the name changes, the skylink will change as
@@ -4040,22 +4091,64 @@ returns statistical information about Skynet, e.g. number of files uploaded
 ### JSON Response
 ```json
 {
-  "uptime": 1234, // int
-  "uploadstats": {
-    "numfiles": 2,         // int
-    "totalsize": 44527895  // int
-  },
-  "versioninfo": {
-    "version":     "1.4.4-master", // string
-    "gitrevision": "cd5a83712"     // string
-  },
-  "registrystats": {
-    "readprojectp99": 5020,   // uint64
-    "readprojectp999": 5020,  // uint64
-    "readprojectp9999": 5020  // uint64
-  },
+   "basesectoroverdriveavg": 1.1033519553072626,
+   "basesectoroverdrivepct": 0.4666255144032922,
+   "basesectorupload15mdatapoints":12.032777431483911,
+   "basesectorupload15mp99ms":16384,
+   "basesectorupload15mp999ms":27648,
+   "basesectorupload15mp9999ms":27648,
+   "chunkupload15mdatapoints":64.29178098782313,
+   "chunkupload15mp99ms":30720,
+   "chunkupload15mp999ms":30720,
+   "chunkupload15mp9999ms":43008,
+   "fanoutsectoroverdriveavg": 0.8033519553072626,
+   "fanoutsectoroverdrivepct": 0.5216255144032922,
+   "registryread15mdatapoints":126.31844121965291,
+   "registryread15mp99ms":132,
+   "registryread15mp999ms":288,
+   "registryread15mp9999ms":288,
+   "registrywrite15mdatapoints":6.57479081135385,
+   "registrywrite15mp99ms":104,
+   "registrywrite15mp999ms":216,
+   "registrywrite15mp9999ms":416,
+   "streambufferread15mdatapoints":1221.2823097216672,
+   "streambufferread15mp99ms":5376,
+   "streambufferread15mp999ms":7936,
+   "streambufferread15mp9999ms":7936,
+   "systemhealthscandurationhours":1.1795308075927777,
+   "allowancestatus":"healthy",                         // 'low', 'high', 'healthy'
+   "contractstorage":68897587855360,
+   "maxstorageprice":"34722222222",
+   "numcritalerts":0,
+   "numfiles":403016,
+   "portalmode": true,                                  // bool
+   "repair":385217462272,
+   "storage":3635586064087,
+   "stuckchunks":29948,
+   "walletstatus":"healthy",                            // 'locked', 'low', 'high', 'healthy'
+   "uptime":92812,
+   "versioninfo":{
+      "version":"1.6.0-master",                         // string
+      "gitrevision":"✗-dd6ab5c88"                       // string
+   }
 }
 ```
+
+**basesectoroverdriveavg** | float  
+The average amount of overdrive workers that are launched for base sector
+downloads.
+
+**basesectoroverdrivepct** | float  
+The percentage of base sector downloads that require at least one overdrive
+worker in order to successfully complete the download.
+
+**fanoutsectoroverdriveavg** | float  
+The average amount of overdrive workers that are launched for fanout sector
+downloads.
+
+**fanoutsectoroverdrivepct** | float  
+The percentage of fanout sector downloads that require at least one overdrive
+worker in order to successfully complete the download.
 
 **uptime** | int  
 The amount of time in seconds that siad has been running.

@@ -164,7 +164,7 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 	}
 	// Begin uploading the backup. When the upload finishes, the backup .sia
 	// file will be uploaded by r.threadedSynchronizeSnapshots and then deleted.
-	fileNode, err := r.callUploadStreamFromReader(up, backup)
+	fileNode, err := r.callUploadStreamFromReader(r.tg.StopCtx(), up, backup)
 	if err != nil {
 		return errors.AddContext(err, "failed to upload backup")
 	}

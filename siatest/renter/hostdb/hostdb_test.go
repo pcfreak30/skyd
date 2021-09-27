@@ -226,6 +226,7 @@ func TestPruneRedundantAddressRange(t *testing.T) {
 
 	// Add a renter with a custom resolver to the group.
 	renterTemplate := node.Renter(testDir + "/renter")
+	renterTemplate.SkipActivePriceTableCheck = true // due to custom resolver
 	renterTemplate.HostDBDeps = dependencies.NewDependencyCustomResolver(func(host string) ([]net.IP, error) {
 		switch host {
 		case "host1.com":
@@ -408,6 +409,7 @@ func TestSelectRandomCanceledHost(t *testing.T) {
 
 	// Add a renter with a custom resolver to the group.
 	renterTemplate := node.Renter(testDir + "/renter")
+	renterTemplate.SkipActivePriceTableCheck = true // fix due to custom resolver
 	renterTemplate.HostDBDeps = dependencies.NewDependencyCustomResolver(func(host string) ([]net.IP, error) {
 		switch host {
 		case "host1.com":
@@ -577,6 +579,7 @@ func TestDisableIPViolationCheck(t *testing.T) {
 
 	// Add a renter with a custom resolver to the group.
 	renterTemplate := node.Renter(testDir + "/renter")
+	renterTemplate.SkipActivePriceTableCheck = true // due to custom resolver
 	renterTemplate.HostDBDeps = dependencies.NewDependencyCustomResolver(func(host string) ([]net.IP, error) {
 		switch host {
 		case "host1.com":

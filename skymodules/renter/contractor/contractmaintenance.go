@@ -391,8 +391,8 @@ func (c *Contractor) managedEstimateRenewFundingRequirements(contract skymodules
 	minInitialContractFunds := allowance.Funds.Div64(allowance.Hosts).Div64(MinInitialContractFundingDivFactor)
 	minimum := initialContractFunding(allowance, host, txnFees, minInitialContractFunds, types.ZeroCurrency)
 	if estimatedCost.Cmp(minimum) < 0 {
-		estimatedCost = minimum
 		c.staticLog.Printf("Contract renew amount %v below minimum amount %v", estimatedCost, minimum)
+		estimatedCost = minimum
 	}
 	return estimatedCost, nil
 }

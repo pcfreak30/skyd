@@ -45,6 +45,11 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// create renter
+	renter := new(Renter)
+	renter.staticBaseSectorDownloadStats = skymodules.NewSectorDownloadStats()
+	renter.staticFanoutSectorDownloadStats = skymodules.NewSectorDownloadStats()
+
 	// create PCWS manually
 	pcws := &projectChunkWorkerSet{
 		staticChunkIndex:   0,
@@ -53,7 +58,7 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 		staticPieceRoots:   []crypto.Hash{sectorRoot},
 
 		staticCtx:    context.Background(),
-		staticRenter: new(Renter),
+		staticRenter: renter,
 	}
 
 	// download a random amount of data at random offset
@@ -80,15 +85,17 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 
 		downloadResponseChan: responseChan,
 		workerSet:            pcws,
+
+		ctx: context.Background(),
 	}
 
 	pdc.launchedWorkers = append(pdc.launchedWorkers, &launchedWorkerInfo{
-		launchTime:           time.Now(),
-		expectedCompleteTime: time.Now().Add(time.Minute),
-		expectedDuration:     time.Minute,
+		staticLaunchTime:           time.Now(),
+		staticExpectedCompleteTime: time.Now().Add(time.Minute),
+		staticExpectedDuration:     time.Minute,
 
-		pdc:    pdc,
-		worker: new(worker),
+		staticPDC:    pdc,
+		staticWorker: new(worker),
 	})
 
 	// call finalize
@@ -108,7 +115,7 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 		t.Log("expected:\n", originalData[offset:offset+length])
 		t.Fatal("unexpected data")
 	}
-	if downloadResponse.launchedWorkers == nil || len(downloadResponse.launchedWorkers) != 1 || downloadResponse.launchedWorkers[0].expectedDuration != time.Minute {
+	if downloadResponse.launchedWorkers == nil || len(downloadResponse.launchedWorkers) != 1 || downloadResponse.launchedWorkers[0].staticExpectedDuration != time.Minute {
 		t.Fatal("unexpected")
 	}
 
@@ -139,6 +146,11 @@ func TestProjectDownloadChunk_finished(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// create renter
+	renter := new(Renter)
+	renter.staticBaseSectorDownloadStats = skymodules.NewSectorDownloadStats()
+	renter.staticFanoutSectorDownloadStats = skymodules.NewSectorDownloadStats()
+
 	// create PCWS manually
 	pcws := &projectChunkWorkerSet{
 		staticChunkIndex:   0,
@@ -147,7 +159,7 @@ func TestProjectDownloadChunk_finished(t *testing.T) {
 		staticPieceRoots:   []crypto.Hash{},
 
 		staticCtx:    context.Background(),
-		staticRenter: new(Renter),
+		staticRenter: renter,
 	}
 
 	// create PDC manually - only the essentials
@@ -276,7 +288,7 @@ func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
 	}
 
 	lwi := launchedWorkerInfo{
-		launchTime: time.Now().Add(-time.Minute),
+		staticLaunchTime: time.Now().Add(-time.Minute),
 	}
 	pdc.launchedWorkers = []*launchedWorkerInfo{&lwi}
 
@@ -379,6 +391,7 @@ func TestProjectDownloadChunk_launchWorker(t *testing.T) {
 
 	// mock a pdc, ensure available pieces is not nil
 	pdc := new(projectDownloadChunk)
+	pdc.ctx = context.Background()
 	pdc.workerSet = pcws
 	pdc.pieceLength = 1 << 16 // 64kb
 	pdc.availablePieces = make([][]*pieceDownload, ec.NumPieces())
@@ -407,14 +420,14 @@ func TestProjectDownloadChunk_launchWorker(t *testing.T) {
 	lw := pdc.launchedWorkers[0]
 
 	// assert the launched worker info contains what we expect it to contain
-	if lw.launchTime == (time.Time{}) ||
+	if lw.staticLaunchTime == (time.Time{}) ||
 		lw.completeTime != (time.Time{}) ||
-		lw.expectedCompleteTime == (time.Time{}) ||
+		lw.staticExpectedCompleteTime == (time.Time{}) ||
 		lw.jobDuration != 0 ||
 		lw.totalDuration != 0 ||
-		lw.expectedDuration == 0 ||
-		!bytes.Equal(lw.pdc.uid[:], pdc.uid[:]) ||
-		lw.worker.staticHostPubKeyStr != spk.String() {
+		lw.staticExpectedDuration == 0 ||
+		!bytes.Equal(lw.staticPDC.uid[:], pdc.uid[:]) ||
+		lw.staticWorker.staticHostPubKeyStr != spk.String() {
 		t.Fatal("unexpected")
 	}
 
@@ -592,15 +605,15 @@ func TestLaunchedWorkerInfo_String(t *testing.T) {
 	}
 
 	lwi := &launchedWorkerInfo{
-		pieceIndex:      1,
-		overdriveWorker: false,
+		staticPieceIndex:        1,
+		staticIsOverdriveWorker: false,
 
-		launchTime:           time.Now().Add(-5 * time.Second),
-		expectedCompleteTime: time.Now().Add(10 * time.Second),
-		expectedDuration:     10 * time.Second,
+		staticLaunchTime:           time.Now().Add(-5 * time.Second),
+		staticExpectedCompleteTime: time.Now().Add(10 * time.Second),
+		staticExpectedDuration:     10 * time.Second,
 
-		pdc:    pdc,
-		worker: w,
+		staticPDC:    pdc,
+		staticWorker: w,
 	}
 
 	// assert output when download not complete
@@ -618,7 +631,7 @@ func TestLaunchedWorkerInfo_String(t *testing.T) {
 	// assert output when download complete
 	lwi.completeTime = time.Now()
 	lwi.jobDuration = 20 * time.Second
-	lwi.totalDuration = time.Since(lwi.launchTime)
+	lwi.totalDuration = time.Since(lwi.staticLaunchTime)
 
 	expectedDurInfo = "responded after 5000ms"
 	expectedJobInfo := "read job took 20000ms"
@@ -642,7 +655,7 @@ func TestLaunchedWorkerInfo_String(t *testing.T) {
 	}
 
 	// assert output when worker is overdrive worker
-	lwi.overdriveWorker = true
+	lwi.staticIsOverdriveWorker = true
 	expectedWorkerInfo = "overdrive worker " + w.staticHostPubKey.ShortString()
 	if !strings.Contains(lwi.String(), expectedWorkerInfo) {
 		t.Fatal("unexpected", lwi.String())
@@ -656,8 +669,9 @@ func mockWorker(jobTime time.Duration) *worker {
 	worker := new(worker)
 	worker.newPriceTable()
 	worker.staticPriceTable().staticPriceTable = newDefaultPriceTable()
-	worker.initJobReadQueue()
-	worker.staticJobReadQueue.weightedJobTime64k = float64(jobTime)
+	worker.initJobReadQueue(&jobReadStats{
+		weightedJobTime64k: float64(jobTime),
+	})
 	return worker
 }
 

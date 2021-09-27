@@ -24,7 +24,7 @@ type mockProjectChunkWorkerSet struct {
 }
 
 // Download implements the chunkFetcher interface.
-func (m *mockProjectChunkWorkerSet) Download(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error) {
+func (m *mockProjectChunkWorkerSet) Download(ctx context.Context, pricePerMS types.Currency, offset, length uint64, _, _ bool) (chan *downloadResponse, error) {
 	m.staticDownloadResponseChan <- &downloadResponse{
 		data: m.staticDownloadData[offset : offset+length],
 		err:  nil,
@@ -59,6 +59,11 @@ func testSkylinkDataSourceSmallFile(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
+	// create renter
+	renter := new(Renter)
+	renter.staticBaseSectorDownloadStats = skymodules.NewSectorDownloadStats()
+	renter.staticFanoutSectorDownloadStats = skymodules.NewSectorDownloadStats()
+
 	sds := &skylinkDataSource{
 		staticID: skymodules.DataSourceID(crypto.Hash{1, 2, 3}),
 		staticLayout: skymodules.SkyfileLayout{
@@ -80,7 +85,7 @@ func testSkylinkDataSourceSmallFile(t *testing.T) {
 
 		staticCancelFunc: cancel,
 		staticCtx:        ctx,
-		staticRenter:     new(Renter),
+		staticRenter:     renter,
 	}
 
 	if sds.DataSize() != datasize {
@@ -95,7 +100,7 @@ func testSkylinkDataSourceSmallFile(t *testing.T) {
 	}) {
 		t.Fatal("unexpected")
 	}
-	if sds.RequestSize() != skylinkDataSourceRequestSize {
+	if sds.RequestSize() != SkylinkDataSourceRequestSize {
 		t.Fatal("unexpected")
 	}
 
@@ -153,6 +158,11 @@ func testSkylinkDataSourceLargeFile(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
+	// create renter
+	renter := new(Renter)
+	renter.staticBaseSectorDownloadStats = skymodules.NewSectorDownloadStats()
+	renter.staticFanoutSectorDownloadStats = skymodules.NewSectorDownloadStats()
+
 	sds := &skylinkDataSource{
 		staticID: skymodules.DataSourceID(crypto.Hash{1, 2, 3}),
 		staticLayout: skymodules.SkyfileLayout{
@@ -179,7 +189,7 @@ func testSkylinkDataSourceLargeFile(t *testing.T) {
 
 		staticCancelFunc: cancel,
 		staticCtx:        ctx,
-		staticRenter:     new(Renter),
+		staticRenter:     renter,
 	}
 	for i := 0; i < len(sds.staticChunksReady); i++ {
 		sds.staticChunksReady[i] = make(chan struct{})
@@ -198,7 +208,7 @@ func testSkylinkDataSourceLargeFile(t *testing.T) {
 	}) {
 		t.Fatal("unexpected")
 	}
-	if sds.RequestSize() != skylinkDataSourceRequestSize {
+	if sds.RequestSize() != SkylinkDataSourceRequestSize {
 		t.Fatal("unexpected")
 	}
 

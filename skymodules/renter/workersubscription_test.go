@@ -77,7 +77,7 @@ func randomRegistryValue() (modules.SignedRegistryValue, types.SiaPublicKey, cry
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
 	}
-	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	rv := modules.NewRegistryValue(tweak, data, rev, modules.RegistryTypeWithoutPubkey).Sign(sk)
 	return rv, spk, sk
 }
 
@@ -734,7 +734,7 @@ func TestSubscriptionNotifications(t *testing.T) {
 	// The worker should have updated the cache.
 	cache := wt.staticRegistryCache
 	cachedRev, exists := cache.Get(modules.DeriveRegistryEntryID(spk1, rv1.Tweak))
-	if !exists || cachedRev != rv1.Revision {
+	if !exists || !reflect.DeepEqual(cachedRev, rv1.RegistryValue) {
 		t.Fatal("cache wasn't updated correctyl")
 	}
 	_, exists = cache.Get(modules.DeriveRegistryEntryID(spk2, rv2.Tweak))
@@ -788,7 +788,7 @@ func TestSubscriptionNotifications(t *testing.T) {
 		if !exists {
 			return errors.New("rv1: cached entry doesn't exist")
 		}
-		if cachedRev != rv1.Revision {
+		if !reflect.DeepEqual(cachedRev, rv1.RegistryValue) {
 			return fmt.Errorf("rv1: wrong cached value %v != %v", cachedRev, rv1.Revision)
 		}
 		// rv2 should be updated to rv2a
@@ -796,7 +796,7 @@ func TestSubscriptionNotifications(t *testing.T) {
 		if !exists {
 			return errors.New("rv2: cached entry doesn't exist")
 		}
-		if cachedRev != rv2a.Revision {
+		if !reflect.DeepEqual(cachedRev, rv2a.RegistryValue) {
 			return fmt.Errorf("rv2: wrong cached value %v != %v", cachedRev, rv2a.Revision)
 		}
 		return nil
@@ -1001,8 +1001,8 @@ func TestHandleNotification(t *testing.T) {
 		// The worker cache and subscription should be updated.
 		err := build.Retry(100, 100*time.Millisecond, func() error {
 			// Check worker cache.
-			if revNum, found := wt.staticRegistryCache.Get(sid); !found || revNum != rv.Revision {
-				return fmt.Errorf("cache wasn't updated %v != %v %v", revNum, rv.Revision, found)
+			if rev, found := wt.staticRegistryCache.Get(sid); !found || !reflect.DeepEqual(rev, rv.RegistryValue) {
+				return fmt.Errorf("cache wasn't updated %v != %v %v", rev, rv.Revision, found)
 			}
 			// Check subscription.
 			subInfo.mu.Lock()
@@ -1043,8 +1043,8 @@ func TestHandleNotification(t *testing.T) {
 		// Check fields.
 		err := build.Retry(100, 100*time.Millisecond, func() error {
 			// Check worker cache. Should be set to rv2.
-			if revNum, found := wt.staticRegistryCache.Get(sid); !found || revNum != rv2.Revision {
-				return fmt.Errorf("cache wasn't updated %v != %v %v", revNum, rv2.Revision, found)
+			if rev, found := wt.staticRegistryCache.Get(sid); !found || !reflect.DeepEqual(rev, rv2.RegistryValue) {
+				return fmt.Errorf("cache wasn't updated %v != %v %v", rev, rv2, found)
 			}
 			// Check subscription. Should be set to rv2.
 			subInfo.mu.Lock()
@@ -1056,7 +1056,7 @@ func TestHandleNotification(t *testing.T) {
 			subInfo.mu.Unlock()
 			// Stream should have been closed.
 			if closer.staticCount() != 1 {
-				return errors.New("stream should have been closed")
+				return fmt.Errorf("stream should have been closed: %v", closer.staticCount())
 			}
 			return nil
 		})
@@ -1080,8 +1080,8 @@ func TestHandleNotification(t *testing.T) {
 		// Check fields.
 		err := build.Retry(100, 100*time.Millisecond, func() error {
 			// Check worker cache. Should be set to rv.
-			if revNum, found := wt.staticRegistryCache.Get(sid); !found || revNum != rv.Revision {
-				return fmt.Errorf("cache wasn't updated %v != %v %v", revNum, rv.Revision, found)
+			if rev, found := wt.staticRegistryCache.Get(sid); !found || !reflect.DeepEqual(rev, rv.RegistryValue) {
+				return fmt.Errorf("cache wasn't updated %v != %v %v", rev, rv.Revision, found)
 			}
 			// Check subscription. Should be set to rv.
 			subInfo.mu.Lock()
@@ -1112,8 +1112,8 @@ func TestHandleNotification(t *testing.T) {
 		// Check fields.
 		err := build.Retry(100, 100*time.Millisecond, func() error {
 			// Check worker cache. Should be set to rv.
-			if revNum, found := wt.staticRegistryCache.Get(sid); !found || revNum != rv.Revision {
-				return fmt.Errorf("cache wasn't updated %v != %v %v", revNum, rv.Revision, found)
+			if rev, found := wt.staticRegistryCache.Get(sid); !found || !reflect.DeepEqual(rev, rv.RegistryValue) {
+				return fmt.Errorf("cache wasn't updated %v != %v %v", rev, rv.Revision, found)
 			}
 			// Check subscription. Should be set to rv.
 			subInfo.mu.Lock()
@@ -1347,4 +1347,123 @@ func TestThreadedSubscriptionLoop(t *testing.T) {
 		t.Fatal("wrong second entry")
 	}
 	sm.mu.Unlock()
+}
+
+// TestCheckHostCheating is a unit test for managedCheckHostCheating.
+func TestCheckHostCheating(t *testing.T) {
+	t.Parallel()
+
+	sk, pk := crypto.GenerateKeyPair()
+	hpk := types.Ed25519PublicKey(pk)
+	hpkh := crypto.HashObject(hpk)
+
+	// Prepare 2 signed registry values for testing. They are exactly the
+	// same except that one of them is a primary entry.
+	emptyHash := crypto.Hash{}
+	plainSRV := modules.NewSignedRegistryValue(crypto.Hash{}, emptyHash[:modules.RegistryPubKeyHashSize], 0, crypto.Signature{}, modules.RegistryTypeWithPubkey).Sign(sk)
+	plainSRVPrimary := plainSRV
+	plainSRVPrimary.Type = modules.RegistryTypeWithPubkey
+	plainSRVPrimary.Data = hpkh[:modules.RegistryPubKeyHashSize]
+	plainSRVPrimary = plainSRVPrimary.Sign(sk)
+
+	if plainSRV.HasMoreWork(plainSRVPrimary.RegistryValue) || plainSRVPrimary.HasMoreWork(plainSRV.RegistryValue) {
+		t.Fatal("entries should have the same work")
+	}
+
+	tests := []struct {
+		name string
+
+		cached    *modules.SignedRegistryValue
+		srv       *modules.SignedRegistryValue
+		overwrite bool
+
+		newCached *modules.SignedRegistryValue
+		cheater   bool
+	}{
+		{
+			name:      "NotCachedWithValidResponse",
+			cached:    nil,
+			srv:       &plainSRV,
+			newCached: &plainSRV,
+			cheater:   false,
+			overwrite: false,
+		},
+		{
+			name:      "NotCachedWithNoResponse",
+			cached:    nil,
+			srv:       nil,
+			newCached: nil,
+			cheater:   false,
+			overwrite: false,
+		},
+		{
+			name:      "CachedWithNoResponse",
+			cached:    &plainSRV,
+			srv:       nil,
+			newCached: &plainSRV,
+			cheater:   true,
+			overwrite: false,
+		},
+		{
+			name:      "CachedWithEqualResponse",
+			cached:    &plainSRV,
+			srv:       &plainSRV,
+			newCached: &plainSRV,
+			cheater:   false,
+			overwrite: false,
+		},
+		{
+			name:      "CachedWithBetterResponse",
+			cached:    &plainSRV,
+			srv:       &plainSRVPrimary,
+			newCached: &plainSRVPrimary,
+			cheater:   false,
+			overwrite: false,
+		},
+		{
+			name:      "CachedWithWorseResponseOverwrite",
+			cached:    &plainSRVPrimary,
+			srv:       &plainSRV,
+			newCached: &plainSRV,
+			cheater:   true,
+			overwrite: true,
+		},
+		{
+			name:      "CachedWithWorseResponseNoOverwrite",
+			cached:    &plainSRVPrimary,
+			srv:       &plainSRV,
+			newCached: &plainSRVPrimary,
+			cheater:   true,
+			overwrite: false,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			w := &worker{
+				staticHostPubKey:    hpk,
+				staticRegistryCache: newRegistryCache(1000, hpk),
+			}
+
+			// Set a potentially cached entry.
+			rid := modules.DeriveRegistryEntryID(hpk, plainSRV.Tweak)
+			if test.cached != nil {
+				w.staticRegistryCache.Set(rid, *test.cached, true)
+			}
+
+			err := w.managedCheckHostCheating(rid, test.srv, test.overwrite)
+			if cheater := errors.Contains(err, errHostCheating); cheater != test.cheater {
+				t.Fatalf("cheater: %v != %v", cheater, test.cheater)
+			} else if !test.cheater && err != nil {
+				t.Fatal(err)
+			}
+
+			// Check the cache afterwards.
+			newCached, found := w.staticRegistryCache.Get(rid)
+			if test.newCached == nil && found {
+				t.Fatal("found entry but shouldn't have")
+			} else if test.newCached != nil && !reflect.DeepEqual(test.newCached.RegistryValue, newCached) {
+				t.Fatal("newCached doesn't match")
+			}
+		})
+	}
 }

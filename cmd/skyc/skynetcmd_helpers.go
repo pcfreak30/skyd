@@ -11,6 +11,7 @@ import (
 	"text/tabwriter"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/SkynetLabs/skyd/node/api"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/modules"
 )
@@ -150,7 +151,7 @@ func smallSkyfileDownload(skylink string) (fileData []byte, sl skymodules.Skyfil
 		}
 
 		// Grab the Layout
-		layoutStr := resp.Header.Get("Skynet-File-Layout")
+		layoutStr := resp.Header.Get(api.SkynetFileLayoutHeader)
 		if layoutStr == "" {
 			fmt.Println("No Layout returned from Portal")
 		} else {
@@ -163,7 +164,7 @@ func smallSkyfileDownload(skylink string) (fileData []byte, sl skymodules.Skyfil
 		}
 
 		// Grab the metadata
-		metadataStr := resp.Header.Get("Skynet-File-Metadata")
+		metadataStr := resp.Header.Get(api.SkynetFileMetadataHeader)
 		if metadataStr == "" {
 			fmt.Println("No metadata returned from Portal")
 		} else {

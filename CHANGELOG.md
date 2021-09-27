@@ -1,14 +1,64 @@
-Version Scheme
---------------
-Sia uses the following versioning scheme, vX.X.X
- - First Digit signifies a major (compatibility breaking) release
- - Second Digit signifies a major (non compatibility breaking) release
- - Third Digit signifies a minor or patch release
+## Version Scheme
 
-Version History
----------------
+skyd uses the following versioning scheme, vX.X.X
+
+- First Digit signifies a major (compatibility breaking) release
+- Second Digit signifies a major (non compatibility breaking) release
+- Third Digit signifies a minor or patch release
+
+## Version History
 
 Latest:
+
+## Sep 2, 2021:
+### v1.5.8
+**Bugs Fixed**
+- Fix directory flattening bug by locking in Go v1.16
+- Fix excessive memory allocation in downloads
+
+**Other**
+- Add download overdrive stats to the '/skynet/stats' endpoint
+
+## Aug 10, 2021:
+### v1.5.7
+**Key Updates**
+- Created Dockerfile for running tests locally in an environment that matches
+  the online CI.
+- dropped the performance stats struct from the /skynet/stats endpoint
+- Integrate V2 skylinks into the blocklist.
+- Add basic accounting information to the API with `/accounting`
+- batch together has sector lookups in single mdm program if possible
+- Create an `accounting` module for the Sia node to provide basic accounting information about the skymodules.
+- don't return the response metadata when downloading skylinks anymore
+- removed no-response-metadata query param
+- change priceperms to be set in hastings instead of a currency string
+- add code to automatically pay skynet fee every 24hours
+- Add range params to `/skynet/skylink [GET]` for use cases that cannot use the
+Header field.
+- add read registry stats to API endpoint
+- set a minimum timeout of 800ms for read registry jobs
+- add dedicated endpoint for resolving v2 skylink to v1 skylink
+- add support for resumable uploads using the TUS protocol
+- Add parsing of module names to `skyd -M` and automatically enable the
+    `accounting`and `feemanager` modules if the `wallet` is enabled.
+- Add skyfile batch manager for batching of small skyfiles
+- Add V2 skylinks which are static skylinks that point to registry entries instead of a sector roots to allow for updating content without changing the link
+- Add `skyc skynet backup` and `skyc skynet restore` commands for backing up and restoring skyfiles.
+- Add endpoint to unpin skylinks from portals
+
+**Bugs Fixed**
+- Fix zero byte stream uploads
+- The 'skyc skynet upload' '-s' flag has been removed to fix a collision with the new global '-s' flag.
+
+**Other**
+- Remove the renter's `managedUpdateFileMetadata` method and add a siafile
+    `UpdateMetadata` method.
+- Have `PackFiles` return the total size of the packed files.
+- Add `NumLostFiles` to `siadir` metadata
+- Add `AddSuffixStr` `SiaPath` method
+- Refactor download heap into a subsystem to address lockcheck errors.
+- Refactor download history into a subsystem to address lockcheck errors.
+- Remove the batching and packing code as it is no longer viable for Skynet
 
 ## Apr 7, 2021:
 ### v1.5.6
@@ -52,12 +102,12 @@ Latest:
 - Add `/renter/bubble` route to be able to manually trigger bubble updates
 - siac breaks down memory consumption of the individual memory managers
 - Improve download speeds and consistency.
-- Add `skyc skynet backup` and `skyc skynet restore` commands for backing up and restoring skyfiles.
+- Add `siac skynet backup` and `siac skynet restore` commands for backing up and restoring skyfiles.
 - Update default redundancy to be 10-30 for Skyfiles that exceed a single sector
   in size.
 
 **Bugs Fixed**
-- The 'skyc skynet upload' '-s' flag has been removed to fix a collision with the new global '-s' flag.
+- The 'siac skynet upload' '-s' flag has been removed to fix a collision with the new global '-s' flag.
 - Introduce overflow file for sectors where the location counter has reached a value of >= 2^16 to fix uploads failing for all zero sectors
 
 **Other**

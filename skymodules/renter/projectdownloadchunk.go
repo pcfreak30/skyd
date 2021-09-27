@@ -2,11 +2,13 @@ package renter
 
 import (
 	"bytes"
+	"container/heap"
 	"context"
 	"encoding/hex"
 	"fmt"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
@@ -68,6 +70,8 @@ type (
 		pieceLength uint64
 		pieceOffset uint64
 
+		staticIsLowPrio bool
+
 		// pricePerMS is the amount of money we are willing to spend on faster
 		// workers. If a certain set of workers is 100ms faster, but that
 		// exceeds the pricePerMS we are willing to pay for it, we won't use
@@ -88,13 +92,15 @@ type (
 		// the hopeful pieces without introducing a race condition in the
 		// finished check.
 		availablePieces            [][]*pieceDownload
+		availablePiecesByWorker    map[string][]uint64
 		workersConsideredIndex     int
 		unresolvedWorkersRemaining int
 
 		// dataPieces is the buffer that is used to place data as it comes back.
 		// There is one piece per chunk, and pieces can be nil. To know if the
 		// download is complete, the number of non-nil pieces will be counted.
-		dataPieces [][]byte
+		dataPieces         [][]byte
+		staticSkipRecovery bool
 
 		// The completed data gets sent down the response chan once the full
 		// download is done.
@@ -114,36 +120,43 @@ type (
 	// launched. It is used solely for debugging purposes to enable tracking the
 	// chain of events that occurred when a download has timed out or failed.
 	launchedWorkerInfo struct {
-		// pieceIndex is the index of the piece the worker is set to download,
-		// this index corresponds with the index of the `availablePieces` array
-		// on the PDC.
-		pieceIndex uint64
+		// completeTime indicates when the worker eventually completed the
+		// download
+		completeTime time.Time
 
-		// overdriveWorker indicates whether this worker was launched as one of
-		// the initial workers, or as an overdrive worker.
-		overdriveWorker bool
-
-		launchTime           time.Time
-		completeTime         time.Time
-		expectedCompleteTime time.Time
-
-		// 'jobDuration' is the total amount of time it took to complete the job
+		// jobDuration is the total amount of time it took to complete the job
 		jobDuration time.Duration
-
-		// 'totalDuration' is the total amount of time it took for the worker to
-		// complete the download since it was launched, or the time it took to
-		// fail.
-		totalDuration time.Duration
-
-		// 'expectedDuration' is the estimated amount of time for this worker to
-		// complete the download.
-		expectedDuration time.Duration
 
 		// jobErr will contain the error in case it failed.
 		jobErr error
 
-		pdc    *projectDownloadChunk
-		worker *worker
+		// totalDuration is the total amount of time it took for the worker to
+		// complete the download since it was launched, or the time it took to
+		// fail.
+		totalDuration time.Duration
+
+		// staticExpectedCompleteTime is an estimate of when we expect the
+		// worker to have completed the download.
+		staticExpectedCompleteTime time.Time
+
+		// staticExpectedDuration is the estimated amount of time for this
+		// worker to complete the download.
+		staticExpectedDuration time.Duration
+
+		// staticLaunchTime is the time at which the worker was launched
+		staticLaunchTime time.Time
+
+		// staticIsOverdriveWorker indicates whether this worker was launched as
+		// one of the initial workers, or as an overdrive worker.
+		staticIsOverdriveWorker bool
+
+		// staticPieceIndex is the index of the piece the worker is set to
+		// download, this index corresponds with the index of the
+		// `availablePieces` array on the PDC.
+		staticPieceIndex uint64
+
+		staticPDC    *projectDownloadChunk
+		staticWorker *worker
 	}
 
 	// downloadResponse is sent via a channel to the caller of
@@ -151,6 +164,12 @@ type (
 	downloadResponse struct {
 		data []byte
 		err  error
+
+		// NOTE: externLogicalChunkData will be set after the download
+		// is done and after that only the receiver of the response
+		// should access it. That way, we can avoid copying the memory
+		// and avoid another large allocation.
+		externLogicalChunkData [][]byte
 
 		// launchedWorkers contains a list of worker information for the workers
 		// that were launched to try and complete this download. This field can
@@ -162,12 +181,12 @@ type (
 
 // String implements the String interface.
 func (lwi *launchedWorkerInfo) String() string {
-	pdcId := hex.EncodeToString(lwi.pdc.uid[:])
-	hostKey := lwi.worker.staticHostPubKey.ShortString()
-	estimate := lwi.expectedDuration.Milliseconds()
+	pdcId := hex.EncodeToString(lwi.staticPDC.uid[:])
+	hostKey := lwi.staticWorker.staticHostPubKey.ShortString()
+	estimate := lwi.staticExpectedDuration.Milliseconds()
 
 	var wDescr string
-	if lwi.overdriveWorker {
+	if lwi.staticIsOverdriveWorker {
 		wDescr = fmt.Sprintf("overdrive worker %v", hostKey)
 	} else {
 		wDescr = fmt.Sprintf("initial worker %v", hostKey)
@@ -175,9 +194,9 @@ func (lwi *launchedWorkerInfo) String() string {
 
 	// if download is not complete yet
 	if lwi.completeTime.IsZero() {
-		duration := time.Since(lwi.launchTime).Milliseconds()
+		duration := time.Since(lwi.staticLaunchTime).Milliseconds()
 
-		return fmt.Sprintf("%v | %v | piece %v | estimated complete %v ms | not responded after %vms", pdcId, wDescr, lwi.pieceIndex, estimate, duration)
+		return fmt.Sprintf("%v | %v | piece %v | estimated complete %v ms | not responded after %vms", pdcId, wDescr, lwi.staticPieceIndex, estimate, duration)
 	}
 
 	// if download is complete
@@ -191,7 +210,7 @@ func (lwi *launchedWorkerInfo) String() string {
 	totalDur := lwi.totalDuration.Milliseconds()
 	jobDur := lwi.jobDuration.Milliseconds()
 
-	return fmt.Sprintf("%v | %v | piece %v | estimated complete %v ms | responded after %vms | read job took %vms | %v", pdcId, wDescr, lwi.pieceIndex, estimate, totalDur, jobDur, jDescr)
+	return fmt.Sprintf("%v | %v | piece %v | estimated complete %v ms | responded after %vms | read job took %vms | %v", pdcId, wDescr, lwi.staticPieceIndex, estimate, totalDur, jobDur, jDescr)
 }
 
 // successful is a small helper method that returns whether the piece was
@@ -200,14 +219,104 @@ func (pd *pieceDownload) successful() bool {
 	return pd.completed && pd.downloadErr == nil
 }
 
-// unresolvedWorkers will return the set of unresolved workers from the worker
-// state of the pdc. This operation will also update the set of available pieces
-// within the pdc to reflect any previously unresolved workers that are now
-// available workers.
+// updateWorkerHeap updates a worker heap by going through all workers and
+// updating them depending on whether they are resolved or not. This does not
+// apply any gouging or maintenance checks again since we don't expect a
+// significant amount of time to pass between the creation of the heap and
+// launching the workers. As a result, this significantly reduces the amount of
+// allocations we are doing compared to creating the initial heap since we reuse
+// the allocated memory.
+func (pdc *projectDownloadChunk) updateWorkerHeap(h *pdcWorkerHeap) {
+	ws := pdc.workerState
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+
+	// Update the available pieces in case some workers resolved.
+	pdc.updateAvailablePieces()
+
+	for _, w := range *h {
+		// Check if the worker is resolved.
+		_, unresolved := ws.unresolvedWorkers[w.worker.staticHostPubKeyStr]
+		jrq := w.worker.callReadQueue(pdc.staticIsLowPrio)
+		cost := jrq.callExpectedJobCost(pdc.pieceLength)
+		readDuration := jrq.staticStats.callExpectedJobTime(pdc.pieceLength)
+
+		if unresolved {
+			resolveTime := w.staticExpectedResolveTime
+			if resolveTime.Before(time.Now()) {
+				resolveTime = time.Now().Add(2 * time.Since(resolveTime))
+			}
+			completeTime := resolveTime.Add(readDuration)
+
+			// Same as in initialWorkerHeap but here we can just
+			// extend the already allocated pieces slice to its full
+			// size and reset it to reduce the number of
+			// allocations.
+			if cap(w.pieces) != pdc.workerSet.staticErasureCoder.NumPieces() {
+				build.Critical("w.pieces has the wrong capacity for an unresolved worker")
+				w.pieces = make([]uint64, pdc.workerSet.staticErasureCoder.NumPieces())
+			} else {
+				w.pieces = w.pieces[:cap(w.pieces)]
+			}
+			for i := 0; i < len(w.pieces); i++ {
+				w.pieces[i] = uint64(i)
+			}
+
+			// Update the fields specific to the unresolved worker.
+			// The complete time might have changed but the pieces
+			// are still the same.
+			w.completeTime = completeTime
+		} else {
+			// Update the fields for the resolved worker.
+			// The complete time is the current time plus the
+			// duration of the read and the pieces might have
+			// changed due to the worker resolving.
+			w.completeTime = time.Now().Add(readDuration)
+			w.pieces = append([]uint64{}, pdc.availablePiecesByWorker[w.worker.staticHostPubKeyStr]...)
+		}
+
+		// Update fields which are the same for resolved and unresolved
+		// workers.
+		w.readDuration = readDuration
+		w.unresolved = unresolved
+		w.cost = cost
+	}
+
+	// Reestablish heap invariants.
+	heap.Init(h)
+}
+
+// updateAvailablePieces adds any new resolved workers to the pdc's list of
+// available pieces.
+func (pdc *projectDownloadChunk) updateAvailablePieces() {
+	ws := pdc.workerState
+
+	// Add any new resolved workers to the pdc's list of available pieces.
+	for i := pdc.workersConsideredIndex; i < len(ws.resolvedWorkers); i++ {
+		// Add the returned worker to available pieces for each piece that the
+		// resolved worker has.
+		resp := ws.resolvedWorkers[i]
+		hpk := resp.worker.staticHostPubKeyStr
+		for _, pieceIndex := range resp.pieceIndices {
+			pd := &pieceDownload{
+				worker: resp.worker,
+			}
+			pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], pd)
+		}
+		pdc.availablePiecesByWorker[hpk] = resp.pieceIndices
+	}
+	pdc.workersConsideredIndex = len(ws.resolvedWorkers)
+	pdc.unresolvedWorkersRemaining = len(ws.unresolvedWorkers)
+}
+
+// managedUnresolvedWorkers will return the set of unresolved workers from the
+// worker state of the pdc. This operation will also update the set of available
+// pieces within the pdc to reflect any previously unresolved workers that are
+// now available workers.
 //
 // A channel will also be returned which will be closed when there are new
 // unresolved workers available.
-func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <-chan struct{}) {
+func (pdc *projectDownloadChunk) managedUnresolvedWorkers() ([]*pcwsUnresolvedWorker, <-chan struct{}) {
 	ws := pdc.workerState
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
@@ -216,19 +325,9 @@ func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <
 	for _, uw := range ws.unresolvedWorkers {
 		unresolvedWorkers = append(unresolvedWorkers, uw)
 	}
+
 	// Add any new resolved workers to the pdc's list of available pieces.
-	for i := pdc.workersConsideredIndex; i < len(ws.resolvedWorkers); i++ {
-		// Add the returned worker to available pieces for each piece that the
-		// resolved worker has.
-		resp := ws.resolvedWorkers[i]
-		for _, pieceIndex := range resp.pieceIndices {
-			pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], &pieceDownload{
-				worker: resp.worker,
-			})
-		}
-	}
-	pdc.workersConsideredIndex = len(ws.resolvedWorkers)
-	pdc.unresolvedWorkersRemaining = len(ws.unresolvedWorkers)
+	pdc.updateAvailablePieces()
 
 	// If there are more unresolved workers, fetch a channel that will be closed
 	// when more results from unresolved workers are available.
@@ -255,7 +354,7 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 	launchedWorker.completeTime = time.Now()
 	launchedWorker.jobDuration = jrr.staticJobTime
 	launchedWorker.jobErr = jrr.staticErr
-	launchedWorker.totalDuration = time.Since(launchedWorker.launchTime)
+	launchedWorker.totalDuration = time.Since(launchedWorker.staticLaunchTime)
 
 	// Check whether the job failed.
 	if jrr.staticErr != nil {
@@ -301,42 +400,84 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 
 // fail will send an error down the download response channel.
 func (pdc *projectDownloadChunk) fail(err error) {
+	// Log info and finish span.
+	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+		span.LogKV("error", err)
+		span.SetTag("success", false)
+		span.Finish()
+	}
+
+	// Create and return a response
 	dr := &downloadResponse{
-		data: nil,
-		err:  err,
+		err: err,
 
 		launchedWorkers: pdc.launchedWorkers,
 	}
 	pdc.downloadResponseChan <- dr
 }
 
-// finalize will take the completed pieces of the download, decode them,
-// and then send the result down the response channel. If there is an error
-// during decode, 'pdc.fail()' will be called.
-func (pdc *projectDownloadChunk) finalize() {
+// recoverData recovers the data from the downloaded pieces.
+func (pdc *projectDownloadChunk) recoverData() ([]byte, error) {
 	// Determine the amount of bytes the EC will need to skip from the recovered
 	// data when returning the data.
 	skipLength := pdc.offsetInChunk % (crypto.SegmentSize * uint64(pdc.workerSet.staticErasureCoder.MinPieces()))
+	recoveredBytes := uint64(pdc.lengthInChunk + skipLength)
 
 	// Create a skipwriter that ensures we're recovering at the offset
-	buf := bytes.NewBuffer(nil)
+	buf := bytes.NewBuffer(make([]byte, 0, recoveredBytes))
 	skipWriter := &skipWriter{
 		writer: buf,
 		skip:   int(skipLength),
 	}
 
 	// Recover the pieces in to a single byte slice.
-	err := pdc.workerSet.staticErasureCoder.Recover(pdc.dataPieces, pdc.lengthInChunk+skipLength, skipWriter)
+	err := pdc.workerSet.staticErasureCoder.Recover(pdc.dataPieces, recoveredBytes, skipWriter)
 	if err != nil {
 		pdc.fail(errors.AddContext(err, "unable to complete erasure decode of download"))
-		return
 	}
-	data := buf.Bytes()
+	return buf.Bytes(), err
+}
+
+// finalize will take the completed pieces of the download, recover them using
+// the erasure coder, and then send the result down the response channel. If
+// there is an error during decode, 'pdc.fail()' will be called.
+func (pdc *projectDownloadChunk) finalize() {
+	// Convenience Variables
+	ec := pdc.workerSet.staticErasureCoder
+	r := pdc.workerSet.staticRenter
+
+	// Log info and finish span.
+	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+		span.SetTag("success", true)
+		span.Finish()
+	}
+
+	// Update the sector download statistics
+	minPieces := ec.MinPieces()
+	numOverdriveWorkers := uint64(len(pdc.launchedWorkers) - minPieces)
+	if numOverdriveWorkers < 0 {
+		build.Critical("num overdrive workers should never be less than zero")
+	} else {
+		// track base sector and fanout sector download separately
+		if minPieces == 1 {
+			r.staticBaseSectorDownloadStats.AddDataPoint(numOverdriveWorkers)
+		} else {
+			r.staticFanoutSectorDownloadStats.AddDataPoint(numOverdriveWorkers)
+		}
+	}
+
+	// Recover the data if necessary.
+	var data []byte
+	var err error
+	if !pdc.staticSkipRecovery {
+		data, err = pdc.recoverData()
+	}
 
 	// Return the data to the caller.
 	dr := &downloadResponse{
-		data: data,
-		err:  nil,
+		data:                   data,
+		externLogicalChunkData: pdc.dataPieces,
+		err:                    err,
 
 		launchedWorkers: pdc.launchedWorkers,
 	}
@@ -404,41 +545,44 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 		build.Critical("pieceOffset or pieceLength is not segment aligned")
 	}
 
-	// Create the read sector job for the worker.
-	launchedWorkerIndex := uint64(len(pdc.launchedWorkers))
-	sectorRoot := pdc.workerSet.staticPieceRoots[pieceIndex]
-	jrs := &jobReadSector{
-		jobRead: jobRead{
-			staticResponseChan: pdc.workerResponseChan,
-			staticLength:       pdc.pieceLength,
-
-			jobGeneric: newJobGeneric(pdc.ctx, w.staticJobReadQueue, jobReadMetadata{
-				staticWorker:              w,
-				staticSectorRoot:          sectorRoot,
-				staticSpendingCategory:    categoryDownload,
-				staticPieceRootIndex:      pieceIndex,
-				staticLaunchedWorkerIndex: launchedWorkerIndex,
-			}),
-		},
-		staticOffset: pdc.pieceOffset,
-		staticSector: pdc.workerSet.staticPieceRoots[pieceIndex],
+	// Log the event.
+	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+		span.LogKV(
+			"launchWorker", w.staticHostPubKeyStr,
+			"overdriveWorker", isOverdrive,
+		)
 	}
 
+	// Create the read job metadata.
+	launchedWorkerIndex := uint64(len(pdc.launchedWorkers))
+	sectorRoot := pdc.workerSet.staticPieceRoots[pieceIndex]
+	jobMetadata := jobReadMetadata{
+		staticWorker:              w,
+		staticSectorRoot:          sectorRoot,
+		staticSpendingCategory:    categoryDownload,
+		staticPieceRootIndex:      pieceIndex,
+		staticLaunchedWorkerIndex: launchedWorkerIndex,
+	}
+
+	// Create the read sector job for the worker.
+	jrq := w.callReadQueue(pdc.staticIsLowPrio)
+	jrs := w.newJobReadSector(pdc.ctx, jrq, pdc.workerResponseChan, jobMetadata, sectorRoot, pdc.pieceOffset, pdc.pieceLength)
+
 	// Submit the job.
-	expectedCompleteTime, added := w.staticJobReadQueue.callAddWithEstimate(jrs)
+	expectedCompleteTime, added := jrq.callAddWithEstimate(jrs)
 
 	// Track the launched worker
 	if added {
 		pdc.launchedWorkers = append(pdc.launchedWorkers, &launchedWorkerInfo{
-			pieceIndex:      pieceIndex,
-			overdriveWorker: isOverdrive,
+			staticPieceIndex:        pieceIndex,
+			staticIsOverdriveWorker: isOverdrive,
 
-			launchTime:           time.Now(),
-			expectedCompleteTime: expectedCompleteTime,
-			expectedDuration:     time.Until(expectedCompleteTime),
+			staticLaunchTime:           time.Now(),
+			staticExpectedCompleteTime: expectedCompleteTime,
+			staticExpectedDuration:     time.Until(expectedCompleteTime),
 
-			pdc:    pdc,
-			worker: w,
+			staticPDC:    pdc,
+			staticWorker: w,
 		})
 	}
 
@@ -488,7 +632,7 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 		// code will determine whether launching an overdrive worker is
 		// necessary, and will return a channel that will be closed when enough
 		// time has elapsed that another overdrive worker should be considered.
-		workersUpdatedChan, workersLateChan := pdc.tryOverdrive()
+		workersUpdatedChan, workersLateChan := pdc.managedTryOverdrive()
 
 		// Determine when the next overdrive check needs to run.
 		select {

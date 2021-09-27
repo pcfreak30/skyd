@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-echo "$0 builds Sia in a reproducible Docker build environment"
+echo "$0 builds skyd in a reproducible Docker build environment"
 
 branchName="$1"
 versionName="$2"
@@ -24,13 +24,13 @@ fi
 echo "Building Docker image...";
 
 # Build the image uncached to always get the most up-to-date branch.
-docker build --no-cache -t sia-builder . --build-arg branch=${branchName} --build-arg version=${versionName}
+docker build --no-cache -t skyd-builder . --build-arg branch=${branchName} --build-arg version=${versionName}
 
 # Create a container with the artifacts.
-docker create --name build-container sia-builder
+docker create --name build-container skyd-builder
 
 # Copy the artifacts out.
-docker cp build-container:/home/builder/Sia/release/ ../
+docker cp build-container:/home/builder/skyd/release/ ../
 
 # Remove the build container.
 docker rm build-container
@@ -40,4 +40,4 @@ docker rm build-container
 
 # Print out the SHA256SUM file.
 echo "SHA256SUM of binaries built: "
-cat ../release/Sia-${versionName}-SHA256SUMS.txt
+cat ../release/skyd-${versionName}-SHA256SUMS.txt

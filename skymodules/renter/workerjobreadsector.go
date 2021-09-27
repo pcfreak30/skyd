@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -22,6 +23,12 @@ type (
 
 // callExecute executes the jobReadSector.
 func (j *jobReadSector) callExecute() {
+	if j.staticSpan != nil {
+		// Capture callExecute in new span.
+		span := opentracing.StartSpan("callExecute", opentracing.ChildOf(j.staticSpan.Context()))
+		defer span.Finish()
+	}
+
 	// Track how long the job takes.
 	start := time.Now()
 	data, err := j.managedReadSector()
@@ -63,17 +70,22 @@ func (j *jobReadSector) managedReadSector() ([]byte, error) {
 }
 
 // newJobReadSector creates a new read sector job.
-func (w *worker) newJobReadSector(ctx context.Context, queue *jobReadQueue, respChan chan *jobReadResponse, category spendingCategory, root crypto.Hash, offset, length uint64) *jobReadSector {
+func (w *worker) newJobReadSector(ctx context.Context, queue *jobReadQueue, respChan chan *jobReadResponse, metadata jobReadMetadata, root crypto.Hash, offset, length uint64) *jobReadSector {
+	// Create a job span if the given context has a reference span.
+	var jobSpan opentracing.Span
+	if span := opentracing.SpanFromContext(ctx); span != nil {
+		spanRef := opentracing.ChildOf(span.Context())
+		jobSpan = opentracing.StartSpan("ReadSectorJob", spanRef)
+		jobSpan.SetTag("root", root)
+	}
+
 	return &jobReadSector{
 		jobRead: jobRead{
 			staticResponseChan: respChan,
 			staticLength:       length,
+			staticSpan:         jobSpan,
 
-			jobGeneric: newJobGeneric(ctx, w.staticJobReadQueue, jobReadMetadata{
-				staticSectorRoot:       root,
-				staticSpendingCategory: category,
-				staticWorker:           w,
-			}),
+			jobGeneric: newJobGeneric(ctx, w.staticJobReadQueue, metadata),
 		},
 		staticOffset: offset,
 		staticSector: root,
@@ -83,8 +95,16 @@ func (w *worker) newJobReadSector(ctx context.Context, queue *jobReadQueue, resp
 // ReadSector is a helper method to run a ReadSector job with low priority on a
 // worker.
 func (w *worker) ReadSectorLowPrio(ctx context.Context, category spendingCategory, root crypto.Hash, offset, length uint64) ([]byte, error) {
+	// Create the job metadata
+	jobMetadata := jobReadMetadata{
+		staticWorker:           w,
+		staticSectorRoot:       root,
+		staticSpendingCategory: category,
+	}
+
+	// Create the job
 	readSectorRespChan := make(chan *jobReadResponse)
-	jro := w.newJobReadSector(ctx, w.staticJobLowPrioReadQueue, readSectorRespChan, category, root, offset, length)
+	jro := w.newJobReadSector(ctx, w.staticJobLowPrioReadQueue, readSectorRespChan, jobMetadata, root, offset, length)
 
 	// Add the job to the queue.
 	if !w.staticJobReadQueue.callAdd(jro) {
@@ -111,8 +131,16 @@ func (w *worker) ReadSectorLowPrio(ctx context.Context, category spendingCategor
 
 // ReadSector is a helper method to run a ReadSector job on a worker.
 func (w *worker) ReadSector(ctx context.Context, category spendingCategory, root crypto.Hash, offset, length uint64) ([]byte, error) {
+	// Create the job metadata.
+	jobMetadata := jobReadMetadata{
+		staticWorker:           w,
+		staticSectorRoot:       root,
+		staticSpendingCategory: category,
+	}
+
+	// Create the job.
 	readSectorRespChan := make(chan *jobReadResponse)
-	jro := w.newJobReadSector(ctx, w.staticJobReadQueue, readSectorRespChan, category, root, offset, length)
+	jro := w.newJobReadSector(ctx, w.staticJobReadQueue, readSectorRespChan, jobMetadata, root, offset, length)
 
 	// Add the job to the queue.
 	if !w.staticJobReadQueue.callAdd(jro) {

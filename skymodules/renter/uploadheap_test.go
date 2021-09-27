@@ -78,7 +78,7 @@ func testManagedBuildUnfinishedChunks(t *testing.T) {
 		SiaPath:     siaPath,
 		ErasureCode: rsc,
 	}
-	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, persist.DefaultDiskPermissionsTest, false)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func testManagedBuildChunkHeap(t *testing.T) {
 		SiaPath:     skymodules.RandomSiaPath(),
 		ErasureCode: rsc,
 	}
-	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, persist.DefaultDiskPermissionsTest, false)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +240,7 @@ func addChunksOfDifferentHealth(r *Renter, numChunks int, priority, fileRecently
 			staticUploadCompletedChan: make(chan struct{}),
 			staticMemoryManager:       r.staticRepairMemoryManager,
 		}
-		pushed, err := r.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
+		_, pushed, err := r.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
 			return err
 		}
@@ -373,7 +373,7 @@ func testUploadHeapBasic(t *testing.T) {
 
 	// Add the chunks back to the heap
 	for _, chunk := range chunks {
-		pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
+		_, pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -436,7 +436,7 @@ func testManagedAddChunksToHeap(t *testing.T) {
 		}
 		up.SiaPath = siaPath
 		// File size 100 to help ensure only 1 chunk per file
-		err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, persist.DefaultDiskPermissionsTest, false)
+		err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, persist.DefaultDiskPermissionsTest)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -556,7 +556,7 @@ func testAddRemoteChunksToHeap(t *testing.T) {
 		// to each only have one chunk. This is because there are 4 files and
 		// the uploadHeap size for testing is 5. If there are more than 5 chunks
 		// total the test will fail and not hit the intended test case.
-		err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, persist.DefaultDiskPermissionsTest, false)
+		err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, persist.DefaultDiskPermissionsTest)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -649,7 +649,7 @@ func testAddDirectoryBackToHeap(t *testing.T) {
 		SiaPath:     siaPath,
 		ErasureCode: rsc,
 	}
-	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), modules.SectorSize, persist.DefaultDiskPermissionsTest, false)
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), modules.SectorSize, persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -709,7 +709,7 @@ func testAddDirectoryBackToHeap(t *testing.T) {
 			staticUploadCompletedChan: make(chan struct{}),
 			staticMemoryManager:       rt.renter.staticRepairMemoryManager,
 		}
-		pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
+		_, pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -788,7 +788,7 @@ func testUploadHeapMaps(t *testing.T) {
 			staticMemoryManager:       rt.renter.staticRepairMemoryManager,
 		}
 		// push chunk to heap
-		pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
+		_, pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -834,7 +834,7 @@ func testUploadHeapMaps(t *testing.T) {
 			t.Fatal("popped chunk not found in repairing map")
 		}
 		// Confirm the chunk cannot be pushed back onto the heap
-		pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
+		_, pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -915,7 +915,7 @@ func testChunkSwitchStuckStatus(t *testing.T) {
 		staticMemoryManager: rt.renter.staticRepairMemoryManager,
 	}
 	// push chunk to heap
-	pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
+	_, pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -931,7 +931,7 @@ func testChunkSwitchStuckStatus(t *testing.T) {
 	// Regression check 1: previously this second push call would succeed and
 	// the length of the heap would be 2
 	chunk.stuck = true
-	pushed, err = rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
+	_, pushed, err = rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1000,7 +1000,7 @@ func testManagedPushChunkForRepair(t *testing.T) {
 	// Define helper
 	pushAndVerify := func(chunk *unfinishedUploadChunk) {
 		// Adding chunk should be successful
-		pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeStreamChunk)
+		_, pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeStreamChunk)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1039,7 +1039,7 @@ func testManagedPushChunkForRepair(t *testing.T) {
 	pushAndVerify(streamChunk)
 
 	// Pushing again should fail
-	pushed, err := rt.renter.managedPushChunkForRepair(streamChunk, chunkTypeStreamChunk)
+	_, pushed, err := rt.renter.managedPushChunkForRepair(streamChunk, chunkTypeStreamChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1057,7 +1057,7 @@ func testManagedPushChunkForRepair(t *testing.T) {
 		piecesRegistered:    1, // This is so the chunk is viewed as incomplete
 		staticMemoryManager: rt.renter.staticRepairMemoryManager,
 	}
-	pushed, err = rt.renter.managedPushChunkForRepair(localChunk, chunkTypeLocalChunk)
+	_, pushed, err = rt.renter.managedPushChunkForRepair(localChunk, chunkTypeLocalChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1188,7 +1188,8 @@ func testManagedTryUpdate(t *testing.T) {
 		}
 
 		// Push the new chunk onto the heap
-		if test.pushAfterUpdate != uh.managedPush(newChunk, test.ct) {
+		_, pushed := uh.managedPush(newChunk, test.ct)
+		if test.pushAfterUpdate != pushed {
 			t.Errorf("Chunk should have been pushed %v for test %v", test.pushAfterUpdate, test.name)
 		}
 	}

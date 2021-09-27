@@ -402,7 +402,11 @@ func (hdb *HostDB) storageRemainingAdjustments(entry skymodules.HostDBEntry, all
 	// Otherwise, the score of the host is the fraction of the data we expect
 	// raised to the storage penalty exponentiation.
 	storageRatio := hostExpectedStorage / allocationPerHost
-	return math.Pow(storageRatio, storagePenaltyExponentitaion)
+	result := math.Pow(storageRatio, storagePenaltyExponentitaion)
+	if result == 0 {
+		return 1
+	}
+	return result
 }
 
 // versionAdjustments will adjust the weight of the entry according to the siad

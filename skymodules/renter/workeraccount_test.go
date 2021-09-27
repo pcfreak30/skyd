@@ -213,7 +213,7 @@ func testAccountSyncBalance(t *testing.T) {
 	defer func() {
 		err = f.Close()
 		if err != nil {
-			t.Fatal("err")
+			t.Fatal(err)
 		}
 	}()
 
@@ -268,7 +268,7 @@ func testAccountTrackSpending(t *testing.T) {
 	defer func() {
 		err = f.Close()
 		if err != nil {
-			t.Fatal("err")
+			t.Fatal(err)
 		}
 	}()
 
@@ -319,6 +319,16 @@ func testAccountTrackSpending(t *testing.T) {
 			}
 		}()
 		a.trackSpending(categoryErr, hasting)
+	}()
+
+	// check category sanity check
+	func() {
+		defer func() {
+			if r := recover(); r == nil || !strings.Contains(fmt.Sprintf("%v", r), "category is not handled, developer error") {
+				t.Fatalf("expected panic when attempting to track a spend where the category is unknown, instead we recovered %v", r)
+			}
+		}()
+		a.trackSpending(spendingCategory(10), hasting)
 	}()
 }
 
@@ -558,14 +568,7 @@ func testWorkerAccountSpendingDetails(t *testing.T, wt *workerTester) {
 	}
 
 	// create a registry value
-	sk, pk := crypto.GenerateKeyPair()
-	var tweak crypto.Hash
-	fastrand.Read(tweak[:])
-	spk := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       pk[:],
-	}
-	rv := modules.NewRegistryValue(tweak, fastrand.Bytes(modules.RegistryDataSize), fastrand.Uint64n(1000)).Sign(sk)
+	rv, spk, sk := randomRegistryValue()
 
 	// update the registry
 	err := wt.UpdateRegistry(context.Background(), spk, rv)
@@ -579,7 +582,7 @@ func testWorkerAccountSpendingDetails(t *testing.T, wt *workerTester) {
 	}
 
 	// read from the registry
-	_, err = wt.ReadRegistry(context.Background(), spk, rv.Tweak)
+	_, err = wt.ReadRegistry(context.Background(), testSpan(), spk, rv.Tweak)
 	if err != nil {
 		t.Fatal(err)
 	}

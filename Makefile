@@ -64,6 +64,14 @@ pkgs = \
 	./skymodules/renter/contractor \
 	./skymodules/renter/proto
 
+# mongohost is the hostname that mongodb uses to announce the node with within
+# in the cluster.
+mongohost = localhost
+
+# mongouri is the uri that skyd will use to connect to in testing. If not
+# specified it will default to localhost.
+mongouri = mongodb://$(mongohost):27017
+
 # release-pkgs determine which packages are built for release and distribution
 # when running a 'make release' command.
 release-pkgs = ./cmd/skyc ./cmd/skyd
@@ -94,7 +102,7 @@ vet:
 # markdown-spellcheck runs codespell on all markdown files that are not
 # vendored.
 markdown-spellcheck:
-	git ls-files "*.md" :\!:"vendor/**" | xargs codespell 
+	git ls-files "*.md" :\!:"vendor/**" | xargs codespell
 
 # lint runs golangci-lint (which includes golint, a spellcheck of the codebase,
 # and other linters), the custom analyzers, and also a markdown spellchecker.
@@ -111,6 +119,26 @@ spellcheck: markdown-spellcheck
 # NOTE: this is not yet enabled in the CI system.
 staticcheck:
 	staticcheck $(pkgs)
+
+start-mongo:
+# Remove existing container.
+	-docker stop mongo-test
+
+# Start primary node.
+	docker run \
+      --rm \
+      --detach \
+      --name mongo-test \
+      -p 127.0.0.1:27017:27017 \
+      -e MONGODB_ADVERTISED_HOSTNAME=localhost \
+      -e MONGODB_REPLICA_SET_MODE=primary \
+      -e MONGODB_PRIMARY_HOST=localhost \
+      -e MONGODB_ROOT_PASSWORD=pwd \
+      -e MONGODB_REPLICA_SET_KEY=testkey \
+      bitnami/mongodb:4.4.1
+
+stop-mongo:
+	-docker stop mongo-test
 
 # debug builds and installs debug binaries. This will also install the utils.
 debug:
@@ -147,14 +175,15 @@ test:
 	go test -short -tags='debug testing netgo' -timeout=5s $(pkgs) -run=$(run) -count=$(count)
 test-v:
 	GORACE='$(racevars)' go test -race -v -short -tags='debug testing netgo' -timeout=15s $(pkgs) -run=$(run) -count=$(count)
-test-long: clean fmt vet lint
+test-long: clean 
 	@mkdir -p cover
-	GORACE='$(racevars)' go test -race --coverprofile='./cover/cover.out' -v -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=$(run) -count=$(count)
+	GORACE='$(racevars)' MONGODB_URI=$(mongouri) go test -race --coverprofile='./cover/cover.out' -v -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=$(run) -count=$(count)
 
 # Use on Linux (and MacOS)
 test-vlong: clean fmt vet lint
 	@mkdir -p cover
-	GORACE='$(racevars)' go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run) -count=$(count)
+	export MONGODB_URI=$(mongouri)
+	GORACE='$(racevars)' MONGODB_URI=$(mongouri) go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run) -count=$(count)
 
 # Use on Windows without fmt, vet, lint
 test-vlong-windows: clean

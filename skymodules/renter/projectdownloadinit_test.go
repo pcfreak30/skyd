@@ -78,8 +78,9 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 			staticExpiryTime: time.Now().Add(time.Minute),
 		}
 		w.staticSetPriceTable(pt)
-		w.initJobReadQueue()
-		w.staticJobReadQueue.weightedJobTime64k = float64(expectedJobTime)
+		w.initJobReadQueue(&jobReadStats{
+			weightedJobTime64k: float64(expectedJobTime),
+		})
 		return w
 	}
 
@@ -112,9 +113,17 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 	pcws.staticErasureCoder = ec
 
 	// mock a pdc
+	uw := make(map[string]*pcwsUnresolvedWorker)
+	for _, w := range unresolvedWorkers {
+		uw[w.staticWorker.staticHostPubKeyStr] = w
+	}
 	pdc := new(projectDownloadChunk)
 	pdc.pieceLength = 1 << 16 // 64kb
 	pdc.workerSet = pcws
+	pdc.workerState = &pcwsWorkerState{
+		unresolvedWorkers: uw,
+		staticRenter:      pcws.staticRenter,
+	}
 
 	// create the initial worker heap and validate the order in which the
 	// unresolved workers were added
@@ -143,7 +152,7 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 
 	// make the read estimates for worker 3 return 0, verify it's not part of
 	// initial worker heap and worker 1 took its place
-	worker3.staticJobReadQueue.weightedJobTime64k = 0
+	worker3.staticJobReadQueue.staticStats.weightedJobTime64k = 0
 	wh = pdc.initialWorkerHeap(unresolvedWorkers)
 	first = heap.Pop(&wh).(*pdcInitialWorker)
 	if first.worker.staticHostPubKeyStr != worker1.staticHostPubKeyStr {

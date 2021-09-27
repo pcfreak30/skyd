@@ -13,8 +13,6 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/modules/host/registry"
-	"go.sia.tech/siad/types"
 )
 
 // TestUpdateRegistryJob tests the various cases of running an UpdateRegistry
@@ -37,17 +35,8 @@ func TestUpdateRegistryJob(t *testing.T) {
 	}()
 
 	// Create a registry value.
-	sk, pk := crypto.GenerateKeyPair()
-	var tweak crypto.Hash
-	fastrand.Read(tweak[:])
-	data := fastrand.Bytes(modules.RegistryDataSize)
-	rev := fastrand.Uint64n(1000) + 1
-	spk := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       pk[:],
-	}
-	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
-	sid := modules.DeriveRegistryEntryID(spk, tweak)
+	rv, spk, sk := randomRegistryValue()
+	sid := modules.DeriveRegistryEntryID(spk, rv.Tweak)
 
 	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
@@ -57,21 +46,43 @@ func TestUpdateRegistryJob(t *testing.T) {
 
 	// Manually try to read the entry from the host.
 	span := opentracing.GlobalTracer().StartSpan(t.Name())
-	lookedUpRV, err := lookupRegistry(wt.worker, sid, &spk, &tweak)
+	lookedUpRV, err := lookupRegistry(wt.worker, sid, &spk, &rv.Tweak)
 	span.Finish()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// The entries should match.
-	if !reflect.DeepEqual(*lookedUpRV, rv) {
+	if !reflect.DeepEqual(lookedUpRV.SignedRegistryValue, rv) {
 		t.Fatal("entries don't match")
 	}
 
-	// Run the UpdateRegistry job again. This time it should fail with an error
-	// indicating that the revision number already exists.
+	// Run the UpdateRegistry job again with the same entry. Should succeed.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
-	if !errors.Contains(err, registry.ErrSameRevNum) {
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Run it again with the same revision number but more pow. Should succeed.
+	rvMoreWork := rv
+	for !rvMoreWork.HasMoreWork(rv.RegistryValue) {
+		rvMoreWork.Data = fastrand.Bytes(10)
+		rvMoreWork = rvMoreWork.Sign(sk)
+	}
+	err = wt.UpdateRegistry(context.Background(), spk, rvMoreWork)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rv = rvMoreWork
+
+	// Run it again with the same revision number but less pow. Should fail.
+	rvLessWork := rv
+	for !rv.HasMoreWork(rvLessWork.RegistryValue) {
+		rvLessWork.Data = fastrand.Bytes(10)
+		rvLessWork = rvLessWork.Sign(sk)
+	}
+	err = wt.UpdateRegistry(context.Background(), spk, rvLessWork)
+	if !errors.Contains(err, modules.ErrInsufficientWork) {
 		t.Fatal(err)
 	}
 
@@ -89,14 +100,15 @@ func TestUpdateRegistryJob(t *testing.T) {
 	deps.Fail()
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
 	deps.Disable()
-	if !errors.Contains(err, crypto.ErrInvalidSignature) {
+	if !errors.Contains(err, crypto.ErrInvalidSignature) && !errors.Contains(err, modules.ErrUnknownRegistryEntryType) {
 		t.Fatal(err)
 	}
 
 	// Make sure the recent error is an invalid signature error and reset the
 	// cooldown.
 	wt.staticJobUpdateRegistryQueue.mu.Lock()
-	if !errors.Contains(wt.staticJobUpdateRegistryQueue.recentErr, crypto.ErrInvalidSignature) {
+	if !errors.Contains(wt.staticJobUpdateRegistryQueue.recentErr, crypto.ErrInvalidSignature) &&
+		!errors.Contains(wt.staticJobUpdateRegistryQueue.recentErr, modules.ErrUnknownRegistryEntryType) {
 		t.Fatal(err)
 	}
 	if wt.staticJobUpdateRegistryQueue.cooldownUntil == (time.Time{}) {
@@ -113,7 +125,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 	rvLowRevNum.Revision--
 	rvLowRevNum = rvLowRevNum.Sign(sk)
 	err = wt.UpdateRegistry(context.Background(), spk, rvLowRevNum)
-	if !errors.Contains(err, registry.ErrLowerRevNum) {
+	if !errors.Contains(err, modules.ErrLowerRevNum) {
 		t.Fatal(err)
 	}
 
@@ -131,20 +143,21 @@ func TestUpdateRegistryJob(t *testing.T) {
 	deps.Fail()
 	err = wt.UpdateRegistry(context.Background(), spk, rvLowRevNum)
 	deps.Disable()
-	if !errors.Contains(err, crypto.ErrInvalidSignature) {
+	if !errors.Contains(err, crypto.ErrInvalidSignature) && !errors.Contains(err, modules.ErrUnknownRegistryEntryType) {
 		t.Fatal(err)
 	}
-	if errors.Contains(err, registry.ErrLowerRevNum) || errors.Contains(err, registry.ErrSameRevNum) {
+	if modules.IsRegistryEntryExistErr(err) {
 		t.Fatal("Revision error should have been stripped", err)
 	}
 
 	// Make sure the recent error is an invalid signature error and reset the
 	// cooldown.
 	wt.staticJobUpdateRegistryQueue.mu.Lock()
-	if !errors.Contains(wt.staticJobUpdateRegistryQueue.recentErr, crypto.ErrInvalidSignature) {
+	if !errors.Contains(wt.staticJobUpdateRegistryQueue.recentErr, crypto.ErrInvalidSignature) &&
+		!errors.Contains(wt.staticJobUpdateRegistryQueue.recentErr, modules.ErrUnknownRegistryEntryType) {
 		t.Fatal(err)
 	}
-	if errors.Contains(err, registry.ErrLowerRevNum) || errors.Contains(err, registry.ErrSameRevNum) {
+	if modules.IsRegistryEntryExistErr(err) {
 		t.Fatal("Revision error should have been stripped", err)
 	}
 	if wt.staticJobUpdateRegistryQueue.cooldownUntil == (time.Time{}) {
@@ -155,13 +168,13 @@ func TestUpdateRegistryJob(t *testing.T) {
 	wt.staticJobUpdateRegistryQueue.mu.Unlock()
 
 	// Manually try to read the entry from the host.
-	lookedUpRV, err = lookupRegistry(wt.worker, sid, &spk, &tweak)
+	lookedUpRV, err = lookupRegistry(wt.worker, sid, &spk, &rv.Tweak)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// The entries should match.
-	if !reflect.DeepEqual(*lookedUpRV, rv) {
+	if !reflect.DeepEqual(lookedUpRV.SignedRegistryValue, rv) {
 		t.Fatal("entries don't match")
 	}
 
@@ -174,13 +187,13 @@ func TestUpdateRegistryJob(t *testing.T) {
 	}
 
 	// Manually try to read the entry from the host.
-	lookedUpRV, err = lookupRegistry(wt.worker, sid, &spk, &tweak)
+	lookedUpRV, err = lookupRegistry(wt.worker, sid, &spk, &rv.Tweak)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// The entries should match.
-	if !reflect.DeepEqual(*lookedUpRV, rv) {
+	if !reflect.DeepEqual(lookedUpRV.SignedRegistryValue, rv) {
 		t.Fatal("entries don't match")
 	}
 }
@@ -204,17 +217,8 @@ func TestUpdateRegistryLyingHost(t *testing.T) {
 	}()
 
 	// Create a registry value.
-	sk, pk := crypto.GenerateKeyPair()
-	var tweak crypto.Hash
-	fastrand.Read(tweak[:])
-	data := fastrand.Bytes(modules.RegistryDataSize)
-	rev := fastrand.Uint64n(1000) + 1
-	spk := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       pk[:],
-	}
-	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
-	sid := modules.DeriveRegistryEntryID(spk, tweak)
+	rv, spk, sk := randomRegistryValue()
+	sid := modules.DeriveRegistryEntryID(spk, rv.Tweak)
 
 	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
@@ -223,13 +227,13 @@ func TestUpdateRegistryLyingHost(t *testing.T) {
 	}
 
 	// Manually try to read the entry from the host.
-	lookedUpRV, err := lookupRegistry(wt.worker, sid, &spk, &tweak)
+	lookedUpRV, err := lookupRegistry(wt.worker, sid, &spk, &rv.Tweak)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// The entries should match.
-	if !reflect.DeepEqual(*lookedUpRV, rv) {
+	if !reflect.DeepEqual(lookedUpRV.SignedRegistryValue, rv) {
 		t.Fatal("entries don't match")
 	}
 
@@ -245,10 +249,7 @@ func TestUpdateRegistryLyingHost(t *testing.T) {
 	if !errors.Contains(err, errHostOutdatedProof) {
 		t.Fatal("worker should return errHostOutdatedProof")
 	}
-	if errors.Contains(err, registry.ErrSameRevNum) {
-		t.Fatal(err)
-	}
-	if errors.Contains(err, registry.ErrLowerRevNum) {
+	if modules.IsRegistryEntryExistErr(err) {
 		t.Fatal(err)
 	}
 }
@@ -275,16 +276,7 @@ func TestUpdateRegistryInvalidCached(t *testing.T) {
 	}()
 
 	// Create a registry value.
-	sk, pk := crypto.GenerateKeyPair()
-	var tweak crypto.Hash
-	fastrand.Read(tweak[:])
-	data := fastrand.Bytes(modules.RegistryDataSize)
-	rev := fastrand.Uint64n(1000) + 1
-	spk := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       pk[:],
-	}
-	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	rv, spk, sk := randomRegistryValue()
 
 	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
@@ -309,13 +301,13 @@ func TestUpdateRegistryInvalidCached(t *testing.T) {
 	rv.Revision -= 2
 	rv = rv.Sign(sk)
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
-	if !errors.Contains(err, errHostLowerRevisionThanCache) {
+	if !errors.Contains(err, errHostCheating) {
 		t.Fatal(err)
 	}
 
 	// Make sure there is a recent error and cooldown.
 	wt.staticJobUpdateRegistryQueue.mu.Lock()
-	if !errors.Contains(wt.staticJobUpdateRegistryQueue.recentErr, errHostLowerRevisionThanCache) {
+	if !errors.Contains(wt.staticJobUpdateRegistryQueue.recentErr, errHostCheating) {
 		t.Fatal("wrong recent error", wt.staticJobUpdateRegistryQueue.recentErr)
 	}
 	if wt.staticJobUpdateRegistryQueue.cooldownUntil == (time.Time{}) {

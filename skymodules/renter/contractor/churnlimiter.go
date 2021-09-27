@@ -242,25 +242,15 @@ func (c *Contractor) managedMarkContractUtility(contract skymodules.RenterContra
 		return skymodules.HostScoreBreakdown{}, skymodules.ContractUtility{}, false, nil
 	}
 
-	// Do critical contract checks and update the utility if any checks fail.
-	u, needsUpdate = c.managedCriticalUtilityChecks(sc, host)
-	if needsUpdate {
-		err := c.managedUpdateContractUtility(sc, u)
-		if err != nil {
-			c.staticLog.Println("Unable to acquire and update contract utility:", err)
-			return skymodules.HostScoreBreakdown{}, skymodules.ContractUtility{}, false, errors.AddContext(err, "unable to update utility after criticalUtilityChecks")
-		}
-		return skymodules.HostScoreBreakdown{}, skymodules.ContractUtility{}, false, nil
-	}
-
 	sb, err := c.staticHDB.ScoreBreakdown(host)
 	if err != nil {
 		c.staticLog.Println("Unable to get ScoreBreakdown for", host.PublicKey.String(), "got err:", err)
 		return skymodules.HostScoreBreakdown{}, skymodules.ContractUtility{}, false, nil // it may just be this host that has an issue.
 	}
 
-	// Check the host scorebreakdown against the minimum accepted scores.
-	u, utilityUpdateStatus := c.managedCheckHostScore(contract, sb, minScoreGFR, minScoreGFU)
+	// Do critical contract checks and update the utility if any checks fail.
+	u, utilityUpdateStatus := c.managedUtilityChecks(sc.Metadata(), host, sb, minScoreGFU, minScoreGFR)
+
 	switch utilityUpdateStatus {
 	case noUpdate:
 

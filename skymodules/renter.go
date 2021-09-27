@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -108,11 +109,77 @@ type DirListFunc func(DirectoryInfo)
 type RenterPerformance struct {
 	SystemHealthScanDuration time.Duration
 
+	BaseSectorDownloadOverdriveStats   *DownloadOverdriveStats
+	FanoutSectorDownloadOverdriveStats *DownloadOverdriveStats
+
 	BaseSectorUploadStats *DistributionTrackerStats
 	ChunkUploadStats      *DistributionTrackerStats
 	RegistryReadStats     *DistributionTrackerStats
 	RegistryWriteStats    *DistributionTrackerStats
 	StreamBufferReadStats *DistributionTrackerStats
+}
+
+// DownloadOverdriveStats is a helper struct that contains information about the
+// sector downloads, it keeps track of what percentage of downloads we overdrive
+// and how many overdrive workers get launched.
+type DownloadOverdriveStats struct {
+	// total keeps track of the total amount of downloads
+	total uint64
+
+	// overdrive keeps track of the amount of times the download requires one or
+	// more overdrive workers to be launched in order to complete
+	overdrive uint64
+
+	// overdriveWorkersLaunched keeps track of the amount of overdrive workers
+	// that were launched for a download
+	overdriveWorkersLaunched uint64
+
+	mu sync.Mutex
+}
+
+// NewSectorDownloadStats returns a new DownloadOverdriveStats object.
+func NewSectorDownloadStats() *DownloadOverdriveStats {
+	return &DownloadOverdriveStats{}
+}
+
+// OverdrivePct returns the frequency with which we overdrive when downloading a
+// sector. The frequency is expressed as a percentage of overall downloads. E.g.
+// an overdrive pct of 0.6 means we launch at least one overdrive worker 60% of
+// the time.
+func (ds *DownloadOverdriveStats) OverdrivePct() float64 {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
+	if ds.total == 0 {
+		return 0
+	}
+	return float64(ds.overdrive) / float64(ds.total)
+}
+
+// NumOverdriveWorkersAvg returns the average amount of overdrive workers we
+// launch.
+func (ds *DownloadOverdriveStats) NumOverdriveWorkersAvg() float64 {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
+	if ds.total == 0 {
+		return 0
+	}
+	return float64(ds.overdriveWorkersLaunched) / float64(ds.total)
+}
+
+// AddDataPoint adds a data point to the statistics, it takes one parameter
+// called 'numOverdriveWorkers' which represents the amount of overdrive workers
+// launched.
+func (ds *DownloadOverdriveStats) AddDataPoint(numOverdriveWorkers uint64) {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
+	ds.total++
+	ds.overdriveWorkersLaunched += numOverdriveWorkers
+	if numOverdriveWorkers > 0 {
+		ds.overdrive++
+	}
 }
 
 // RenterStats is a struct which tracks key metrics in a single renter. This
@@ -354,6 +421,23 @@ type ContractUtility struct {
 	Locked bool `json:"locked"`
 }
 
+// Merge merges two contract utilities by giving priority to the worse fields.
+// So for example a utility that is !gfu that is merged with a utility that is
+// gfu will result in !gfu whereas locked and !locked results in locked.
+func (cu ContractUtility) Merge(cu2 ContractUtility) ContractUtility {
+	lastOOS := cu.LastOOSErr
+	if cu2.LastOOSErr > lastOOS {
+		lastOOS = cu2.LastOOSErr
+	}
+	return ContractUtility{
+		GoodForUpload: cu.GoodForUpload && cu2.GoodForUpload,
+		GoodForRenew:  cu.GoodForRenew && cu2.GoodForRenew,
+		BadContract:   cu.BadContract || cu2.BadContract,
+		LastOOSErr:    lastOOS,
+		Locked:        cu.Locked || cu2.Locked,
+	}
+}
+
 // ContractWatchStatus provides information about the status of a contract in
 // the renter's watchdog.
 type ContractWatchStatus struct {
@@ -455,12 +539,11 @@ type DownloadInfo struct {
 // FileUploadParams contains the information used by the Renter to upload a
 // file.
 type FileUploadParams struct {
-	Source              string
-	SiaPath             SiaPath
-	ErasureCode         ErasureCoder
-	Force               bool
-	DisablePartialChunk bool
-	Repair              bool
+	Source      string
+	SiaPath     SiaPath
+	ErasureCode ErasureCoder
+	Force       bool
+	Repair      bool
 
 	// CipherType was added later. If it is left blank, the renter will use the
 	// default encryption method (as of writing, Threefish)
@@ -547,6 +630,10 @@ type HostDBEntry struct {
 	// Measurements related to the IP subnet mask.
 	IPNets          []string  `json:"ipnets"`
 	LastIPNetChange time.Time `json:"lastipnetchange"`
+
+	// Malicious indicates whether the host is considered to be a malicous
+	// host by the hostdb.
+	Malicious bool `json:"malicious"`
 
 	// The public key of the host, stored separately to minimize risk of certain
 	// MitM based vulnerabilities.
@@ -655,9 +742,6 @@ type RenterSettings struct {
 	MaxUploadSpeed   int64         `json:"maxuploadspeed"`
 	MaxDownloadSpeed int64         `json:"maxdownloadspeed"`
 	UploadsStatus    UploadsStatus `json:"uploadsstatus"`
-
-	CurrencyConversionRates map[string]types.Currency `json:"currencyconversionrates"`
-	MonetizationBase        types.Currency            `json:"monetizationbase"`
 }
 
 // UploadsStatus contains information about the Renter's Uploads
@@ -691,6 +775,17 @@ func (mrs MerkleRootSet) MarshalJSON() ([]byte, error) {
 func ChunkSize(ct crypto.CipherType, dataPieces uint64) uint64 {
 	pieceSize := modules.SectorSize - ct.Overhead()
 	return pieceSize * dataPieces
+}
+
+// NumChunks returns the number of chunks a file has given its CipherType, size
+// and number of data pieces.
+func NumChunks(ct crypto.CipherType, fileSize, dataPieces uint64) uint64 {
+	chunkSize := ChunkSize(ct, dataPieces)
+	numChunks := fileSize / chunkSize
+	if fileSize%chunkSize != 0 {
+		numChunks++
+	}
+	return numChunks
 }
 
 // UnmarshalJSON attempts to decode a MerkleRootSet, falling back on the legacy
@@ -1240,6 +1335,10 @@ type Renter interface {
 	// Host provides the DB entry and score breakdown for the requested host.
 	Host(pk types.SiaPublicKey) (HostDBEntry, bool, error)
 
+	// HostsForRegistryUpdate returns a list of hosts that the renter would be using
+	// for updating the registry.
+	HostsForRegistryUpdate() ([]types.SiaPublicKey, error)
+
 	// InitialScanComplete returns a boolean indicating if the initial scan of the
 	// hostdb is completed.
 	InitialScanComplete() (bool, error)
@@ -1262,13 +1361,24 @@ type Renter interface {
 	// have time to finish their jobs and return a response until the context is
 	// closed. Otherwise the response with the highest revision number will be
 	// used.
-	ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, error)
+	ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (RegistryEntry, error)
 
-	// ReadRegistry starts a registry lookup on all available workers. The jobs
-	// have time to finish their jobs and return a response until the context is
-	// closed. Otherwise the response with the highest revision number will be
-	// used.
-	ReadRegistryRID(ctx context.Context, rid modules.RegistryEntryID) (modules.SignedRegistryValue, error)
+	// RegistryEntryHealth returns the health of a registry entry specified by
+	// either the spk and tweak or the rid.
+	RegistryEntryHealth(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (RegistryEntryHealth, error)
+
+	// RegistryEntryHealth returns the health of a registry entry specified by
+	// either the spk and tweak or the rid.
+	RegistryEntryHealthRID(ctx context.Context, rid modules.RegistryEntryID) (RegistryEntryHealth, error)
+
+	// ReadRegistryRID starts a registry lookup on all available workers.
+	// The jobs have time to finish their jobs and return a response until
+	// the context is closed. Otherwise the response with the highest
+	// revision number will be used.
+	ReadRegistryRID(ctx context.Context, rid modules.RegistryEntryID) (RegistryEntry, error)
+
+	// ResolveSkylinkV2 resolves a V2 skylink to a V1 skylink if possible.
+	ResolveSkylinkV2(ctx context.Context, sl Skylink) (Skylink, []RegistryEntry, error)
 
 	// ScoreBreakdown will return the score for a host db entry using the
 	// hostdb's weighting algorithm.
@@ -1345,10 +1455,6 @@ type Renter interface {
 	// Skykeys returns a slice containing each Skykey being stored by the renter.
 	Skykeys() ([]skykey.Skykey, error)
 
-	// BatchSkyfile will submit a skyfile to the batch manager to be uploaded as
-	// a batch to skynet.
-	BatchSkyfile(sup SkyfileUploadParameters, reader SkyfileUploadReader) (Skylink, error)
-
 	// CreateSkylinkFromSiafile will create a skylink from a siafile. This will
 	// result in some uploading - the base sector skyfile needs to be uploaded
 	// separately, and if there is a fanout expansion that needs to be uploaded
@@ -1367,7 +1473,7 @@ type Renter interface {
 	// time that exceeds the given timeout value. Passing a timeout of 0 is
 	// considered as no timeout. The pricePerMS acts as a budget to spend on
 	// faster, and thus potentially more expensive, hosts.
-	DownloadSkylink(link Skylink, timeout time.Duration, pricePerMS types.Currency) (SkyfileStreamer, error)
+	DownloadSkylink(link Skylink, timeout time.Duration, pricePerMS types.Currency) (SkyfileStreamer, []RegistryEntry, error)
 
 	// DownloadSkylinkBaseSector will take a link and turn it into the data of a
 	// download without any decoding of the metadata, fanout, or decryption. The
@@ -1375,7 +1481,10 @@ type Renter interface {
 	// exceeds the given timeout value. Passing a timeout of 0 is considered as
 	// no timeout. The pricePerMS acts as a budget to spend on faster, and thus
 	// potentially more expensive, hosts.
-	DownloadSkylinkBaseSector(link Skylink, timeout time.Duration, pricePerMS types.Currency) (Streamer, error)
+	DownloadSkylinkBaseSector(link Skylink, timeout time.Duration, pricePerMS types.Currency) (Streamer, []RegistryEntry, Skylink, error)
+
+	// SkylinkHealth returns the health of a skylink on the network.
+	SkylinkHealth(ctx context.Context, link Skylink, ppms types.Currency) (SkylinkHealth, error)
 
 	// UploadSkyfile will upload data to the Sia network from a reader and
 	// create a skyfile, returning the skylink that can be used to access the
@@ -1409,7 +1518,7 @@ type Renter interface {
 
 	// UpdateSkynetBlocklist updates the list of hashed merkleroots that are
 	// blocked
-	UpdateSkynetBlocklist(additions, removals []crypto.Hash) error
+	UpdateSkynetBlocklist(ctx context.Context, additions, removals []string, isHash bool) error
 
 	// UpdateSkynetPortals updates the list of known skynet portals.
 	UpdateSkynetPortals(additions []SkynetPortal, removals []modules.NetAddress) error
@@ -1439,6 +1548,30 @@ type SkyfileStreamer interface {
 	Layout() SkyfileLayout
 	Metadata() SkyfileMetadata
 	RawMetadata() []byte
+	Skylink() Skylink
+}
+
+// SkylinkHealth describes the health of a skylink on the network.
+type SkylinkHealth struct {
+	// BaseSectorRedundancy is the number of base sector pieces on the
+	// network.
+	BaseSectorRedundancy uint64 `json:"basesectorredundancy"`
+
+	// FanoutEffectiveRedundancy is the worst redundancy of any of the
+	// fanout's chunks on the network.
+	FanoutEffectiveRedundancy float64 `json:"fanouteffectiveredundancy,omitempty"`
+
+	// FanoutDataPieces are the datapieces of the erasure coder specified in
+	// the layout of the skyfile.
+	FanoutDataPieces uint8 `json:"fanoutdatapieces,omitempty"`
+
+	// FanoutDataPieces are the paritypieces of the erasure coder specified
+	// in the layout of the skyfile.
+	FanoutParityPieces uint8 `json:"fanoutparitypieces,omitempty"`
+
+	// FanoutRedundancy is the individual redundancy of all chunks in the
+	// fanout.
+	FanoutRedundancy []float64 `json:"fanoutredundancy,omitempty"`
 }
 
 // RenterDownloadParameters defines the parameters passed to the Renter's
@@ -1536,6 +1669,10 @@ type HostDB interface {
 	// IPViolationsCheck returns a boolean indicating if the IP violation check is
 	// enabled or not.
 	IPViolationsCheck() (bool, error)
+
+	// IsMalicious indicates whether the host is considered to be malicious
+	// according to the hostdb.
+	IsMalicious(HostDBEntry) (bool, error)
 
 	// RandomHosts returns a set of random hosts, weighted by their estimated
 	// usefulness / attractiveness to the renter. RandomHosts will not return

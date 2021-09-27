@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -140,17 +141,17 @@ func (rs *renterSubscriber) threadedNotify(eid modules.RegistryEntryID, srv *mod
 
 // Get allows for fetching the latest value of a subscribed entry from the
 // subscription manager.
-func (sm *registrySubscriptionManager) Get(eid modules.RegistryEntryID) (modules.SignedRegistryValue, bool) {
+func (sm *registrySubscriptionManager) Get(eid modules.RegistryEntryID) (skymodules.RegistryEntry, bool) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	sub, exists := sm.subscriptions[eid]
 	if !exists || sub.latestValue == nil {
-		return modules.SignedRegistryValue{}, false
+		return skymodules.RegistryEntry{}, false
 	}
 	if sub.latestValue == nil {
-		return modules.SignedRegistryValue{}, false
+		return skymodules.RegistryEntry{}, false
 	}
-	return *sub.latestValue, true
+	return skymodules.NewRegistryEntry(sub.staticSPK, *sub.latestValue), true
 }
 
 // NewSubscriber creates a new subscriber that can subscribe to and unsubscribe

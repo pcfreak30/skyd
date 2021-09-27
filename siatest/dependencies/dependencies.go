@@ -10,6 +10,17 @@ import (
 )
 
 type (
+	// DependencyForceLegacyRepairDownload forces the remote repair download
+	// to use the legacy download for both stuck and not stuck repairs. If
+	// that fails, it won't fall back to the skynet download.
+	DependencyForceLegacyRepairDownload struct {
+		skymodules.SkynetDependencies
+	}
+	// DependencyFailLegacyRepairDownload forces the remote repair download
+	// to use the skynet version by failing the legacy download.
+	DependencyFailLegacyRepairDownload struct {
+		skymodules.SkynetDependencies
+	}
 	// DependencyDelayChunkDistribution delays the chunk distribution in
 	// callAddUploadChunk by 1 second and skips the actual distribution.
 	DependencyDelayChunkDistribution struct {
@@ -214,6 +225,18 @@ type (
 	}
 )
 
+// NewDependencyDelayRegistryHealthResponses simulates a delay to the
+// staticComplete time of all responses in managedRegistryEntryHealth.`
+func NewDependencyDelayRegistryHealthResponses() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("DelayRegistryHealthResponses")
+}
+
+// NewDependencyTUSConnectionDrop creates a new DependencyTUSConnectionDrop
+// which simulates a dropped connection during a TUS upload.
+func NewDependencyTUSConnectionDrop() *DependencyInterruptOnceOnKeyword {
+	return newDependencyInterruptOnceOnKeyword("TUSConnectionDropped")
+}
+
 // NewDependencyCorruptMDMOutput returns a dependency that can be used to
 // manually corrupt the MDM output returned by hosts.
 func NewDependencyCorruptMDMOutput() *DependencyInterruptOnceOnKeyword {
@@ -301,6 +324,12 @@ func NewDependencyInterruptNewStreamTimeout() *DependencyWithDisableAndEnable {
 	return newDependencywithDisableAndEnable("InterruptNewStreamTimeout")
 }
 
+// NewDependencyInterruptHostScan is a dependency that interrupts the host scan
+// and ensures hosts will be considered offline if the dependency is enabled.
+func NewDependencyInterruptHostScan() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("InterruptHostScan")
+}
+
 // NewDependencyInterruptUploadBeforeSendingRevision creates a new dependency
 // that interrupts the upload on the renter side before sending the signed
 // revision to the host.
@@ -346,6 +375,12 @@ func NewDependencyHostLosePriceTable() *DependencyWithDisableAndEnable {
 	return newDependencywithDisableAndEnable("HostLosePriceTable")
 }
 
+// NewDependencyReadRegistryNoEntry creates a new dependency that can be used to
+// simulate a host losing a registry entry.
+func NewDependencyReadRegistryNoEntry() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("ReadRegistryNoEntry")
+}
+
 // NewDependencyRegistryUpdateNoOp creates a dependency, that causes
 // RegistryUpdate to be a no-op.
 func NewDependencyRegistryUpdateNoOp() *DependencyWithDisableAndEnable {
@@ -387,6 +422,16 @@ func (d *DependencyDisableWorker) Disrupt(s string) bool {
 // Disrupt returns true if the correct string is provided.
 func (d *DependencyReadRegistryBlocking) Disrupt(s string) bool {
 	return s == "ReadRegistryBlocking"
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyForceLegacyRepairDownload) Disrupt(s string) bool {
+	return s == "ForceLegacyRepairDownload"
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyFailLegacyRepairDownload) Disrupt(s string) bool {
+	return s == "FailLegacyRepairDownload"
 }
 
 // Disrupt returns true if the correct string is provided.

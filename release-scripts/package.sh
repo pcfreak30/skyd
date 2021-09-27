@@ -10,12 +10,12 @@ function package {
   os=$1
   arch=$2
  	
-	echo Packaging ${os}...
- 	folder=$binDir/Sia-$version-$os-$arch
+	echo Packaging ${os} ${arch}...
+ 	folder=$binDir/skyd-$version-$os-$arch
  	(
 		cd $binDir
-		zip -rq Sia-$version-$os-$arch.zip Sia-$version-$os-$arch
-		sha256sum  Sia-$version-$os-$arch.zip >> Sia-$version-SHA256SUMS.txt
+		zip -rq skyd-$version-$os-$arch.zip skyd-$version-$os-$arch
+		sha256sum  skyd-$version-$os-$arch.zip >> skyd-$version-SHA256SUMS.txt
  	)
 }
 

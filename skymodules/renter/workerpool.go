@@ -86,6 +86,10 @@ func (wp *workerPool) callUpdate() {
 			// Do not create workers for bad contracts.
 			continue
 		}
+		if wp.staticRenter.staticHostContractor.IsOffline(contract.HostPublicKey) {
+			// Do not create workers for offline hosts.
+			continue
+		}
 		contractMap[contract.HostPublicKey.String()] = contract
 	}
 

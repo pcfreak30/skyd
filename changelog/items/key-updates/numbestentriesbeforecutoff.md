@@ -1,0 +1,1 @@
+- add NumBestEntriesBeforeCutoff field to registry entry health endpoint

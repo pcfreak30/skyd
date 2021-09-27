@@ -79,9 +79,8 @@ func NewSkyfileReader(reader io.Reader, sup SkyfileUploadParameters) SkyfileUplo
 	return &skyfileReader{
 		reader: reader,
 		metadata: SkyfileMetadata{
-			Filename:     sup.Filename,
-			Mode:         sup.Mode,
-			Monetization: sup.Monetization,
+			Filename: sup.Filename,
+			Mode:     sup.Mode,
 		},
 		metadataAvail: make(chan struct{}),
 	}
@@ -231,10 +230,11 @@ func newSkyfileMultipartReader(reader *multipart.Reader, sup SkyfileUploadParame
 		reader: reader,
 		metadata: SkyfileMetadata{
 			Filename:           sup.Filename,
-			Monetization:       sup.Monetization,
 			Mode:               sup.Mode,
 			DefaultPath:        sup.DefaultPath,
 			DisableDefaultPath: sup.DisableDefaultPath,
+			TryFiles:           sup.TryFiles,
+			ErrorPages:         sup.ErrorPages,
 			Subfiles:           make(SkyfileSubfiles),
 		},
 		metadataAvail: make(chan struct{}),
@@ -362,8 +362,16 @@ func (sr *skyfileMultipartReader) createSubfileFromCurrPart() error {
 	}
 
 	// parse the filename
-	filename := sr.currPart.FileName()
-	if filename == "" {
+	// WARNING: don't use currPart.Filename() here since it caused
+	// unexpected behaviour on some deploys. Paths were trimmed from the
+	// filename, flattening the directory structure of the upload.
+	values := sr.currPart.Header.Get("Content-Disposition")
+	_, m, err := mime.ParseMediaType(values)
+	if err != nil {
+		return errors.AddContext(err, "failed to parse media type for subfile")
+	}
+	filename, exists := m["filename"]
+	if !exists || filename == "" {
 		return ErrEmptyFilename
 	}
 

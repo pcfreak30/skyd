@@ -12,6 +12,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -310,7 +311,8 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 	hsRespChan := make(chan *jobHasSectorResponse, 10)
 
 	// add a job to the worker
-	jhs := w.newJobHasSector(context.Background(), hsRespChan, crypto.Hash{})
+	ctx := opentracing.ContextWithSpan(context.Background(), testSpan())
+	jhs := w.newJobHasSector(ctx, hsRespChan, skymodules.RenterDefaultNumPieces, crypto.Hash{})
 	if !w.staticJobHasSectorQueue.callAdd(jhs) {
 		t.Fatal("Could not add job to queue")
 	}
@@ -342,7 +344,7 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 	atomic.StoreUint64(&w.staticLoopState.atomicReadDataOutstanding, limit+1)
 
 	// add another job to the worker
-	jhs = w.newJobHasSector(context.Background(), hsRespChan, crypto.Hash{})
+	jhs = w.newJobHasSector(ctx, hsRespChan, skymodules.RenterDefaultNumPieces, crypto.Hash{})
 	if !w.staticJobHasSectorQueue.callAdd(jhs) {
 		t.Fatal("Could not add job to queue")
 	}

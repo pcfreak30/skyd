@@ -10,9 +10,13 @@ import (
 	"strings"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/node"
+	"gitlab.com/SkynetLabs/skyd/node/api"
+	"gitlab.com/SkynetLabs/skyd/node/api/client"
 	"gitlab.com/SkynetLabs/skyd/siatest"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/persist"
 )
 
@@ -63,9 +67,24 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 		{
 			// ValidSkyfile is the happy path, ensuring that we don't get errors
 			// on valid data.
-			Name:          "ValidSkyfile",
+			Name:          "ValidSkyfileWithTrailingSlash",
+			Skylink:       "_A6d-2CpM2OQ-7m5NPAYW830NdzC3wGydFzzd-KnHXhwJA/",
+			ExpectedError: "",
+		},
+		{
+			// ValidSkyfile is the happy path, ensuring that we don't get errors
+			// on valid data.
+			Name:          "ValidSkyfileNoTrailingSlashNotASkapp",
 			Skylink:       "_A6d-2CpM2OQ-7m5NPAYW830NdzC3wGydFzzd-KnHXhwJA",
 			ExpectedError: "",
+		},
+		{
+			// ValidSkyfile is the happy path, ensuring that we don't get errors
+			// on valid data.
+			Name:             "ValidSkyfileNoTrailingSlashSkapp",
+			Skylink:          "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA",
+			ExpectedError:    "Redirect",
+			ExpectedRedirect: "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA/",
 		},
 		{
 			// SingleFileDefaultPath ensures that we return an error if a single
@@ -92,7 +111,7 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 			// NonRootPath ensures that we can get a non-root file by passing
 			// its path manually.
 			Name:          "NonRootPath",
-			Skylink:       "4BBcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA/dir/file.txt",
+			Skylink:       "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA/dir/index.html",
 			ExpectedError: "",
 		},
 		{
@@ -189,5 +208,60 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 				t.Fatalf("%s failed: expected redirect '%s', got '%s'\n", test.Name, test.ExpectedRedirect, matches[1])
 			}
 		}
+	}
+}
+
+// TestSkynetSkylinkPinHandlerPOST ensures various aspects of the correct
+// functioning of the skynetSkylinkPinHandlerPOST method.
+func TestSkynetSkylinkPinHandlerPOST(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a test group.
+	groupParams := siatest.GroupParams{
+		Hosts:   3,
+		Miners:  1,
+		Portals: 1,
+	}
+	groupDir := skynetTestDir(t.Name())
+
+	// Specify subtests to run
+	subTests := []siatest.SubTest{
+		{Name: "EnsureSkynetSkylinkHeader", Test: testEnsureSkynetSkylinkHeader},
+	}
+
+	// Run tests
+	if err := siatest.RunSubTests(t, groupParams, groupDir, subTests); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// testEnsureSkynetSkylinkHeader tests the skynetSkylinkPinHandlerPOST method
+// returns a Skynet-Skylink header.
+func testEnsureSkynetSkylinkHeader(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Upload a test file.
+	skylink, _, _, err := r.UploadNewSkyfileWithDataBlocking(t.Name(), fastrand.Bytes(100), false)
+	if err != nil {
+		t.Fatal("failed to upload test data", err)
+	}
+
+	// Re-pin the test file.
+	// Use an unsafe client to get access to the response headers.
+	uc := client.NewUnsafeClient(r.Client)
+	spp := skymodules.SkyfilePinParameters{
+		SiaPath: skymodules.RandomSiaPath(),
+	}
+	header, _, err := uc.SkynetSkylinkPinPostRawResponse(skylink, spp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the response header contains the same Skylink.
+	if header.Get(api.SkynetSkylinkHeader) != skylink {
+		t.Fatal("unexpected")
 	}
 }

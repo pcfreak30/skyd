@@ -8,7 +8,6 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/modules/host/registry"
 	"go.sia.tech/siad/types"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -19,16 +18,20 @@ const (
 	// performance is decayed each time a new datapoint is added. The jobs use
 	// an exponential weighted average.
 	jobUpdateRegistryPerformanceDecay = 0.9
+
+	// minUpdateRegistryEntryTypeVersion is the minimum host version that
+	// supports updating the registry with a registry entry type and
+	// registry update version.
+	minUpdateRegistryEntryTypeVersion = "1.5.7"
 )
 
 // errHostOutdatedProof is returned if the host provides a proof that has a
 // valid signature but is still invalid due to its revision number.
 var errHostOutdatedProof = errors.New("host returned proof with invalid revision number")
 
-// errHostLowerRevisionThanCache is returned whenever the host claims that the
-// latest revision of the registry entry it knows is lower than the one it is
-// supposed to have according to the cache.
-var errHostLowerRevisionThanCache = errors.New("host claims that the latest revision it knows is lower than the one in the cache")
+// errHostCheating is returned when a host is known to be in possession of a
+// more recent registry value but returned an outdated one.
+var errHostCheating = errors.New("host is cheating by returning an outdated entry")
 
 type (
 	// jobUpdateRegistry contains information about a UpdateRegistry query.
@@ -54,15 +57,16 @@ type (
 
 	// jobUpdateRegistryResponse contains the result of a UpdateRegistry query.
 	jobUpdateRegistryResponse struct {
-		srv       *modules.SignedRegistryValue // only sent on ErrLowerRevNum and ErrSameRevNum
-		staticErr error
+		srv          *modules.SignedRegistryValue // only sent on ErrLowerRevNum and ErrSameRevNum
+		staticErr    error
+		staticWorker *worker
 	}
 )
 
 // newJobUpdateRegistry is a helper method to create a new UpdateRegistry job.
 func (w *worker) newJobUpdateRegistry(ctx context.Context, span opentracing.Span, responseChan chan *jobUpdateRegistryResponse, spk types.SiaPublicKey, srv modules.SignedRegistryValue) *jobUpdateRegistry {
 	jobSpan := opentracing.StartSpan("UpdateRegistryJob", opentracing.ChildOf(span.Context()))
-	jobSpan.SetTag("Host", w.staticHostPubKeyStr)
+	jobSpan.SetTag("host", w.staticHostPubKeyStr)
 	return &jobUpdateRegistry{
 		staticSiaPublicKey:        spk,
 		staticSignedRegistryValue: srv,
@@ -82,8 +86,9 @@ func (j *jobUpdateRegistry) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
 	errLaunch := w.staticRenter.tg.Launch(func() {
 		response := &jobUpdateRegistryResponse{
-			srv:       nil,
-			staticErr: errors.Extend(err, ErrJobDiscarded),
+			srv:          nil,
+			staticErr:    errors.Extend(err, ErrJobDiscarded),
+			staticWorker: j.staticQueue.staticWorker(),
 		}
 		select {
 		case j.staticResponseChan <- response:
@@ -100,7 +105,7 @@ func (j *jobUpdateRegistry) callDiscard(err error) {
 func (j *jobUpdateRegistry) callExecute() {
 	start := time.Now()
 	w := j.staticQueue.staticWorker()
-	sid := modules.DeriveRegistryEntryID(j.staticSiaPublicKey, j.staticSignedRegistryValue.Tweak)
+	rid := modules.DeriveRegistryEntryID(j.staticSiaPublicKey, j.staticSignedRegistryValue.Tweak)
 
 	// Finish job span at the end.
 	defer j.staticSpan.Finish()
@@ -113,8 +118,9 @@ func (j *jobUpdateRegistry) callExecute() {
 	sendResponse := func(srv *modules.SignedRegistryValue, err error) {
 		errLaunch := w.staticRenter.tg.Launch(func() {
 			response := &jobUpdateRegistryResponse{
-				srv:       srv,
-				staticErr: err,
+				srv:          srv,
+				staticErr:    err,
+				staticWorker: j.staticQueue.staticWorker(),
 			}
 			select {
 			case j.staticResponseChan <- response:
@@ -133,20 +139,20 @@ func (j *jobUpdateRegistry) callExecute() {
 	// in the future in case we are certain that a host can't contain those
 	// errors.
 	rv, err := j.managedUpdateRegistry()
-	if errors.Contains(err, registry.ErrLowerRevNum) || errors.Contains(err, registry.ErrSameRevNum) {
+	if modules.IsRegistryEntryExistErr(err) {
 		// Report the failure if the host can't provide a signed registry entry
 		// with the error.
-		if err := rv.Verify(j.staticSiaPublicKey.ToPublicKey()); err != nil {
-			sendResponse(nil, err)
-			j.staticQueue.callReportFailure(err)
-			span.LogKV("error", err)
+		if errVerify := rv.Verify(j.staticSiaPublicKey.ToPublicKey()); errVerify != nil {
+			sendResponse(nil, errVerify)
+			j.staticQueue.callReportFailure(errVerify)
+			span.LogKV("error", errVerify)
 			j.staticSpan.SetTag("success", false)
 			return
 		}
-		// If the entry is valid, check if the revision number is actually
-		// invalid or if the revision numbers match but the PoW is too low.
-		if j.staticSignedRegistryValue.Revision > rv.Revision ||
-			(j.staticSignedRegistryValue.Revision == rv.Revision && j.staticSignedRegistryValue.HasMoreWork(rv.RegistryValue)) {
+		// If the entry is valid, check if our suggested can actually not be
+		// used to update rv.
+		shouldUpdate, shouldUpdateErr := rv.ShouldUpdateWith(&j.staticSignedRegistryValue.RegistryValue, w.staticHostPubKey)
+		if shouldUpdate {
 			sendResponse(nil, errHostOutdatedProof)
 			j.staticQueue.callReportFailure(errHostOutdatedProof)
 			span.LogKV("error", errHostOutdatedProof)
@@ -155,19 +161,27 @@ func (j *jobUpdateRegistry) callExecute() {
 		}
 		// If the entry is valid and the revision is also valid, check if we
 		// have a higher revision number in the cache than the provided one.
-		// TODO: update the cache to store the hash in addition to the revision
-		// number for verifying the pow.
-		cachedRevision, cached := w.staticRegistryCache.Get(sid)
-		if cached && cachedRevision > rv.Revision {
-			sendResponse(nil, errHostLowerRevisionThanCache)
-			j.staticQueue.callReportFailure(errHostLowerRevisionThanCache)
-			span.LogKV("error", errHostLowerRevisionThanCache)
+		errCheating := w.managedCheckHostCheating(rid, &rv, true)
+		if errCheating != nil {
+			sendResponse(nil, errCheating)
+			j.staticQueue.callReportFailure(errCheating)
+			span.LogKV("error", errCheating)
 			j.staticSpan.SetTag("success", false)
-			w.staticRegistryCache.Set(sid, rv, true) // adjust the cache
+			w.staticRegistryCache.Set(rid, rv, true) // adjust the cache
 			return
 		}
-		sendResponse(&rv, err)
-		return
+		// If the entry is the same as as the one we want to set, consider this
+		// a success. Otherwise return the error.
+		if !errors.Contains(shouldUpdateErr, modules.ErrSameRevNum) {
+			// Don't call callReportFailure here. The host provided a valid
+			// proof and we don't want to punish it. We still return the error
+			// though.
+			sendResponse(&rv, err)
+			j.staticQueue.callReportSuccess()
+			span.LogKV("error", err)
+			j.staticSpan.SetTag("success", false)
+			return
+		}
 	} else if err != nil {
 		sendResponse(nil, err)
 		j.staticQueue.callReportFailure(err)
@@ -182,7 +196,7 @@ func (j *jobUpdateRegistry) callExecute() {
 	j.staticSpan.SetTag("success", true)
 
 	// Update the registry cache.
-	w.staticRegistryCache.Set(sid, j.staticSignedRegistryValue, false)
+	w.staticRegistryCache.Set(rid, j.staticSignedRegistryValue, false)
 
 	// Send the response and report success.
 	sendResponse(nil, nil)
@@ -209,9 +223,13 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue
 	// Create the program.
 	pt := w.staticPriceTable().staticPriceTable
 	pb := modules.NewProgramBuilder(&pt, 0) // 0 duration since UpdateRegistry doesn't depend on it.
+	version := modules.ReadRegistryVersionNoType
 	if build.VersionCmp(w.staticCache().staticHostVersion, "1.5.5") < 0 {
 		pb.V154AddUpdateRegistryInstruction(j.staticSiaPublicKey, j.staticSignedRegistryValue)
+	} else if build.VersionCmp(w.staticCache().staticHostVersion, minUpdateRegistryEntryTypeVersion) < 0 {
+		pb.V156AddUpdateRegistryInstruction(j.staticSiaPublicKey, j.staticSignedRegistryValue)
 	} else {
+		version = modules.ReadRegistryVersionWithType
 		pb.AddUpdateRegistryInstruction(j.staticSiaPublicKey, j.staticSignedRegistryValue)
 	}
 	program, programData := pb.Program()
@@ -233,16 +251,19 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue
 		// signed registry value from the response.
 		err = resp.Error
 		// Check for ErrLowerRevNum.
-		if err != nil && strings.Contains(err.Error(), registry.ErrLowerRevNum.Error()) {
-			err = registry.ErrLowerRevNum
+		if err != nil && strings.Contains(err.Error(), modules.ErrLowerRevNum.Error()) {
+			err = modules.ErrLowerRevNum
 		}
-		if err != nil && strings.Contains(err.Error(), registry.ErrSameRevNum.Error()) {
-			err = registry.ErrSameRevNum
+		if err != nil && strings.Contains(err.Error(), modules.ErrSameRevNum.Error()) {
+			err = modules.ErrSameRevNum
 		}
-		if errors.Contains(err, registry.ErrLowerRevNum) || errors.Contains(err, registry.ErrSameRevNum) {
+		if err != nil && strings.Contains(err.Error(), modules.ErrInsufficientWork.Error()) {
+			err = modules.ErrInsufficientWork
+		}
+		if modules.IsRegistryEntryExistErr(err) {
 			// Parse the proof.
-			_, _, data, revision, sig, parseErr := parseSignedRegistryValueResponse(resp.Output, false)
-			rv := modules.NewSignedRegistryValue(j.staticSignedRegistryValue.Tweak, data, revision, sig)
+			_, _, data, revision, sig, entryType, parseErr := parseSignedRegistryValueResponse(resp.Output, false, version)
+			rv := modules.NewSignedRegistryValue(j.staticSignedRegistryValue.Tweak, data, revision, sig, entryType)
 			return rv, errors.Compose(err, parseErr)
 		}
 		if err != nil {
@@ -290,6 +311,41 @@ func (w *worker) UpdateRegistry(ctx context.Context, spk types.SiaPublicKey, rv 
 	case resp = <-updateRegistryRespChan:
 	}
 	return resp.staticErr
+}
+
+// callLaunchUpdateRegistry launches an UpdateRegistry job and conducts
+// necessary checks like price gouging and version verification. Returns true if
+// the job was launched successfully and false otherwise.
+func (w *worker) callLaunchUpdateRegistry(span opentracing.Span, spk types.SiaPublicKey, srv modules.SignedRegistryValue, responseChan chan *jobUpdateRegistryResponse) bool {
+	cache := w.staticCache()
+	if build.VersionCmp(cache.staticHostVersion, minRegistryVersion) < 0 {
+		return false
+	}
+	r := w.staticRenter
+
+	// Skip !goodForUpload workers.
+	if !cache.staticContractUtility.GoodForUpload {
+		return false
+	}
+
+	// check for price gouging
+	// TODO: use upload gouging for some basic protection. Should be
+	// replaced as part of the gouging overhaul.
+	host, ok, err := r.staticHostDB.Host(w.staticHostPubKey)
+	if !ok || err != nil {
+		return false
+	}
+	err = checkUploadGouging(cache.staticRenterAllowance, host.HostExternalSettings)
+	if err != nil {
+		r.staticLog.Debugf("price gouging detected in worker %v, err: %v\n", w.staticHostPubKeyStr, err)
+		return false
+	}
+
+	// Create the job. We purposefully use the renter's ctx here to make
+	// sure the jobs can finish in the background instead of being killed
+	// when the timeout channel is closed.
+	jrr := w.newJobUpdateRegistry(r.tg.StopCtx(), span, responseChan, spk, srv)
+	return w.staticJobUpdateRegistryQueue.callAdd(jrr)
 }
 
 // updateRegistryUpdateJobExpectedBandwidth is a helper function that returns

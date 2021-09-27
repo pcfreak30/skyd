@@ -1,1 +1,0 @@
-- add support for resumable uploads using the TUS protocol
