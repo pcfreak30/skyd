@@ -450,6 +450,7 @@ func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType)
 
 	// If the new chunk doesn't have a sourceReader there is nothing to do
 	if uuc.sourceReader == nil {
+		println("no source reader")
 		return nil
 	}
 
@@ -463,6 +464,7 @@ func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType)
 	// If the chunk doesn't already exist there is nothing to update
 	if !exists {
 		uh.mu.Unlock()
+		println("nothing to update")
 		return nil
 	}
 
@@ -479,6 +481,7 @@ func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType)
 	// If the existing chunk already has a sourceReader there is nothing to do
 	if existingUUC.sourceReader != nil {
 		uh.mu.Unlock()
+		println("already source reader")
 		return nil
 	}
 
@@ -489,6 +492,7 @@ func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType)
 		delete(uh.stuckHeapChunks, existingUUC.id)
 		uh.heap.removeByID(existingUUC)
 		uh.mu.Unlock()
+		println("remove")
 		return existingUUC.fileEntry.Close()
 	}
 	uh.mu.Unlock()
@@ -505,6 +509,7 @@ func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType)
 
 	// Mark the repair as done.
 	uh.managedMarkRepairDone(existingUUC)
+	println("updated")
 	return nil
 }
 
