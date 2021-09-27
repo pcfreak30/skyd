@@ -56,7 +56,7 @@ type (
 		// the download workers because it's computationally intensive to
 		// calculate those
 		chanceAfter(index int) float64
-		recalculateChanceAfter()
+		recalculateChanceAfter(shift time.Duration)
 
 		// worker returns the underlying worker
 		worker() *worker
@@ -288,8 +288,11 @@ func (cw *chimeraWorker) pieces() []uint64 {
 
 // recalculateChanceAfter recalculates the chances reads complete after every
 // duration from the distribution tracker.
-func (cw *chimeraWorker) recalculateChanceAfter() {
+func (cw *chimeraWorker) recalculateChanceAfter(shift time.Duration) {
 	lookupDistribution, readDistribution := cw.distributions()
+	lookupDistribution = lookupDistribution.Clone()
+	lookupDistribution.Shift(shift)
+
 	lookupChances := lookupDistribution.ChancesAfter()
 	readChances := readDistribution.ChancesAfter()
 
@@ -323,7 +326,7 @@ func (iw *individualWorker) chanceAfter(index int) float64 {
 
 // recalculateChanceAfter recalculates the chances reads complete after every
 // duration from the distribution tracker.
-func (iw *individualWorker) recalculateChanceAfter() {
+func (iw *individualWorker) recalculateChanceAfter(shift time.Duration) {
 	distribution := iw.staticReadDistribution
 
 	// if the worker has been launched already, we want to shift the
@@ -887,7 +890,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 
 	// create download workers out of the workers
 	buildDownloadWorkersCnt := 1
-	downloadWorkers := buildDownloadWorkers(workers, numPieces)
+	downloadWorkers := buildDownloadWorkers(workers, numPieces, time.Since(pdc.launchTime))
 
 	// register for a worker update chan
 	workerUpdateChan := ws.managedRegisterForWorkerUpdate()
@@ -920,7 +923,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			// recomputes the chances after duration, which is a computationally
 			// very intensive
 			// fmt.Println("rebuild download workers")
-			downloadWorkers = buildDownloadWorkers(workers, numPieces)
+			downloadWorkers = buildDownloadWorkers(workers, numPieces, time.Since(pdc.launchTime))
 			prevRecalc = time.Now()
 			buildDownloadWorkersCnt++
 		}
@@ -928,7 +931,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		// recalculate the cache every so often
 		if time.Since(prevRecalc) > 100*time.Millisecond {
 			for _, w := range downloadWorkers {
-				w.recalculateChanceAfter()
+				w.recalculateChanceAfter(time.Since(pdc.launchTime))
 			}
 			prevRecalc = time.Now()
 		}
@@ -1164,7 +1167,7 @@ func buildChimeraWorkers(workers []*individualWorker, numPieces int) []downloadW
 
 // buildDownloadWorkers is a helper function that takes a list of individual
 // workers and turns them into download workers.
-func buildDownloadWorkers(workers []*individualWorker, numPieces int) []downloadWorker {
+func buildDownloadWorkers(workers []*individualWorker, numPieces int, shift time.Duration) []downloadWorker {
 	// turn the given workers into download workers, if an individual worker is
 	// resolved it can be added straight away, unresolved workers are combined
 	// into chimera workers
@@ -1188,7 +1191,7 @@ func buildDownloadWorkers(workers []*individualWorker, numPieces int) []download
 
 	// precompute the chanceAfterDur values
 	for _, w := range downloadWorkers {
-		w.recalculateChanceAfter()
+		w.recalculateChanceAfter(shift)
 	}
 
 	return downloadWorkers
