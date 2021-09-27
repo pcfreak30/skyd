@@ -579,7 +579,7 @@ func (ws *workerSet) String() string {
 		if !chimera {
 			selected = int(w.getPieceForDownload())
 		}
-		output += fmt.Sprintf("%v) worker: %v chimera: %v cost: %v pieces: %v selected: %v\n", i+1, w.identifier(), chimera, w.cost(ws.staticLength), w.pieces(), selected)
+		output += fmt.Sprintf("%v) worker: %v chimera: %v chance: %v cost: %v pieces: %v selected: %v\n", i+1, w.identifier(), chimera, w.chanceAfter(int(ws.staticExpectedDuration)), w.cost(ws.staticLength), w.pieces(), selected)
 	}
 	return output
 }
@@ -1217,31 +1217,33 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 		// 	continue
 		// }
 
+		var useful bool
 		piece, launched, completed := pdc.currentDownload(w)
 		if launched && !completed {
-			if len(mostLikely) < workersNeeded {
-				mostLikely = append(mostLikely, w)
-			} else {
-				lessLikely = append(lessLikely, w)
-			}
 			pieces[piece] = struct{}{}
+			useful = true
 		}
 
-		for _, pieceIndex := range w.pieces() {
-			_, exists := pieces[pieceIndex]
-			if exists {
-				continue
-			}
+		if !useful {
+			for _, pieceIndex := range w.pieces() {
+				_, exists := pieces[pieceIndex]
+				if exists {
+					continue
+				}
 
+				w.markPieceForDownload(pieceIndex)
+				pieces[pieceIndex] = struct{}{}
+				useful = true
+				break // only use a worker once
+			}
+		}
+
+		if useful {
 			if len(mostLikely) < workersNeeded {
 				mostLikely = append(mostLikely, w)
 			} else {
 				lessLikely = append(lessLikely, w)
 			}
-
-			w.markPieceForDownload(pieceIndex)
-			pieces[pieceIndex] = struct{}{}
-			break // only use a worker once
 		}
 	}
 
