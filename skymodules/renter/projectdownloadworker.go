@@ -790,22 +790,8 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, allWorkers []dow
 	// range over all workers in the set and launch if possible
 	for _, w := range ws.workers {
 		// continue if the worker is a chimera worker
-		cw, ok := w.(*chimeraWorker)
+		_, ok := w.(*chimeraWorker)
 		if ok {
-			resolved := ""
-			for _, dw := range allWorkers {
-				if iw, ok := dw.(*individualWorker); ok && len(iw.pieceIndices) > 0 {
-					resolved += fmt.Sprintf("%v resolves in %v has %v chance to complete after %v\n", iw.staticWorker.staticHostPubKeyStr, time.Until(iw.staticExpectedResolveTime), iw.chanceAfter(
-						ws.staticBucketIndex), ws.staticExpectedDuration)
-				}
-			}
-			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-				span.LogKV(
-					"chimera", cw.cachedChancesAfter[ws.staticBucketIndex],
-					"resolvedWorkers", resolved,
-					"workerSetExpectedDuration", ws.staticExpectedDuration,
-				)
-			}
 			continue
 		}
 
@@ -906,7 +892,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		}
 
 		// recalculate the cache every so often
-		if time.Since(prevRecalc) > 50*time.Millisecond {
+		if time.Since(prevRecalc) > 100*time.Millisecond {
 			for _, w := range downloadWorkers {
 				w.recalculateChanceAfter()
 			}
