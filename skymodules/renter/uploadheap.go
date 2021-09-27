@@ -323,6 +323,7 @@ func (uh *uploadHeap) managedPause(duration time.Duration) {
 // popped off the heap by the regular repair loop. In this case the caller is
 // then responsible for ensuring the chunk is sent to the workers for repair.
 func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk, ct chunkType) (*unfinishedUploadChunk, bool) {
+	fmt.Println("push", uuc.id)
 	// Grab chunk stuck status and update the chunkCreationTime
 	uuc.mu.Lock()
 	chunkStuck := uuc.stuck
@@ -388,6 +389,7 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 		if _, exists := uh.repairingChunks[uc.id]; exists {
 			build.Critical("There should not be a chunk in the heap that can be popped that is currently being repaired")
 		}
+		fmt.Println("pop", uc.id)
 		uh.repairingChunks[uc.id] = uc
 	}
 	uh.mu.Unlock()
@@ -396,6 +398,9 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 
 // managedReset will reset the slice and maps within the heap to free up memory.
 func (uh *uploadHeap) managedReset() error {
+	if true {
+		return nil
+	}
 	uh.mu.Lock()
 	defer uh.mu.Unlock()
 	if len(uh.unstuckHeapChunks)+len(uh.stuckHeapChunks) > 0 {
@@ -1396,8 +1401,7 @@ func (r *Renter) managedRepairLoop() error {
 		nextChunk := r.staticUploadHeap.managedPop()
 		if nextChunk == nil {
 			// The heap is empty so reset it to free memory and return.
-			println("pop reset")
-			//r.staticUploadHeap.managedReset()
+			r.staticUploadHeap.managedReset()
 			return nil
 		}
 		chunkPath := nextChunk.staticSiaPath
