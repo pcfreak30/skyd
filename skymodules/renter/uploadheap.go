@@ -323,7 +323,6 @@ func (uh *uploadHeap) managedPause(duration time.Duration) {
 // popped off the heap by the regular repair loop. In this case the caller is
 // then responsible for ensuring the chunk is sent to the workers for repair.
 func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk, ct chunkType) (*unfinishedUploadChunk, bool) {
-	fmt.Println("push", uuc.id)
 	// Grab chunk stuck status and update the chunkCreationTime
 	uuc.mu.Lock()
 	chunkStuck := uuc.stuck
@@ -335,6 +334,8 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk, ct chunkType) (*un
 	// Check if chunk is in any of the heap maps
 	uh.mu.Lock()
 	defer uh.mu.Unlock()
+	fmt.Println("  push locked", uuc.id)
+	defer fmt.Println("  push unlocked", uuc.id)
 	uucUnstuck, existsUnstuckHeap := uh.unstuckHeapChunks[uuc.id]
 	uucRepairing, existsRepairing := uh.repairingChunks[uuc.id]
 	uucStuck, existsStuckHeap := uh.stuckHeapChunks[uuc.id]
@@ -1287,7 +1288,9 @@ func (r *Renter) managedPushChunkForRepair(uuc *unfinishedUploadChunk, ct chunkT
 		return nil, false, errors.AddContext(err, "unable to update chunk in heap")
 	}
 	// Push the chunk onto the upload heap
+	fmt.Println("push", uuc.id)
 	existingUUC, pushed := r.staticUploadHeap.managedPush(uuc, ct)
+	fmt.Println("push done", uuc.id, pushed)
 	// If we were not able to push the chunk, or if the chunkType is localChunk we
 	// return
 	if !pushed || ct == chunkTypeLocalChunk {
