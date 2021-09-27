@@ -63,6 +63,7 @@ type (
 		FileInfo    handler.FileInfo   `bson:"fileinfo"`
 		FileName    string             `bson:"filename"`
 		SiaPath     skymodules.SiaPath `bson:"siapath"`
+		Skylink     skymodules.Skylink `bson:"skylink"`
 
 		BaseChunkRedundancy uint8             `bson:"basechunkredundancy"`
 		Metadata            []byte            `bson:"metadata"`
@@ -290,22 +291,16 @@ func (us *skynetTUSMongoUploadStore) staticLockCollection() *mongo.Collection {
 	return us.staticClient.Database(TusDBName).Collection(tusLocksMongoCollectionName)
 }
 
-// Skylink returns the upload's skylink if available already.
-func (u *MongoTUSUpload) Skylink() (skymodules.Skylink, bool) {
-	sl, exists := u.FileInfo.MetaData["Skylink"]
-	if !exists {
-		return skymodules.Skylink{}, false
-	}
-	var skylink skymodules.Skylink
-	if err := skylink.LoadString(sl); err != nil {
-		build.Critical("upload contains invalid skylink")
-		return skymodules.Skylink{}, false
-	}
-	return skylink, true
+// GetSkylink returns the upload's skylink if available already.
+func (u *MongoTUSUpload) GetSkylink() (skymodules.Skylink, bool) {
+	return u.Skylink, u.Complete
 }
 
 // GetInfo returns the FileInfo of the upload.
 func (u *MongoTUSUpload) GetInfo(ctx context.Context) (handler.FileInfo, error) {
+	if u.Complete {
+		return handler.FileInfo{}, os.ErrNotExist
+	}
 	return u.FileInfo, nil
 }
 
@@ -392,12 +387,19 @@ func (u *MongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodu
 		return ErrUploadFinished
 	}
 	uploads := u.staticUploadStore.staticUploadCollection()
-	u.FileInfo.MetaData["Skylink"] = skylink.String()
 	u.Complete = true
+	u.Skylink = skylink
 	result := uploads.FindOneAndUpdate(ctx, bson.M{"_id": u.FileInfo.ID}, bson.M{
 		"$set": bson.M{
-			"fileinfo": u.FileInfo,
 			"complete": u.Complete,
+			"skylink":  u.Skylink,
+		},
+		// Clean up some space.
+		"$unset": bson.M{
+			"fanoutbytes":     "",
+			"fileinfo":        "",
+			"issmallfile":     "",
+			"smalluploaddata": "",
 		},
 	})
 	if errors.Contains(result.Err(), mongo.ErrNoDocuments) {

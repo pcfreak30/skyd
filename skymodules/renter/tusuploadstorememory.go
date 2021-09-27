@@ -193,7 +193,7 @@ func (u *skynetInMemoryUpload) SmallFileData(ctx context.Context) ([]byte, error
 }
 
 // Skylink returns the skylink of the upload if it was set already.
-func (u *skynetInMemoryUpload) Skylink() (skymodules.Skylink, bool) {
+func (u *skynetInMemoryUpload) GetSkylink() (skymodules.Skylink, bool) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	sl, exists := u.fi.MetaData["Skylink"]

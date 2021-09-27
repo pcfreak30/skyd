@@ -205,7 +205,7 @@ func (stu *skynetTUSUploader) Skylink(id string) (skymodules.Skylink, bool) {
 	if err != nil {
 		return skymodules.Skylink{}, false
 	}
-	return u.Skylink()
+	return u.GetSkylink()
 }
 
 // Close closes the upload and underlying filenode.

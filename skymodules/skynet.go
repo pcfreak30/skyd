@@ -262,9 +262,9 @@ type (
 		handler.ConcaterDataStore
 		handler.Locker
 
-		// Skylink returns the Skylink for an upload with a given ID.  If the
-		// upload can't be found or isn't finished, "false" will be returned
-		// alongside an empty string.
+		// Skylink returns the Skylink for an upload with a given ID.
+		// If the upload can't be found or isn't finished, "false" will
+		// be returned alongside an empty string.
 		Skylink(id string) (Skylink, bool)
 	}
 
@@ -283,8 +283,8 @@ type (
 	// SkynetTUSUpload is the interface for a TUS upload in the
 	// SkynetTUSUploadStore.
 	SkynetTUSUpload interface {
-		// Skylink returns the upload's skylink if available already.
-		Skylink() (Skylink, bool)
+		// GetSkylink returns the upload's skylink if available already.
+		GetSkylink() (Skylink, bool)
 
 		// GetInfo returns the FileInfo of the upload.
 		GetInfo(ctx context.Context) (handler.FileInfo, error)
