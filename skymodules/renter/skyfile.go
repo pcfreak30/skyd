@@ -122,12 +122,11 @@ func fileUploadParams(siaPath skymodules.SiaPath, dataPieces, parityPieces int, 
 
 	// Return the FileUploadParams
 	return skymodules.FileUploadParams{
-		SiaPath:             siaPath,
-		ErasureCode:         ec,
-		Force:               force,
-		DisablePartialChunk: true,  // must be set to true - partial chunks change, content addressed files must not change.
-		Repair:              false, // indicates whether this is a repair operation
-		CipherType:          ct,
+		SiaPath:     siaPath,
+		ErasureCode: ec,
+		Force:       force,
+		Repair:      false, // indicates whether this is a repair operation
+		CipherType:  ct,
 	}, nil
 }
 
@@ -231,10 +230,9 @@ func (r *Renter) CreateSkylinkFromSiafile(sup skymodules.SkyfileUploadParameters
 
 	// Override the metadata with the info from the fileNode.
 	metadata := skymodules.SkyfileMetadata{
-		Filename:     siaPath.Name(),
-		Mode:         fileNode.Mode(),
-		Monetization: sup.Monetization,
-		Length:       fileNode.Size(),
+		Filename: siaPath.Name(),
+		Mode:     fileNode.Mode(),
+		Length:   fileNode.Size(),
 	}
 
 	// Generate the fanoutBytes
@@ -249,47 +247,33 @@ func (r *Renter) CreateSkylinkFromSiafile(sup skymodules.SkyfileUploadParameters
 	return r.managedCreateSkylinkFromFileNode(r.tg.StopCtx(), sup, metadata, fileNode, fanoutBytes)
 }
 
-// managedCreateSkylinkFromFileNode creates a skylink from a file node.
-//
-// The name needs to be passed in explicitly because a file node does not track
-// its own name, which allows the file to be renamed concurrently without
-// causing any race conditions.
-func (r *Renter) managedCreateSkylinkFromFileNode(ctx context.Context, sup skymodules.SkyfileUploadParameters, skyfileMetadata skymodules.SkyfileMetadata, fileNode *filesystem.FileNode, fanoutBytes []byte) (skymodules.Skylink, error) {
+// managedCreateSkylink creates a skylink from the provided parameters.
+func (r *Renter) managedCreateSkylink(ctx context.Context, sup skymodules.SkyfileUploadParameters, skyfileMetadata skymodules.SkyfileMetadata, fanoutBytes []byte, size uint64, masterKey crypto.CipherKey, ec skymodules.ErasureCoder) (skymodules.Skylink, error) {
 	// Check if the given metadata is valid
 	err := skymodules.ValidateSkyfileMetadata(skyfileMetadata)
 	if err != nil {
 		return skymodules.Skylink{}, errors.Compose(ErrInvalidMetadata, err)
 	}
-
-	// Check if any of the skylinks associated with the siafile are blocked
-	if r.managedIsFileNodeBlocked(fileNode) {
-		err = ErrSkylinkBlocked
-		// Skylink is blocked, return error and try and delete file
-		deleteErr := r.DeleteFile(sup.SiaPath)
-		// Don't bother returning an error if the file doesn't exist
-		if !errors.Contains(deleteErr, filesystem.ErrNotExist) {
-			err = errors.Compose(err, deleteErr)
-		}
-		return skymodules.Skylink{}, err
-	}
-
-	// Check that the encryption key and erasure code is compatible with the
-	// skyfile format. This is intentionally done before any heavy computation
-	// to catch errors early on.
-	var sl skymodules.SkyfileLayout
-	masterKey := fileNode.MasterKey()
-	if len(masterKey.Key()) > len(sl.KeyData) {
-		return skymodules.Skylink{}, errors.New("cipher key is not supported by the skyfile format")
-	}
-	ec := fileNode.ErasureCode()
-	if ec.Type() != skymodules.ECReedSolomonSubShards64 {
-		return skymodules.Skylink{}, errors.New("siafile has unsupported erasure code type")
-	}
-
 	// Marshal the metadata.
 	metadataBytes, err := skymodules.SkyfileMetadataBytes(skyfileMetadata)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "error retrieving skyfile metadata bytes")
+	}
+	return r.managedCreateSkylinkRawMD(ctx, sup, metadataBytes, fanoutBytes, size, masterKey, ec)
+}
+
+// managedCreateSkylinkRawMD creates a skylink from the provided parameters
+// using already encoded metadata.
+func (r *Renter) managedCreateSkylinkRawMD(ctx context.Context, sup skymodules.SkyfileUploadParameters, metadataBytes, fanoutBytes []byte, size uint64, masterKey crypto.CipherKey, ec skymodules.ErasureCoder) (skymodules.Skylink, error) {
+	// Check that the encryption key and erasure code is compatible with the
+	// skyfile format. This is intentionally done before any heavy computation
+	// to catch errors early on.
+	var sl skymodules.SkyfileLayout
+	if len(masterKey.Key()) > len(sl.KeyData) {
+		return skymodules.Skylink{}, errors.New("cipher key is not supported by the skyfile format")
+	}
+	if ec.Type() != skymodules.ECReedSolomonSubShards64 {
+		return skymodules.Skylink{}, errors.New("siafile has unsupported erasure code type")
 	}
 
 	// Check the header size.
@@ -301,7 +285,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(ctx context.Context, sup skymo
 	// Assemble the first chunk of the skyfile.
 	sl = skymodules.SkyfileLayout{
 		Version:            skymodules.SkyfileVersion,
-		Filesize:           fileNode.Size(),
+		Filesize:           size,
 		MetadataSize:       uint64(len(metadataBytes)),
 		FanoutSize:         uint64(len(fanoutBytes)),
 		FanoutDataPieces:   uint8(ec.MinPieces()),
@@ -318,7 +302,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(ctx context.Context, sup skymo
 
 	// Encrypt the base sector if necessary.
 	if encryptionEnabled(&sup) {
-		err = encryptBaseSectorWithSkykey(baseSector, sl, sup.FileSpecificSkykey)
+		err := encryptBaseSectorWithSkykey(baseSector, sl, sup.FileSpecificSkykey)
 		if err != nil {
 			return skymodules.Skylink{}, errors.AddContext(err, "Failed to encrypt base sector for upload")
 		}
@@ -350,18 +334,44 @@ func (r *Renter) managedCreateSkylinkFromFileNode(ctx context.Context, sup skymo
 		return skymodules.Skylink{}, err
 	}
 
-	// Add the skylink to the siafiles.
-	err = fileNode.AddSkylink(skylink)
-	if err != nil {
-		return skylink, errors.AddContext(err, "unable to add skylink to the sianodes")
-	}
-
 	// Upload the base sector.
 	err = r.managedUploadBaseSector(ctx, sup, baseSector, skylink)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "Unable to upload base sector for file node. ")
 	}
 
+	return skylink, errors.AddContext(err, "unable to add skylink to the sianodes")
+}
+
+// managedCreateSkylinkFromFileNode creates a skylink from a file node.
+//
+// The name needs to be passed in explicitly because a file node does not track
+// its own name, which allows the file to be renamed concurrently without
+// causing any race conditions.
+func (r *Renter) managedCreateSkylinkFromFileNode(ctx context.Context, sup skymodules.SkyfileUploadParameters, skyfileMetadata skymodules.SkyfileMetadata, fileNode *filesystem.FileNode, fanoutBytes []byte) (skymodules.Skylink, error) {
+	// Check if any of the skylinks associated with the siafile are blocked
+	if r.managedIsFileNodeBlocked(fileNode) {
+		err := ErrSkylinkBlocked
+		// Skylink is blocked, return error and try and delete file
+		deleteErr := r.DeleteFile(sup.SiaPath)
+		// Don't bother returning an error if the file doesn't exist
+		if !errors.Contains(deleteErr, filesystem.ErrNotExist) {
+			err = errors.Compose(err, deleteErr)
+		}
+		return skymodules.Skylink{}, err
+	}
+
+	// Create the skylink.
+	skylink, err := r.managedCreateSkylink(ctx, sup, skyfileMetadata, fanoutBytes, fileNode.Size(), fileNode.MasterKey(), fileNode.ErasureCode())
+	if err != nil {
+		return skymodules.Skylink{}, err
+	}
+
+	// Add the skylink to the siafiles.
+	err = fileNode.AddSkylink(skylink)
+	if err != nil {
+		return skylink, errors.AddContext(err, "unable to add skylink to the sianodes")
+	}
 	return skylink, errors.AddContext(err, "unable to add skylink to the sianodes")
 }
 
@@ -946,10 +956,9 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 
 	// Start setting up the FUP.
 	fup := skymodules.FileUploadParams{
-		Force:               lup.Force,
-		DisablePartialChunk: true,  // must be set to true - partial chunks change, content addressed files must not change.
-		Repair:              false, // indicates whether this is a repair operation
-		CipherType:          crypto.TypePlain,
+		Force:      lup.Force,
+		Repair:     false, // indicates whether this is a repair operation
+		CipherType: crypto.TypePlain,
 	}
 
 	// Re-encrypt the baseSector for upload and add the fanout key to the fup.

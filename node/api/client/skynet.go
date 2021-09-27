@@ -60,6 +60,12 @@ func (ts *tusStore) Close() {
 	ts.store = nil
 }
 
+// HostsForRegistryUpdateGET queries the /skynet/registry/hosts endpoint.
+func (c *Client) HostsForRegistryUpdateGET() (hg api.HostsForRegistryUpdateGET, err error) {
+	err = c.get("/skynet/registry/hosts", &hg)
+	return
+}
+
 // SkynetBaseSectorGet uses the /skynet/basesector endpoint to fetch a reader of
 // the basesector data.
 func (c *Client) SkynetBaseSectorGet(skylink string) (io.ReadCloser, error) {
@@ -1086,16 +1092,6 @@ func urlValuesFromSkyfileMultipartUploadParameters(sup skymodules.SkyfileMultipa
 	values.Set("root", fmt.Sprintf("%t", sup.Root))
 	values.Set("basechunkredundancy", fmt.Sprintf("%v", sup.BaseChunkRedundancy))
 	values.Set("filename", sup.Filename)
-
-	// encode monetizers
-	if sup.Monetization != nil {
-		b, err := json.Marshal(sup.Monetization)
-		if err != nil {
-			return url.Values{}, err
-		}
-		values.Set("monetization", string(b))
-	}
-
 	values.Set("defaultpath", sup.DefaultPath)
 	values.Set("disabledefaultpath", strconv.FormatBool(sup.DisableDefaultPath))
 
@@ -1141,16 +1137,6 @@ func urlValuesFromSkyfileUploadParameters(sup skymodules.SkyfileUploadParameters
 	values.Set("basechunkredundancy", fmt.Sprintf("%v", sup.BaseChunkRedundancy))
 	values.Set("filename", sup.Filename)
 	values.Set("mode", fmt.Sprintf("%o", sup.Mode))
-
-	// encode monetizers
-	if sup.Monetization != nil {
-		b, err := json.Marshal(sup.Monetization)
-		if err != nil {
-			return url.Values{}, err
-		}
-		values.Set("monetization", string(b))
-	}
-
 	values.Set("defaultpath", sup.DefaultPath)
 	values.Set("disabledefaultpath", strconv.FormatBool(sup.DisableDefaultPath))
 

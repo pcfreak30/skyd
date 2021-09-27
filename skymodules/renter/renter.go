@@ -263,7 +263,7 @@ type Renter struct {
 	staticBaseSectorUploadStats     *skymodules.DistributionTracker
 	staticChunkUploadStats          *skymodules.DistributionTracker
 	staticFanoutSectorDownloadStats *skymodules.DownloadOverdriveStats
-	staticRegReadStats              *skymodules.DistributionTracker
+	staticRegistryReadStats         *skymodules.DistributionTracker
 	staticRegWriteStats             *skymodules.DistributionTracker
 	staticStreamBufferStats         *skymodules.DistributionTracker
 
@@ -631,10 +631,8 @@ func (r *Renter) SetSettings(s skymodules.RenterSettings) error {
 
 	// Save the changes.
 	id := r.mu.Lock()
-	r.persist.ConversionRates = s.CurrencyConversionRates
 	r.persist.MaxDownloadSpeed = s.MaxDownloadSpeed
 	r.persist.MaxUploadSpeed = s.MaxUploadSpeed
-	r.persist.MonetizationBase = s.MonetizationBase
 	err = r.saveSync()
 	r.mu.Unlock(id)
 	if err != nil {
@@ -811,7 +809,7 @@ func (r *Renter) Performance() (skymodules.RenterPerformance, error) {
 		BaseSectorUploadStats:              r.staticBaseSectorUploadStats.Stats(),
 		ChunkUploadStats:                   r.staticChunkUploadStats.Stats(),
 		FanoutSectorDownloadOverdriveStats: r.staticFanoutSectorDownloadStats,
-		RegistryReadStats:                  r.staticRegReadStats.Stats(),
+		RegistryReadStats:                  r.staticRegistryReadStats.Stats(),
 		RegistryWriteStats:                 r.staticRegWriteStats.Stats(),
 		StreamBufferReadStats:              r.staticStreamBufferStats.Stats(),
 	}, nil
@@ -845,16 +843,11 @@ func (r *Renter) Settings() (skymodules.RenterSettings, error) {
 		return skymodules.RenterSettings{}, errors.AddContext(err, "error getting IPViolationsCheck:")
 	}
 	paused, endTime := r.staticUploadHeap.managedPauseStatus()
-	id := r.mu.RLock()
-	mb, ccr := r.persist.MonetizationBase, r.persist.ConversionRates
-	r.mu.RUnlock(id)
 	return skymodules.RenterSettings{
-		Allowance:               r.staticHostContractor.Allowance(),
-		CurrencyConversionRates: ccr,
-		IPViolationCheck:        enabled,
-		MaxDownloadSpeed:        download,
-		MaxUploadSpeed:          upload,
-		MonetizationBase:        mb,
+		Allowance:        r.staticHostContractor.Allowance(),
+		IPViolationCheck: enabled,
+		MaxDownloadSpeed: download,
+		MaxUploadSpeed:   upload,
 		UploadsStatus: skymodules.UploadsStatus{
 			Paused:       paused,
 			PauseEndTime: endTime,
@@ -1051,7 +1044,7 @@ func (r *Renter) Skykeys() ([]skykey.Skykey, error) {
 var _ skymodules.Renter = (*Renter)(nil)
 
 // renterBlockingStartup handles the blocking portion of NewCustomRenter.
-func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb skymodules.HostDB, w modules.Wallet, hc hostContractor, mux *siamux.SiaMux, persistDir string, rl *ratelimit.RateLimit, deps skymodules.SkydDependencies) (*Renter, error) {
+func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb skymodules.HostDB, w modules.Wallet, hc hostContractor, mux *siamux.SiaMux, tus skymodules.SkynetTUSUploadStore, persistDir string, rl *ratelimit.RateLimit, deps skymodules.SkydDependencies) (*Renter, error) {
 	if g == nil {
 		return nil, errNilGateway
 	}
@@ -1121,19 +1114,10 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		mu:                   siasync.New(modules.SafeMutexDelay, 1),
 		staticTPool:          tpool,
 	}
-
-	r.staticRegReadStats = skymodules.NewDistributionTrackerStandard()
-	r.staticRegReadStats.AddDataPoint(readRegistryStatsSeed) // Seed the stats so that startup doesn't say 0.
-	r.staticRegWriteStats = skymodules.NewDistributionTrackerStandard()
-	r.staticRegWriteStats.AddDataPoint(5 * time.Second) // Seed the stats so that startup doesn't say 0.
-	r.staticBaseSectorUploadStats = skymodules.NewDistributionTrackerStandard()
-	r.staticBaseSectorUploadStats.AddDataPoint(15 * time.Second) // Seed the stats so that startup doesn't say 0.
-	r.staticChunkUploadStats = skymodules.NewDistributionTrackerStandard()
-	r.staticChunkUploadStats.AddDataPoint(15 * time.Second) // Seed the stats so that startup doesn't say 0.
-	r.staticStreamBufferStats = skymodules.NewDistributionTrackerStandard()
-	r.staticStreamBufferStats.AddDataPoint(5 * time.Second) // Seed the stats so that startup doesn't say 0.
-	r.staticSkynetTUSUploader = newSkynetTUSUploader(r)
-	r.staticStreamBufferSet = newStreamBufferSet(r.staticStreamBufferStats, &r.tg)
+	r.staticSkynetTUSUploader = newSkynetTUSUploader(r, tus)
+	if err := r.tg.AfterStop(r.staticSkynetTUSUploader.Close); err != nil {
+		return nil, err
+	}
 	r.staticUploadChunkDistributionQueue = newUploadChunkDistributionQueue(r)
 	close(r.staticUploadHeap.pauseChan)
 
@@ -1206,6 +1190,9 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		return nil, err
 	}
 
+	// Init stream buffer now that the stats are initialised.
+	r.staticStreamBufferSet = newStreamBufferSet(r.staticStreamBufferStats, &r.tg)
+
 	// After persist is initialized, create the worker pool.
 	r.staticWorkerPool = r.newWorkerPool()
 
@@ -1227,6 +1214,9 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	// the utilities regularly.
 	r.managedUpdateRenterContractsAndUtilities()
 	go r.threadedUpdateRenterContractsAndUtilities()
+
+	// Launch the stat persisting thread.
+	go r.threadedStatsPersister()
 
 	// Spin up background threads which are not depending on the renter being
 	// up-to-date with consensus.
@@ -1324,11 +1314,11 @@ func (r *Renter) threadedUpdateRenterContractsAndUtilities() {
 }
 
 // NewCustomRenter initializes a renter and returns it.
-func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb skymodules.HostDB, w modules.Wallet, hc hostContractor, mux *siamux.SiaMux, persistDir string, rl *ratelimit.RateLimit, deps skymodules.SkydDependencies) (*Renter, <-chan error) {
+func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb skymodules.HostDB, w modules.Wallet, hc hostContractor, mux *siamux.SiaMux, tus skymodules.SkynetTUSUploadStore, persistDir string, rl *ratelimit.RateLimit, deps skymodules.SkydDependencies) (*Renter, <-chan error) {
 	errChan := make(chan error, 1)
 
 	// Blocking startup.
-	r, err := renterBlockingStartup(g, cs, tpool, hdb, w, hc, mux, persistDir, rl, deps)
+	r, err := renterBlockingStartup(g, cs, tpool, hdb, w, hc, mux, tus, persistDir, rl, deps)
 	if err != nil {
 		errChan <- err
 		return nil, errChan
@@ -1351,7 +1341,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 }
 
 // New returns an initialized renter.
-func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, mux *siamux.SiaMux, rl *ratelimit.RateLimit, persistDir string) (*Renter, <-chan error) {
+func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, mux *siamux.SiaMux, tus skymodules.SkynetTUSUploadStore, rl *ratelimit.RateLimit, persistDir string) (*Renter, <-chan error) {
 	errChan := make(chan error, 1)
 	hdb, errChanHDB := hostdb.New(g, cs, tpool, mux, persistDir)
 	if err := modules.PeekErr(errChanHDB); err != nil {
@@ -1363,7 +1353,7 @@ func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpoo
 		errChan <- err
 		return nil, errChan
 	}
-	renter, errChanRenter := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, mux, persistDir, rl, skymodules.SkydProdDependencies)
+	renter, errChanRenter := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, mux, tus, persistDir, rl, skymodules.SkydProdDependencies)
 	if err := modules.PeekErr(errChanRenter); err != nil {
 		errChan <- err
 		return nil, errChan
@@ -1373,4 +1363,22 @@ func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpoo
 		close(errChan)
 	}()
 	return renter, errChan
+}
+
+// HostsForRegistryUpdate returns a list of hosts that the renter would be using
+// for updating the registry.
+func (r *Renter) HostsForRegistryUpdate() ([]types.SiaPublicKey, error) {
+	if err := r.tg.Add(); err != nil {
+		return nil, err
+	}
+	defer r.tg.Done()
+
+	var hpks []types.SiaPublicKey
+	for _, w := range r.staticWorkerPool.callWorkers() {
+		if !isWorkerGoodForRegistryUpdate(w) {
+			continue
+		}
+		hpks = append(hpks, w.staticHostPubKey)
+	}
+	return hpks, nil
 }

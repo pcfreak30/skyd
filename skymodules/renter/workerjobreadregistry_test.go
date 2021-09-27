@@ -41,10 +41,30 @@ func TestReadRegistryJob(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create a ReadRegistry job to read the entry.
+	// The read registry stats should be seeded and therefore the cutoff
+	// estimate shouldn't be 0.
+	cutoffEstimate := wt.ReadRegCutoffEstimate()
+	if cutoffEstimate == 0 {
+		t.Fatal("estimate wasn't seeded", cutoffEstimate)
+	}
+
+	// Read the entry
 	lookedUpRV, err := wt.ReadRegistry(context.Background(), testSpan(), spk, rv.Tweak)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Read the entry a few more times to guarantee the stats are updated.
+	for i := 0; i < 3; i++ {
+		_, err = wt.ReadRegistry(context.Background(), testSpan(), spk, rv.Tweak)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// The estimate should be updated.
+	newCutoffEstimate := wt.ReadRegCutoffEstimate()
+	if newCutoffEstimate == 0 || newCutoffEstimate == cutoffEstimate {
+		t.Error("estimate wasn't updated", newCutoffEstimate, cutoffEstimate)
 	}
 
 	// The entries should match.

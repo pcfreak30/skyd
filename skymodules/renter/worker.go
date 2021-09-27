@@ -20,6 +20,7 @@ import (
 	"unsafe"
 
 	"gitlab.com/NebulousLabs/threadgroup"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 
@@ -35,7 +36,6 @@ const (
 	// registry cache.
 	registryCacheSize = 1 << 20 // 1 MiB
 )
-
 const (
 	// These variables define the total amount of data that a worker is willing
 	// to queue at once when performing async tasks. If the worker has more data
@@ -83,6 +83,9 @@ type (
 		staticJobRenewQueue            *jobRenewQueue
 		staticJobUpdateRegistryQueue   *jobUpdateRegistryQueue
 		staticJobUploadSnapshotQueue   *jobUploadSnapshotQueue
+
+		// Stats
+		staticJobReadRegistryDT *skymodules.DistributionTracker
 
 		// Upload variables.
 		unprocessedChunks         *uploadChunks // Yet unprocessed work items.
@@ -258,6 +261,10 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	// download will contribute to user download estimations and vice versa.
 	jrs := NewJobReadStats()
 
+	// staticJobReadRegistryDT will be seeded when the first price table is
+	// fetched.
+	w.staticJobReadRegistryDT = skymodules.NewDistributionTrackerStandard()
+
 	w.newPriceTable()
 	w.newMaintenanceState()
 	w.initJobHasSectorQueue()
@@ -285,4 +292,10 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		return nil, errors.New("unable to build a cache for the worker")
 	}
 	return w, nil
+}
+
+// ReadRegCutoffEstimate is the estimate to use for deciding whether a worker is
+// good enough to be part of the regread cutoff estimate.
+func (w *worker) ReadRegCutoffEstimate() time.Duration {
+	return w.staticJobReadRegistryDT.Percentiles()[0][0] // p90
 }

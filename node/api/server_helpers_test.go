@@ -234,7 +234,8 @@ func assembleServerTesterWithDeps(key crypto.CipherKey, testdir string, gDeps, c
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	r, errChan := renter.NewCustomRenter(g, cs, tp, hdb, w, hc, mux, renterPersistDir, renterRateLimit, rDeps)
+	tus := renter.NewSkynetTUSInMemoryUploadStore()
+	r, errChan := renter.NewCustomRenter(g, cs, tp, hdb, w, hc, mux, tus, renterPersistDir, renterRateLimit, rDeps)
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
@@ -332,7 +333,8 @@ func assembleAuthenticatedServerTester(requiredPassword string, key crypto.Ciphe
 		return nil, err
 	}
 	rl := ratelimit.NewRateLimit(0, 0, 0)
-	r, errChan := renter.New(g, cs, w, tp, mux, rl, filepath.Join(testdir, skymodules.RenterDir))
+	tus := renter.NewSkynetTUSInMemoryUploadStore()
+	r, errChan := renter.New(g, cs, w, tp, mux, tus, rl, filepath.Join(testdir, skymodules.RenterDir))
 	if err := <-errChan; err != nil {
 		return nil, err
 	}

@@ -539,12 +539,11 @@ type DownloadInfo struct {
 // FileUploadParams contains the information used by the Renter to upload a
 // file.
 type FileUploadParams struct {
-	Source              string
-	SiaPath             SiaPath
-	ErasureCode         ErasureCoder
-	Force               bool
-	DisablePartialChunk bool
-	Repair              bool
+	Source      string
+	SiaPath     SiaPath
+	ErasureCode ErasureCoder
+	Force       bool
+	Repair      bool
 
 	// CipherType was added later. If it is left blank, the renter will use the
 	// default encryption method (as of writing, Threefish)
@@ -631,6 +630,10 @@ type HostDBEntry struct {
 	// Measurements related to the IP subnet mask.
 	IPNets          []string  `json:"ipnets"`
 	LastIPNetChange time.Time `json:"lastipnetchange"`
+
+	// Malicious indicates whether the host is considered to be a malicous
+	// host by the hostdb.
+	Malicious bool `json:"malicious"`
 
 	// The public key of the host, stored separately to minimize risk of certain
 	// MitM based vulnerabilities.
@@ -739,9 +742,6 @@ type RenterSettings struct {
 	MaxUploadSpeed   int64         `json:"maxuploadspeed"`
 	MaxDownloadSpeed int64         `json:"maxdownloadspeed"`
 	UploadsStatus    UploadsStatus `json:"uploadsstatus"`
-
-	CurrencyConversionRates map[string]types.Currency `json:"currencyconversionrates"`
-	MonetizationBase        types.Currency            `json:"monetizationbase"`
 }
 
 // UploadsStatus contains information about the Renter's Uploads
@@ -775,6 +775,17 @@ func (mrs MerkleRootSet) MarshalJSON() ([]byte, error) {
 func ChunkSize(ct crypto.CipherType, dataPieces uint64) uint64 {
 	pieceSize := modules.SectorSize - ct.Overhead()
 	return pieceSize * dataPieces
+}
+
+// NumChunks returns the number of chunks a file has given its CipherType, size
+// and number of data pieces.
+func NumChunks(ct crypto.CipherType, fileSize, dataPieces uint64) uint64 {
+	chunkSize := ChunkSize(ct, dataPieces)
+	numChunks := fileSize / chunkSize
+	if fileSize%chunkSize != 0 {
+		numChunks++
+	}
+	return numChunks
 }
 
 // UnmarshalJSON attempts to decode a MerkleRootSet, falling back on the legacy
@@ -1324,6 +1335,10 @@ type Renter interface {
 	// Host provides the DB entry and score breakdown for the requested host.
 	Host(pk types.SiaPublicKey) (HostDBEntry, bool, error)
 
+	// HostsForRegistryUpdate returns a list of hosts that the renter would be using
+	// for updating the registry.
+	HostsForRegistryUpdate() ([]types.SiaPublicKey, error)
+
 	// InitialScanComplete returns a boolean indicating if the initial scan of the
 	// hostdb is completed.
 	InitialScanComplete() (bool, error)
@@ -1654,6 +1669,10 @@ type HostDB interface {
 	// IPViolationsCheck returns a boolean indicating if the IP violation check is
 	// enabled or not.
 	IPViolationsCheck() (bool, error)
+
+	// IsMalicious indicates whether the host is considered to be malicious
+	// according to the hostdb.
+	IsMalicious(HostDBEntry) (bool, error)
 
 	// RandomHosts returns a set of random hosts, weighted by their estimated
 	// usefulness / attractiveness to the renter. RandomHosts will not return
