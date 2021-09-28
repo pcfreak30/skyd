@@ -44,7 +44,7 @@ var (
 	emptyFilesystemSleepDuration = build.Select(build.Var{
 		Dev:      5 * time.Second,
 		Standard: 5 * time.Minute,
-		Testing:  100 * time.Millisecond,
+		Testing:  2 * time.Second,
 	}).(time.Duration)
 
 	// healthLoopErrorSleepDuration indicates how long the health loop should
@@ -52,7 +52,7 @@ var (
 	healthLoopErrorSleepDuration = build.Select(build.Var{
 		Dev:      9 * time.Second,
 		Standard: 5 * time.Minute,
-		Testing:  250 * time.Millisecond,
+		Testing:  time.Second,
 	}).(time.Duration)
 
 	// healthLoopResetInterval defines how frequently the health loop resets,
@@ -60,7 +60,7 @@ var (
 	healthLoopResetInterval = build.Select(build.Var{
 		Dev:      30 * time.Second,
 		Standard: 15 * time.Minute,
-		Testing:  300 * time.Millisecond,
+		Testing:  2 * time.Second,
 	}).(time.Duration)
 
 	// TargetHealthCheckFrequency defines how frequently we want to update the
@@ -76,7 +76,7 @@ var (
 	TargetHealthCheckFrequency = build.Select(build.Var{
 		Dev:      3 * time.Minute,
 		Standard: 24 * time.Hour,
-		Testing:  1 * time.Second,
+		Testing:  5 * time.Second,
 	}).(time.Duration)
 
 	// urgentHealthCheckFrequency is the time at which we feel the health of the
@@ -95,7 +95,7 @@ var (
 	urgentHealthCheckFrequency = build.Select(build.Var{
 		Dev:      9 * time.Minute,
 		Standard: 72 * time.Hour,
-		Testing:  5 * time.Second,
+		Testing:  10 * time.Second,
 	}).(time.Duration)
 )
 
