@@ -490,16 +490,15 @@ LOOP:
 			break
 		}
 
-		// get some information on the expensive worker
-		piece, launched, completed := ws.staticPDC.currentDownload(w)
-		expensiveWorkerIndex := originalIndexMap[w.identifier()]
-		expensiveWorkerPiece := piece
-
-		// if the current worker is actively downloading the piece, don't swap
-		expensiveWorkerDownloading := launched && !completed
-		if expensiveWorkerDownloading {
+		// if the current worker is launched, don't swap it out
+		_, launched := ws.staticPDC.launchedPiecesByWorker[w.identifier()]
+		if launched {
 			continue
 		}
+
+		// get some information on the expensive worker
+		expensiveWorkerIndex := originalIndexMap[w.identifier()]
+		expensiveWorkerPiece := w.getPieceForDownload()
 
 		// range over the candidate's pieces and see whether we can swap
 		for _, piece := range candidate.pieces() {
@@ -794,7 +793,7 @@ func (pdc *projectDownloadChunk) currentDownload(w downloadWorker) (uint64, bool
 
 	// use the launched and completed maps on the pdc to find out whether the
 	// download is ongoing.
-	workerKey := iw.worker().staticHostPubKeyStr
+	workerKey := iw.identifier()
 	launchedPieces, exists := pdc.launchedPiecesByWorker[workerKey]
 	if !exists {
 		return currentPiece, false, false
@@ -837,7 +836,7 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, allWorkers []dow
 
 		// launch the piece
 		isOverdrive := len(pdc.launchedWorkers) >= minPieces
-		expectedCompleteTime, launched := pdc.launchWorker(w.worker(), piece, isOverdrive)
+		expectedCompleteTime, launched := pdc.launchWorker(w, piece, isOverdrive)
 		// fmt.Printf("- %v launched for %v success %v\n", w.identifier(), piece, launched)
 		if launched {
 			// Log the event.
@@ -1204,22 +1203,37 @@ func buildDownloadWorkers(workers []*individualWorker, numPieces int, shift time
 // method will split the given workers array in a list of most likely workers,
 // and a list of less likely workers.
 func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWorker, bI int, workersNeeded int) ([]downloadWorker, []downloadWorker) {
-	// sort the workers by percentage chance they complete after the
-	// current bucket duration
+	// calculate the less likely cap, taking into account underflow
+	var lessLikelyCap int
+	if len(workers) > workersNeeded {
+		lessLikelyCap = len(workers) - workersNeeded
+	}
+
+	// prepare two slices that hold the workers which are most likely and the
+	// ones that are less likely
+	mostLikely := make([]downloadWorker, 0, workersNeeded)
+	lessLikely := make([]downloadWorker, 0, lessLikelyCap)
+
+	// add worker is a helper function that adds a worker to either the most
+	// likely or less likely worker slice depending on whether the most likely
+	// slice is full or not, keep a map of what workers were added
+	added := make(map[string]struct{}, 0)
+	addWorker := func(w downloadWorker) {
+		if len(mostLikely) < workersNeeded {
+			mostLikely = append(mostLikely, w)
+		} else {
+			lessLikely = append(lessLikely, w)
+		}
+		added[w.identifier()] = struct{}{}
+	}
+
+	// now sort the workers by percentage chance they complete after the
+	// current bucket duration, hence most and less likely
 	sort.Slice(workers, func(i, j int) bool {
 		chanceI := workers[i].chanceAfter(bI)
 		chanceJ := workers[j].chanceAfter(bI)
 		return chanceI > chanceJ
 	})
-
-	// group 'workersNeeded' from the workers as the most likely, and
-	// group the rest as less likely
-	mostLikely := make([]downloadWorker, 0, workersNeeded)
-	var lessLikelyCap int
-	if len(workers) > workersNeeded {
-		lessLikelyCap = len(workers) - workersNeeded
-	}
-	lessLikely := make([]downloadWorker, 0, lessLikelyCap)
 
 	// map the pieces to ensure the most likely and less likely workers download
 	// all unique pieces, the pieces that were already downloaded are added
@@ -1230,52 +1244,42 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 		pieces[downloaded] = struct{}{}
 	}
 
-	// loop over the workers once and add the pieces that are currently being
-	// downloaded, those
-	// added := make(map[string]struct{}, 0)
-	// for _, w := range workers {
-	// piece, launched, completed := pdc.currentDownload(w)
-	// 	if launched && !completed {
-	// 		mostLikely = append(mostLikely, w)
-	// 		added[w.identifier()] = struct{}{}
-	// 		pieces[piece] = struct{}{}
-	// 	}
-	// }
-
-	// loop over the download workers again
+	// loop over the workers once and add workers that have been launched
 	for _, w := range workers {
-		// _, added := added[w.identifier()]
-		// if added {
-		// 	continue
-		// }
+		_, exists := pdc.launchedPiecesByWorker[w.identifier()]
+		if !exists {
+			continue
+		}
 
-		var useful bool
+		// workers that have been launched are added to the worker set
+		addWorker(w)
+
+		// only when the worker is still downloading the piece, we add the piece
+		// to the pieces map to ensure other workers are selected on different
+		// pieces
 		piece, launched, completed := pdc.currentDownload(w)
 		if launched && !completed {
 			pieces[piece] = struct{}{}
-			useful = true
+		}
+	}
+
+	// loop over the download workers again
+	for _, w := range workers {
+		_, added := added[w.identifier()]
+		if added {
+			continue
 		}
 
-		if !useful {
-			for _, pieceIndex := range w.pieces() {
-				_, exists := pieces[pieceIndex]
-				if exists {
-					continue
-				}
-
-				w.markPieceForDownload(pieceIndex)
-				pieces[pieceIndex] = struct{}{}
-				useful = true
-				break // only use a worker once
+		for _, pieceIndex := range w.pieces() {
+			_, exists := pieces[pieceIndex]
+			if exists {
+				continue
 			}
-		}
 
-		if useful {
-			if len(mostLikely) < workersNeeded {
-				mostLikely = append(mostLikely, w)
-			} else {
-				lessLikely = append(lessLikely, w)
-			}
+			w.markPieceForDownload(pieceIndex)
+			pieces[pieceIndex] = struct{}{}
+			addWorker(w)
+			break // only use a worker once
 		}
 	}
 

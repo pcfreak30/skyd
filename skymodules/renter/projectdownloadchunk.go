@@ -290,7 +290,7 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 	downloadErr := jrr.staticErr
 	metadata := jrr.staticMetadata
 	worker := metadata.staticWorker
-	workerKey := worker.staticHostPubKeyStr
+	workerKey := worker.staticHostPubKey.ShortString()
 	pieceIndex := metadata.staticPieceRootIndex
 
 	// Update the launched worker information
@@ -457,7 +457,9 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 // A time is returned which indicates the expected return time of the worker's
 // download. A bool is returned which indicates whether or not the launch was
 // successful.
-func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOverdrive bool) (time.Time, bool) {
+func (pdc *projectDownloadChunk) launchWorker(worker downloadWorker, pieceIndex uint64, isOverdrive bool) (time.Time, bool) {
+	w := worker.worker()
+
 	// Sanity check that the pieceOffset and pieceLength are segment aligned.
 	if pdc.pieceOffset%crypto.SegmentSize != 0 ||
 		pdc.pieceLength%crypto.SegmentSize != 0 {
@@ -483,7 +485,7 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 	expectedCompleteTime, added := jrq.callAddWithEstimate(jrs)
 
 	// On launch, ensure we have a map for this worker
-	workerKey := w.staticHostPubKeyStr
+	workerKey := worker.identifier()
 	if _, exists := pdc.launchedPiecesByWorker[workerKey]; !exists {
 		pdc.launchedPiecesByWorker[workerKey] = make(launchedPieces)
 	}
