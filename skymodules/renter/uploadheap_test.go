@@ -114,6 +114,9 @@ func testManagedBuildUnfinishedChunks(t *testing.T) {
 		if c.stuck {
 			t.Fatal("Found stuck chunk when expecting only unstuck chunks")
 		}
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// Call managedBuildUnfinishedChunks as stuck loop, all stuck chunks should
@@ -125,6 +128,9 @@ func testManagedBuildUnfinishedChunks(t *testing.T) {
 	for _, c := range uucs {
 		if !c.stuck {
 			t.Fatal("Found unstuck chunk when expecting only stuck chunks")
+		}
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
 		}
 	}
 
