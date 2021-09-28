@@ -153,7 +153,7 @@ func (uc *unfinishedUploadChunk) Close() error {
 	delete(r.repairingChunks, uc.id)
 	r.repairingChunksMu.Unlock()
 
-	return uc.Close()
+	return uc.fileEntry.Close()
 }
 
 // managedSetStuckAndClose sets the unfinishedUploadChunk's stuck status and

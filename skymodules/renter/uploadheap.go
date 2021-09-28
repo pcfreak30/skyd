@@ -495,12 +495,12 @@ func (r *Renter) ResumeRepairsAndUploads() error {
 }
 
 // managedBuildUnfinishedChunk will pull out a single unfinished chunk of a file.
-func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesystem.FileNode, chunkIndex uint64, hosts map[string]struct{}, priority bool, offline, goodForRenew map[string]bool, mm *memoryManager) (_ *unfinishedUploadChunk, err error) {
+func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesystem.FileNode, chunkIndex uint64, hosts map[string]struct{}, priority bool, offline, goodForRenew map[string]bool, mm *memoryManager, force bool) (_ *unfinishedUploadChunk, err error) {
 	cid := uploadChunkID{entry.UID(), chunkIndex}
 
 	// Check if the chunk is already being repaired before building it.
 	r.repairingChunksMu.Lock()
-	if _, repairing := r.repairingChunks[cid]; repairing {
+	if _, repairing := r.repairingChunks[cid]; repairing && !force {
 		r.repairingChunksMu.Unlock()
 		return nil, nil // already being repaired
 	}
@@ -510,9 +510,7 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 	// If this method fails, remove the chunk again.
 	defer func() {
 		if err != nil {
-			r.repairingChunksMu.Lock()
 			delete(r.repairingChunks, cid)
-			r.repairingChunksMu.Unlock()
 		}
 	}()
 
@@ -534,8 +532,9 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 	}
 
 	uuc := &unfinishedUploadChunk{
-		ctx:       ctx,
-		fileEntry: entryCopy,
+		ctx:          ctx,
+		fileEntry:    entryCopy,
+		staticRenter: r,
 
 		id: uploadChunkID{
 			fileUID: entry.UID(),
@@ -612,8 +611,8 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 			if exists && goodForRenew && exists2 && !offline && exists3 && !redundantPiece {
 				uuc.pieceUsage[pieceIndex] = true
 				uuc.piecesCompleted++
-			} else if redundantPiece {
-				fmt.Println("REDUNDANT PIECE!!!")
+			} else if redundantPiece && build.Release == "testing" {
+				build.Critical("same piece was uploaded to multiple hosts")
 			}
 
 			// In all cases, if this host already has a piece, the host cannot
@@ -704,9 +703,13 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		}
 
 		// Create unfinishedUploadChunk
-		chunk, err := r.managedBuildUnfinishedChunk(r.tg.StopCtx(), entry, uint64(index), hosts, memoryPriorityLow, offline, goodForRenew, mm)
+		chunk, err := r.managedBuildUnfinishedChunk(r.tg.StopCtx(), entry, uint64(index), hosts, memoryPriorityLow, offline, goodForRenew, mm, false)
 		if err != nil {
 			r.staticLog.Debugln("Error when building an unfinished chunk:", err)
+			continue
+		}
+		// Chunk might already being repaired.
+		if chunk == nil {
 			continue
 		}
 		newUnfinishedChunks = append(newUnfinishedChunks, chunk)

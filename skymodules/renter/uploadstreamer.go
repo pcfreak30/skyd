@@ -219,13 +219,24 @@ func (r *Renter) callUploadStreamFromReaderWithFileNodeNoBlock(ctx context.Conte
 
 		// Start the chunk upload.
 		offline, goodForRenew, _, _ := r.callRenterContractsAndUtilities()
-		uuc, err := r.managedBuildUnfinishedChunk(ctx, fileNode, chunkIndex, hosts, memoryPriorityHigh, offline, goodForRenew, r.staticUserUploadMemoryManager)
+		uuc, err := r.managedBuildUnfinishedChunk(ctx, fileNode, chunkIndex, hosts, memoryPriorityHigh, offline, goodForRenew, r.staticUserUploadMemoryManager, true)
 		if err != nil {
 			return nil, n, errors.AddContext(err, "unable to fetch chunk for stream")
 		}
 
-		// Create a new shard set it to be the source reader of the chunk.
+		// Create an new shard.
 		ss := NewStreamShard(reader)
+
+		// Chunk might already being repaired.
+		if uuc == nil {
+			_, _, err := ss.ReadChunk()
+			if err != nil {
+				return nil, n, errors.AddContext(err, "unable to read already repairing chunk")
+			}
+			continue
+		}
+
+		// Create a new shard set it to be the source reader of the chunk.
 		uuc.sourceReader = ss
 
 		// Check if the chunk needs any work or if we can skip it.
