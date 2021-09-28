@@ -8,8 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siadir"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -296,5 +298,84 @@ func TestCalculateDirectoryMetadata(t *testing.T) {
 		t.Log("Actual Metadata")
 		t.Log(string(actual))
 		t.Fatal(err)
+	}
+}
+
+// TestPruneUnfinishedFiles probes the pruning of unfinished files.
+func TestPruneUnfinishedFiles(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create renter
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Create file
+	sp := skymodules.RandomSiaPath()
+	file, err := rt.renter.createRenterTestFile(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify unfinished siafile metadata
+	if file.Finished() {
+		t.Fatal("File should be considered unfinished")
+	}
+
+	// Close File
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Trigger bubble
+	err = rt.renter.UpdateMetadata(skymodules.RootSiaPath(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify unfinished directory metadata
+	dirs, err := rt.renter.DirList(skymodules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dirs[0].AggregateNumUnfinishedFiles != 1 {
+		t.Fatal("Expected 1 aggregate unfinished file, found", dirs[0].AggregateNumUnfinishedFiles)
+	}
+	if dirs[0].NumUnfinishedFiles != 1 {
+		t.Fatal("Expected 1 unfinished file, found", dirs[0].NumUnfinishedFiles)
+	}
+
+	// Wait timeout
+	time.Sleep(unfinishedFilePruneDuration)
+
+	// Trigger bubble
+	err = rt.renter.UpdateMetadata(skymodules.RootSiaPath(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify file is deleted
+	dirs, err = rt.renter.DirList(skymodules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dirs[0].AggregateNumUnfinishedFiles != 0 {
+		t.Fatal("Expected 0 aggregate unfinished file, found", dirs[0].AggregateNumUnfinishedFiles)
+	}
+	if dirs[0].NumUnfinishedFiles != 0 {
+		t.Fatal("Expected 0 unfinished file, found", dirs[0].NumUnfinishedFiles)
+	}
+	_, err = rt.renter.File(sp)
+	if err == nil || !errors.Contains(err, filesystem.ErrNotExist) {
+		t.Fatal("expected file to be deleted but got", err)
 	}
 }
