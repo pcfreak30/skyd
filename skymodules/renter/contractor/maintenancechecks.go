@@ -1,6 +1,7 @@
 package contractor
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"math/big"
@@ -123,6 +124,9 @@ func (c *Contractor) managedUtilityChecks(contract skymodules.RenterContract, ho
 	uus = uus.Merge(needsUpdate)
 	newUtility = newUtility.Merge(u)
 	if !newUtility.GoodForUpload {
+		fmt.Println("dead score")
+		d, _ := json.MarshalIndent(sb, "  ", "  ")
+		fmt.Println(string(d))
 		fmt.Println("!gfu1", u)
 	}
 
