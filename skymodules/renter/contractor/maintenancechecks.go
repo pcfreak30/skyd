@@ -134,65 +134,38 @@ func (c *Contractor) managedUtilityChecks(contract skymodules.RenterContract, ho
 	u, needsUpdate = renewedCheck(contract.Utility, renewed)
 	uus = uus.Merge(needsUpdate)
 	newUtility = newUtility.Merge(u)
-	if !newUtility.GoodForUpload {
-		fmt.Println("!gfu2", u)
-	}
 
 	u, needsUpdate = maxRevisionCheck(contract.Utility, revision.NewRevisionNumber)
 	uus = uus.Merge(needsUpdate)
 	newUtility = newUtility.Merge(u)
-	if !newUtility.GoodForUpload {
-		fmt.Println("!gfu3", u)
-	}
 
 	u, needsUpdate = badContractCheck(contract.Utility)
 	uus = uus.Merge(needsUpdate)
 	newUtility = newUtility.Merge(u)
-	if !newUtility.GoodForUpload {
-		fmt.Println("!gfu4", u)
-	}
 
 	u, needsUpdate = offlineCheck(contract, host, c.staticLog)
 	uus = uus.Merge(needsUpdate)
 	newUtility = newUtility.Merge(u)
-	if !newUtility.GoodForUpload {
-		fmt.Println("!gfu5", u)
-	}
 
 	u, needsUpdate = upForRenewalCheck(contract, renewWindow, blockHeight, c.staticLog)
 	uus = uus.Merge(needsUpdate)
 	newUtility = newUtility.Merge(u)
-	if !newUtility.GoodForUpload {
-		fmt.Println("!gfu6", u)
-	}
 
 	u, needsUpdate = sufficientFundsCheck(contract, host, period, c.staticLog)
 	uus = uus.Merge(needsUpdate)
 	newUtility = newUtility.Merge(u)
-	if !newUtility.GoodForUpload {
-		fmt.Println("!gfu7", u)
-	}
 
 	u, needsUpdate = outOfStorageCheck(contract, blockHeight, c.staticLog)
 	uus = uus.Merge(needsUpdate)
 	newUtility = newUtility.Merge(u)
-	if !newUtility.GoodForUpload {
-		fmt.Println("!gfu8", u)
-	}
 
 	u, needsUpdate = storageGougingCheck(contract, allowance, host, revision.NewFileSize)
 	uus = uus.Merge(needsUpdate)
 	newUtility = newUtility.Merge(u)
-	if !newUtility.GoodForUpload {
-		fmt.Println("!gfu9", u)
-	}
 
 	u, needsUpdate = c.managedCheckHostScore(contract, sb, minScoreGFR, minScoreGFU)
 	uus = uus.Merge(needsUpdate)
 	newUtility = newUtility.Merge(u)
-	if !newUtility.GoodForUpload {
-		fmt.Println("!gfu19", u)
-	}
 
 	return newUtility, uus
 }

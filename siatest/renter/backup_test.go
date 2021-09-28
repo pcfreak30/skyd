@@ -158,6 +158,13 @@ func TestCreateLoadBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Wait for enough contracts to be gfu after the recovery.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		return siatest.CheckExpectedNumberOfContracts(r, 2, 0, 0, 0, 0, 0)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	rf, err = r.UploadBlocking(lf, dataPieces, parityPieces, false)
 	if err != nil {
 		t.Fatal(err)
