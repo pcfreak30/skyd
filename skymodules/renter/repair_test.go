@@ -213,11 +213,7 @@ func TestRandomStuckDirectory(t *testing.T) {
 		SiaPath:     skymodules.RandomSiaPath(),
 		ErasureCode: rsc,
 	}
-	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, persist.DefaultDiskPermissionsTest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
+	f, err := rt.newTestSiaFile(up.SiaPath, up.Source, up.ErasureCode, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,11 +231,7 @@ func TestRandomStuckDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, persist.DefaultDiskPermissionsTest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	f, err = rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
+	f, err = rt.newTestSiaFile(up.SiaPath, up.Source, up.ErasureCode, 100)
 	if err != nil {
 		t.Fatal(err)
 	}

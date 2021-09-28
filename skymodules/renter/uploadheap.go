@@ -1172,19 +1172,14 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath skymodules.SiaPath, hosts map[
 			continue
 		}
 		// For normal repairs, ignore files that don't have any unstuck chunks,
-		// are healthy and not in need of repair, or are unfinished and
-		// not on disk. Files that are unfinished and not on disk can
-		// only be repaired by resuming the upload.
+		// are healthy and not in need of repair.
 		//
 		// We can used the cached value of health because it is updated during
 		// bubble. Since the repair loop operates off of the metadata
 		// information updated by bubble this cached health is accurate enough
 		// to use in order to determine if a file has any chunks that need
 		// repair
-		_, err = os.Stat(file.Metadata().LocalPath)
-		onDisk := err == nil
-		finishable := file.Finished() || onDisk
-		ignore := file.NumChunks() == file.NumStuckChunks() || !skymodules.NeedsRepair(file.Metadata().CachedHealth) || finishable
+		ignore := file.NumChunks() == file.NumStuckChunks() || !skymodules.NeedsRepair(file.Metadata().CachedHealth)
 		if target == targetUnstuckChunks && ignore {
 			err = file.Close()
 			if err != nil {
