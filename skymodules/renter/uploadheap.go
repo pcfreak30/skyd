@@ -682,8 +682,6 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 			r.staticLog.Debugln("failed to get 'stuck' status of entry:", err)
 			continue
 		}
-		// Update stuck status to account for unfinished chunks
-		stuck = stuck || !entry.Finished()
 		if (target == targetStuckChunks) == stuck {
 			chunkIndexes = append(chunkIndexes, i)
 		}

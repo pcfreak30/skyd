@@ -24,8 +24,7 @@ var (
 )
 
 // managedAddRandomStuckChunks will try and add up to
-// maxRandomStuckChunksAddToHeap random stuck chunks or chunks from an
-// unfinished file to the upload heap
+// maxRandomStuckChunksAddToHeap random stuck chunks to the upload heap
 func (r *Renter) managedAddRandomStuckChunks(hosts map[string]struct{}) ([]skymodules.SiaPath, error) {
 	var dirSiaPaths []skymodules.SiaPath
 	// Remember number of stuck chunks we are starting with
@@ -35,13 +34,13 @@ func (r *Renter) managedAddRandomStuckChunks(hosts map[string]struct{}) ([]skymo
 	// total number of stuck chunks as not exceeded maxStuckChunksInHeap
 	spaceInHeap := prevNumRandomStuckChunks < maxRandomStuckChunksInHeap && prevNumStuckChunks < maxStuckChunksInHeap
 	for i := 0; i < maxRandomStuckChunksAddToHeap && spaceInHeap; i++ {
-		// Randomly get directory with stuck or unfinished files
+		// Randomly get directory with stuck files
 		dirSiaPath, err := r.managedStuckDirectory()
 		if err != nil {
 			return dirSiaPaths, errors.AddContext(err, "unable to get random stuck directory")
 		}
 
-		// Get Random stuck or unfinished file from directory
+		// Get Random stuck file from directory
 		siaPath, err := r.managedStuckFile(dirSiaPath)
 		if err != nil {
 			return dirSiaPaths, errors.AddContext(err, "unable to get random stuck file in dir "+dirSiaPath.String())
@@ -74,8 +73,8 @@ func (r *Renter) managedAddRandomStuckChunks(hosts map[string]struct{}) ([]skymo
 }
 
 // managedAddStuckChunksFromStuckStack will try and add up to
-// maxStuckChunksInHeap stuck or unfinished chunks to the upload heap from the
-// files in the stuck stack.
+// maxStuckChunksInHeap stuck chunks to the upload heap from the files in the
+// stuck stack.
 func (r *Renter) managedAddStuckChunksFromStuckStack(hosts map[string]struct{}) ([]skymodules.SiaPath, error) {
 	var dirSiaPaths []skymodules.SiaPath
 	offline, goodForRenew, _, _ := r.callRenterContractsAndUtilities()
@@ -105,8 +104,8 @@ func (r *Renter) managedAddStuckChunksFromStuckStack(hosts map[string]struct{}) 
 	return dirSiaPaths, nil
 }
 
-// managedAddStuckChunksToHeap tries to add as many chunks from a stuck or
-// unfinished siafile to the upload heap as possible
+// managedAddStuckChunksToHeap tries to add as many stuck chunks from a siafile
+// to the upload heap as possible
 func (r *Renter) managedAddStuckChunksToHeap(siaPath skymodules.SiaPath, hosts map[string]struct{}, offline, goodForRenew map[string]bool) (err error) {
 	// Open File
 	sf, err := r.staticFileSystem.OpenSiaFile(siaPath)
@@ -117,9 +116,8 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath skymodules.SiaPath, hosts m
 		err = errors.Compose(err, sf.Close())
 	}()
 
-	// Check if there are still stuck chunks to repair or if the file is
-	// finished.
-	if sf.NumStuckChunks() == 0 && sf.Finished() {
+	// Check if there are still stuck chunks to repair
+	if sf.NumStuckChunks() == 0 {
 		return errNoStuckChunks
 	}
 
@@ -191,14 +189,12 @@ func (r *Renter) managedStuckDirectory() (skymodules.SiaPath, error) {
 		// could happen if the only file in a directory was stuck and was very
 		// recently deleted so the health of the directory has not yet been
 		// updated.
-		emptyDir := len(directories) == 1 && directories[0].NumFiles == 0 && directories[0].NumUnfinishedFiles == 0
+		emptyDir := len(directories) == 1 && directories[0].NumFiles == 0
 		if emptyDir {
 			return siaPath, errNoStuckFiles
 		}
-		// Create a total value from the AggregateNumStuckChunks and the AggregateNumUnfinishedFiles
-		total := int(directories[0].AggregateNumStuckChunks + directories[0].AggregateNumUnfinishedFiles)
-		// Check if there are any stuck chunks or unfinished files in this directory subtree.
-		if total == 0 {
+		// Check if there are stuck chunks in this directory
+		if directories[0].AggregateNumStuckChunks == 0 {
 			// Log error if we are not at the root directory
 			if !siaPath.IsRoot() {
 				r.staticLog.Println("WARN: ended up in directory with no stuck chunks that is not root directory:", siaPath)
@@ -211,13 +207,13 @@ func (r *Renter) managedStuckDirectory() (skymodules.SiaPath, error) {
 		}
 
 		// Get random int
-		rand := fastrand.Intn(total)
+		rand := fastrand.Intn(int(directories[0].AggregateNumStuckChunks))
 		// Use rand to decide which directory to go into. Work backwards over
 		// the slice of directories. Since the first element is the current
 		// directory that means that it is the sum of all the files and
 		// directories.  We can chose a directory by subtracting the number of
-		// stuck chunks and unfinished files a directory has from rand and if
-		// rand gets to 0 or less we choose that directory
+		// stuck chunks a directory has from rand and if rand gets to 0 or less
+		// we choose that directory
 		for i := len(directories) - 1; i >= 0; i-- {
 			// If we are on the last iteration and the directory does have files
 			// then return the current directory
@@ -226,16 +222,13 @@ func (r *Renter) managedStuckDirectory() (skymodules.SiaPath, error) {
 				return siaPath, nil
 			}
 
-			// Skip directories with no stuck chunks and no unfinished files
-			subTotal := directories[i].AggregateNumStuckChunks + directories[i].AggregateNumUnfinishedFiles
-			if subTotal == 0 {
+			// Skip directories with no stuck chunks
+			if directories[i].AggregateNumStuckChunks == uint64(0) {
 				continue
 			}
 
-			// Decrement rand and update siaPath
-			rand = rand - int(subTotal)
+			rand = rand - int(directories[i].AggregateNumStuckChunks)
 			siaPath = directories[i].SiaPath
-
 			// If rand is less than 0 break out of the loop and continue into
 			// that directory
 			if rand < 0 {
@@ -245,12 +238,10 @@ func (r *Renter) managedStuckDirectory() (skymodules.SiaPath, error) {
 	}
 }
 
-// managedStuckFile finds a weighted random stuck or unfinished file from a
-// directory based on the number of stuck chunks and chunks in the stuck and
-// unfinished files of the directory
+// managedStuckFile finds a weighted random stuck file from a directory based on
+// the number of stuck chunks in the stuck files of the directory
 func (r *Renter) managedStuckFile(dirSiaPath skymodules.SiaPath) (siapath skymodules.SiaPath, err error) {
-	// Grab Aggregate number of stuck chunks and unfinished files from the
-	// directory
+	// Grab Aggregate number of stuck chunks from the directory
 	//
 	// NOTE: using the aggregate number of stuck chunks assumes that the
 	// directory and the files within the directory are in sync. This is ok to
@@ -269,8 +260,7 @@ func (r *Renter) managedStuckFile(dirSiaPath skymodules.SiaPath) (siapath skymod
 	aggregateNumStuckChunks := metadata.AggregateNumStuckChunks
 	numStuckChunks := metadata.NumStuckChunks
 	numFiles := metadata.NumFiles
-	numUnfinishedFiles := metadata.NumUnfinishedFiles
-	if (aggregateNumStuckChunks == 0 || numStuckChunks == 0 || numFiles == 0) && numUnfinishedFiles == 0 {
+	if aggregateNumStuckChunks == 0 || numStuckChunks == 0 || numFiles == 0 {
 		// If the number of stuck chunks or number of files is zero then this
 		// directory should not have been used to find a stuck file. Queue an
 		// update on the directories metadata to prevent this from happening
@@ -283,7 +273,7 @@ func (r *Renter) managedStuckFile(dirSiaPath skymodules.SiaPath) (siapath skymod
 	// Use rand to decide which file to select. We can chose a file by
 	// subtracting the number of stuck chunks a file has from rand and if rand
 	// gets to 0 or less we choose that file
-	rand := fastrand.Intn(int(aggregateNumStuckChunks + numUnfinishedFiles))
+	rand := fastrand.Intn(int(aggregateNumStuckChunks))
 
 	// Read the directory, using ReadDir so we don't read all the siafiles
 	// unless we need to
@@ -310,24 +300,17 @@ func (r *Renter) managedStuckFile(dirSiaPath skymodules.SiaPath) (siapath skymod
 			return skymodules.SiaPath{}, errors.AddContext(err, "could not open siafileset for "+sp.String())
 		}
 		numStuckChunks := int(f.NumStuckChunks())
-		finished := f.Finished()
 		if err := f.Close(); err != nil {
 			return skymodules.SiaPath{}, errors.AddContext(err, "failed to close filenode "+sp.String())
 		}
 
 		// Check if stuck
-		if numStuckChunks == 0 && finished {
+		if numStuckChunks == 0 {
 			continue
 		}
 
 		// Decrement rand and check if we have decremented fully
-		if finished {
-			// Decrement rand by the number of stuck chunks for finished files
-			rand = rand - numStuckChunks
-		} else {
-			// Decrement rand by one for unfinished files
-			rand--
-		}
+		rand = rand - numStuckChunks
 		siapath = sp
 		if rand < 0 {
 			break
@@ -366,10 +349,7 @@ func (r *Renter) managedSubDirectories(siaPath skymodules.SiaPath) ([]skymodules
 }
 
 // threadedStuckFileLoop works through the renter directory and finds the stuck
-// and unfinished chunks and tries to repair them. The reason stuck and
-// unfinished chunks are handled by a separate loop is to not negatively impact
-// the repair of good chunks with chunks that may or may not have a successful
-// repair.
+// chunks and tries to repair them
 func (r *Renter) threadedStuckFileLoop() {
 	err := r.tg.Add()
 	if err != nil {

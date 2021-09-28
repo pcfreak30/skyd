@@ -176,7 +176,7 @@ func (rt *renterTester) createZeroByteFileOnDisk() (string, error) {
 // marked as finished for backwards compatibility in testing.
 func (rt *renterTester) newTestSiaFile(siaPath skymodules.SiaPath, source string, rc skymodules.ErasureCoder, size uint64) (*filesystem.FileNode, error) {
 	// Create the siafile
-	err := rt.renter.staticFileSystem.NewSiaFile(siaPath, source, rc, crypto.GenerateSiaKey(crypto.RandomCipherType()), size, persist.DefaultDiskPermissionsTest, false)
+	err := rt.renter.staticFileSystem.NewSiaFile(siaPath, source, rc, crypto.GenerateSiaKey(crypto.RandomCipherType()), size, persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		return nil, err
 	}
