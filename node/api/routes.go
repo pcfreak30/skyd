@@ -128,12 +128,15 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/skynet/basesector/*skylink", api.skynetBaseSectorHandlerGET)
 		router.GET("/skynet/blocklist", api.skynetBlocklistHandlerGET)
 		router.POST("/skynet/blocklist", RequirePassword(api.skynetBlocklistHandlerPOST, requiredPassword))
+		router.GET("/skynet/health/entry", api.registryEntryHealthHandlerGET)
 		router.GET("/skynet/metadata/:skylink", api.skynetMetadataHandlerGET)
 		router.POST("/skynet/pin/:skylink", RequirePassword(api.skynetSkylinkPinHandlerPOST, requiredPassword))
 		router.GET("/skynet/portals", api.skynetPortalsHandlerGET)
 		router.POST("/skynet/portals", RequirePassword(api.skynetPortalsHandlerPOST, requiredPassword))
 		router.POST("/skynet/registry", RequirePassword(api.registryHandlerPOST, requiredPassword))
+		router.POST("/skynet/registrymulti", RequirePassword(api.registryMultiHandlerPOST, requiredPassword))
 		router.GET("/skynet/registry", api.registryHandlerGET)
+		router.GET("/skynet/registry/hosts", api.skynetHostsForRegistryUpdateGET)
 		router.GET("/skynet/resolve/:skylink", api.skylinkResolveGET)
 		router.POST("/skynet/restore", RequirePassword(api.skynetRestoreHandlerPOST, requiredPassword))
 		router.GET("/skynet/root", api.skynetRootHandlerGET)
@@ -142,6 +145,7 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/skynet/skyfile/*siapath", RequirePassword(api.skynetSkyfileHandlerPOST, requiredPassword))
 		router.GET("/skynet/stats", api.skynetStatsHandlerGET)
 		router.POST("/skynet/unpin/:skylink", RequirePassword(api.skynetSkylinkUnpinHandlerPOST, requiredPassword))
+		router.GET("/skynet/health/skylink/:skylink", api.skynetSkylinkHealthGET)
 
 		// Skykey endpoints
 		router.GET("/skynet/skykey", RequirePassword(api.skykeyHandlerGET, requiredPassword))
@@ -157,6 +161,12 @@ func (api *API) buildHTTPRoutes() {
 		// Add the skynet datastore. This covers the basic functionality of
 		// uploading a file with a known size in chunks.
 		storeComposer.UseCore(sds)
+
+		// Enable concatenating uploads.
+		storeComposer.UseConcater(sds)
+
+		// Enable locking the upload.
+		storeComposer.UseLocker(sds)
 
 		// Check if the maxsize can be read from the environment.  Otherwise
 		// it's unlimited.

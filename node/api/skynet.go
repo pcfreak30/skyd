@@ -28,10 +28,6 @@ import (
 )
 
 const (
-	// DefaultSkynetDefaultPath is the defaultPath value we use when the user
-	// hasn't specified one and `index.html` exists in the skyfile.
-	DefaultSkynetDefaultPath = "index.html"
-
 	// DefaultSkynetRequestTimeout is the default request timeout for routes
 	// that have a timeout query string parameter. If the request can not be
 	// resolved within the given amount of time, it times out. This is used for
@@ -43,7 +39,30 @@ const (
 	// request timeout. This to prevent an attack vector where the attacker
 	// could cause a go-routine leak by creating a bunch of requests with very
 	// high timeouts.
-	MaxSkynetRequestTimeout = 15 * 60 // in seconds
+	MaxSkynetRequestTimeout = 15 * time.Minute
+
+	// SkynetDisableForceHeader allows disabling the force-update feature.
+	SkynetDisableForceHeader = "Skynet-Disable-Force"
+
+	// SkynetFileLayoutHeader holds the layout of this skyfile.
+	SkynetFileLayoutHeader = "Skynet-File-Layout"
+
+	// SkynetFileMetadataHeader holds an encoded JSON object with the metadata
+	// of the skyfile *or* the subdirectory of the skyfile that has been
+	// requested.
+	SkynetFileMetadataHeader = "Skynet-File-Metadata"
+
+	// SkynetProofHeader holds an encoded JSON object with the registry proofs
+	// for this skylink.
+	SkynetProofHeader = "Skynet-Proof"
+
+	// SkynetSkylinkHeader is a string representation of the base64 encoded
+	// v1 Skylink that was served.
+	SkynetSkylinkHeader = "Skynet-Skylink"
+
+	// SkynetRequestedSkylinkHeader is a string representation of the base64 encoded
+	// Skylink that was requested.
+	SkynetRequestedSkylinkHeader = "Skynet-Requested-Skylink"
 )
 
 var (
@@ -54,6 +73,12 @@ var (
 )
 
 type (
+	// HostsForRegistryUpdateGET is the response that the api returns after
+	// a request to /skynet/registry/hosts.
+	HostsForRegistryUpdateGET struct {
+		Hosts []types.SiaPublicKey `json:"hosts"`
+	}
+
 	// SkynetSkyfileHandlerPOST is the response that the api returns after the
 	// /skynet/ POST endpoint has been used.
 	SkynetSkyfileHandlerPOST struct {
@@ -111,6 +136,12 @@ type (
 		BaseSectorUpload15mP99ms      float64 `json:"basesectorupload15mp99ms"`
 		BaseSectorUpload15mP999ms     float64 `json:"basesectorupload15mp999ms"`
 		BaseSectorUpload15mP9999ms    float64 `json:"basesectorupload15mp9999ms"`
+
+		// Sector Download Stats
+		BaseSectorOverdrivePct   float64 `json:"basesectoroverdrivepct"`
+		BaseSectorOverdriveAvg   float64 `json:"basesectoroverdriveavg"`
+		FanoutSectorOverdrivePct float64 `json:"fanoutsectoroverdrivepct"`
+		FanoutSectorOverdriveAvg float64 `json:"fanoutsectoroverdriveavg"`
 
 		// Chunk Upload Stats
 		ChunkUpload15mDataPoints float64 `json:"chunkupload15mdatapoints"`
@@ -190,11 +221,19 @@ type (
 	// RegistryHandlerRequestPOST is the expected format of the json request for
 	// /skynet/registry [POST].
 	RegistryHandlerRequestPOST struct {
-		PublicKey types.SiaPublicKey `json:"publickey"`
-		DataKey   crypto.Hash        `json:"datakey"`
-		Revision  uint64             `json:"revision"`
-		Signature crypto.Signature   `json:"signature"`
-		Data      []byte             `json:"data"`
+		PublicKey types.SiaPublicKey        `json:"publickey"`
+		DataKey   crypto.Hash               `json:"datakey"`
+		Revision  uint64                    `json:"revision"`
+		Signature crypto.Signature          `json:"signature"`
+		Data      []byte                    `json:"data"`
+		Type      modules.RegistryEntryType `json:"type"`
+	}
+
+	// RegistryHandlerMultiRequestPOST is the expected format of the json request for
+	// /skynet/registry [POST].
+	RegistryHandlerMultiRequestPOST struct {
+		RegistryHandlerRequestPOST
+		HostKey types.SiaPublicKey `json:"hostkey"`
 	}
 
 	// SkylinkResolveGET is the response returned by the /skylink/resolve
@@ -205,12 +244,12 @@ type (
 
 	// archiveFunc is a function that serves subfiles from src to dst and
 	// archives them using a certain algorithm.
-	archiveFunc func(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMetadata, monetize func(io.Writer) io.Writer) error
+	archiveFunc func(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMetadata) error
 )
 
 // skynetBaseSectorHandlerGET accepts a skylink as input and will return the
 // encoded basesector.
-func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse the skylink from the raw URL of the request. Any special characters
 	// in the raw URL are encoded, allowing us to differentiate e.g. the '?'
 	// that begins query parameters from the encoded version '%3F'.
@@ -228,20 +267,10 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 	}
 
 	// Parse the timeout.
-	timeout := DefaultSkynetRequestTimeout
-	timeoutStr := queryForm.Get("timeout")
-	if timeoutStr != "" {
-		timeoutInt, err := strconv.Atoi(timeoutStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-
-		if timeoutInt > MaxSkynetRequestTimeout {
-			WriteError(w, Error{fmt.Sprintf("'timeout' parameter too high, maximum allowed timeout is %ds", MaxSkynetRequestTimeout)}, http.StatusBadRequest)
-			return
-		}
-		timeout = time.Duration(timeoutInt) * time.Second
+	timeout, err := parseTimeout(queryForm)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
 	}
 
 	// Parse pricePerMS.
@@ -256,7 +285,7 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 	}
 
 	// Fetch the skyfile's streamer to serve the basesector of the file
-	streamer, srvs, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
+	streamer, srvs, _, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
 	if err != nil {
 		handleSkynetError(w, "failed to fetch base sector", err)
 		return
@@ -296,9 +325,16 @@ func (api *API) skynetBlocklistHandlerGET(w http.ResponseWriter, _ *http.Request
 
 // skynetBlocklistHandlerPOST handles the API call to block certain skylinks.
 func (api *API) skynetBlocklistHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
+		return
+	}
+
 	// Parse parameters
 	var params SkynetBlocklistPOST
-	err := json.NewDecoder(req.Body).Decode(&params)
+	err = json.NewDecoder(req.Body).Decode(&params)
 	if err != nil {
 		WriteError(w, Error{"invalid parameters: " + err.Error()}, http.StatusBadRequest)
 		return
@@ -311,19 +347,10 @@ func (api *API) skynetBlocklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 	}
 
 	// Parse the timeout.
-	timeout := renter.MaxRegistryReadTimeout
-	timeoutStr := req.FormValue("timeout")
-	if timeoutStr != "" {
-		timeoutInt, err := strconv.Atoi(timeoutStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		timeout = time.Duration(timeoutInt) * time.Second
-		if timeout > renter.MaxRegistryReadTimeout || timeout == 0 {
-			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %ds", renter.MaxRegistryReadTimeout)}, http.StatusBadRequest)
-			return
-		}
+	timeout, err := parseTimeout(queryForm)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
 	}
 
 	// Generate context
@@ -383,7 +410,7 @@ func (api *API) skynetPortalsHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 // skynetRootHandlerGET handles the api call for a download by root request.
 // This call returns the encoded sector.
-func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse the query params.
 	queryForm, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
@@ -392,20 +419,10 @@ func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, p
 	}
 
 	// Parse the timeout.
-	timeout := DefaultSkynetRequestTimeout
-	timeoutStr := queryForm.Get("timeout")
-	if timeoutStr != "" {
-		timeoutInt, err := strconv.Atoi(timeoutStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-
-		if timeoutInt > MaxSkynetRequestTimeout {
-			WriteError(w, Error{fmt.Sprintf("'timeout' parameter too high, maximum allowed timeout is %ds", MaxSkynetRequestTimeout)}, http.StatusBadRequest)
-			return
-		}
-		timeout = time.Duration(timeoutInt) * time.Second
+	timeout, err := parseTimeout(queryForm)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
 	}
 
 	// Parse the root.
@@ -477,26 +494,15 @@ func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, p
 
 // skynetSkylinkHandlerGET accepts a skylink as input and will stream the data
 // from the skylink out of the response body as output.
-func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse the request parameters
 	params, err := parseDownloadRequestParameters(req)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-
-	// Extract the requested path, and set it to be the served path for now.
-	// The resolved path is the path we use when building the ETag, and might
-	// differ from the requested path if we default to the default path.
 	path := params.path
-	servedPath := path
-
-	// Get the renter's settings.
-	settings, err := api.renter.Settings()
-	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to fetch renter settings: %v", err)}, http.StatusInternalServerError)
-		return
-	}
+	format := params.format
 
 	// Fetch the skyfile's metadata and a streamer to download the file
 	streamer, srvs, err := api.renter.DownloadSkylink(params.skylink, params.timeout, params.pricePerMS)
@@ -510,103 +516,46 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		_ = streamer.Close()
 	}()
 
+	metadata := streamer.Metadata()
+	ew := newCustomErrorWriter(metadata, streamer)
+
 	// Attach proof.
 	err = attachRegistryEntryProof(w, srvs)
 	if err != nil {
-		WriteError(w, Error{"unable to attach proof: " + err.Error()}, http.StatusInternalServerError)
+		ew.WriteError(w, Error{"unable to attach proof: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
-	// Validate Metadata
-	metadata := streamer.Metadata()
-	if metadata.DefaultPath != "" && len(metadata.Subfiles) == 0 {
-		WriteError(w, Error{"defaultpath is not allowed on single files, please specify a format if you want to download this skyfile regardless"}, http.StatusBadRequest)
-		return
-	}
-
-	// Only validate default path if the format is not specified, this way the
-	// file can still be downloaded should it have been uploaded with incorrect
-	// metadata, which is possible seeing as it may have been uploaded by a
-	// private portal.
-	if params.format == skymodules.SkyfileFormatNotSpecified {
-		if metadata.DefaultPath != "" && metadata.DisableDefaultPath {
-			WriteError(w, Error{"invalid defaultpath state - both defaultpath and disabledefaultpath are set, please specify a format"}, http.StatusBadRequest)
-			return
-		}
-	}
-	defaultPath := metadata.DefaultPath
-	if metadata.DefaultPath == "" && !metadata.DisableDefaultPath {
-		if len(metadata.Subfiles) == 1 {
-			// If `defaultpath` and `disabledefaultpath` are not set and the
-			// skyfile has a single subfile we automatically default to it.
-			for filename := range metadata.Subfiles {
-				defaultPath = skymodules.EnsurePrefix(filename, "/")
-				break
-			}
-		} else {
-			prefixedDefaultSkynetPath := skymodules.EnsurePrefix(DefaultSkynetDefaultPath, "/")
-			for filename := range metadata.Subfiles {
-				if skymodules.EnsurePrefix(filename, "/") == prefixedDefaultSkynetPath {
-					defaultPath = prefixedDefaultSkynetPath
-					break
-				}
-			}
-		}
-	}
-
-	var isSubfile bool
-
-	// Serve the contents of the file at the default path if one is set. Note
-	// that we return the metadata for the entire Skylink when we serve the
-	// contents of the file at the default path.
-	// We only use the default path when the user requests the root path because
-	// we want to enable people to access individual subfile without forcing
-	// them to download the entire skyfile.
-	if path == "/" && defaultPath != "" && params.format == skymodules.SkyfileFormatNotSpecified {
-		if strings.Count(defaultPath, "/") > 1 && len(metadata.Subfiles) > 1 {
-			WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s) which refers to a non-root file, please specify a format", defaultPath)}, http.StatusBadRequest)
-			return
-		}
+	// Only validate default path and tryfiles if the format is not specified,
+	// this way the file can still be downloaded should it have been uploaded
+	// with incorrect metadata, which is possible seeing as it may have been
+	// uploaded by a private portal.
+	if format == skymodules.SkyfileFormatNotSpecified {
+		// The path we actually want to serve based on defaultpath and tryfiles.
+		servePath := metadata.ServePath(path)
+		isMulti := len(metadata.Subfiles) > 1
 		// If we don't have a subPath and the skylink doesn't end with a
 		// trailing slash we need to redirect in order to add the trailing
 		// slash. This is only true for skapps - they need it in order to
 		// properly work with relative paths. We also don't need to redirect if
 		// this is a HEAD request or if it's a download as attachment.
-		if !params.attachment && req.Method == http.MethodGet && !strings.HasSuffix(params.skylinkStringNoQuery, "/") {
+		if isMulti && path == "/" && servePath != path && !params.attachment && req.Method == http.MethodGet && !strings.HasSuffix(params.skylinkStringNoQuery, "/") {
 			location := params.skylinkStringNoQuery + "/"
 			if req.URL.RawQuery != "" {
 				location += "?" + req.URL.RawQuery
 			}
 			w.Header().Set("Location", location)
-			w.WriteHeader(http.StatusTemporaryRedirect)
+			w.WriteHeader(http.StatusPermanentRedirect)
 			return
 		}
-
-		metadataForPath, isFile, offset, size := metadata.ForPath(defaultPath)
-		if len(metadataForPath.Subfiles) == 0 {
-			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v", params.path)}, http.StatusNotFound)
-			return
-		}
-		if !isFile {
-			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, please specify a specific path or a format in order to download the content", defaultPath)}, http.StatusNotFound)
-			return
-		}
-		streamer, err = NewLimitStreamer(streamer, streamer.Metadata(), streamer.RawMetadata(), streamer.Skylink(), streamer.Layout(), offset, size)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
-			return
-		}
-
-		isSubfile = isFile
-		metadata = metadataForPath
-		servedPath = defaultPath
+		path = servePath
 	}
-
+	var isSubfile bool
 	// Serve the contents of the skyfile at path if one is set
 	if path != "/" {
 		metadataForPath, isFile, offset, size := metadata.ForPath(path)
 		if len(metadataForPath.Subfiles) == 0 {
-			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound)
+			ew.WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound)
 			return
 		}
 		// NOTE: we don't have an actual raw metadata for the subpath. So we are
@@ -614,23 +563,20 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		// the metadata can't be used to create a skylink anyway.
 		rawMetadataForPath, err := json.Marshal(metadataForPath)
 		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to marshal subfile metadata for path %v", path)}, http.StatusNotFound)
+			ew.WriteError(w, Error{fmt.Sprintf("failed to marshal subfile metadata for path %v", path)}, http.StatusNotFound)
 			return
 		}
 		streamer, err = NewLimitStreamer(streamer, metadataForPath, rawMetadataForPath, streamer.Skylink(), streamer.Layout(), offset, size)
 		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
+			ew.WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
 			return
 		}
 
 		isSubfile = isFile
 		metadata = metadataForPath
-		servedPath = path
 	}
-
 	// If we are serving more than one file, and the format is not
 	// specified, default to downloading it as a zip archive.
-	format := params.format
 	if !isSubfile && metadata.IsDirectory() && format == skymodules.SkyfileFormatNotSpecified {
 		format = skymodules.SkyfileFormatZip
 	}
@@ -641,21 +587,25 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// Set the common Header fields
 	//
 	// Set the Skylink response header
-	w.Header().Set("Skynet-Skylink", params.skylink.String())
+	if !streamer.Skylink().IsSkylinkV1() {
+		build.Critical("skylink attached in skynet-skylink header is not v1")
+	}
+	w.Header().Set(SkynetSkylinkHeader, streamer.Skylink().String())
+	w.Header().Set(SkynetRequestedSkylinkHeader, params.skylink.String())
 
 	// Set the ETag response header
 	//
-	// NOTE: we use the Skylink returned by the streamer to buid the ETag with,
+	// NOTE: we use the Skylink returned by the streamer to build the ETag with,
 	// this is very important as the incoming skylink might have been a V2
 	// skylink that got resolved to a v1 skylink. We don't want to build the
 	// ETag on the V2 skylink as that is constant, even though the data might
 	// change.
-	eTag := buildETag(streamer.Skylink(), servedPath, format)
+	eTag := buildETag(streamer.Skylink(), path, format)
 	w.Header().Set("ETag", fmt.Sprintf("\"%v\"", eTag))
 
 	// Set the Layout
 	if params.includeLayout {
-		w.Header().Set("Skynet-File-Layout", hex.EncodeToString(encLayout))
+		w.Header().Set(SkynetFileLayoutHeader, hex.EncodeToString(encLayout))
 	}
 
 	// Set an appropriate Content-Disposition header
@@ -670,17 +620,12 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 	w.Header().Set("Content-Disposition", cdh)
 
-	// Declare a function for monetizing a writer.
-	monetize := func(w io.Writer) io.Writer {
-		return newMonetizedWriter(w, metadata, api.wallet, settings.CurrencyConversionRates, settings.MonetizationBase)
-	}
-
 	// If requested, serve the content as a tar archive, compressed tar
 	// archive or zip archive.
 	if format.IsArchive() {
-		err = serveArchive(w, streamer, format, metadata, monetize)
+		err = serveArchive(w, streamer, format, metadata)
 		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as %v archive: %v", format, err)}, http.StatusInternalServerError)
+			ew.WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as %v archive: %v", format, err)}, http.StatusInternalServerError)
 		}
 		return
 	}
@@ -691,12 +636,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if metadata.ContentType() != "" {
 		w.Header().Set("Content-Type", metadata.ContentType())
 	}
-
-	// Monetize the response if necessary by wrapping the response writer in a
-	// monetized one.
-	mrw := newMonetizedResponseWriter(w, metadata, api.wallet, settings.CurrencyConversionRates, settings.MonetizationBase)
-
-	http.ServeContent(mrw, req, metadata.Filename, time.Time{}, streamer)
+	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
 }
 
 // skynetSkylinkPinHandlerPOST will pin a skylink to this Sia node, ensuring
@@ -763,7 +703,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	// passing the force flag, if they want to they can set overrule the force
 	// flag by passing in the 'Skynet-Disable-Force' header
 	allowForce := true
-	strDisableForce := req.Header.Get("Skynet-Disable-Force")
+	strDisableForce := req.Header.Get(SkynetDisableForceHeader)
 	if strDisableForce != "" {
 		disableForce, err := strconv.ParseBool(strDisableForce)
 		if err != nil {
@@ -812,13 +752,13 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 		handleSkynetError(w, "failed to pin file to skynet", err)
 		return
 	}
-	w.Header().Set("Skynet-Skylink", skylink.String())
+	w.Header().Set(SkynetSkylinkHeader, skylink.String())
 	WriteSuccess(w)
 }
 
 // skynetTUSUploadSkylinkGET is the handler for the /skynet/tus/skylink/:id
 // endpoint.
-func (api *API) skynetTUSUploadSkylinkGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skynetTUSUploadSkylinkGET(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	// Get id from path.
 	id := ps.ByName("id")
 
@@ -833,7 +773,7 @@ func (api *API) skynetTUSUploadSkylinkGET(w http.ResponseWriter, req *http.Reque
 	}
 
 	// Set the Skylink response header
-	w.Header().Set("Skynet-Skylink", skylink.String())
+	w.Header().Set(SkynetSkylinkHeader, skylink.String())
 
 	// Respond with the skylink in the body as well.
 	WriteJSON(w, SkynetSkyfileHandlerPOST{
@@ -865,9 +805,8 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		SiaPath:             params.siaPath,
 
 		// Set filename and mode
-		Filename:     params.filename,
-		Mode:         params.mode,
-		Monetization: params.monetization,
+		Filename: params.filename,
+		Mode:     params.mode,
 
 		// Set the default path params
 		DefaultPath:        params.defaultPath,
@@ -876,6 +815,9 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		// Set encryption key details
 		SkykeyName: params.skyKeyName,
 		SkykeyID:   params.skyKeyID,
+
+		TryFiles:   params.tryFiles,
+		ErrorPages: params.errorPages,
 	}
 
 	// set the reader
@@ -932,7 +874,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 
 		// Set the Skylink response header
-		w.Header().Set("Skynet-Skylink", skylink.String())
+		w.Header().Set(SkynetSkylinkHeader, skylink.String())
 
 		WriteJSON(w, SkynetSkyfileHandlerPOST{
 			Skylink:    skylink.String(),
@@ -960,7 +902,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	}
 
 	// Set the Skylink response header
-	w.Header().Set("Skynet-Skylink", skylink.String())
+	w.Header().Set(SkynetSkylinkHeader, skylink.String())
 
 	WriteJSON(w, SkynetSkyfileHandlerPOST{
 		Skylink:    skylink.String(),
@@ -971,7 +913,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 // skynetStatsHandlerGET responds with a JSON with statistical data about
 // skynet, e.g. number of files uploaded, total size, etc.
-func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	// Pull the skynet stats from the root directory
 	dirs, err := api.renter.DirList(skymodules.RootSiaPath())
 	if err != nil {
@@ -1076,11 +1018,20 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 		totalStorage += c.Size()
 	}
 
+	// Get the sector stats
+	baseSectorStats := renterPerf.BaseSectorDownloadOverdriveStats
+	fanoutSectorStats := renterPerf.FanoutSectorDownloadOverdriveStats
+
 	WriteJSON(w, &SkynetStatsGET{
 		BaseSectorUpload15mDataPoints: renterPerf.BaseSectorUploadStats.DataPoints[0],
 		BaseSectorUpload15mP99ms:      float64(renterPerf.BaseSectorUploadStats.Nines[0][1]) / float64(time.Millisecond),
 		BaseSectorUpload15mP999ms:     float64(renterPerf.BaseSectorUploadStats.Nines[0][2]) / float64(time.Millisecond),
 		BaseSectorUpload15mP9999ms:    float64(renterPerf.BaseSectorUploadStats.Nines[0][3]) / float64(time.Millisecond),
+
+		BaseSectorOverdrivePct:   baseSectorStats.OverdrivePct(),
+		BaseSectorOverdriveAvg:   baseSectorStats.NumOverdriveWorkersAvg(),
+		FanoutSectorOverdrivePct: fanoutSectorStats.OverdrivePct(),
+		FanoutSectorOverdriveAvg: fanoutSectorStats.NumOverdriveWorkersAvg(),
 
 		ChunkUpload15mDataPoints: renterPerf.ChunkUploadStats.DataPoints[0],
 		ChunkUpload15mP99ms:      float64(renterPerf.ChunkUploadStats.Nines[0][1]) / float64(time.Millisecond),
@@ -1315,6 +1266,12 @@ func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 		return
 	}
 
+	// If the type wasn't set, default to no pubkey to preserve
+	// compatibility.
+	if rhp.Type == modules.RegistryTypeInvalid {
+		rhp.Type = modules.RegistryTypeWithoutPubkey
+	}
+
 	// Check data length here to be able to offer a better and faster error
 	// message than when the hosts return it.
 	if len(rhp.Data) > modules.RegistryDataSize {
@@ -1322,11 +1279,65 @@ func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 		return
 	}
 
+	// Prepare a context for the timeout.
+	ctx, cancel := context.WithTimeout(req.Context(), renter.DefaultRegistryUpdateTimeout)
+	defer cancel()
+
 	// Update the registry.
-	srv := modules.NewSignedRegistryValue(rhp.DataKey, rhp.Data, rhp.Revision, rhp.Signature, modules.RegistryTypeWithoutPubkey)
-	err = api.renter.UpdateRegistry(rhp.PublicKey, srv, renter.DefaultRegistryUpdateTimeout)
+	srv := modules.NewSignedRegistryValue(rhp.DataKey, rhp.Data, rhp.Revision, rhp.Signature, rhp.Type)
+	err = api.renter.UpdateRegistry(ctx, rhp.PublicKey, srv)
 	if err != nil {
-		WriteError(w, Error{"Unable to update the registry: " + err.Error()}, http.StatusBadRequest)
+		handleSkynetError(w, "Unable to update the registry", err)
+		return
+	}
+	WriteSuccess(w)
+}
+
+// registryMultiHandlerPOST handles the POST calls to /skynet/registrymulti.
+func (api *API) registryMultiHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Decode request.
+	dec := json.NewDecoder(req.Body)
+	var rhps []RegistryHandlerMultiRequestPOST
+	err := dec.Decode(&rhps)
+	if err != nil {
+		WriteError(w, Error{"Failed to decode request: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Check request and combine them into a map from host to entry.
+	srvs := make(map[string]skymodules.RegistryEntry, len(rhps))
+	for i, rhp := range rhps {
+		// If the type wasn't set, default to no pubkey to preserve
+		// compatibility.
+		if rhp.Type == modules.RegistryTypeInvalid {
+			rhps[i].Type = modules.RegistryTypeWithoutPubkey
+		}
+
+		// Check data length here to be able to offer a better and faster error
+		// message than when the hosts return it.
+		if len(rhp.Data) > modules.RegistryDataSize {
+			WriteError(w, Error{fmt.Sprintf("Registry data is too big: %v > %v", len(rhp.Data), modules.RegistryDataSize)}, http.StatusBadRequest)
+			return
+		}
+		srv := modules.NewSignedRegistryValue(rhp.DataKey, rhp.Data, rhp.Revision, rhp.Signature, rhp.Type)
+
+		// Each update should be for a different host.
+		_, exists := srvs[rhp.HostKey.String()]
+		if exists {
+			WriteError(w, Error{"Updating multiple entries on one host is not supported"}, http.StatusBadRequest)
+			return
+		}
+		srvs[rhp.HostKey.String()] = skymodules.NewRegistryEntry(rhp.PublicKey, srv)
+	}
+
+	// Prepare a context for the timeout.
+	ctx, cancel := context.WithTimeout(req.Context(), renter.DefaultRegistryUpdateTimeout)
+	defer cancel()
+
+	// Update the registry.
+	err = api.renter.UpdateRegistryMulti(ctx, srvs)
+	if err != nil {
+		handleSkynetError(w, "Unable to update the registry", err)
 		return
 	}
 	WriteSuccess(w)
@@ -1334,9 +1345,15 @@ func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 
 // registryHandlerGET handles the GET calls to /skynet/registry.
 func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
+		return
+	}
 	// Parse public key
 	var spk types.SiaPublicKey
-	err := spk.LoadString(req.FormValue("publickey"))
+	err = spk.LoadString(queryForm.Get("publickey"))
 	if err != nil {
 		WriteError(w, Error{"Unable to parse publickey param: " + err.Error()}, http.StatusBadRequest)
 		return
@@ -1344,26 +1361,17 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 
 	// Parse datakey.
 	var dataKey crypto.Hash
-	err = dataKey.LoadString(req.FormValue("datakey"))
+	err = dataKey.LoadString(queryForm.Get("datakey"))
 	if err != nil {
 		WriteError(w, Error{"Unable to decode dataKey param: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 
 	// Parse the timeout.
-	timeout := renter.MaxRegistryReadTimeout
-	timeoutStr := req.FormValue("timeout")
-	if timeoutStr != "" {
-		timeoutInt, err := strconv.Atoi(timeoutStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		timeout = time.Duration(timeoutInt) * time.Second
-		if timeout > renter.MaxRegistryReadTimeout || timeout == 0 {
-			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %ds", renter.MaxRegistryReadTimeout)}, http.StatusBadRequest)
-			return
-		}
+	timeout, err := parseRegistryTimeout(queryForm)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
 	}
 
 	// Read registry.
@@ -1386,11 +1394,82 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 	})
 }
 
+// registryEntryHealthHandlerGET is the handler for the /skynet/registry/health
+// endpoint.
+func (api *API) registryEntryHealthHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
+		return
+	}
+	spkStr := queryForm.Get("publickey")
+	tweakStr := queryForm.Get("datakey")
+	ridStr := queryForm.Get("entryid")
+
+	// Parse the timeout.
+	timeout, err := parseRegistryTimeout(queryForm)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(req.Context(), timeout)
+	defer cancel()
+
+	// If the publickey and datakey are set we use them. Otherwise we look
+	// for the entryid.
+	var reh skymodules.RegistryEntryHealth
+	if spkStr != "" && tweakStr != "" {
+		// Parse public key
+		var spk types.SiaPublicKey
+		err := spk.LoadString(spkStr)
+		if err != nil {
+			WriteError(w, Error{"Unable to parse 'publickey' param: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+
+		// Parse datakey.
+		var dataKey crypto.Hash
+		err = dataKey.LoadString(tweakStr)
+		if err != nil {
+			WriteError(w, Error{"Unable to decode 'dataKey' param: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		reh, err = api.renter.RegistryEntryHealth(ctx, spk, dataKey)
+	} else if ridStr != "" {
+		// Parse rid.
+		var rid crypto.Hash
+		err := rid.LoadString(ridStr)
+		if err != nil {
+			WriteError(w, Error{"Unable to decode 'entryid' param: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		reh, err = api.renter.RegistryEntryHealthRID(ctx, modules.RegistryEntryID(rid))
+	} else {
+		WriteError(w, Error{"Need to specify either publickey and datakey or entryid"}, http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		handleSkynetError(w, "unable to read from the registry", err)
+		return
+	}
+
+	// Send response.
+	WriteJSON(w, reh)
+}
+
 // skylinkResolveGET handles the GET calls to /skylink/resolve/:skylink.
 func (api *API) skylinkResolveGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
+		return
+	}
+
 	// Parse Skylink
 	var sl skymodules.Skylink
-	err := sl.LoadString(ps.ByName("skylink"))
+	err = sl.LoadString(ps.ByName("skylink"))
 	if err != nil {
 		WriteError(w, Error{"Unable to parse skylink" + err.Error()}, http.StatusBadRequest)
 		return
@@ -1403,19 +1482,10 @@ func (api *API) skylinkResolveGET(w http.ResponseWriter, req *http.Request, ps h
 	}
 
 	// Parse the timeout.
-	timeout := renter.MaxRegistryReadTimeout
-	timeoutStr := req.FormValue("timeout")
-	if timeoutStr != "" {
-		timeoutInt, err := strconv.Atoi(timeoutStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		timeout = time.Duration(timeoutInt) * time.Second
-		if timeout > renter.MaxRegistryReadTimeout || timeout == 0 {
-			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %ds", renter.MaxRegistryReadTimeout)}, http.StatusBadRequest)
-			return
-		}
+	timeout, err := parseTimeout(queryForm)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
 	}
 
 	// Resolve skylink.
@@ -1438,6 +1508,13 @@ func (api *API) skylinkResolveGET(w http.ResponseWriter, req *http.Request, ps h
 		return
 	}
 
+	// Set the Skylink response headers.
+	if !slV1.IsSkylinkV1() {
+		build.Critical("skylink attached in skynet-skylink header is not v1")
+	}
+	w.Header().Set(SkynetSkylinkHeader, slV1.String())
+	w.Header().Set(SkynetRequestedSkylinkHeader, sl.String())
+
 	// Send response.
 	WriteJSON(w, SkylinkResolveGET{
 		Skylink: slV1.String(),
@@ -1459,7 +1536,7 @@ func (api *API) skynetRestoreHandlerPOST(w http.ResponseWriter, req *http.Reques
 }
 
 // skynetMetadataHandlerGET is the handler for the /skynet/metadata endpoint.
-func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse the skylink from the raw URL of the request. Any special characters
 	// in the raw URL are encoded, allowing us to differentiate e.g. the '?'
 	// that begins query parameters from the encoded version '%3F'.
@@ -1477,20 +1554,10 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 	}
 
 	// Parse the timeout.
-	timeout := DefaultSkynetRequestTimeout
-	timeoutStr := queryForm.Get("timeout")
-	if timeoutStr != "" {
-		timeoutInt, err := strconv.Atoi(timeoutStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-
-		if timeoutInt > MaxSkynetRequestTimeout {
-			WriteError(w, Error{fmt.Sprintf("'timeout' parameter too high, maximum allowed timeout is %ds", MaxSkynetRequestTimeout)}, http.StatusBadRequest)
-			return
-		}
-		timeout = time.Duration(timeoutInt) * time.Second
+	timeout, err := parseTimeout(queryForm)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
 	}
 
 	// Parse pricePerMS.
@@ -1504,11 +1571,8 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 		}
 	}
 
-	// Set the Skylink response header
-	w.Header().Set("Skynet-Skylink", skylink.String())
-
 	// Fetch the skyfile's streamer to serve the basesector of the file
-	streamer, srvs, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
+	streamer, srvs, resolvedLink, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
 	if err != nil {
 		handleSkynetError(w, "failed to fetch base sector", err)
 		return
@@ -1518,6 +1582,13 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 		// error here.
 		_ = streamer.Close()
 	}()
+
+	// Set the Skylink response header
+	if !resolvedLink.IsSkylinkV1() {
+		build.Critical("skylink attached in skynet-skylink header is not v1")
+	}
+	w.Header().Set(SkynetSkylinkHeader, resolvedLink.String())
+	w.Header().Set(SkynetRequestedSkylinkHeader, skylink.String())
 
 	// Attach proof.
 	err = attachRegistryEntryProof(w, srvs)
@@ -1551,6 +1622,42 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 	}
 	w.Header().Set("Content-Type", "application/json")
 	http.ServeContent(w, req, "", time.Time{}, bytes.NewReader(rawMD))
+}
+
+// skynetSkylinkHealthGET is the handler for the /skynet/health/:skylink
+// endpoint.
+func (api *API) skynetSkylinkHealthGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	strLink := ps.ByName("skylink")
+	var skylink skymodules.Skylink
+	err := skylink.LoadString(strLink)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to parse query params: %v", err)}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse timeout.
+	timeout, err := parseTimeout(queryForm)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(req.Context(), timeout)
+	defer cancel()
+
+	// Get health.
+	sh, err := api.renter.SkylinkHealth(ctx, skylink, DefaultSkynetPricePerMS)
+	if err != nil {
+		handleSkynetError(w, "failed to get skylink health", err)
+		return
+	}
+	WriteJSON(w, sh)
 }
 
 // skynetSkylinkUnpinHandlerPOST will unpin a skylink from this Sia node.
@@ -1609,4 +1716,17 @@ func (api *API) skynetSkylinkUnpinHandlerPOST(w http.ResponseWriter, req *http.R
 		return
 	}
 	WriteSuccess(w)
+}
+
+// skynetHostsForRegistryUpdateGET is the handler for the /skynet/registry/hosts
+// GET endpoint.
+func (api *API) skynetHostsForRegistryUpdateGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	hosts, err := api.renter.HostsForRegistryUpdate()
+	if err != nil {
+		handleSkynetError(w, "failed to fetch hosts for registry update", err)
+		return
+	}
+	WriteJSON(w, HostsForRegistryUpdateGET{
+		Hosts: hosts,
+	})
 }

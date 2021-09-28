@@ -1381,18 +1381,6 @@ hostdb. It's turned on by default and causes Sia to not form contracts with
 hosts from the same subnet and if such contracts already exist, it will
 deactivate the contract which has occupied that subnet for the shorter time.  
 
-**usdconversionrate** | Currency  
-Specifies the conversion rate between USD and SC. e.g. if $1 equals 100H,
-this value should be set to 100.  
-
-**monetizationbase** | Currency  
-Specifies the minimum payment in SC for monetized content. If the content
-costs more than the base, it will be paid in full. If the content costs less
-than the base, a dice roll decides whether the base is paid out. e.g. if a
-file costs $1 and the base is $2, there is a 50% chance that the creator is
-paid $1 and a 50% chance that the creator is paid $0. This is a scaling
-method to avoid spamming the blockchain with microtransactions.  
-
 ### Response
 
 standard success or error response. See [standard
@@ -3985,6 +3973,17 @@ nor to the single file in directory upload. This parameter is mutually exclusive
 with `defaultpath` and specifying both will result in an error. Neither one is 
 applicable to skyfiles without subfiles.
 
+**tryfiles** | []string
+The `tryfiles` field allows us to set a list of potential subfiles to return in
+case the requested one does not exist or is a directory. Those subfiles might
+be listed with relative or absolute paths. If the path is absolute the files
+must exist.
+
+**errorpages** | JSON
+The `errorpages` JSON object defines a mapping of error codes and subfiles which
+are to be served in case we are serving the respective error code. All subfiles 
+referred like this must be defined with absolute paths and must exist.
+
 **filename** | string  
 The name of the file. This name will be encoded into the skyfile metadata, and
 will be a part of the skylink. If the name changes, the skylink will change as
@@ -4092,6 +4091,8 @@ returns statistical information about Skynet, e.g. number of files uploaded
 ### JSON Response
 ```json
 {
+   "basesectoroverdriveavg": 1.1033519553072626,
+   "basesectoroverdrivepct": 0.4666255144032922,
    "basesectorupload15mdatapoints":12.032777431483911,
    "basesectorupload15mp99ms":16384,
    "basesectorupload15mp999ms":27648,
@@ -4100,6 +4101,8 @@ returns statistical information about Skynet, e.g. number of files uploaded
    "chunkupload15mp99ms":30720,
    "chunkupload15mp999ms":30720,
    "chunkupload15mp9999ms":43008,
+   "fanoutsectoroverdriveavg": 0.8033519553072626,
+   "fanoutsectoroverdrivepct": 0.5216255144032922,
    "registryread15mdatapoints":126.31844121965291,
    "registryread15mp99ms":132,
    "registryread15mp999ms":288,
@@ -4130,6 +4133,22 @@ returns statistical information about Skynet, e.g. number of files uploaded
    }
 }
 ```
+
+**basesectoroverdriveavg** | float  
+The average amount of overdrive workers that are launched for base sector
+downloads.
+
+**basesectoroverdrivepct** | float  
+The percentage of base sector downloads that require at least one overdrive
+worker in order to successfully complete the download.
+
+**fanoutsectoroverdriveavg** | float  
+The average amount of overdrive workers that are launched for fanout sector
+downloads.
+
+**fanoutsectoroverdrivepct** | float  
+The percentage of fanout sector downloads that require at least one overdrive
+worker in order to successfully complete the download.
 
 **uptime** | int  
 The amount of time in seconds that siad has been running.

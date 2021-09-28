@@ -488,9 +488,7 @@ func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType)
 	// a sourceReader. Since we now have a chunk that does have a sourceReader we
 	// want to cancel the repair of the existing chunk in order to prioritize
 	// using the sourcereader to repair the chunk.
-	existingUUC.cancelMU.Lock()
-	existingUUC.canceled = true
-	existingUUC.cancelMU.Unlock()
+	existingUUC.Cancel()
 
 	// Wait for all workers to finish ongoing work on the existing chunk.
 	existingUUC.cancelWG.Wait()

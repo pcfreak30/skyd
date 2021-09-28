@@ -92,7 +92,7 @@ func (r *Renter) Upload(up skymodules.FileUploadParams) error {
 	cipherKey := crypto.GenerateSiaKey(up.CipherType)
 
 	// Create the Siafile and add to renter
-	err = r.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, cipherKey, uint64(sourceInfo.Size()), sourceInfo.Mode(), up.DisablePartialChunk)
+	err = r.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, cipherKey, uint64(sourceInfo.Size()), sourceInfo.Mode())
 	if err != nil {
 		return errors.AddContext(err, "could not create a new sia file")
 	}

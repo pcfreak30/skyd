@@ -230,7 +230,8 @@ func newRenterTester(name string) (*renterTester, error) {
 	}
 
 	rl := ratelimit.NewRateLimit(0, 0, 0)
-	r, errChan := New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, rl, filepath.Join(testdir, skymodules.RenterDir))
+	tus := NewSkynetTUSInMemoryUploadStore()
+	r, errChan := New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, tus, rl, filepath.Join(testdir, skymodules.RenterDir))
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
@@ -345,7 +346,8 @@ func newRenterWithDependency(g modules.Gateway, cs modules.ConsensusSet, wallet 
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	renter, errChan := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, mux, persistDir, rl, deps)
+	tus := NewSkynetTUSInMemoryUploadStore()
+	renter, errChan := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, mux, tus, persistDir, rl, deps)
 	return renter, <-errChan
 }
 

@@ -35,6 +35,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/opentracing/opentracing-go"
@@ -68,6 +69,14 @@ var (
 		Standard: uint8(10),
 		Testing:  uint8(2),
 	}).(uint8)
+
+	// hasSectorBatchSize is the maximum number of hasSector jobs within a
+	// single batch.
+	maxHasSectorBatchSize = build.Select(build.Var{
+		Dev:      uint64(50),
+		Standard: uint64(100),
+		Testing:  uint64(2),
+	}).(uint64)
 )
 
 var (
@@ -113,12 +122,11 @@ func fileUploadParams(siaPath skymodules.SiaPath, dataPieces, parityPieces int, 
 
 	// Return the FileUploadParams
 	return skymodules.FileUploadParams{
-		SiaPath:             siaPath,
-		ErasureCode:         ec,
-		Force:               force,
-		DisablePartialChunk: true,  // must be set to true - partial chunks change, content addressed files must not change.
-		Repair:              false, // indicates whether this is a repair operation
-		CipherType:          ct,
+		SiaPath:     siaPath,
+		ErasureCode: ec,
+		Force:       force,
+		Repair:      false, // indicates whether this is a repair operation
+		CipherType:  ct,
 	}, nil
 }
 
@@ -222,10 +230,9 @@ func (r *Renter) CreateSkylinkFromSiafile(sup skymodules.SkyfileUploadParameters
 
 	// Override the metadata with the info from the fileNode.
 	metadata := skymodules.SkyfileMetadata{
-		Filename:     siaPath.Name(),
-		Mode:         fileNode.Mode(),
-		Monetization: sup.Monetization,
-		Length:       fileNode.Size(),
+		Filename: siaPath.Name(),
+		Mode:     fileNode.Mode(),
+		Length:   fileNode.Size(),
 	}
 
 	// Generate the fanoutBytes
@@ -240,47 +247,33 @@ func (r *Renter) CreateSkylinkFromSiafile(sup skymodules.SkyfileUploadParameters
 	return r.managedCreateSkylinkFromFileNode(r.tg.StopCtx(), sup, metadata, fileNode, fanoutBytes)
 }
 
-// managedCreateSkylinkFromFileNode creates a skylink from a file node.
-//
-// The name needs to be passed in explicitly because a file node does not track
-// its own name, which allows the file to be renamed concurrently without
-// causing any race conditions.
-func (r *Renter) managedCreateSkylinkFromFileNode(ctx context.Context, sup skymodules.SkyfileUploadParameters, skyfileMetadata skymodules.SkyfileMetadata, fileNode *filesystem.FileNode, fanoutBytes []byte) (skymodules.Skylink, error) {
+// managedCreateSkylink creates a skylink from the provided parameters.
+func (r *Renter) managedCreateSkylink(ctx context.Context, sup skymodules.SkyfileUploadParameters, skyfileMetadata skymodules.SkyfileMetadata, fanoutBytes []byte, size uint64, masterKey crypto.CipherKey, ec skymodules.ErasureCoder) (skymodules.Skylink, error) {
 	// Check if the given metadata is valid
 	err := skymodules.ValidateSkyfileMetadata(skyfileMetadata)
 	if err != nil {
 		return skymodules.Skylink{}, errors.Compose(ErrInvalidMetadata, err)
 	}
-
-	// Check if any of the skylinks associated with the siafile are blocked
-	if r.managedIsFileNodeBlocked(fileNode) {
-		err = ErrSkylinkBlocked
-		// Skylink is blocked, return error and try and delete file
-		deleteErr := r.DeleteFile(sup.SiaPath)
-		// Don't bother returning an error if the file doesn't exist
-		if !errors.Contains(deleteErr, filesystem.ErrNotExist) {
-			err = errors.Compose(err, deleteErr)
-		}
-		return skymodules.Skylink{}, err
-	}
-
-	// Check that the encryption key and erasure code is compatible with the
-	// skyfile format. This is intentionally done before any heavy computation
-	// to catch errors early on.
-	var sl skymodules.SkyfileLayout
-	masterKey := fileNode.MasterKey()
-	if len(masterKey.Key()) > len(sl.KeyData) {
-		return skymodules.Skylink{}, errors.New("cipher key is not supported by the skyfile format")
-	}
-	ec := fileNode.ErasureCode()
-	if ec.Type() != skymodules.ECReedSolomonSubShards64 {
-		return skymodules.Skylink{}, errors.New("siafile has unsupported erasure code type")
-	}
-
 	// Marshal the metadata.
 	metadataBytes, err := skymodules.SkyfileMetadataBytes(skyfileMetadata)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "error retrieving skyfile metadata bytes")
+	}
+	return r.managedCreateSkylinkRawMD(ctx, sup, metadataBytes, fanoutBytes, size, masterKey, ec)
+}
+
+// managedCreateSkylinkRawMD creates a skylink from the provided parameters
+// using already encoded metadata.
+func (r *Renter) managedCreateSkylinkRawMD(ctx context.Context, sup skymodules.SkyfileUploadParameters, metadataBytes, fanoutBytes []byte, size uint64, masterKey crypto.CipherKey, ec skymodules.ErasureCoder) (skymodules.Skylink, error) {
+	// Check that the encryption key and erasure code is compatible with the
+	// skyfile format. This is intentionally done before any heavy computation
+	// to catch errors early on.
+	var sl skymodules.SkyfileLayout
+	if len(masterKey.Key()) > len(sl.KeyData) {
+		return skymodules.Skylink{}, errors.New("cipher key is not supported by the skyfile format")
+	}
+	if ec.Type() != skymodules.ECReedSolomonSubShards64 {
+		return skymodules.Skylink{}, errors.New("siafile has unsupported erasure code type")
 	}
 
 	// Check the header size.
@@ -292,7 +285,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(ctx context.Context, sup skymo
 	// Assemble the first chunk of the skyfile.
 	sl = skymodules.SkyfileLayout{
 		Version:            skymodules.SkyfileVersion,
-		Filesize:           fileNode.Size(),
+		Filesize:           size,
 		MetadataSize:       uint64(len(metadataBytes)),
 		FanoutSize:         uint64(len(fanoutBytes)),
 		FanoutDataPieces:   uint8(ec.MinPieces()),
@@ -309,7 +302,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(ctx context.Context, sup skymo
 
 	// Encrypt the base sector if necessary.
 	if encryptionEnabled(&sup) {
-		err = encryptBaseSectorWithSkykey(baseSector, sl, sup.FileSpecificSkykey)
+		err := encryptBaseSectorWithSkykey(baseSector, sl, sup.FileSpecificSkykey)
 		if err != nil {
 			return skymodules.Skylink{}, errors.AddContext(err, "Failed to encrypt base sector for upload")
 		}
@@ -341,18 +334,44 @@ func (r *Renter) managedCreateSkylinkFromFileNode(ctx context.Context, sup skymo
 		return skymodules.Skylink{}, err
 	}
 
-	// Add the skylink to the siafiles.
-	err = fileNode.AddSkylink(skylink)
-	if err != nil {
-		return skylink, errors.AddContext(err, "unable to add skylink to the sianodes")
-	}
-
 	// Upload the base sector.
 	err = r.managedUploadBaseSector(ctx, sup, baseSector, skylink)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "Unable to upload base sector for file node. ")
 	}
 
+	return skylink, errors.AddContext(err, "unable to add skylink to the sianodes")
+}
+
+// managedCreateSkylinkFromFileNode creates a skylink from a file node.
+//
+// The name needs to be passed in explicitly because a file node does not track
+// its own name, which allows the file to be renamed concurrently without
+// causing any race conditions.
+func (r *Renter) managedCreateSkylinkFromFileNode(ctx context.Context, sup skymodules.SkyfileUploadParameters, skyfileMetadata skymodules.SkyfileMetadata, fileNode *filesystem.FileNode, fanoutBytes []byte) (skymodules.Skylink, error) {
+	// Check if any of the skylinks associated with the siafile are blocked
+	if r.managedIsFileNodeBlocked(fileNode) {
+		err := ErrSkylinkBlocked
+		// Skylink is blocked, return error and try and delete file
+		deleteErr := r.DeleteFile(sup.SiaPath)
+		// Don't bother returning an error if the file doesn't exist
+		if !errors.Contains(deleteErr, filesystem.ErrNotExist) {
+			err = errors.Compose(err, deleteErr)
+		}
+		return skymodules.Skylink{}, err
+	}
+
+	// Create the skylink.
+	skylink, err := r.managedCreateSkylink(ctx, sup, skyfileMetadata, fanoutBytes, fileNode.Size(), fileNode.MasterKey(), fileNode.ErasureCode())
+	if err != nil {
+		return skymodules.Skylink{}, err
+	}
+
+	// Add the skylink to the siafiles.
+	err = fileNode.AddSkylink(skylink)
+	if err != nil {
+		return skylink, errors.AddContext(err, "unable to add skylink to the sianodes")
+	}
 	return skylink, errors.AddContext(err, "unable to add skylink to the sianodes")
 }
 
@@ -736,7 +755,7 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 	ctx = opentracing.ContextWithSpan(ctx, span)
 
 	// Fetch the data
-	data, err := r.managedDownloadByRoot(ctx, root, offset, length, pricePerMS)
+	data, _, err := r.managedDownloadByRoot(ctx, root, offset, length, pricePerMS)
 	if errors.Contains(err, ErrProjectTimedOut) {
 		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
 	}
@@ -785,9 +804,9 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 
 // DownloadSkylinkBaseSector will take a link and turn it into the data of
 // a basesector without any decoding of the metadata, fanout, or decryption.
-func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time.Duration, pricePerMS types.Currency) (skymodules.Streamer, []skymodules.RegistryEntry, error) {
+func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time.Duration, pricePerMS types.Currency) (skymodules.Streamer, []skymodules.RegistryEntry, skymodules.Skylink, error) {
 	if err := r.tg.Add(); err != nil {
-		return nil, nil, err
+		return nil, nil, link, err
 	}
 	defer r.tg.Done()
 
@@ -810,18 +829,18 @@ func (r *Renter) DownloadSkylinkBaseSector(link skymodules.Skylink, timeout time
 	// Check if link needs to be resolved from V2 to V1.
 	link, srvs, err := r.managedTryResolveSkylinkV2(ctx, link, true)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, link, err
 	}
 
 	// Find the fetch size.
 	offset, fetchSize, err := link.OffsetAndFetchSize()
 	if err != nil {
-		return nil, nil, errors.AddContext(err, "unable to get offset and fetch size")
+		return nil, nil, link, errors.AddContext(err, "unable to get offset and fetch size")
 	}
 
 	// Download the base sector
-	baseSector, err := r.managedDownloadByRoot(ctx, link.MerkleRoot(), offset, fetchSize, pricePerMS)
-	return StreamerFromSlice(baseSector), srvs, err
+	baseSector, _, err := r.managedDownloadByRoot(ctx, link.MerkleRoot(), offset, fetchSize, pricePerMS)
+	return StreamerFromSlice(baseSector), srvs, link, err
 }
 
 // managedDownloadSkylink will take a link and turn it into the metadata and
@@ -831,6 +850,10 @@ func (r *Renter) managedDownloadSkylink(ctx context.Context, link skymodules.Sky
 		sf, err := fixtures.LoadSkylinkFixture(link)
 		if err != nil {
 			return nil, errors.AddContext(err, "failed to fetch fixture")
+		}
+		err = skymodules.ValidateSkyfileMetadata(sf.Metadata)
+		if err != nil {
+			return nil, errors.AddContext(err, "invalid metadata")
 		}
 		rawMD, err := json.Marshal(sf.Metadata)
 		if err != nil {
@@ -933,10 +956,9 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 
 	// Start setting up the FUP.
 	fup := skymodules.FileUploadParams{
-		Force:               lup.Force,
-		DisablePartialChunk: true,  // must be set to true - partial chunks change, content addressed files must not change.
-		Repair:              false, // indicates whether this is a repair operation
-		CipherType:          crypto.TypePlain,
+		Force:      lup.Force,
+		Repair:     false, // indicates whether this is a repair operation
+		CipherType: crypto.TypePlain,
 	}
 
 	// Re-encrypt the baseSector for upload and add the fanout key to the fup.
@@ -1062,6 +1084,9 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 		// Set the default path params
 		DefaultPath:        sm.DefaultPath,
 		DisableDefaultPath: sm.DisableDefaultPath,
+
+		TryFiles:   sm.TryFiles,
+		ErrorPages: sm.ErrorPages,
 	}
 	skyfileEstablishDefaults(&sup)
 
@@ -1285,6 +1310,15 @@ func (r *Renter) ResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink) (s
 	return slResolved, srvs, nil
 }
 
+// SkylinkHealth returns the health of a skylink on the network.
+func (r *Renter) SkylinkHealth(ctx context.Context, sl skymodules.Skylink, ppms types.Currency) (skymodules.SkylinkHealth, error) {
+	if err := r.tg.Add(); err != nil {
+		return skymodules.SkylinkHealth{}, err
+	}
+	defer r.tg.Done()
+	return r.managedSkylinkHealth(ctx, sl, ppms)
+}
+
 // managedResolveSkylinkV2 resolves a V2 skylink to a V1 skylink. If the skylink
 // is not a V2 skylink, the input link is returned.
 func (r *Renter) managedResolveSkylinkV2(ctx context.Context, sl skymodules.Skylink, blocklistCheck bool) (skylink skymodules.Skylink, _ *skymodules.RegistryEntry, err error) {
@@ -1377,4 +1411,202 @@ func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, link skymodules
 		}
 	}
 	return link, srvs, nil
+}
+
+// managedSkylinkHealth returns the health of a skylink on the network.
+func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink, ppms types.Currency) (skymodules.SkylinkHealth, error) {
+	// Resolve the skylink if necessary.
+	sl, _, err := r.managedTryResolveSkylinkV2(ctx, sl, true)
+	if err != nil {
+		return skymodules.SkylinkHealth{}, errors.AddContext(err, "failed to resolve skylink")
+	}
+
+	// Get the offset and fetchsize from the skylink
+	offset, fetchSize, err := sl.OffsetAndFetchSize()
+	if err != nil {
+		return skymodules.SkylinkHealth{}, errors.AddContext(err, "unable to parse offset and fetchsize from skylink")
+	}
+
+	// Get base sector.
+	baseSector, ws, err := r.managedDownloadByRoot(ctx, sl.MerkleRoot(), offset, fetchSize, ppms)
+	if err != nil {
+		return skymodules.SkylinkHealth{}, errors.AddContext(err, "unable to download base sector")
+	}
+
+	// Check if the base sector is encrypted, and attempt to decrypt it.
+	encrypted := skymodules.IsEncryptedBaseSector(baseSector)
+	if encrypted {
+		_, err = r.managedDecryptBaseSector(baseSector)
+		if err != nil {
+			return skymodules.SkylinkHealth{}, errors.AddContext(err, "failed to decrypt base sector")
+		}
+	}
+
+	// Parse out the metadata of the skyfile.
+	layout, fanoutBytes, _, _, _, err := skymodules.ParseSkyfileMetadata(baseSector)
+	if err != nil {
+		return skymodules.SkylinkHealth{}, errors.AddContext(err, "error parsing skyfile metadata")
+	}
+	numPieces := int(layout.FanoutDataPieces + layout.FanoutParityPieces)
+
+	// Prepare the list of roots to ask the hosts for.
+	var roots []crypto.Hash
+
+	// If the file has a fanout, ask the hosts for the fanout as well.
+	rootIndexToChunkIndex := make(map[int]int)
+	numChunks := 0
+	if len(fanoutBytes) > 0 {
+		// Create the list of chunks from the fanout. Since we want to
+		// give an overview of the health of the file on the network, we
+		// don't compress the fanout.
+		fanoutChunks, err := layout.DecodeFanoutIntoChunks(fanoutBytes)
+		if err != nil {
+			return skymodules.SkylinkHealth{}, errors.AddContext(err, "error parsing skyfile fanout")
+		}
+
+		for chunkIndex, chunk := range fanoutChunks {
+			for _, root := range chunk {
+				rootIndexToChunkIndex[len(roots)] = chunkIndex
+				roots = append(roots, root)
+			}
+		}
+		numChunks = len(fanoutChunks)
+	}
+
+	// Get the workers.
+	workers := r.staticWorkerPool.callWorkers()
+
+	// Launch the jobs in batches. Each batch with its own response channel.
+	remainingRoots := roots
+	var responseChans []chan *jobHasSectorResponse
+	var launchedWorkerss []int
+	for batchIndex := 0; len(remainingRoots) > 0; batchIndex++ {
+		batch := remainingRoots
+		if uint64(len(remainingRoots)) > maxHasSectorBatchSize {
+			batch = batch[:maxHasSectorBatchSize]
+		}
+		remainingRoots = remainingRoots[len(batch):]
+		responseChan := make(chan *jobHasSectorResponse, len(workers))
+
+		launchedWorkers := 0
+		for _, worker := range workers {
+			// Check for gouging.
+			pt := worker.staticPriceTable().staticPriceTable
+			cache := worker.staticCache()
+			err := checkPCWSGouging(pt, cache.staticRenterAllowance, len(workers), len(roots))
+			if err != nil {
+				continue // ignore
+			}
+
+			// Add job to worker.
+			jhs := worker.newJobHasSector(ctx, responseChan, numPieces, batch...)
+			if !worker.staticJobHasSectorQueue.callAdd(jhs) {
+				continue // ignore
+			}
+			launchedWorkers++
+		}
+		responseChans = append(responseChans, responseChan)
+		launchedWorkerss = append(launchedWorkerss, launchedWorkers)
+
+		// If a batch has 0 launched workers we are done.
+		if launchedWorkers == 0 {
+			return skymodules.SkylinkHealth{}, errors.New("no workers were launched successfully")
+		}
+	}
+
+	// Each batch has its own waiting goroutine.
+	// TODO: Once Sia has upgraded to support larger MDM programs we don't
+	// need the batching here anymore.
+	var wg sync.WaitGroup
+	rootTotals := make([]uint64, len(roots))
+	for batchIndex, responseChan := range responseChans {
+		wg.Add(1)
+		go func(batchIndex uint64, responseChan chan *jobHasSectorResponse) {
+			defer wg.Done()
+
+			for i := 0; i < launchedWorkerss[batchIndex]; i++ {
+				var resp *jobHasSectorResponse
+				select {
+				case <-ctx.Done():
+					return
+				case resp = <-responseChan:
+				}
+
+				if resp.staticErr != nil {
+					continue
+				}
+				// Add the result to the totals.
+				for i, available := range resp.staticAvailables {
+					if available {
+						batchOffset := uint64(maxHasSectorBatchSize) * batchIndex
+						rootTotals[batchOffset+uint64(i)]++
+					}
+				}
+			}
+		}(uint64(batchIndex), responseChan)
+	}
+	wg.Wait()
+
+	// Wait for the worker state results for the base sector.
+	resps := ws.WaitForResults(ctx)
+	var baseSectorRedundancy uint64
+	for _, resp := range resps {
+		if resp.err != nil {
+			continue
+		}
+		// Check > 0 because base sector only has 1 piece.
+		if len(resp.pieceIndices) > 0 {
+			baseSectorRedundancy++
+		}
+	}
+
+	// Create a slice of good pieces for each chunk. A chunk has a good
+	// piece if a root belonging to the chunk exists >0 times on the
+	// network.
+	chunkGoodPieces := make([]int, numChunks)
+	onlyOnePiecePerChunk := layout.FanoutDataPieces == 1 && layout.CipherType == crypto.TypePlain
+	for i := 0; i < len(rootTotals); i++ {
+		chunkIndex := rootIndexToChunkIndex[i]
+		if onlyOnePiecePerChunk {
+			// Special Case: If we only need one piece per chunk, we
+			// count all occurrences of that piece up until
+			// numPieces.
+			chunkGoodPieces[chunkIndex] += int(rootTotals[i])
+			if chunkGoodPieces[chunkIndex] > numPieces {
+				chunkGoodPieces[chunkIndex] = numPieces
+			}
+		} else if rootTotals[i] > 0 {
+			// Otherwise every piece only counts as 1 good piece.
+			chunkGoodPieces[chunkIndex]++
+		}
+	}
+
+	// Set the base sector redundancy.
+	health := skymodules.SkylinkHealth{
+		BaseSectorRedundancy: baseSectorRedundancy,
+	}
+
+	// If the fanout datapieces are 0, there is no fanout and we are done.
+	if layout.FanoutDataPieces == 0 {
+		return health, nil
+	}
+
+	// Compute the health of all chunks and remember the worst one. That's
+	// the overall fanout health.
+	worstHealth := float64(numPieces / int(layout.FanoutDataPieces))
+	fanoutHealth := make([]float64, 0, numChunks)
+	for _, goodPieces := range chunkGoodPieces {
+		chunkHealth := float64(goodPieces) / float64(layout.FanoutDataPieces)
+		if chunkHealth < worstHealth {
+			worstHealth = chunkHealth
+		}
+		fanoutHealth = append(fanoutHealth, chunkHealth)
+	}
+	return skymodules.SkylinkHealth{
+		BaseSectorRedundancy:      baseSectorRedundancy,
+		FanoutEffectiveRedundancy: worstHealth,
+		FanoutRedundancy:          fanoutHealth,
+		FanoutDataPieces:          layout.FanoutDataPieces,
+		FanoutParityPieces:        layout.FanoutParityPieces,
+	}, nil
 }

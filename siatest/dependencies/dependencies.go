@@ -225,6 +225,12 @@ type (
 	}
 )
 
+// NewDependencyDelayRegistryHealthResponses simulates a delay to the
+// staticComplete time of all responses in managedRegistryEntryHealth.`
+func NewDependencyDelayRegistryHealthResponses() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("DelayRegistryHealthResponses")
+}
+
 // NewDependencyTUSConnectionDrop creates a new DependencyTUSConnectionDrop
 // which simulates a dropped connection during a TUS upload.
 func NewDependencyTUSConnectionDrop() *DependencyInterruptOnceOnKeyword {
@@ -318,6 +324,12 @@ func NewDependencyInterruptNewStreamTimeout() *DependencyWithDisableAndEnable {
 	return newDependencywithDisableAndEnable("InterruptNewStreamTimeout")
 }
 
+// NewDependencyInterruptHostScan is a dependency that interrupts the host scan
+// and ensures hosts will be considered offline if the dependency is enabled.
+func NewDependencyInterruptHostScan() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("InterruptHostScan")
+}
+
 // NewDependencyInterruptUploadBeforeSendingRevision creates a new dependency
 // that interrupts the upload on the renter side before sending the signed
 // revision to the host.
@@ -361,6 +373,12 @@ func NewDependencyHostBlockRPC() *DependencyWithDisableAndEnable {
 // the host to act is if it can not find a price table for given UID.
 func NewDependencyHostLosePriceTable() *DependencyWithDisableAndEnable {
 	return newDependencywithDisableAndEnable("HostLosePriceTable")
+}
+
+// NewDependencyReadRegistryNoEntry creates a new dependency that can be used to
+// simulate a host losing a registry entry.
+func NewDependencyReadRegistryNoEntry() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("ReadRegistryNoEntry")
 }
 
 // NewDependencyRegistryUpdateNoOp creates a dependency, that causes

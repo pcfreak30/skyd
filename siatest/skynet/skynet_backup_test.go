@@ -119,7 +119,7 @@ func testSingleFileMultiPart(t *testing.T, tg *siatest.TestGroup) {
 	// Define test function
 	multiFileTest := func(filename, skykeyName string, files []siatest.TestFile) {
 		// Portal 1 uploads the multipart skyfile
-		skylink, sup, _, err := portal1.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, false, nil, skykeyName, skykey.SkykeyID{})
+		skylink, sup, _, err := portal1.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, skymodules.DefaultTryFilesValue, nil, false, skykeyName, skykey.SkykeyID{})
 		if err != nil {
 			t.Fatalf("Test %v failed to upload: %v", filename, err)
 		}
@@ -173,9 +173,9 @@ func testDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Define test function
-	directoryTest := func(filename, skykeyName, defaultPath string, files []siatest.TestFile, disableDefaultPath, force bool) {
+	directoryTest := func(filename, skykeyName, defaultPath string, files []siatest.TestFile, disableDefaultPath bool, tryfiles []string, errorpages map[int]string, force bool) {
 		// Portal 1 uploads the directory
-		skylink, sup, _, err := portal1.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, defaultPath, disableDefaultPath, force, nil, skykeyName, skykey.SkykeyID{})
+		skylink, sup, _, err := portal1.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, defaultPath, disableDefaultPath, tryfiles, errorpages, force, skykeyName, skykey.SkykeyID{})
 		if err != nil {
 			t.Fatalf("Test %v failed to upload: %v", filename, err)
 		}
@@ -194,28 +194,37 @@ func testDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 		{Name: "index.html", Data: largeData},
 		{Name: "about.html", Data: []byte("about.html_contents")},
 	}
-	directoryTest("DirectoryBasic_LargeFile", "", "", files, false, false)
+	defaultTryfiles := []string{"/index.html"}
+	aboutTryfiles := []string{"/about.html"}
+	noTryfiles := []string{}
+	errorpages := map[int]string{}
+	directoryTest("DirectoryBasic0_LargeFile", "", "", files, false, defaultTryfiles, errorpages, false)
 	// Basic Encrypted Directory with Large Subfile
-	directoryTest("DirectoryBasic_LargeFile_Encryption", sk.Name, "", files, false, false)
+	directoryTest("DirectoryBasic0_LargeFile_Encryption", sk.Name, "", files, false, defaultTryfiles, errorpages, false)
 
 	// Basic directory
 	files = []siatest.TestFile{
 		{Name: "index.html", Data: []byte("index.html_contents")},
 		{Name: "about.html", Data: []byte("about.html_contents")},
 	}
-	directoryTest("DirectoryBasic", "", "", files, false, false)
+	directoryTest("DirectoryBasic1", "", "", files, false, defaultTryfiles, errorpages, false)
 	// Basic encrypted directory
-	directoryTest("DirectoryBasic_Encryption", sk.Name, "", files, false, false)
+	directoryTest("DirectoryBasic1_Encryption", sk.Name, "", files, false, defaultTryfiles, errorpages, false)
 
 	// Same basic directory with different default path
-	directoryTest("DirectoryBasic", "", "about.html", files, false, true)
+	directoryTest("DirectoryBasic2", "", "about.html", files, false, noTryfiles, errorpages, true)
 	// Same basic encrypted directory with different default path
-	directoryTest("DirectoryBasic_Encryption", sk.Name, "about.html", files, false, true)
+	directoryTest("DirectoryBasic2_Encryption", sk.Name, "about.html", files, false, noTryfiles, errorpages, true)
+
+	// Same basic directory with different default path
+	directoryTest("DirectoryBasic3", "", "", files, false, aboutTryfiles, errorpages, true)
+	// Same basic encrypted directory with different default path
+	directoryTest("DirectoryBasic3_Encryption", sk.Name, "", files, false, aboutTryfiles, errorpages, true)
 
 	// Same basic directory with no default path
-	directoryTest("DirectoryBasic", "", "", files, true, true)
+	directoryTest("DirectoryBasic4", "", "", files, true, noTryfiles, errorpages, true)
 	// Same basic encrypted directory with no default path
-	directoryTest("DirectoryBasic_Encryption", sk.Name, "", files, true, true)
+	directoryTest("DirectoryBasic4_Encryption", sk.Name, "", files, true, noTryfiles, errorpages, true)
 }
 
 // testDirectoryNested verifies that a nested directory skyfile can be backed up
@@ -239,7 +248,7 @@ func testDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 	// Define test function
 	directoryTest := func(filename, skykeyName string, files []siatest.TestFile) {
 		// Portal 1 uploads the directory
-		skylink, sup, _, err := portal1.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, false, nil, skykeyName, skykey.SkykeyID{})
+		skylink, sup, _, err := portal1.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, skymodules.DefaultTryFilesValue, nil, false, skykeyName, skykey.SkykeyID{})
 		if err != nil {
 			t.Fatalf("Test %v failed to upload: %v", filename, err)
 		}

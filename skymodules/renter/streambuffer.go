@@ -663,7 +663,7 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 				sb.staticStreamBufferSet.staticStatsCollector.AddDataPoint(ds.externDuration)
 			}
 		case <-sb.staticTG.StopChan():
-			ds.externErr = errors.New("failed to read response from ReadStream")
+			ds.externErr = errors.AddContext(errTimeout, "failed to read response from ReadStream")
 		}
 	}()
 	return ds

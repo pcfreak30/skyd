@@ -133,6 +133,13 @@ type unfinishedUploadChunk struct {
 	staticSpan opentracing.Span
 }
 
+// Cancel cancels on upload work on a chunk.
+func (uc *unfinishedUploadChunk) Cancel() {
+	uc.cancelMU.Lock()
+	uc.canceled = true
+	uc.cancelMU.Unlock()
+}
+
 // managedSetStuckAndClose sets the unfinishedUploadChunk's stuck status and
 // closes the fileEntry.
 func (uc *unfinishedUploadChunk) managedSetStuckAndClose(setStuck bool) error {
@@ -288,12 +295,12 @@ func (r *Renter) managedDownloadLogicalChunkDataFromSkynet(chunk *unfinishedUplo
 			break
 		}
 	}
-	pcws, err := r.newPCWSByRoots(r.tg.StopCtx(), roots, ec, mk, chunk.staticIndex)
+	pcws, err := r.newPCWSByRoots(chunk.ctx, roots, ec, mk, chunk.staticIndex)
 	if err != nil {
 		return nil, err
 	}
 	// Start the download.
-	dr, err := pcws.Download(r.tg.StopCtx(), types.NewCurrency64(1), 0, downloadLength, true, true)
+	dr, err := pcws.Download(chunk.ctx, types.NewCurrency64(1), 0, downloadLength, true, true)
 	if err != nil {
 		return nil, err
 	}

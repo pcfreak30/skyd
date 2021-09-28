@@ -5,14 +5,17 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/eventials/go-tus"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/node"
 	"gitlab.com/SkynetLabs/skyd/node/api/client"
 	"gitlab.com/SkynetLabs/skyd/siatest"
@@ -48,17 +51,20 @@ func TestSkynetTUSUploader(t *testing.T) {
 	}()
 
 	// Run tests.
+	t.Run("PruneIdle", func(t *testing.T) {
+		testTUSUploaderPruneIdle(t, tg.Renters()[0]) // first to avoid ndf
+	})
 	t.Run("Basic", func(t *testing.T) {
 		testTUSUploaderBasic(t, tg.Renters()[0])
 	})
 	t.Run("Options", func(t *testing.T) {
 		testOptionsHandler(t, tg.Renters()[0])
 	})
+	t.Run("Concat", func(t *testing.T) {
+		testTUSUploaderConcat(t, tg.Renters()[0])
+	})
 	t.Run("TooLarge", func(t *testing.T) {
 		testTUSUploaderTooLarge(t, tg.Renters()[0])
-	})
-	t.Run("PruneIdle", func(t *testing.T) {
-		testTUSUploaderPruneIdle(t, tg.Renters()[0])
 	})
 	t.Run("UnstableConnection", func(t *testing.T) {
 		testTUSUploaderUnstableConnection(t, tg)
@@ -82,11 +88,31 @@ func testTUSUploaderBasic(t *testing.T, r *siatest.TestNode) {
 	chunkSize := 2 * int64(skymodules.ChunkSize(crypto.TypePlain, uint64(skymodules.RenterDefaultDataPieces)))
 
 	// Declare a test helper that uploads a file and downloads it.
-	uploadTest := func(fileSize int64) error {
+	uploadTest := func(fileSize int64, baseSectorRedundancy, fanoutHealth float64) error {
 		uploadedData := fastrand.Bytes(int(fileSize))
 		fileName := hex.EncodeToString(fastrand.Bytes(10))
 		fileType := hex.EncodeToString(fastrand.Bytes(10))
 		skylink, err := r.SkynetTUSUploadFromBytes(uploadedData, chunkSize, fileName, fileType)
+		if err != nil {
+			return err
+		}
+		var sl skymodules.Skylink
+		err = sl.LoadString(skylink)
+		if err != nil {
+			return err
+		}
+
+		// Wait for the upload to reach full health.
+		err = build.Retry(100, 100*time.Millisecond, func() error {
+			shg, err := r.SkylinkHealthGET(sl)
+			if err != nil {
+				return err
+			}
+			if shg.BaseSectorRedundancy != uint64(baseSectorRedundancy) || shg.FanoutEffectiveRedundancy != fanoutHealth {
+				return fmt.Errorf("wrong health %v %v", shg.BaseSectorRedundancy, shg.FanoutEffectiveRedundancy)
+			}
+			return nil
+		})
 		if err != nil {
 			return err
 		}
@@ -132,22 +158,22 @@ func testTUSUploaderBasic(t *testing.T, r *siatest.TestNode) {
 	}
 
 	// Upload a large file.
-	if err := uploadTest(chunkSize*5 + chunkSize/2); err != nil {
+	if err := uploadTest(chunkSize*5+chunkSize/2, 2, 3); err != nil {
 		t.Fatal(err)
 	}
 
 	// Upload a byte that's smaller than a sector but still a large file.
-	if err := uploadTest(int64(modules.SectorSize) - 1); err != nil {
+	if err := uploadTest(int64(modules.SectorSize)-1, 2, 3); err != nil {
 		t.Fatal(err)
 	}
 
 	// Upload a small file.
-	if err := uploadTest(1); err != nil {
+	if err := uploadTest(1, 2, 0); err != nil {
 		t.Fatal(err)
 	}
 
 	// Upload empty file.
-	if err := uploadTest(0); err != nil {
+	if err := uploadTest(0, 2, 0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -164,7 +190,7 @@ func testTUSUploaderBasic(t *testing.T, r *siatest.TestNode) {
 	}
 
 	// Upload file that is too large.
-	if err := uploadTest(2 * chunkSize); err == nil || !strings.Contains(err.Error(), "upload body is to large") {
+	if err := uploadTest(2*chunkSize, 0, 0); err == nil || !strings.Contains(err.Error(), "upload body is to large") {
 		t.Fatal(err)
 	}
 
@@ -231,8 +257,22 @@ func testOptionsHandler(t *testing.T, r *siatest.TestNode) {
 		if err := resp.Body.Close(); err != nil {
 			t.Fatal(err)
 		}
-		if _, ok := resp.Header["Tus-Extension"]; !ok {
+		extensionHeader, ok := resp.Header["Tus-Extension"]
+		if !ok {
 			t.Fatal("missing header")
+		}
+		extensions := strings.Split(extensionHeader[0], ",")
+		if len(extensions) != 3 {
+			t.Fatal("wrong number of extensions", len(extensions), extensions)
+		}
+		if extensions[0] != "creation" {
+			t.Fatal("extension 'creation' should be enabled", extensions[0])
+		}
+		if extensions[1] != "creation-with-upload" {
+			t.Fatal("extension 'creation-with-upload' should be enabled", extensions[1])
+		}
+		if extensions[2] != "concatenation" {
+			t.Fatal("extension 'concatenation' should be enabled", extensions[2])
 		}
 		if _, ok := resp.Header["Tus-Resumable"]; !ok {
 			t.Fatal("missing header")
@@ -271,6 +311,9 @@ func testTUSUploaderPruneIdle(t *testing.T, r *siatest.TestNode) {
 		t.Fatal(err)
 	}
 	nFilesBefore := dir.Directories[0].AggregateNumFiles
+	if nFilesBefore != 0 {
+		t.Fatal("test should start with 0 files")
+	}
 
 	// upload a 100 byte file in chunks of 10 bytes.
 	chunkSize := 2 * int64(skymodules.ChunkSize(crypto.TypePlain, uint64(skymodules.RenterDefaultDataPieces)))
@@ -313,13 +356,19 @@ func testTUSUploaderPruneIdle(t *testing.T, r *siatest.TestNode) {
 
 	// Check that the number of files didn't increase since the new files were
 	// purged.
-	dir, err = r.RenterDirRootGet(skymodules.SkynetFolder)
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		dir, err = r.RenterDirRootGet(skymodules.SkynetFolder)
+		if err != nil {
+			return err
+		}
+		nFiles := dir.Directories[0].AggregateNumFiles
+		if nFiles != 0 {
+			return fmt.Errorf("expected 0 new files but got %v", nFiles)
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	nFiles := dir.Directories[0].AggregateNumFiles
-	if nFiles-nFilesBefore != 0 {
-		t.Fatal("expected 0 new files but got", nFiles-nFilesBefore)
 	}
 }
 
@@ -462,5 +511,196 @@ func testTUSUploaderConnectionDropped(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if !bytes.Equal(uploadedData, downloadedData) {
 		t.Fatal("data doesn't match")
+	}
+}
+
+// testTUSUploaderConcat tests the concatenation capabilities of tus uploads.
+func testTUSUploaderConcat(t *testing.T, r *siatest.TestNode) {
+	tusEndpoint := "/skynet/tus"
+
+	// Get the number of files at the beginning of the test.
+	dir, err := r.RenterDirRootGet(skymodules.SkynetFolder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nFiles := dir.Directories[0].AggregateNumFiles
+
+	// request is a helper function to send a http request, check for an
+	// error and return the response header.
+	request := func(req *http.Request) (http.Header, error) {
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode <= 200 || resp.StatusCode > 299 {
+			return nil, fmt.Errorf("error status code: %v", resp.StatusCode)
+		}
+		return resp.Header, nil
+	}
+
+	// upload is a helper function to create a new upload of a certain size.
+	upload := func(size uint64) (string, error) {
+		req, err := r.NewRequest("POST", tusEndpoint, bytes.NewReader(nil))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Tus-Resumable", "1.0.0")
+		req.Header.Set("SkynetMaxUploadSize", fmt.Sprint(10*modules.SectorSize))
+		req.Header.Set("Upload-Length", fmt.Sprint(size))
+		req.Header.Set("Upload-Concat", "partial")
+
+		h, err := request(req)
+		return h.Get("Location"), err
+	}
+
+	// path is a helper function to upload data of a certain length at a
+	// specific offset to an upload.
+	patch := func(uploadURL string, data []byte, offset, length int) error {
+		req, err := http.NewRequest("PATCH", uploadURL, bytes.NewReader(data))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Tus-Resumable", "1.0.0")
+		req.Header.Set("Upload-Offset", fmt.Sprint(offset))
+		req.Header.Set("Content-Type", "application/offset+octet-stream")
+
+		_, err = request(req)
+		return err
+	}
+
+	// concat is a helper function to concatenate 2 uploads by their upload
+	// urls.
+	concat := func(urlFileA, urlFileB string) (string, error) {
+		req, err := r.NewRequest("POST", tusEndpoint, bytes.NewReader(nil))
+		if err != nil {
+			t.Fatal(err)
+		}
+		urlA, err := url.Parse(urlFileA)
+		if err != nil {
+			t.Fatal(err)
+		}
+		urlB, err := url.Parse(urlFileB)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Tus-Resumable", "1.0.0")
+		req.Header.Set("Upload-Concat", fmt.Sprintf("final;%s %s", urlA.Path, urlB.Path))
+		req.Header.Set("SkynetMaxUploadSize", fmt.Sprint(10*modules.SectorSize))
+
+		h, err := request(req)
+		return h.Get("Location"), err
+	}
+
+	// skylink is a helper function to get a skylink from an upload url.
+	skylink := func(urlFile string) (string, error) {
+		c, err := r.SkynetTUSClient(int64(modules.SectorSize))
+		if err != nil {
+			return "", err
+		}
+		return client.SkylinkFromTUSURL(c, urlFile)
+	}
+
+	// Prepare the data.
+	fullData := fastrand.Bytes(int(modules.SectorSize))
+	partialData := fastrand.Bytes(1)
+
+	// Upload 1 - full sector
+	var wg sync.WaitGroup
+	wg.Add(1)
+	var urlFull string
+	go func() {
+		defer wg.Done()
+		var err error
+		urlFull, err = upload(modules.SectorSize)
+		if err != nil {
+			t.Error(err)
+		}
+		err = patch(urlFull, fullData, 0, len(fullData))
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	// Upload 2 - partial sector
+	wg.Add(1)
+	var urlPartial string
+	go func() {
+		defer wg.Done()
+		var err error
+		urlPartial, err = upload(1)
+		if err != nil {
+			t.Error(err)
+		}
+		err = patch(urlPartial, partialData, 0, len(partialData))
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+	wg.Wait()
+
+	// Skip remaining test if we already failed.
+	if t.Failed() {
+		t.SkipNow()
+	}
+
+	// Concat them.
+	urlConcat, err := concat(urlFull, urlPartial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sl, err := skylink(urlConcat)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download the skylink.
+	downloaded, err := r.SkynetSkylinkGet(sl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := append(fullData, partialData...)
+	if !bytes.Equal(downloaded, expected) {
+		t.Fatal("data mismatch", len(downloaded), len(expected))
+	}
+
+	// Concat them the wrong way round. This should not work.
+	urlConcat, err = concat(urlPartial, urlFull)
+	if err == nil {
+		t.Fatal("shouldn't work")
+	}
+
+	// Concat only the small file. This should work.
+	urlConcat, err = concat(urlPartial, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sl, err = skylink(urlConcat)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download the skylink.
+	downloaded, err = r.SkynetSkylinkGet(sl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected = partialData
+	if !bytes.Equal(downloaded, expected) {
+		t.Fatal("data mismatch", len(downloaded), len(expected))
+	}
+
+	// Wait for two full pruning intervals to make sure pruning ran at least
+	// once.
+	time.Sleep(2 * renter.PruneTUSUploadTimeout)
+
+	dir, err = r.RenterDirRootGet(skymodules.SkynetFolder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nFilesAfter := dir.Directories[0].AggregateNumFiles
+	if nFilesAfter-nFiles != 4 {
+		t.Fatal("expected 4 .sia files to be created for the 2 parts but got", nFilesAfter-nFiles)
 	}
 }

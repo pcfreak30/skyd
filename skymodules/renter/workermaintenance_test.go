@@ -10,6 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -82,7 +83,7 @@ func TestWorkerMaintenanceCoolDown(t *testing.T) {
 
 	// run a couple of has sector jobs to spend money
 	rc := make(chan *jobHasSectorResponse)
-	jhs := w.newJobHasSector(ctx, rc, crypto.Hash{})
+	jhs := w.newJobHasSector(ctx, rc, skymodules.RenterDefaultNumPieces, crypto.Hash{})
 	for i := 0; i < 100; i++ {
 		if !w.staticJobHasSectorQueue.callAdd(jhs) {
 			t.Fatal("could not add job to queue")

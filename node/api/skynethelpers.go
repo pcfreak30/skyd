@@ -19,13 +19,11 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 	"go.sia.tech/siad/crypto"
-	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 )
 
@@ -41,6 +39,12 @@ var (
 	// errRangeSetTwice is the error returned when the range is set twice,
 	// once in the Header and once in the query params
 	errRangeSetTwice = errors.New("range request should use either the Header or the query params but not both")
+
+	// errTimeoutTooHigh is returned when a parsed timeout exceeds the max.
+	errTimeoutTooHigh = errors.New("'timeout' parameter too high")
+
+	// errZeroTimeout is returned if the timeout is explicitly set to 0.
+	errZeroTimeout = errors.New("can't specify a zero timeout")
 )
 
 type (
@@ -64,11 +68,12 @@ type (
 		defaultPath         string
 		convertPath         string
 		disableDefaultPath  bool
+		tryFiles            []string
+		errorPages          map[int]string
 		dryRun              bool
 		filename            string
 		force               bool
 		mode                os.FileMode
-		monetization        *skymodules.Monetization
 		root                bool
 		siaPath             skymodules.SiaPath
 		skyKeyID            skykey.SkykeyID
@@ -89,7 +94,7 @@ type writeReader struct {
 }
 
 // Read implements the io.Reader interface but returns 0 and EOF.
-func (wr *writeReader) Read(b []byte) (int, error) {
+func (wr *writeReader) Read(_ []byte) (int, error) {
 	build.Critical("Read method of the writeReader is not intended to be used")
 	return 0, io.EOF
 }
@@ -99,15 +104,6 @@ func (wr *writeReader) Read(b []byte) (int, error) {
 type monetizedResponseWriter struct {
 	staticInner http.ResponseWriter
 	staticW     io.Writer
-}
-
-// newMonetizedResponseWriter creates a new response writer wrapped with a
-// monetized writer.
-func newMonetizedResponseWriter(inner http.ResponseWriter, md skymodules.SkyfileMetadata, wallet modules.SiacoinSenderMulti, cr map[string]types.Currency, mb types.Currency) http.ResponseWriter {
-	return &monetizedResponseWriter{
-		staticInner: inner,
-		staticW:     newMonetizedWriter(inner, md, wallet, cr, mb),
-	}
 }
 
 // Header calls the inner writers Header method.
@@ -125,76 +121,65 @@ func (rw *monetizedResponseWriter) Write(b []byte) (int, error) {
 	return rw.staticW.Write(b)
 }
 
-// monetizedWriter is a wrapper for an io.Writer. It monetizes the returned
-// bytes.
-type monetizedWriter struct {
-	staticW      io.Writer
-	staticMD     skymodules.SkyfileMetadata
-	staticWallet modules.SiacoinSenderMulti
-
-	staticConversionRates  map[string]types.Currency
-	staticMonetizationBase types.Currency
-
-	// count is used for sanity checking the number of monetized bytes against
-	// the total.
-	count int
-}
-
-// newMonetizedWriter creates a new wrapped writer.
-func newMonetizedWriter(w io.Writer, md skymodules.SkyfileMetadata, wallet modules.SiacoinSenderMulti, cr map[string]types.Currency, mb types.Currency) io.Writer {
-	// Ratelimit the writer.
-	rl := ratelimit.NewRateLimit(0, 0, 0)
-	return &monetizedWriter{
-		staticW:                ratelimit.NewRLReadWriter(&writeReader{Writer: w}, rl, make(chan struct{})),
-		staticMD:               md,
-		staticWallet:           wallet,
-		staticConversionRates:  cr,
-		staticMonetizationBase: mb,
+// newCustomErrorWriter creates a new customErrorWriter.
+func newCustomErrorWriter(meta skymodules.SkyfileMetadata, streamer io.ReadSeeker) *customErrorWriter {
+	if meta.ErrorPages == nil {
+		meta.ErrorPages = make(map[int]string)
+	}
+	return &customErrorWriter{
+		staticMetadata: meta,
+		staticStreamer: streamer,
 	}
 }
 
-// ReadFrom implements the io.ReaderFrom interface for the
-// monetizedResponseWriter. This allows us to overwrite the default fetch size
-// of 32kib of http.ServeContent with something more appropriate for the way we
-// fetch data from Sia.
-func (rw *monetizedResponseWriter) ReadFrom(r io.Reader) (int64, error) {
-	buf := make([]byte, renter.SkylinkDataSourceRequestSize)
-	return io.CopyBuffer(rw.staticW, r, buf)
+// customErrorWriter responds to errors with custom content.
+type customErrorWriter struct {
+	staticMetadata skymodules.SkyfileMetadata
+	staticStreamer io.ReadSeeker
 }
 
-// Write wraps the inner Write and adds monetization.
-func (rw *monetizedWriter) Write(b []byte) (int, error) {
-	// Handle legacy uploads with length 0 by passing it through to the inner
-	// writer.
-	if rw.staticMD.Length == 0 && rw.staticMD.Monetization == nil {
-		return rw.staticW.Write(b)
+// WriteError checks whether there's custom content configured for the
+// given error code and writes it the writer, otherwise it sends the standard
+// error content.
+func (ew customErrorWriter) WriteError(w http.ResponseWriter, e Error, code int) {
+	// If we don't have a custom error page for this error code just serve the
+	// standard response.
+	if _, exist := ew.staticMetadata.ErrorPages[code]; !exist {
+		WriteError(w, e, code)
+		return
 	}
-
-	// Sanity check the number of monetized bytes against the total.
-	rw.count += len(b)
-	if rw.count > int(rw.staticMD.Length) {
-		err := fmt.Errorf("monetized more data than the total data of the skylink: %v > %v", rw.count, rw.staticMD.Length)
-		build.Critical(err)
-		return 0, err
-	}
-
-	// Forward data to inner.
-	// TODO: instead of directly writing to the ratelimited writer, write to a
-	// not ratelimited buffer on disk which forwards the data to the writer.
-	// Otherwise we are starving the renter.
-	n, err := rw.staticW.Write(b)
+	contentReader, contentType, err := ew.customContent(code)
 	if err != nil {
-		return n, err
+		msg := fmt.Sprintf("Failed to fetch custom error content which should exist.\ntryfiles: %+v\nsubfiles: %+v\nerror: %+v\n", ew.staticMetadata.TryFiles, ew.staticMetadata.Subfiles, err)
+		build.Critical(msg)
+		WriteError(w, e, code)
+		return
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.WriteHeader(code)
+	_, err = io.Copy(w, contentReader)
+	if err != nil {
+		build.Critical("Failed to write custom error content:", err)
+	}
+}
+
+// customContent returns the custom error content that matches the given status
+// code, as well as its content type.
+func (ew *customErrorWriter) customContent(status int) (io.Reader, string, error) {
+	errpath, exists := ew.staticMetadata.ErrorPages[status]
+	if !exists {
+		return nil, "", os.ErrNotExist
 	}
 
-	// Pay monetizers.
-	if build.Release == "testing" {
-		err := skymodules.PayMonetizers(rw.staticWallet, rw.staticMD.Monetization, uint64(len(b)), rw.staticMD.Length, rw.staticConversionRates, rw.staticMonetizationBase)
-		if err != nil {
-			return 0, err
-		}
+	metadataForPath, _, offset, size := ew.staticMetadata.ForPath(errpath)
+	if len(metadataForPath.Subfiles) == 0 {
+		return nil, "", fmt.Errorf("custom error page for status %d not found", status)
 	}
-	return n, nil
+	_, err := ew.staticStreamer.Seek(int64(offset), io.SeekStart)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to serve custom contents for status code %d, invalid offset, error '%s'", status, err.Error())
+	}
+	return io.LimitReader(ew.staticStreamer, int64(size)), metadataForPath.ContentType(), nil
 }
 
 // buildETag is a helper function that returns an ETag.
@@ -248,12 +233,38 @@ func parseTimeout(queryForm url.Values) (time.Duration, error) {
 		return DefaultSkynetRequestTimeout, nil
 	}
 
-	timeoutInt, err := strconv.Atoi(timeoutStr)
+	var timeoutInt uint64
+	_, err := fmt.Sscan(timeoutStr, &timeoutInt)
 	if err != nil {
 		return 0, errors.AddContext(err, "unable to parse 'timeout'")
 	}
-	if timeoutInt > MaxSkynetRequestTimeout {
-		return 0, errors.AddContext(err, fmt.Sprintf("'timeout' parameter too high, maximum allowed timeout is %ds", MaxSkynetRequestTimeout))
+	if timeoutInt > uint64(MaxSkynetRequestTimeout.Seconds()) {
+		return 0, errors.AddContext(errTimeoutTooHigh, fmt.Sprintf("maximum allowed timeout is %ds", MaxSkynetRequestTimeout))
+	}
+	if timeoutInt == 0 {
+		return 0, errZeroTimeout
+	}
+	return time.Duration(timeoutInt) * time.Second, nil
+}
+
+// parseRegistryTimeout tries to parse the timeout from the query string and
+// validate it. If not present, it will default to the max allowed value.
+func parseRegistryTimeout(queryForm url.Values) (time.Duration, error) {
+	timeoutStr := queryForm.Get("timeout")
+	if timeoutStr == "" {
+		return renter.DefaultRegistryHealthTimeout, nil
+	}
+
+	var timeoutInt uint64
+	_, err := fmt.Sscan(timeoutStr, &timeoutInt)
+	if err != nil {
+		return 0, errors.AddContext(err, "unable to parse 'timeout'")
+	}
+	if timeoutInt > uint64(renter.MaxRegistryReadTimeout.Seconds()) {
+		return 0, errors.AddContext(errTimeoutTooHigh, fmt.Sprintf("maximum allowed timeout is %ds", MaxSkynetRequestTimeout))
+	}
+	if timeoutInt == 0 {
+		return 0, errZeroTimeout
 	}
 	return time.Duration(timeoutInt) * time.Second, nil
 }
@@ -370,13 +381,13 @@ func parseDownloadRequestParameters(req *http.Request) (*skyfileDownloadParams, 
 }
 
 // parseUploadHeadersAndRequestParameters is a helper function that parses all
-// of the query parameters and headers from an upload request
+// the query parameters and headers from an upload request
 func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Params) (*skyfileUploadHeaders, *skyfileUploadParams, error) {
 	var err error
 
 	// parse 'Skynet-Disable-Force' request header
 	var disableForce bool
-	strDisableForce := req.Header.Get("Skynet-Disable-Force")
+	strDisableForce := req.Header.Get(SkynetDisableForceHeader)
 	if strDisableForce != "" {
 		disableForce, err = strconv.ParseBool(strDisableForce)
 		if err != nil {
@@ -422,6 +433,33 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		if err != nil {
 			return nil, nil, errors.AddContext(err, "unable to parse 'disabledefaultpath' parameter")
 		}
+	}
+
+	// parse 'tryfiles' query parameter
+	var tryFiles []string
+	// There is a difference between the tryfiles value being set to empty or
+	// not being set at all. If it's not set at all we'll use the default value
+	// but if it's set to empty we will leave it empty.
+	if _, isSet := queryForm["tryfiles"]; isSet {
+		tryFiles, err = UnmarshalTryFiles(queryForm.Get("tryfiles"))
+		if err != nil {
+			return nil, nil, errors.AddContext(err, "unable to parse 'tryfiles' parameter")
+		}
+		if (defaultPath != "" || disableDefaultPath) && len(tryFiles) > 0 {
+			return nil, nil, errors.New("defaultpath and disabledefaultpath are not compatible with tryfiles")
+		}
+	} else {
+		// If we don't have any tryfiles defined, and we don't have a defaultpath or
+		// disabledefaultpath, we want to default to tryfiles with index.html.
+		// This only happens if the tryfiles are not passed at all.
+		if defaultPath == "" && disableDefaultPath == false {
+			tryFiles = skymodules.DefaultTryFilesValue
+		}
+	}
+
+	errPages, err := UnmarshalErrorPages(queryForm.Get("errorpages"))
+	if err != nil {
+		return nil, nil, errors.AddContext(err, "invalid 'errorpages' parameter")
 	}
 
 	// parse 'dryrun' query parameter
@@ -492,21 +530,6 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		}
 	}
 
-	// parse 'monetization'.
-	var monetization *skymodules.Monetization
-	monetizationStr := queryForm.Get("monetization")
-	if monetizationStr != "" {
-		var m skymodules.Monetization
-		err = json.Unmarshal([]byte(monetizationStr), &m)
-		if err != nil {
-			return nil, nil, errors.AddContext(err, "unable to parse 'monetizers'")
-		}
-		if err := skymodules.ValidateMonetization(&m); err != nil {
-			return nil, nil, err
-		}
-		monetization = &m
-	}
-
 	// validate parameter combos
 
 	// verify force is not set if disable force header was set
@@ -550,21 +573,22 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		defaultPath:         defaultPath,
 		disableDefaultPath:  disableDefaultPath,
 		dryRun:              dryRun,
+		errorPages:          errPages,
 		filename:            filename,
 		force:               force,
 		mode:                mode,
-		monetization:        monetization,
 		root:                root,
 		siaPath:             siaPath,
 		skyKeyID:            skykeyID,
 		skyKeyName:          skykeyName,
+		tryFiles:            tryFiles,
 	}
 	return headers, params, nil
 }
 
 // serveArchive serves skyfiles as an archive by reading them from r and writing
 // the archive to dst using the given archiveFunc.
-func serveArchive(w http.ResponseWriter, src io.ReadSeeker, format skymodules.SkyfileFormat, md skymodules.SkyfileMetadata, monetize func(io.Writer) io.Writer) (err error) {
+func serveArchive(w http.ResponseWriter, src io.ReadSeeker, format skymodules.SkyfileFormat, md skymodules.SkyfileMetadata) (err error) {
 	// Based upon the given format, set the Content-Type header, wrap the writer
 	// and select an archive function.
 	var dst io.Writer
@@ -629,13 +653,13 @@ func serveArchive(w http.ResponseWriter, src io.ReadSeeker, format skymodules.Sk
 			Len:      length,
 		})
 	}
-	err = archiveFunc(dst, src, files, monetize)
+	err = archiveFunc(dst, src, files)
 	return err
 }
 
 // serveTar is an archiveFunc that implements serving the files from src to dst
 // as a tar.
-func serveTar(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMetadata, monetize func(io.Writer) io.Writer) error {
+func serveTar(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMetadata) error {
 	tw := tar.NewWriter(dst)
 	for _, file := range files {
 		// Create header.
@@ -650,7 +674,7 @@ func serveTar(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMet
 			return err
 		}
 		// Write file content.
-		if _, err := io.CopyN(monetize(tw), src, header.Size); err != nil {
+		if _, err := io.CopyN(tw, src, header.Size); err != nil {
 			return err
 		}
 	}
@@ -659,7 +683,7 @@ func serveTar(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMet
 
 // serveZip is an archiveFunc that implements serving the files from src to dst
 // as a zip.
-func serveZip(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMetadata, monetize func(io.Writer) io.Writer) error {
+func serveZip(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMetadata) error {
 	zw := zip.NewWriter(dst)
 	for _, file := range files {
 		f, err := zw.Create(file.Filename)
@@ -668,7 +692,7 @@ func serveZip(dst io.Writer, src io.Reader, files []skymodules.SkyfileSubfileMet
 		}
 
 		// Write file content.
-		_, err = io.CopyN(monetize(f), src, int64(file.Len))
+		_, err = io.CopyN(f, src, int64(file.Len))
 		if err != nil {
 			return errors.AddContext(err, "serveZip: failed to write file contents to the zip")
 		}
@@ -691,6 +715,10 @@ func handleSkynetError(w http.ResponseWriter, prefix string, err error) {
 	}
 	if errors.Contains(err, renter.ErrRegistryEntryNotFound) {
 		WriteError(w, httpErr, http.StatusNotFound)
+		return
+	}
+	if errors.Contains(err, renter.ErrRegistryUpdateTimeout) {
+		WriteError(w, httpErr, http.StatusRequestTimeout)
 		return
 	}
 	if errors.Contains(err, renter.ErrRegistryLookupTimeout) {
@@ -726,10 +754,41 @@ func attachRegistryEntryProof(w http.ResponseWriter, srvs []skymodules.RegistryE
 			Type:      srv.Type,
 		})
 	}
+	// If the proof is empty, don't set the header.
+	if len(proofChain) == 0 {
+		return nil
+	}
+	// Otherwise marshal the header and attach it.
 	b, err := json.Marshal(proofChain)
 	if err != nil {
 		return err
 	}
-	w.Header().Set("Skynet-Proof", string(b))
+	w.Header().Set(SkynetProofHeader, string(b))
 	return nil
+}
+
+// UnmarshalErrorPages unmarshals an errorpages string into an map[int]string.
+func UnmarshalErrorPages(s string) (map[int]string, error) {
+	errPages := make(map[int]string)
+	if len(s) == 0 {
+		return errPages, nil
+	}
+	err := json.Unmarshal([]byte(s), &errPages)
+	if err != nil {
+		return nil, errors.AddContext(err, "invalid errorpages value")
+	}
+	return errPages, nil
+}
+
+// UnmarshalTryFiles unmarshals a tryfiles string.
+func UnmarshalTryFiles(s string) ([]string, error) {
+	if len(s) == 0 {
+		return []string{}, nil
+	}
+	var tf []string
+	err := json.Unmarshal([]byte(s), &tf)
+	if err != nil {
+		return nil, errors.AddContext(err, "invalid tryfiles value")
+	}
+	return tf, nil
 }

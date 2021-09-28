@@ -10,7 +10,9 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 )
 
 // TestReadRegistryJob tests running a ReadRegistry job on a host.
@@ -39,10 +41,30 @@ func TestReadRegistryJob(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create a ReadRegistry job to read the entry.
+	// The read registry stats should be seeded and therefore the cutoff
+	// estimate shouldn't be 0.
+	cutoffEstimate := wt.ReadRegCutoffEstimate()
+	if cutoffEstimate == 0 {
+		t.Fatal("estimate wasn't seeded", cutoffEstimate)
+	}
+
+	// Read the entry
 	lookedUpRV, err := wt.ReadRegistry(context.Background(), testSpan(), spk, rv.Tweak)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Read the entry a few more times to guarantee the stats are updated.
+	for i := 0; i < 3; i++ {
+		_, err = wt.ReadRegistry(context.Background(), testSpan(), spk, rv.Tweak)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// The estimate should be updated.
+	newCutoffEstimate := wt.ReadRegCutoffEstimate()
+	if newCutoffEstimate == 0 || newCutoffEstimate == cutoffEstimate {
+		t.Error("estimate wasn't updated", newCutoffEstimate, cutoffEstimate)
 	}
 
 	// The entries should match.
@@ -117,10 +139,10 @@ func TestReadRegistryJobManual(t *testing.T) {
 	}
 
 	// The worker, eid, spk and tweak should be set.
-	if *resp.staticTweak != rv.Tweak {
+	if resp.staticSignedRegistryValue.Tweak != rv.Tweak {
 		t.Fatal("wrong tweak")
 	}
-	if !resp.staticSPK.Equals(spk) {
+	if !resp.staticSignedRegistryValue.PubKey.Equals(spk) {
 		t.Fatal("wrong spk")
 	}
 	if resp.staticEID != eid {
@@ -149,10 +171,12 @@ func TestReadRegistryJobManual(t *testing.T) {
 	}
 
 	// The worker and eid should be set.
-	if resp.staticTweak != nil {
+	emptyHash := crypto.Hash{}
+	if resp.staticSignedRegistryValue.Tweak == emptyHash {
 		t.Fatal("wrong tweak")
 	}
-	if resp.staticSPK != nil {
+	emptyKey := types.SiaPublicKey{}
+	if reflect.DeepEqual(resp.staticSignedRegistryValue.PubKey, emptyKey) {
 		t.Fatal("wrong spk")
 	}
 	if resp.staticEID != eid {
@@ -264,6 +288,11 @@ func TestReadRegistryCachedUpdated(t *testing.T) {
 	if cached {
 		t.Fatal("value wasn't removed")
 	}
+	wt.staticRegistryCache.mu.Lock()
+	if len(wt.staticRegistryCache.entryList) != 0 {
+		t.Fatal("value wasn't removed")
+	}
+	wt.staticRegistryCache.mu.Unlock()
 
 	// Read the registry value.
 	readRV, err := wt.ReadRegistry(context.Background(), testSpan(), spk, rv.Tweak)

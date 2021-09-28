@@ -25,6 +25,10 @@ var (
 	// ErrInvalidDefaultPath is returned when the specified default path is not
 	// valid, e.g. the file it points to does not exist.
 	ErrInvalidDefaultPath = errors.New("invalid default path provided")
+
+	// ErrMalformedBaseSector is returned if a malformed base sector is
+	// detected.
+	ErrMalformedBaseSector = errors.New("base sector is malformed")
 )
 
 // AddMultipartFile is a helper function to add a file to multipart form-data.
@@ -267,12 +271,17 @@ func ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []by
 	rawSM = baseSector[offset : offset+metadataSize]
 	err = json.Unmarshal(rawSM, &sm)
 	if err != nil {
+		err = errors.Compose(ErrMalformedBaseSector, err)
 		return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, nil, errors.AddContext(err, "unable to parse SkyfileMetadata from skyfile base sector")
 	}
 	offset += metadataSize
 
 	// In version 1, the base sector payload is nil unless there is no fanout.
 	if sl.FanoutSize == 0 {
+		// Check for out-of-bounds.
+		if offset+sl.Filesize > uint64(len(baseSector)) {
+			return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, nil, errors.AddContext(ErrMalformedBaseSector, "fanout size is 0 but base sector doesn't contain full file data")
+		}
 		baseSectorPayload = baseSector[offset : offset+sl.Filesize]
 	}
 
@@ -319,42 +328,33 @@ func ValidateSkyfileMetadata(metadata SkyfileMetadata) error {
 			// note that we do not check the length property of a subfile as it
 			// is possible a user might have uploaded an empty part
 		}
-		legacyFile := len(metadata.Subfiles) > 0 && metadata.Length == 0 && metadata.Monetization == nil
+		legacyFile := len(metadata.Subfiles) > 0 && metadata.Length == 0
 		if !legacyFile && metadata.Length != totalLength {
-			return fmt.Errorf("invalid length set on metadata - length: %v, totalLength: %v, subfiles: %v, monetized: %v", metadata.Length, totalLength, len(metadata.Subfiles), metadata.Monetization != nil)
+			return fmt.Errorf("invalid length set on metadata - length: %v, totalLength: %v, subfiles: %v", metadata.Length, totalLength, len(metadata.Subfiles))
 		}
 	}
 
-	// validate default path (only if default path was not explicitly disabled)
-	if !metadata.DisableDefaultPath {
-		metadata.DefaultPath, err = validateDefaultPath(metadata.DefaultPath, metadata.Subfiles)
-		if err != nil {
-			return errors.Compose(ErrInvalidDefaultPath, err)
-		}
+	if metadata.DisableDefaultPath && metadata.DefaultPath != "" {
+		return errors.New("invalid defaultpath state - both defaultpath and disabledefaultpath are set, please specify a format if you want to download this skyfile")
 	}
 
-	// Make sure the returned metadata has valid monetization settings.
-	if err := ValidateMonetization(metadata.Monetization); err != nil {
-		return errors.AddContext(err, "metadata has invalid monetization")
+	metadata.DefaultPath, err = validateDefaultPath(metadata.DefaultPath, metadata.Subfiles)
+	if err != nil {
+		return errors.Compose(ErrInvalidDefaultPath, err)
 	}
-	return nil
-}
 
-// ValidateMonetization is a helper function to validate a list of monetizers.
-func ValidateMonetization(m *Monetization) error {
-	if m == nil {
-		return nil // No monetization is valid monetization.
+	// tryfiles are incompatible with defaultpath and disabledefaultpath
+	if len(metadata.TryFiles) > 0 && (metadata.DefaultPath != "" || metadata.DisableDefaultPath) {
+		return errors.New("tryfiles are incompatible with defaultpath and disabledefaultpath")
 	}
-	if m.License != LicenseMonetization {
-		return ErrUnknownLicense
+
+	err = ValidateTryFiles(metadata.TryFiles, metadata.Subfiles)
+	if err != nil {
+		return errors.AddContext(err, "metadata contains invalid tryfiles configuration")
 	}
-	for _, m := range m.Monetizers {
-		if m.Amount.IsZero() {
-			return ErrZeroMonetizer
-		}
-		if m.Currency != CurrencyUSD {
-			return ErrInvalidCurrency
-		}
+	err = ValidateErrorPages(metadata.ErrorPages, metadata.Subfiles)
+	if err != nil {
+		return errors.AddContext(err, "metadata contains invalid errorpages configuration")
 	}
 	return nil
 }
@@ -400,7 +400,15 @@ func validateDefaultPath(defaultPath string, subfiles SkyfileSubfiles) (string, 
 	if defaultPath == "" {
 		return defaultPath, nil
 	}
+	if len(subfiles) == 0 {
+		return "", errors.New("defaultpath is not allowed on single files")
+	}
+
 	defaultPath = EnsurePrefix(defaultPath, "/")
+
+	if strings.Count(defaultPath, "/") > 1 && len(subfiles) > 1 {
+		return "", fmt.Errorf("skyfile has invalid default path which refers to a non-root file")
+	}
 
 	// check if we have a subfile at the given default path.
 	_, found := subfiles[strings.TrimPrefix(defaultPath, "/")]
@@ -410,8 +418,51 @@ func validateDefaultPath(defaultPath string, subfiles SkyfileSubfiles) (string, 
 
 	// ensure it's at the root of the Skyfile
 	if strings.Count(defaultPath, "/") > 1 {
-		return "", fmt.Errorf("invalid default path '%s', the default path must point to a file in the root directory of the skyfile", defaultPath)
+		return "", errors.New("skyfile has invalid default path which refers to a non-root file")
 	}
 
 	return defaultPath, nil
+}
+
+// ValidateErrorPages ensures the given errorpages configuration is valid.
+func ValidateErrorPages(ep map[int]string, subfiles SkyfileSubfiles) error {
+	for code, fname := range ep {
+		// We are limiting this to 400 and above because overriding codes under 400 doesn't make sense and will be
+		// disruptive to normal skapp functions like redirects.
+		if code < 400 || code > 599 {
+			return errors.New("overriding status codes under 400 and above 599 is not supported")
+		}
+		if fname == "" {
+			return errors.New("an errorpage cannot be an empty string, it needs to be a valid file name")
+		}
+		if !strings.HasPrefix(fname, "/") {
+			return errors.New("all errorpages need to have absolute paths")
+		}
+		_, exists := subfiles[strings.TrimPrefix(fname, "/")]
+		if !exists {
+			return errors.New("all errorpage files must exist")
+		}
+	}
+	return nil
+}
+
+// ValidateTryFiles ensures the given tryfiles configuration is valid.
+func ValidateTryFiles(tf []string, subfiles SkyfileSubfiles) error {
+	anotherAbsPathFileExists := false
+	for _, fname := range tf {
+		if fname == "" {
+			return errors.New("a tryfile cannot be an empty string, it needs to be a valid file name")
+		}
+		if strings.HasPrefix(fname, "/") {
+			_, exists := subfiles[strings.TrimPrefix(fname, "/")]
+			if !exists {
+				return errors.New("any absolute path tryfile in the list must exist")
+			}
+			if anotherAbsPathFileExists {
+				return errors.New("only one absolute path tryfile is permitted")
+			}
+			anotherAbsPathFileExists = true
+		}
+	}
+	return nil
 }

@@ -18,6 +18,11 @@ const (
 	// performance is decayed each time a new datapoint is added. The jobs use
 	// an exponential weighted average.
 	jobUpdateRegistryPerformanceDecay = 0.9
+
+	// minUpdateRegistryEntryTypeVersion is the minimum host version that
+	// supports updating the registry with a registry entry type and
+	// registry update version.
+	minUpdateRegistryEntryTypeVersion = "1.5.7"
 )
 
 // errHostOutdatedProof is returned if the host provides a proof that has a
@@ -52,8 +57,9 @@ type (
 
 	// jobUpdateRegistryResponse contains the result of a UpdateRegistry query.
 	jobUpdateRegistryResponse struct {
-		srv       *modules.SignedRegistryValue // only sent on ErrLowerRevNum and ErrSameRevNum
-		staticErr error
+		srv          *modules.SignedRegistryValue // only sent on ErrLowerRevNum and ErrSameRevNum
+		staticErr    error
+		staticWorker *worker
 	}
 )
 
@@ -80,8 +86,9 @@ func (j *jobUpdateRegistry) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
 	errLaunch := w.staticRenter.tg.Launch(func() {
 		response := &jobUpdateRegistryResponse{
-			srv:       nil,
-			staticErr: errors.Extend(err, ErrJobDiscarded),
+			srv:          nil,
+			staticErr:    errors.Extend(err, ErrJobDiscarded),
+			staticWorker: j.staticQueue.staticWorker(),
 		}
 		select {
 		case j.staticResponseChan <- response:
@@ -111,8 +118,9 @@ func (j *jobUpdateRegistry) callExecute() {
 	sendResponse := func(srv *modules.SignedRegistryValue, err error) {
 		errLaunch := w.staticRenter.tg.Launch(func() {
 			response := &jobUpdateRegistryResponse{
-				srv:       srv,
-				staticErr: err,
+				srv:          srv,
+				staticErr:    err,
+				staticWorker: j.staticQueue.staticWorker(),
 			}
 			select {
 			case j.staticResponseChan <- response:
@@ -153,7 +161,7 @@ func (j *jobUpdateRegistry) callExecute() {
 		}
 		// If the entry is valid and the revision is also valid, check if we
 		// have a higher revision number in the cache than the provided one.
-		errCheating := w.managedCheckHostCheating(rid, rv, true)
+		errCheating := w.managedCheckHostCheating(rid, &rv, true)
 		if errCheating != nil {
 			sendResponse(nil, errCheating)
 			j.staticQueue.callReportFailure(errCheating)
@@ -215,10 +223,14 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue
 	// Create the program.
 	pt := w.staticPriceTable().staticPriceTable
 	pb := modules.NewProgramBuilder(&pt, 0) // 0 duration since UpdateRegistry doesn't depend on it.
+	version := modules.ReadRegistryVersionNoType
 	if build.VersionCmp(w.staticCache().staticHostVersion, "1.5.5") < 0 {
 		pb.V154AddUpdateRegistryInstruction(j.staticSiaPublicKey, j.staticSignedRegistryValue)
-	} else {
+	} else if build.VersionCmp(w.staticCache().staticHostVersion, minUpdateRegistryEntryTypeVersion) < 0 {
 		pb.V156AddUpdateRegistryInstruction(j.staticSiaPublicKey, j.staticSignedRegistryValue)
+	} else {
+		version = modules.ReadRegistryVersionWithType
+		pb.AddUpdateRegistryInstruction(j.staticSiaPublicKey, j.staticSignedRegistryValue)
 	}
 	program, programData := pb.Program()
 	cost, _, _ := pb.Cost(true)
@@ -250,8 +262,8 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue
 		}
 		if modules.IsRegistryEntryExistErr(err) {
 			// Parse the proof.
-			_, _, data, revision, sig, parseErr := parseSignedRegistryValueResponse(resp.Output, false)
-			rv := modules.NewSignedRegistryValue(j.staticSignedRegistryValue.Tweak, data, revision, sig, modules.RegistryTypeWithoutPubkey)
+			_, _, data, revision, sig, entryType, parseErr := parseSignedRegistryValueResponse(resp.Output, false, version)
+			rv := modules.NewSignedRegistryValue(j.staticSignedRegistryValue.Tweak, data, revision, sig, entryType)
 			return rv, errors.Compose(err, parseErr)
 		}
 		if err != nil {
@@ -299,6 +311,41 @@ func (w *worker) UpdateRegistry(ctx context.Context, spk types.SiaPublicKey, rv 
 	case resp = <-updateRegistryRespChan:
 	}
 	return resp.staticErr
+}
+
+// callLaunchUpdateRegistry launches an UpdateRegistry job and conducts
+// necessary checks like price gouging and version verification. Returns true if
+// the job was launched successfully and false otherwise.
+func (w *worker) callLaunchUpdateRegistry(span opentracing.Span, spk types.SiaPublicKey, srv modules.SignedRegistryValue, responseChan chan *jobUpdateRegistryResponse) bool {
+	cache := w.staticCache()
+	if build.VersionCmp(cache.staticHostVersion, minRegistryVersion) < 0 {
+		return false
+	}
+	r := w.staticRenter
+
+	// Skip !goodForUpload workers.
+	if !cache.staticContractUtility.GoodForUpload {
+		return false
+	}
+
+	// check for price gouging
+	// TODO: use upload gouging for some basic protection. Should be
+	// replaced as part of the gouging overhaul.
+	host, ok, err := r.staticHostDB.Host(w.staticHostPubKey)
+	if !ok || err != nil {
+		return false
+	}
+	err = checkUploadGouging(cache.staticRenterAllowance, host.HostExternalSettings)
+	if err != nil {
+		r.staticLog.Debugf("price gouging detected in worker %v, err: %v\n", w.staticHostPubKeyStr, err)
+		return false
+	}
+
+	// Create the job. We purposefully use the renter's ctx here to make
+	// sure the jobs can finish in the background instead of being killed
+	// when the timeout channel is closed.
+	jrr := w.newJobUpdateRegistry(r.tg.StopCtx(), span, responseChan, spk, srv)
+	return w.staticJobUpdateRegistryQueue.callAdd(jrr)
 }
 
 // updateRegistryUpdateJobExpectedBandwidth is a helper function that returns

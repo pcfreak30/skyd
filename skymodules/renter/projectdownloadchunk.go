@@ -2,6 +2,7 @@ package renter
 
 import (
 	"bytes"
+	"container/heap"
 	"context"
 	"encoding/hex"
 	"fmt"
@@ -91,6 +92,7 @@ type (
 		// the hopeful pieces without introducing a race condition in the
 		// finished check.
 		availablePieces            [][]*pieceDownload
+		availablePiecesByWorker    map[string][]uint64
 		workersConsideredIndex     int
 		unresolvedWorkersRemaining int
 
@@ -217,14 +219,104 @@ func (pd *pieceDownload) successful() bool {
 	return pd.completed && pd.downloadErr == nil
 }
 
-// unresolvedWorkers will return the set of unresolved workers from the worker
-// state of the pdc. This operation will also update the set of available pieces
-// within the pdc to reflect any previously unresolved workers that are now
-// available workers.
+// updateWorkerHeap updates a worker heap by going through all workers and
+// updating them depending on whether they are resolved or not. This does not
+// apply any gouging or maintenance checks again since we don't expect a
+// significant amount of time to pass between the creation of the heap and
+// launching the workers. As a result, this significantly reduces the amount of
+// allocations we are doing compared to creating the initial heap since we reuse
+// the allocated memory.
+func (pdc *projectDownloadChunk) updateWorkerHeap(h *pdcWorkerHeap) {
+	ws := pdc.workerState
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+
+	// Update the available pieces in case some workers resolved.
+	pdc.updateAvailablePieces()
+
+	for _, w := range *h {
+		// Check if the worker is resolved.
+		_, unresolved := ws.unresolvedWorkers[w.worker.staticHostPubKeyStr]
+		jrq := w.worker.callReadQueue(pdc.staticIsLowPrio)
+		cost := jrq.callExpectedJobCost(pdc.pieceLength)
+		readDuration := jrq.staticStats.callExpectedJobTime(pdc.pieceLength)
+
+		if unresolved {
+			resolveTime := w.staticExpectedResolveTime
+			if resolveTime.Before(time.Now()) {
+				resolveTime = time.Now().Add(2 * time.Since(resolveTime))
+			}
+			completeTime := resolveTime.Add(readDuration)
+
+			// Same as in initialWorkerHeap but here we can just
+			// extend the already allocated pieces slice to its full
+			// size and reset it to reduce the number of
+			// allocations.
+			if cap(w.pieces) != pdc.workerSet.staticErasureCoder.NumPieces() {
+				build.Critical("w.pieces has the wrong capacity for an unresolved worker")
+				w.pieces = make([]uint64, pdc.workerSet.staticErasureCoder.NumPieces())
+			} else {
+				w.pieces = w.pieces[:cap(w.pieces)]
+			}
+			for i := 0; i < len(w.pieces); i++ {
+				w.pieces[i] = uint64(i)
+			}
+
+			// Update the fields specific to the unresolved worker.
+			// The complete time might have changed but the pieces
+			// are still the same.
+			w.completeTime = completeTime
+		} else {
+			// Update the fields for the resolved worker.
+			// The complete time is the current time plus the
+			// duration of the read and the pieces might have
+			// changed due to the worker resolving.
+			w.completeTime = time.Now().Add(readDuration)
+			w.pieces = append([]uint64{}, pdc.availablePiecesByWorker[w.worker.staticHostPubKeyStr]...)
+		}
+
+		// Update fields which are the same for resolved and unresolved
+		// workers.
+		w.readDuration = readDuration
+		w.unresolved = unresolved
+		w.cost = cost
+	}
+
+	// Reestablish heap invariants.
+	heap.Init(h)
+}
+
+// updateAvailablePieces adds any new resolved workers to the pdc's list of
+// available pieces.
+func (pdc *projectDownloadChunk) updateAvailablePieces() {
+	ws := pdc.workerState
+
+	// Add any new resolved workers to the pdc's list of available pieces.
+	for i := pdc.workersConsideredIndex; i < len(ws.resolvedWorkers); i++ {
+		// Add the returned worker to available pieces for each piece that the
+		// resolved worker has.
+		resp := ws.resolvedWorkers[i]
+		hpk := resp.worker.staticHostPubKeyStr
+		for _, pieceIndex := range resp.pieceIndices {
+			pd := &pieceDownload{
+				worker: resp.worker,
+			}
+			pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], pd)
+		}
+		pdc.availablePiecesByWorker[hpk] = resp.pieceIndices
+	}
+	pdc.workersConsideredIndex = len(ws.resolvedWorkers)
+	pdc.unresolvedWorkersRemaining = len(ws.unresolvedWorkers)
+}
+
+// managedUnresolvedWorkers will return the set of unresolved workers from the
+// worker state of the pdc. This operation will also update the set of available
+// pieces within the pdc to reflect any previously unresolved workers that are
+// now available workers.
 //
 // A channel will also be returned which will be closed when there are new
 // unresolved workers available.
-func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <-chan struct{}) {
+func (pdc *projectDownloadChunk) managedUnresolvedWorkers() ([]*pcwsUnresolvedWorker, <-chan struct{}) {
 	ws := pdc.workerState
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
@@ -233,19 +325,9 @@ func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <
 	for _, uw := range ws.unresolvedWorkers {
 		unresolvedWorkers = append(unresolvedWorkers, uw)
 	}
+
 	// Add any new resolved workers to the pdc's list of available pieces.
-	for i := pdc.workersConsideredIndex; i < len(ws.resolvedWorkers); i++ {
-		// Add the returned worker to available pieces for each piece that the
-		// resolved worker has.
-		resp := ws.resolvedWorkers[i]
-		for _, pieceIndex := range resp.pieceIndices {
-			pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], &pieceDownload{
-				worker: resp.worker,
-			})
-		}
-	}
-	pdc.workersConsideredIndex = len(ws.resolvedWorkers)
-	pdc.unresolvedWorkersRemaining = len(ws.unresolvedWorkers)
+	pdc.updateAvailablePieces()
 
 	// If there are more unresolved workers, fetch a channel that will be closed
 	// when more results from unresolved workers are available.
@@ -360,10 +442,28 @@ func (pdc *projectDownloadChunk) recoverData() ([]byte, error) {
 // the erasure coder, and then send the result down the response channel. If
 // there is an error during decode, 'pdc.fail()' will be called.
 func (pdc *projectDownloadChunk) finalize() {
+	// Convenience Variables
+	ec := pdc.workerSet.staticErasureCoder
+	r := pdc.workerSet.staticRenter
+
 	// Log info and finish span.
 	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
 		span.SetTag("success", true)
 		span.Finish()
+	}
+
+	// Update the sector download statistics
+	minPieces := ec.MinPieces()
+	numOverdriveWorkers := uint64(len(pdc.launchedWorkers) - minPieces)
+	if numOverdriveWorkers < 0 {
+		build.Critical("num overdrive workers should never be less than zero")
+	} else {
+		// track base sector and fanout sector download separately
+		if minPieces == 1 {
+			r.staticBaseSectorDownloadStats.AddDataPoint(numOverdriveWorkers)
+		} else {
+			r.staticFanoutSectorDownloadStats.AddDataPoint(numOverdriveWorkers)
+		}
 	}
 
 	// Recover the data if necessary.
@@ -532,7 +632,7 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 		// code will determine whether launching an overdrive worker is
 		// necessary, and will return a channel that will be closed when enough
 		// time has elapsed that another overdrive worker should be considered.
-		workersUpdatedChan, workersLateChan := pdc.tryOverdrive()
+		workersUpdatedChan, workersLateChan := pdc.managedTryOverdrive()
 
 		// Determine when the next overdrive check needs to run.
 		select {
