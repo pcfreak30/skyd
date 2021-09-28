@@ -1691,3 +1691,84 @@ func TestUpdateMetadataPruneHosts(t *testing.T) {
 		t.Fatal("wrong length", len(sf.pubKeyTable))
 	}
 }
+
+// TestUpdateUnfinishedStuckStatus tests that unfinished files that were
+// previously marked as stuck will be marked as not stuck
+func TestUpdateUnfinishedStuckStatus(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a file
+	rsc, _ := skymodules.NewRSCode(10, 20)
+	siaFilePath, _, source, _, sk, _, _, fileMode := newTestFileParams(1, true)
+	file, _, _ := customTestFileAndWAL(siaFilePath, source, rsc, sk, 100, 1, fileMode)
+
+	// File should be unfinished
+	if file.Finished() {
+		t.Fatal("file is already marked as finished")
+	}
+
+	// Grab the first chunk
+	chunk, err := file.chunk(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Manually set the chunk as stuck
+	chunk.Stuck = true
+	file.staticMetadata.NumStuckChunks = 1
+	file.staticMetadata.CachedNumStuckChunks = 1
+
+	// Update chunk and metadata on disk
+	updates, err := file.saveMetadataUpdates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	update := file.saveChunkUpdate(chunk)
+	updates = append(updates, update)
+	err = file.createAndApplyTransaction(updates...)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check if file is seen as stuck
+	stuck, err := file.StuckChunkByIndex(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stuck {
+		t.Fatal("chunk is not stuck")
+	}
+
+	// Create offline and goodForRenew maps
+	offlineMap := make(map[string]bool)
+	goodForRenewMap := make(map[string]bool)
+
+	// Create list of used Hosts
+	used := []types.SiaPublicKey{}
+
+	// Create contracts map
+	contractsMap := make(map[string]skymodules.RenterContract)
+
+	// UpdateMetadata
+	err = file.UpdateMetadata(offlineMap, goodForRenewMap, contractsMap, used)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check stuck status of the chunk
+	stuck, err = file.StuckChunkByIndex(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stuck {
+		t.Fatal("chunk is still stuck")
+	}
+
+	// File should still be unfinished
+	if file.Finished() {
+		t.Fatal("file is marked as finished")
+	}
+}
