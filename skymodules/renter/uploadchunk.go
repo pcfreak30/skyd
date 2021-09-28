@@ -146,18 +146,22 @@ func (uc *unfinishedUploadChunk) Cancel() {
 func (uc *unfinishedUploadChunk) Close() error {
 	r := uc.staticRenter
 
-	// Close entry.
+	// Close entry first.
 	err := uc.fileEntry.Close()
 
-	// Remove entry from repairingChunks
+	// Decrease reference count of chunk in repairingChunks.
 	r.repairingChunksMu.Lock()
-	fmt.Println("remove", uc.id)
-	if _, repairing := r.repairingChunks[uc.id]; !repairing {
+	defer r.repairingChunksMu.Unlock()
+	rc, repairing := r.repairingChunks[uc.id]
+	if !repairing || rc.references == 0 {
 		build.Critical("closed chunk is not repairing")
 	}
-	delete(r.repairingChunks, uc.id)
-	r.repairingChunksMu.Unlock()
-
+	rc.references--
+	if rc.references == 0 {
+		delete(r.repairingChunks, uc.id)
+	} else {
+		r.repairingChunks[uc.id] = rc
+	}
 	return err
 }
 

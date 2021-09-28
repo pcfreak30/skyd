@@ -487,12 +487,15 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 
 	// Check if the chunk is already being repaired before building it.
 	r.repairingChunksMu.Lock()
-	if _, repairing := r.repairingChunks[cid]; repairing && !force {
+	if rc, repairing := r.repairingChunks[cid]; repairing && !force {
 		r.repairingChunksMu.Unlock()
 		return nil, nil // already being repaired
+	} else if repairing && force {
+		rc.references++
+		r.repairingChunks[cid] = rc
+	} else {
+		r.repairingChunks[cid] = repairingChunk{references: 1}
 	}
-	fmt.Println("add", cid)
-	r.repairingChunks[cid] = struct{}{}
 	r.repairingChunksMu.Unlock()
 
 	// If this method fails, remove the chunk again.
