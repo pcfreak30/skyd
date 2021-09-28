@@ -151,6 +151,7 @@ func (uc *unfinishedUploadChunk) Close() error {
 
 	// Remove entry from repairingChunks
 	r.repairingChunksMu.Lock()
+	fmt.Println("remove", uc.id)
 	if _, repairing := r.repairingChunks[uc.id]; !repairing {
 		build.Critical("closed chunk is not repairing")
 	}

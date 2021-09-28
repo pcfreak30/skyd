@@ -491,6 +491,7 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 		r.repairingChunksMu.Unlock()
 		return nil, nil // already being repaired
 	}
+	fmt.Println("add", cid)
 	r.repairingChunks[cid] = struct{}{}
 	r.repairingChunksMu.Unlock()
 
