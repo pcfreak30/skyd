@@ -1094,6 +1094,8 @@ OUTER:
 	}
 
 	if span := opentracing.SpanFromContext(pdc.ctx); bestSet == nil && span != nil && len(downloadWorkers) > 0 {
+		mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(downloadWorkers, skymodules.DistributionTrackerTotalBuckets-1, minPieces+maxOverdriveWorkers)
+
 		msg := ""
 		for _, dw := range downloadWorkers {
 			msg += fmt.Sprintf("worker: %v chance: %v\n", dw.identifier(), dw.chanceAfter(skymodules.DistributionTrackerTotalBuckets-1))
@@ -1102,6 +1104,8 @@ OUTER:
 			"bestSetNil", msg,
 			"maxOverdriveWorkers", maxOverdriveWorkers,
 			"workersNeeded", minPieces+maxOverdriveWorkers,
+			"mostLikely", len(mostLikely),
+			"lessLikely", len(lessLikely),
 		)
 	}
 
