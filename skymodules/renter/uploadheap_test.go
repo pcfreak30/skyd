@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -367,9 +366,6 @@ func testUploadHeapBasic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	uh.mu.Lock()
-	uh.repairingChunks = make(map[uploadChunkID]*unfinishedUploadChunk)
-	uh.mu.Unlock()
 
 	// Add the chunks back to the heap
 	for _, chunk := range chunks {
@@ -819,20 +815,12 @@ func testUploadHeapMaps(t *testing.T) {
 	if len(rt.renter.staticUploadHeap.stuckHeapChunks) != int(numHeapChunks/2) {
 		t.Fatalf("Expected %v stuck chunks in map but found %v", numHeapChunks/2, len(rt.renter.staticUploadHeap.stuckHeapChunks))
 	}
-	if len(rt.renter.staticUploadHeap.repairingChunks) != 0 {
-		t.Fatalf("Expected %v repairing chunks in map but found %v", 0, len(rt.renter.staticUploadHeap.repairingChunks))
-	}
 
 	// Pop off some chunks
 	poppedChunks := 3
 	for i := 0; i < poppedChunks; i++ {
 		// Pop chunk
 		chunk := rt.renter.staticUploadHeap.managedPop()
-		// Confirm it is in the repairing map
-		_, ok := rt.renter.staticUploadHeap.repairingChunks[chunk.id]
-		if !ok {
-			t.Fatal("popped chunk not found in repairing map")
-		}
 		// Confirm the chunk cannot be pushed back onto the heap
 		_, pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
@@ -844,9 +832,6 @@ func testUploadHeapMaps(t *testing.T) {
 	}
 
 	// Confirm length of maps
-	if len(rt.renter.staticUploadHeap.repairingChunks) != poppedChunks {
-		t.Fatalf("Expected %v repairing chunks in map but found %v", poppedChunks, len(rt.renter.staticUploadHeap.repairingChunks))
-	}
 	remainingChunks := len(rt.renter.staticUploadHeap.unstuckHeapChunks) + len(rt.renter.staticUploadHeap.stuckHeapChunks)
 	if remainingChunks != int(numHeapChunks)-poppedChunks {
 		t.Fatalf("Expected %v chunks to still be in the heap maps but found %v", int(numHeapChunks)-poppedChunks, remainingChunks)
@@ -858,9 +843,6 @@ func testUploadHeapMaps(t *testing.T) {
 	}
 
 	// Confirm length of maps
-	if len(rt.renter.staticUploadHeap.repairingChunks) != poppedChunks {
-		t.Fatalf("Expected %v repairing chunks in map but found %v", poppedChunks, len(rt.renter.staticUploadHeap.repairingChunks))
-	}
 	remainingChunks = len(rt.renter.staticUploadHeap.unstuckHeapChunks) + len(rt.renter.staticUploadHeap.stuckHeapChunks)
 	if remainingChunks != 0 {
 		t.Fatalf("Expected %v chunks to still be in the heap maps but found %v", 0, remainingChunks)
@@ -1012,20 +994,9 @@ func testManagedPushChunkForRepair(t *testing.T) {
 		uh.mu.Lock()
 		_, stuckExists := uh.stuckHeapChunks[chunk.id]
 		_, unstuckExists := uh.unstuckHeapChunks[chunk.id]
-		repairChunk, repairExists := uh.repairingChunks[chunk.id]
 		uh.mu.Unlock()
 		if stuckExists || unstuckExists {
 			t.Fatal("chunk should not exist in stuck or unstuck maps")
-		}
-		if !repairExists {
-			t.Fatal("chunk should have been added to repair map")
-		}
-
-		// Verify the chunk in the heap is the chunk pushed
-		if !reflect.DeepEqual(repairChunk, chunk) {
-			t.Log("chunk:", chunk)
-			t.Log("repairChunk:", repairChunk)
-			t.Fatal("chunk in repair map not equal to the chunk added")
 		}
 
 		// The underlying heap slice should be empty
@@ -1047,9 +1018,6 @@ func testManagedPushChunkForRepair(t *testing.T) {
 		t.Error("chunk should not be able to be added twice")
 	}
 
-	// Clear the stream chunk from the repair map
-	uh.managedMarkRepairDone(streamChunk)
-
 	// Add a local chunk to the heap
 	localChunk := &unfinishedUploadChunk{
 		id:                  streamChunk.id,
@@ -1068,14 +1036,6 @@ func testManagedPushChunkForRepair(t *testing.T) {
 	// Pushing the stream chunk should clear the local chunk from both maps and be
 	// successful
 	pushAndVerify(streamChunk)
-
-	// Clear the stream chunk from the repair map
-	uh.managedMarkRepairDone(streamChunk)
-
-	// Add the local chunk directly to the repair map
-	uh.mu.Lock()
-	uh.repairingChunks[localChunk.id] = localChunk
-	uh.mu.Unlock()
 
 	// Pushing the stream chunk should replace the local chunk in the repair map
 	pushAndVerify(streamChunk)
@@ -1165,9 +1125,6 @@ func testManagedTryUpdate(t *testing.T) {
 		if test.existsStuck {
 			existingChunk.stuck = true
 			uh.stuckHeapChunks[existingChunk.id] = existingChunk
-		}
-		if test.existsRepairing {
-			uh.repairingChunks[existingChunk.id] = existingChunk
 		}
 		newChunk := &unfinishedUploadChunk{
 			id:                  existingChunk.id,

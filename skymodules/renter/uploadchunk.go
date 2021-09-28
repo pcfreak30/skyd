@@ -12,6 +12,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
 
+	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
@@ -31,9 +32,10 @@ type uploadChunkID struct {
 type unfinishedUploadChunk struct {
 	// Information about the file. localPath may be the empty string if the file
 	// is known not to exist locally.
-	ctx       context.Context
-	id        uploadChunkID
-	fileEntry *filesystem.FileNode
+	ctx          context.Context
+	id           uploadChunkID
+	fileEntry    *filesystem.FileNode
+	staticRenter *Renter
 
 	// Information about the chunk, namely where it exists within the file.
 	fileRecentlySuccessful bool // indicates if the file the chunk is from had a recent successful repair
@@ -140,6 +142,20 @@ func (uc *unfinishedUploadChunk) Cancel() {
 	uc.cancelMU.Unlock()
 }
 
+// Close closes the chunks underlying open resources.
+func (uc *unfinishedUploadChunk) Close() error {
+	r := uc.staticRenter
+
+	r.repairingChunksMu.Lock()
+	if _, repairing := r.repairingChunks[uc.id]; !repairing {
+		build.Critical("closed chunk is not repairing")
+	}
+	delete(r.repairingChunks, uc.id)
+	r.repairingChunksMu.Unlock()
+
+	return uc.Close()
+}
+
 // managedSetStuckAndClose sets the unfinishedUploadChunk's stuck status and
 // closes the fileEntry.
 func (uc *unfinishedUploadChunk) managedSetStuckAndClose(setStuck bool) error {
@@ -151,7 +167,7 @@ func (uc *unfinishedUploadChunk) managedSetStuckAndClose(setStuck bool) error {
 	if setStuck {
 		errStuck = uc.fileEntry.SetStuck(uc.staticIndex, uc.stuck)
 	}
-	errClose := uc.fileEntry.Close()
+	errClose := uc.Close()
 
 	// Signal garbage collector to free memory.
 	uc.physicalChunkData = nil
@@ -801,13 +817,11 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 
 		// Close the file entry for the completed chunk unless disrupted.
 		if !r.staticDeps.Disrupt("disableCloseUploadEntry") {
-			err := uc.fileEntry.Close()
+			err := uc.Close()
 			if err != nil {
 				r.staticLog.Println("WARN: unable to close file entry for chunk", uc.fileEntry.SiaFilePath())
 			}
 		}
-		// Remove the chunk from the repairingChunks map
-		r.staticUploadHeap.managedMarkRepairDone(uc)
 		// Signal garbage collector to free memory before returning it to the manager.
 		uc.logicalChunkData = nil
 		uc.physicalChunkData = nil
@@ -818,7 +832,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	}
 	// Make sure file is closed for canceled chunks when all workers are done
 	if canceled && workersRemaining == 0 && !chunkComplete {
-		err := uc.fileEntry.Close()
+		err := uc.Close()
 		if err != nil {
 			r.staticLog.Println("WARN: unable to close file entry for chunk", uc.fileEntry.SiaFilePath())
 		}
