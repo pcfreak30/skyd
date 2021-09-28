@@ -503,6 +503,8 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 	if _, repairing := r.repairingChunks[cid]; repairing && !force {
 		r.repairingChunksMu.Unlock()
 		return nil, nil // already being repaired
+	} else if repairing && force {
+		println("SNEAKY")
 	}
 	r.repairingChunks[cid] = struct{}{}
 	r.repairingChunksMu.Unlock()
