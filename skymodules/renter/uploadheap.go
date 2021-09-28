@@ -738,9 +738,10 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 			continue
 		}
 
-		// Close entry of completed chunk
+		// Close entry of completed chunk. Since the chunk doesn't need
+		// repair we should make sure that it is not marked as stuck.
 		chunk.stuck = false
-		err := r.managedSetStuckAndClose(chunk, true)
+		err := chunk.managedSetStuckAndClose(true)
 		if err != nil {
 			r.staticLog.Debugln("WARN: unable to set chunk stuck status and close:", err)
 		}
