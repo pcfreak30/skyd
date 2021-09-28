@@ -617,8 +617,11 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 			if exists && goodForRenew && exists2 && !offline && exists3 && !redundantPiece {
 				uuc.pieceUsage[pieceIndex] = true
 				uuc.piecesCompleted++
+				println("  mark", pieceIndex, index)
 			} else if redundantPiece && build.Release == "testing" {
 				build.Critical("same piece was uploaded to multiple hosts")
+			} else {
+				println("  neither", exists, goodForRenew, exists2, !offline, exists3, !redundantPiece)
 			}
 
 			// In all cases, if this host already has a piece, the host cannot

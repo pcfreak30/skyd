@@ -151,6 +151,7 @@ func (uc *unfinishedUploadChunk) Close() error {
 		build.Critical("closed chunk is not repairing")
 	}
 	delete(r.repairingChunks, uc.id)
+	fmt.Println("unlocked", uc.id)
 	r.repairingChunksMu.Unlock()
 
 	return uc.fileEntry.Close()
