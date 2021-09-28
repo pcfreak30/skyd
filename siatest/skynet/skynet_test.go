@@ -1067,13 +1067,11 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	// upload the files and keep track of their expected impact on the stats
 	var uploadedFilesSize, uploadedFilesCount uint64
 	var sps []skymodules.SiaPath
-	var skylinks []string
 	for name, size := range files {
-		skylink, sup, _, err := r.UploadNewSkyfileBlocking(name, size, false)
+		_, sup, _, err := r.UploadNewSkyfileBlocking(name, size, false)
 		if err != nil {
 			t.Fatal(err)
 		}
-		skylinks = append(skylinks, skylink)
 
 		sp, err := sup.SiaPath.Rebase(skymodules.RootSiaPath(), skymodules.SkynetFolder)
 		if err != nil {
@@ -1237,47 +1235,9 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	sup = skymodules.SkyfileUploadParameters{
 		SiaPath: skymodules.RandomSiaPath(),
 	}
-	sshp, err := r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
+	_, err = r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
 	if err != nil {
 		t.Fatal("Expected conversion from Siafile to Skyfile Post to succeed.")
-	}
-	skylinks = append(skylinks, sshp.Skylink)
-
-	// Download all skyfiles in separate go routines, this to ensure we
-	// overdrive on some and the stats get updated accordingly.
-	var wg sync.WaitGroup
-	var downloadMu sync.Mutex
-	var downloadErr error
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func(t *testing.T) {
-			defer wg.Done()
-			for _, skylink := range skylinks {
-				_, err := r.SkynetSkylinkGet(skylink)
-				if err != nil {
-					downloadMu.Lock()
-					downloadErr = errors.Compose(downloadErr, err)
-					downloadMu.Unlock()
-				}
-			}
-		}(t)
-	}
-	wg.Wait()
-	if downloadErr != nil {
-		t.Fatal(downloadErr)
-	}
-
-	// Fetch the stats again and verify all sector download stats are present
-	// and are non-zero, proving they're set and updated correctly.
-	stats, err = r.SkynetStatsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if stats.BaseSectorOverdriveAvg == 0 || stats.BaseSectorOverdrivePct == 0 {
-		t.Fatal("base sector download stats all zero", stats.BaseSectorOverdriveAvg, stats.BaseSectorOverdrivePct)
-	}
-	if stats.FanoutSectorOverdriveAvg == 0 || stats.FanoutSectorOverdrivePct == 0 {
-		t.Fatal("fanout sector download stats all zero", stats.FanoutSectorOverdriveAvg, stats.FanoutSectorOverdrivePct)
 	}
 }
 

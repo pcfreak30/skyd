@@ -326,7 +326,7 @@ func (iw *individualWorker) chanceAfter(index int) float64 {
 
 // recalculateChanceAfter recalculates the chances reads complete after every
 // duration from the distribution tracker.
-func (iw *individualWorker) recalculateChanceAfter(shift time.Duration) {
+func (iw *individualWorker) recalculateChanceAfter(_ time.Duration) {
 	distribution := iw.staticReadDistribution
 
 	// if the worker has been launched already, we want to shift the

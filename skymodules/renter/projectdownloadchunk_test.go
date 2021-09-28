@@ -163,10 +163,16 @@ func TestProjectDownloadChunk_finished(t *testing.T) {
 	}
 
 	// create PDC manually - only the essentials
-	pdc := &projectDownloadChunk{workerSet: pcws}
+	pdc := &projectDownloadChunk{
+		workerSet: pcws,
+
+		availablePiecesByIndex:  make(map[uint64]int64),
+		downloadedPiecesByIndex: make(map[uint64]struct{}),
+		completedPiecesByWorker: make(map[string]completedPieces),
+		launchedPiecesByWorker:  make(map[string]launchedPieces),
+	}
 
 	// mock unresolved state with hope of successful download
-	pdc.availablePieces = make([][]*pieceDownload, 0)
 	pdc.unresolvedWorkersRemaining = 4
 	finished, err := pdc.finished()
 	if err != nil {
@@ -176,9 +182,9 @@ func TestProjectDownloadChunk_finished(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 
-	// mock one completed piece - still unresolved and hopeful
+	// mock one downloaded piece - still unresolved and hopeful
 	pdc.unresolvedWorkersRemaining = 3
-	pdc.availablePieces = append(pdc.availablePieces, []*pieceDownload{{completed: true}})
+	pdc.downloadedPiecesByIndex[0] = struct{}{}
 	finished, err = pdc.finished()
 	if err != nil {
 		t.Fatal("unexpected error", err)
@@ -198,9 +204,9 @@ func TestProjectDownloadChunk_finished(t *testing.T) {
 	}
 
 	// mock resolves state - add 3 pieces in limbo -> hopeful again
-	pdc.availablePieces = append(pdc.availablePieces, []*pieceDownload{{}})
-	pdc.availablePieces = append(pdc.availablePieces, []*pieceDownload{{}})
-	pdc.availablePieces = append(pdc.availablePieces, []*pieceDownload{{}})
+	pdc.availablePiecesByIndex[1] = 1
+	pdc.availablePiecesByIndex[2] = 1
+	pdc.availablePiecesByIndex[3] = 1
 	finished, err = pdc.finished()
 	if err != nil {
 		t.Fatal("unexpected error", err)
@@ -210,10 +216,8 @@ func TestProjectDownloadChunk_finished(t *testing.T) {
 	}
 
 	// mock two failures -> hope gone again
-	pdc.availablePieces[1][0].completed = true
-	pdc.availablePieces[1][0].downloadErr = errors.New("failed")
-	pdc.availablePieces[2][0].completed = true
-	pdc.availablePieces[2][0].downloadErr = errors.New("failed")
+	pdc.availablePiecesByIndex[1] = 0
+	pdc.availablePiecesByIndex[2] = 0
 	finished, err = pdc.finished()
 	if !errors.Contains(err, errNotEnoughPieces) {
 		t.Fatal("unexpected error", err)
@@ -223,9 +227,9 @@ func TestProjectDownloadChunk_finished(t *testing.T) {
 	}
 
 	// undo one failure and add 2 completed -> finished
-	pdc.availablePieces[2][0].downloadErr = nil
-	pdc.availablePieces[2][0].completed = true
-	pdc.availablePieces[3][0].completed = true
+	pdc.downloadedPiecesByIndex[1] = struct{}{}
+	pdc.downloadedPiecesByIndex[2] = struct{}{}
+	pdc.downloadedPiecesByIndex[3] = struct{}{}
 	finished, err = pdc.finished()
 	if err != nil {
 		t.Fatal("unexpected error", err)
@@ -277,24 +281,20 @@ func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
 
 	pdc := new(projectDownloadChunk)
 	pdc.workerState = new(pcwsWorkerState)
+	pdc.availablePiecesByIndex = make(map[uint64]int64)
 	pdc.downloadedPiecesByIndex = make(map[uint64]struct{}, 0)
 	pdc.completedPiecesByWorker = make(map[string]completedPieces, 0)
 	pdc.launchedPiecesByWorker = make(map[string]launchedPieces, 0)
 	pdc.workerSet = pcws
 	pdc.workerSet.staticChunkIndex = 0
 	pdc.dataPieces = make([][]byte, ec.NumPieces())
-	pdc.availablePieces = [][]*pieceDownload{
-		{{launched: true, worker: w}},
-		{{launched: true, worker: w}},
-		{{launched: true, worker: w}},
-		{{launched: true, worker: w}},
-		{{launched: true, worker: w}},
-	}
 
 	lwi := launchedWorkerInfo{
 		staticLaunchTime: time.Now().Add(-time.Minute),
 	}
 	pdc.launchedWorkers = []*launchedWorkerInfo{&lwi}
+	pdc.availablePiecesByIndex[3] = 1
+	pdc.availablePiecesByIndex[0] = 1
 
 	// verify the pdc after a successful read response for piece at index 3
 	success := &jobReadResponse{
@@ -309,10 +309,14 @@ func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
 		},
 	}
 	pdc.handleJobReadResponse(success)
-	if !pdc.availablePieces[3][0].completed {
+
+	if _, exists := pdc.downloadedPiecesByIndex[3]; !exists {
 		t.Fatal("unexpected")
 	}
-	if pdc.availablePieces[3][0].downloadErr != nil {
+	if _, exists := pdc.completedPiecesByWorker["w"][3]; !exists {
+		t.Fatal("unexpected")
+	}
+	if pdc.availablePiecesByIndex[3] != 0 {
 		t.Fatal("unexpected")
 	}
 	if !bytes.Equal(pdc.dataPieces[3], pieces[3]) {
@@ -341,10 +345,13 @@ func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
 			staticWorker:         w,
 		},
 	})
-	if !pdc.availablePieces[0][0].completed {
+	if _, exists := pdc.downloadedPiecesByIndex[0]; exists {
 		t.Fatal("unexpected")
 	}
-	if pdc.availablePieces[0][0].downloadErr == nil {
+	if _, exists := pdc.completedPiecesByWorker["w"][0]; !exists {
+		t.Fatal("unexpected")
+	}
+	if pdc.availablePiecesByIndex[0] != 0 {
 		t.Fatal("unexpected")
 	}
 	if pdc.dataPieces[0] != nil {
@@ -358,20 +365,6 @@ func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
 		lwi.jobErr == nil {
 		t.Fatal("unexpected", lwi)
 	}
-
-	// rig the availablepieces in a way that it has a duplicate piece, we added
-	// a build.Critical to guard against this developer error that we want to
-	// test
-	pdc.availablePieces[3] = append(
-		pdc.availablePieces[3],
-		&pieceDownload{launched: true, worker: w},
-	)
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("Expected build.Critical", r)
-		}
-	}()
-	pdc.handleJobReadResponse(success)
 }
 
 // TestProjectDownloadChunk_launchWorker is a unit test for the 'launchWorker'
@@ -395,18 +388,13 @@ func TestProjectDownloadChunk_launchWorker(t *testing.T) {
 
 	// mock a pdc, ensure available pieces is not nil
 	pdc := new(projectDownloadChunk)
+	pdc.availablePiecesByIndex = make(map[uint64]int64)
 	pdc.downloadedPiecesByIndex = make(map[uint64]struct{}, 0)
 	pdc.completedPiecesByWorker = make(map[string]completedPieces, 0)
 	pdc.launchedPiecesByWorker = make(map[string]launchedPieces, 0)
 	pdc.ctx = context.Background()
 	pdc.workerSet = pcws
 	pdc.pieceLength = 1 << 16 // 64kb
-	pdc.availablePieces = make([][]*pieceDownload, ec.NumPieces())
-	for pieceIndex := range pdc.availablePieces {
-		pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], &pieceDownload{
-			worker: worker,
-		})
-	}
 
 	// launch a worker and expect it to have enqueued a job and expect the
 	// complete time to be somewhere in the future
@@ -415,6 +403,13 @@ func TestProjectDownloadChunk_launchWorker(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 	if expectedCompleteTime.Before(time.Now()) {
+		t.Fatal("unexpected")
+	}
+
+	// assert both launched pieces and downloaded pieces have been initialised
+	_, exists1 := pdc.launchedPiecesByWorker[spk.String()]
+	_, exists2 := pdc.completedPiecesByWorker[spk.String()]
+	if !(exists1 && exists2) {
 		t.Fatal("unexpected")
 	}
 
@@ -439,39 +434,8 @@ func TestProjectDownloadChunk_launchWorker(t *testing.T) {
 	}
 
 	// verify one worker was launched without failure
-	numLWF := 0 // launchedWithoutFail
-	for _, pieces := range pdc.availablePieces {
-		launchedWithoutFail := false
-		for _, pieceDownload := range pieces {
-			if pieceDownload.launched && pieceDownload.downloadErr == nil {
-				launchedWithoutFail = true
-			}
-		}
-		if launchedWithoutFail {
-			numLWF++
-		}
-	}
-	if numLWF != 1 {
-		t.Fatal("unexpected", numLWF)
-	}
-
-	// launch the worker again but kill the queue, expect it to have not added
-	// the job to the queue and updated the pieceDownload's status to failed
-	worker.staticJobReadQueue.killed = true
-	_, added = pdc.launchWorker(worker, 0, false)
-	if added {
+	if pdc.launchedPiecesByWorker[spk.String()][0].IsZero() {
 		t.Fatal("unexpected")
-	}
-	numFailed := 0
-	for _, pieces := range pdc.availablePieces {
-		for _, pieceDownload := range pieces {
-			if pieceDownload.downloadErr != nil {
-				numFailed++
-			}
-		}
-	}
-	if numFailed != 1 {
-		t.Fatal("unexpected", numFailed)
 	}
 }
 

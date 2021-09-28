@@ -18,8 +18,6 @@ import (
 func TestChimeraWorker(t *testing.T) {
 	t.Parallel()
 
-	randLength := fastrand.Uint64n(1 << 24)
-
 	// consideredEqual is a helper function that compares floats using an
 	// equality threshold of 1e-9
 	consideredEqual := func(a, b float64) bool {
@@ -28,9 +26,6 @@ func TestChimeraWorker(t *testing.T) {
 
 	// create a chimera and assert its initial state
 	cw := NewChimeraWorker(1)
-	if !cw.cost(randLength).IsZero() {
-		t.Fatal("bad")
-	}
 	if cw.worker() != nil {
 		t.Fatal("bad")
 	}
@@ -47,10 +42,11 @@ func TestChimeraWorker(t *testing.T) {
 		d1.AddDataPoint(time.Duration(fastrand.Uint64n(100)) * time.Millisecond)
 	}
 	iw1 := &individualWorker{
-		pieceIndices:           []uint64{1, 2},
-		resolveChance:          .2,
-		staticReadDistribution: d1,
-		staticWorker:           mockWorker(0),
+		pieceIndices:             []uint64{1, 2},
+		resolveChance:            .2,
+		staticReadDistribution:   d1,
+		staticLookupDistribution: skymodules.NewDistribution(time.Minute * 100),
+		staticWorker:             mockWorker(0),
 	}
 
 	// add the worker and check there's no remainder (the chimera is not
@@ -69,10 +65,11 @@ func TestChimeraWorker(t *testing.T) {
 		d2.AddDataPoint(time.Duration(fastrand.Uint64n(100)) * time.Millisecond)
 	}
 	iw2 := &individualWorker{
-		pieceIndices:           []uint64{1, 2},
-		resolveChance:          .2,
-		staticReadDistribution: d2,
-		staticWorker:           mockWorker(0),
+		pieceIndices:             []uint64{1, 2},
+		resolveChance:            .2,
+		staticReadDistribution:   d2,
+		staticLookupDistribution: skymodules.NewDistribution(time.Minute * 100),
+		staticWorker:             mockWorker(0),
 	}
 
 	// add the worker and check there's no remainder (the chimera is not
@@ -91,10 +88,11 @@ func TestChimeraWorker(t *testing.T) {
 		d3.AddDataPoint(time.Duration(fastrand.Uint64n(100)+1000) * time.Millisecond)
 	}
 	iw3 := &individualWorker{
-		pieceIndices:           []uint64{1, 2},
-		resolveChance:          .85,
-		staticReadDistribution: d3,
-		staticWorker:           mockWorker(0),
+		pieceIndices:             []uint64{1, 2},
+		resolveChance:            .85,
+		staticReadDistribution:   d3,
+		staticLookupDistribution: skymodules.NewDistribution(time.Minute * 100),
+		staticWorker:             mockWorker(0),
 	}
 
 	// add the worker and check there's now a remainder, the chimera is complete
@@ -117,7 +115,7 @@ func TestChimeraWorker(t *testing.T) {
 	// check the distribution's chance of resolving after 100ms, due to the
 	// large weight of the 3rd worker that has a distribution with datapoints
 	// over a second, this should be over than 50%
-	distribution := cw.distribution()
+	_, distribution := cw.distributions()
 	if distribution.ChanceAfter(100*time.Millisecond) > .5 {
 		t.Fatal("bad")
 	}
@@ -131,7 +129,6 @@ func TestChimeraWorker(t *testing.T) {
 func TestIndividualWorker(t *testing.T) {
 	t.Parallel()
 	t.Run("cost", testIndividualWorker_cost)
-	t.Run("distribution", testIndividualWorker_distribution)
 	t.Run("pieces", testIndividualWorker_pieces)
 	t.Run("isLaunched", testIndividualWorker_isLaunched)
 	t.Run("worker", testIndividualWorker_worker)
@@ -142,43 +139,22 @@ func TestIndividualWorker(t *testing.T) {
 func testIndividualWorker_cost(t *testing.T) {
 	t.Parallel()
 
-	iw := &individualWorker{staticWorker: mockWorker(0)}
-	randLength := fastrand.Uint64n(1 << 24)
+	iw := &individualWorker{
+		staticWorker:       mockWorker(0),
+		staticExpectedCost: types.NewCurrency64(fastrand.Uint64n(10) + 1),
+	}
 
-	// individual workers that have not been launched yet, should have a cost
-	// greather than zero
+	// cost should equal expected cost for workers that are not launched
+	randLength := fastrand.Uint64n(1 << 24)
 	cost := iw.cost(randLength)
-	if cost.IsZero() {
+	if !cost.Equals(iw.staticExpectedCost) {
 		t.Fatal("bad")
 	}
 
+	// cost should equal zero for workers that are launched
 	iw.launchedAt = time.Now()
 	cost = iw.cost(randLength)
 	if !cost.IsZero() {
-		t.Fatal("bad")
-	}
-}
-
-// testIndividualWorker_distribution is a unit test for the distribution method
-func testIndividualWorker_distribution(t *testing.T) {
-	t.Parallel()
-
-	// create a random distribution with 1000 datapoints
-	d := skymodules.NewDistribution(time.Minute * 100)
-	for i := 0; i < 1000; i++ {
-		d.AddDataPoint(time.Duration(fastrand.Uint64n(1000)) * time.Millisecond)
-	}
-
-	iw := &individualWorker{staticReadDistribution: d}
-
-	// get the chance after 100ms and mock the worker has launched, requesting
-	// the distribution from the worker should return a distribution that got
-	// shifted by the time since it launched
-	chanceAfter := d.ChanceAfter(100)
-	iw.launchedAt = time.Now().Add(time.Duration(-500) * time.Millisecond)
-	iw.recalculateChanceAfter()
-
-	if iw.chanceAfter(100) >= chanceAfter {
 		t.Fatal("bad")
 	}
 }
@@ -339,8 +315,8 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 	}
 
 	// create some workers
-	iw1 := newTestIndivualWorker("w1", 1, 10*time.Millisecond)
-	iw2 := newTestIndivualWorker("w2", 1, 10*time.Millisecond)
+	iw1 := newTestIndivualWorker("w1", 1, 10*time.Millisecond, nil)
+	iw2 := newTestIndivualWorker("w2", 1, 10*time.Millisecond, nil)
 
 	// make both workers more expensive than the default
 	updateReadCostWithFactor(iw1, 2)
@@ -364,7 +340,7 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 
 	// create a candidate worker and try and build a cheaper set, should return
 	// nil because the worker can't resolve a single piece
-	iw3 := newTestIndivualWorker("w3", 1, 10*time.Millisecond)
+	iw3 := newTestIndivualWorker("w3", 1, 10*time.Millisecond, []uint64{3})
 	if ws.cheaperSetFromCandidate(iw3) != nil {
 		t.Fatal("bad")
 	}
@@ -372,7 +348,6 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 	// make the candidate worker able to resolve a piece, should now return a
 	// cheaper set because we will have thrown out the most expensive worker
 	// (w2) in favor of w3
-	iw3.pieceIndices = append(iw3.pieceIndices, 3)
 	cheaperSet := ws.cheaperSetFromCandidate(iw3)
 	if cheaperSet == nil {
 		t.Fatal("bad")
@@ -388,13 +363,13 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 	ws = cheaperSet
 
 	// mark piece 1 for worker 1 and mark piece 3 for worker 3
+	iw1.pieceIndices = append(iw1.pieceIndices, 1)
 	iw1.markPieceForDownload(1)
 	iw3.markPieceForDownload(3)
 
 	// make a new candidate worker that is capable of resolving both piece '1'
 	// and '3', to ensure we replace the most expensive one of the two
-	iw4 := newTestIndivualWorker("w4", 1, 10*time.Millisecond)
-	iw4.pieceIndices = append(iw4.pieceIndices, 1, 3)
+	iw4 := newTestIndivualWorker("w4", 1, 10*time.Millisecond, []uint64{1, 3})
 	cheaperSet = ws.cheaperSetFromCandidate(iw4)
 	if cheaperSet == nil {
 		t.Fatal("bad")
@@ -411,8 +386,7 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 
 	// present a worker that is capable of resolving a piece but is more
 	// expensive than the workers we have currently
-	iw5 := newTestIndivualWorker("w5", .1, 10*time.Millisecond)
-	iw5.pieceIndices = append(iw5.pieceIndices, 1, 3)
+	iw5 := newTestIndivualWorker("w5", .1, 10*time.Millisecond, []uint64{1, 3})
 	updateReadCostWithFactor(iw5, 3)
 	cheaperSet = ws.cheaperSetFromCandidate(iw5)
 	if cheaperSet != nil {
@@ -462,9 +436,9 @@ func testWorkerSetClone(t *testing.T) {
 	t.Parallel()
 
 	// create some workers
-	iw1 := newTestIndivualWorker("w1", .1, 100*time.Millisecond)
-	iw2 := newTestIndivualWorker("w2", .1, 100*time.Millisecond)
-	iw3 := newTestIndivualWorker("w3", .1, 100*time.Millisecond)
+	iw1 := newTestIndivualWorker("w1", 0, 0, nil)
+	iw2 := newTestIndivualWorker("w2", 0, 0, nil)
+	iw3 := newTestIndivualWorker("w3", 0, 0, nil)
 
 	// build a worker set
 	ws := &workerSet{
@@ -491,11 +465,11 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 	distributionTotalBuckets := skymodules.DistributionTrackerTotalBuckets
 
 	// create some workers
-	iw1 := newTestIndivualWorker("w1", .1, 100*time.Millisecond)
-	iw2 := newTestIndivualWorker("w2", .1, 100*time.Millisecond)
-	iw3 := newTestIndivualWorker("w3", .1, 100*time.Millisecond)
-	iw4 := newTestIndivualWorker("w4", .1, 100*time.Millisecond)
-	iw5 := newTestIndivualWorker("w5", .1, 100*time.Millisecond)
+	iw1 := newTestIndivualWorker("w1", 0, 0, nil)
+	iw2 := newTestIndivualWorker("w2", 0, 0, nil)
+	iw3 := newTestIndivualWorker("w3", 0, 0, nil)
+	iw4 := newTestIndivualWorker("w4", 0, 0, nil)
+	iw5 := newTestIndivualWorker("w5", 0, 0, nil)
 
 	// populate their distributions in a way that the output of the distribution
 	// becomes predictable by adding a single datapoint to every bucket
@@ -505,7 +479,7 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 			point := DistributionDurationForBucketIndex(i)
 			distribution.AddDataPoint(point)
 		}
-		w.recalculateChanceAfter()
+		w.recalculateChanceAfter(0)
 	}
 
 	// indexForPct is a helper function that returns the index at which the
@@ -513,7 +487,7 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 	// also ensure that it is the case and fail otherwise
 	indexForPct := func(pct float64) int {
 		index := distributionTotalBuckets * int(pct*100) / 100
-		return index
+		return index - 1
 	}
 
 	// build a worker set with 0 overdrive workers
@@ -635,9 +609,9 @@ func testWorkerSetNumOverdriveWorkers(t *testing.T) {
 	t.Parallel()
 
 	// create some workers
-	iw1 := newTestIndivualWorker("w1", .1, 100*time.Millisecond)
-	iw2 := newTestIndivualWorker("w2", .1, 100*time.Millisecond)
-	iw3 := newTestIndivualWorker("w3", .1, 100*time.Millisecond)
+	iw1 := newTestIndivualWorker("w1", .1, 100*time.Millisecond, nil)
+	iw2 := newTestIndivualWorker("w2", .1, 100*time.Millisecond, nil)
+	iw3 := newTestIndivualWorker("w3", .1, 100*time.Millisecond, nil)
 
 	// create an empty worker set and assert the basic case
 	ws := &workerSet{staticMinPieces: 1}
@@ -951,7 +925,7 @@ func TestBuildDownloadWorkers(t *testing.T) {
 	}
 
 	// empty case
-	downloadWorkers := buildDownloadWorkers(workers, numPieces)
+	downloadWorkers := buildDownloadWorkers(workers, numPieces, 0)
 	if len(downloadWorkers) != 0 {
 		t.Fatal("bad")
 	}
@@ -965,7 +939,7 @@ func TestBuildDownloadWorkers(t *testing.T) {
 	)
 
 	// empty case
-	downloadWorkers = buildDownloadWorkers(workers, numPieces)
+	downloadWorkers = buildDownloadWorkers(workers, numPieces, 0)
 	if len(downloadWorkers) != 0 {
 		t.Fatal("bad")
 	}
@@ -982,7 +956,7 @@ func TestBuildDownloadWorkers(t *testing.T) {
 	)
 
 	// assert we have two download workers, both chimera workers
-	downloadWorkers = buildDownloadWorkers(workers, numPieces)
+	downloadWorkers = buildDownloadWorkers(workers, numPieces, 0)
 	if len(downloadWorkers) != 2 {
 		t.Fatal("bad")
 	}
@@ -1002,7 +976,7 @@ func TestBuildDownloadWorkers(t *testing.T) {
 		newTestIndividualWorker(1),
 	)
 
-	downloadWorkers = buildDownloadWorkers(workers, numPieces)
+	downloadWorkers = buildDownloadWorkers(workers, numPieces, 0)
 	if len(downloadWorkers) != 5 {
 		t.Fatal("bad")
 	}
@@ -1116,14 +1090,17 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 
 // newTestIndivualWorker is a helper function that returns an individualWorker
 // for testing purposes.
-func newTestIndivualWorker(hostPubKeyStr string, resolveChance float64, readDuration time.Duration) *individualWorker {
+func newTestIndivualWorker(hostPubKeyStr string, resolveChance float64, readDuration time.Duration, pieceIndices []uint64) *individualWorker {
 	w := mockWorker(readDuration)
 	w.staticHostPubKeyStr = hostPubKeyStr
+
 	iw := &individualWorker{
-		resolveChance:          resolveChance,
-		staticExpectedCost:     types.SiacoinPrecision,
-		staticReadDistribution: skymodules.NewDistribution(15 * time.Minute),
-		staticWorker:           w,
+		resolveChance:            resolveChance,
+		pieceIndices:             pieceIndices,
+		staticExpectedCost:       types.SiacoinPrecision,
+		staticLookupDistribution: skymodules.NewDistribution(15 * time.Minute),
+		staticReadDistribution:   skymodules.NewDistribution(15 * time.Minute),
+		staticWorker:             w,
 	}
 	return iw
 }
