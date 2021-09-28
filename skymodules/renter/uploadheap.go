@@ -875,6 +875,7 @@ func (r *Renter) managedBuildAndPushRandomChunk(siaPath skymodules.SiaPath, host
 	}()
 
 	// Push chunk onto the uploadHeap
+	fmt.Println("push3", randChunk.id)
 	_, pushed, err := r.managedPushChunkForRepair(randChunk, chunkTypeLocalChunk)
 	if err != nil {
 		return errors.Compose(allErrs, err, randChunk.Close())
@@ -1028,6 +1029,7 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	for len(tempChunkHeap) > 0 && (r.staticUploadHeap.managedLen() < maxUploadHeapChunks || target == targetBackupChunks) {
 		// Add this chunk to the upload heap.
 		chunk := heap.Pop(&tempChunkHeap).(*unfinishedUploadChunk)
+		fmt.Println("push2", chunk.id)
 		_, pushed, err := r.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
 			r.staticRepairLog.Println("WARN: Error pushing chunk for repair", err)
@@ -1278,7 +1280,6 @@ func (r *Renter) managedPushChunkForRepair(uuc *unfinishedUploadChunk, ct chunkT
 		return nil, false, errors.AddContext(err, "unable to update chunk in heap")
 	}
 	// Push the chunk onto the upload heap
-	fmt.Println("push", uuc.id)
 	existingUUC, pushed := r.staticUploadHeap.managedPush(uuc, ct)
 	fmt.Println("push done", uuc.id, pushed)
 	// If we were not able to push the chunk, or if the chunkType is localChunk we
