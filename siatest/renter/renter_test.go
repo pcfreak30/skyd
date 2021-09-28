@@ -28,6 +28,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/contractor"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siadir"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -3083,6 +3084,9 @@ func testZeroByteFile(t *testing.T, tg *siatest.TestGroup) {
 			t.Errorf("Expected UploadProgress to be %v, got %v", expectedRF.UploadProgress, actualRF.UploadProgress)
 		}
 		// Check health information
+		if expectedRF.Finished != actualRF.Finished {
+			t.Errorf("Expected Finished to be %v, got %v", expectedRF.Finished, actualRF.Finished)
+		}
 		if expectedRF.Health != actualRF.Health {
 			t.Errorf("Expected Health to be %v, got %v", expectedRF.Health, actualRF.Health)
 		}
@@ -3126,6 +3130,7 @@ func testZeroByteFile(t *testing.T, tg *siatest.TestGroup) {
 	expectedRF := skymodules.FileInfo{
 		Redundancy:       redundancy,
 		UploadProgress:   100,
+		Finished:         true,
 		Health:           0,
 		MaxHealth:        0,
 		MaxHealthPercent: 100,
@@ -6045,5 +6050,78 @@ func TestRenterBubble(t *testing.T) {
 		if err != nil {
 			t.Errorf("Unexpected Dir Info '%v'\n%v", test.siaPath, err)
 		}
+	}
+}
+
+// TestRenterUnfinishedFiles probes the handling of unfinished files
+func TestRenterUnfinishedFiles(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for testing
+	groupParams := siatest.GroupParams{
+		Hosts:   2,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Upload a file
+	r := tg.Renters()[0]
+	_, rf, err := r.UploadNewFileBlocking(100, 1, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the file info
+	fi, err := r.File(rf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Since the upload was successful the file should be marked as finished
+	if !fi.Finished {
+		t.Fatal("file not marked as finished")
+	}
+
+	// Upload a file that won't reach full health
+	_, rf, err = r.UploadNewFile(100, 5, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the file info
+	fi, err = r.File(rf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Since the upload will not be successful the file should not be marked
+	// as finished
+	if fi.Finished {
+		t.Fatal("file marked as finished")
+	}
+
+	// Since the file is unfinished it should be removed from the renter
+	err = build.Retry(10, time.Second, func() error {
+		_, err = r.File(rf)
+		if err == nil || !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+			return fmt.Errorf("Unexpected err %v", err)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
