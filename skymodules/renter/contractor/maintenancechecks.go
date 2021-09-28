@@ -123,49 +123,94 @@ func (c *Contractor) managedUtilityChecks(contract skymodules.RenterContract, ho
 	u, needsUpdate := deadScoreCheck(newUtility, sb.Score)
 	uus = uus.Merge(needsUpdate)
 	newUtility = newUtility.Merge(u)
-	if !newUtility.GoodForUpload {
-		fmt.Println("dead score")
+	done := false
+	if !newUtility.GoodForUpload && !done {
+		done = true
 		d, _ := json.MarshalIndent(sb, "  ", "  ")
-		fmt.Println(string(d))
-		fmt.Println("!gfu1", u)
+		fmt.Println("bad utility", string(d))
 	}
 
 	// A contract that has been renewed should be set to !GFU and !GFR.
 	u, needsUpdate = renewedCheck(contract.Utility, renewed)
 	uus = uus.Merge(needsUpdate)
 	newUtility = newUtility.Merge(u)
+	if !newUtility.GoodForUpload && !done {
+		done = true
+		d, _ := json.MarshalIndent(sb, "  ", "  ")
+		fmt.Println("bad utility1", string(d))
+	}
 
 	u, needsUpdate = maxRevisionCheck(contract.Utility, revision.NewRevisionNumber)
 	uus = uus.Merge(needsUpdate)
 	newUtility = newUtility.Merge(u)
+	if !newUtility.GoodForUpload && !done {
+		done = true
+		d, _ := json.MarshalIndent(sb, "  ", "  ")
+		fmt.Println("bad utility2", string(d))
+	}
 
 	u, needsUpdate = badContractCheck(contract.Utility)
 	uus = uus.Merge(needsUpdate)
 	newUtility = newUtility.Merge(u)
+	if !newUtility.GoodForUpload && !done {
+		done = true
+		d, _ := json.MarshalIndent(sb, "  ", "  ")
+		fmt.Println("bad utility3", string(d))
+	}
 
 	u, needsUpdate = offlineCheck(contract, host, c.staticLog)
 	uus = uus.Merge(needsUpdate)
 	newUtility = newUtility.Merge(u)
+	if !newUtility.GoodForUpload && !done {
+		done = true
+		d, _ := json.MarshalIndent(sb, "  ", "  ")
+		fmt.Println("bad utility4", string(d))
+	}
 
 	u, needsUpdate = upForRenewalCheck(contract, renewWindow, blockHeight, c.staticLog)
 	uus = uus.Merge(needsUpdate)
 	newUtility = newUtility.Merge(u)
+	if !newUtility.GoodForUpload && !done {
+		done = true
+		d, _ := json.MarshalIndent(sb, "  ", "  ")
+		fmt.Println("bad utility5", string(d))
+	}
 
 	u, needsUpdate = sufficientFundsCheck(contract, host, period, c.staticLog)
 	uus = uus.Merge(needsUpdate)
 	newUtility = newUtility.Merge(u)
+	if !newUtility.GoodForUpload && !done {
+		done = true
+		d, _ := json.MarshalIndent(sb, "  ", "  ")
+		fmt.Println("bad utility6", string(d))
+	}
 
 	u, needsUpdate = outOfStorageCheck(contract, blockHeight, c.staticLog)
 	uus = uus.Merge(needsUpdate)
 	newUtility = newUtility.Merge(u)
+	if !newUtility.GoodForUpload && !done {
+		done = true
+		d, _ := json.MarshalIndent(sb, "  ", "  ")
+		fmt.Println("bad utility7", string(d))
+	}
 
 	u, needsUpdate = storageGougingCheck(contract, allowance, host, revision.NewFileSize)
 	uus = uus.Merge(needsUpdate)
 	newUtility = newUtility.Merge(u)
+	if !newUtility.GoodForUpload && !done {
+		done = true
+		d, _ := json.MarshalIndent(sb, "  ", "  ")
+		fmt.Println("bad utility8", string(d))
+	}
 
 	u, needsUpdate = c.managedCheckHostScore(contract, sb, minScoreGFR, minScoreGFU)
 	uus = uus.Merge(needsUpdate)
 	newUtility = newUtility.Merge(u)
+	if !newUtility.GoodForUpload && !done {
+		done = true
+		d, _ := json.MarshalIndent(sb, "  ", "  ")
+		fmt.Println("bad utility9", string(d))
+	}
 
 	return newUtility, uus
 }

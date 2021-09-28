@@ -366,7 +366,6 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 		uc = heap.Pop(&uh.heap).(*unfinishedUploadChunk)
 		delete(uh.unstuckHeapChunks, uc.id)
 		delete(uh.stuckHeapChunks, uc.id)
-		fmt.Println("pop", uc.id)
 	}
 	uh.mu.Unlock()
 	return uc
@@ -379,9 +378,6 @@ func (uh *uploadHeap) managedReset() error {
 	}
 	uh.mu.Lock()
 	defer uh.mu.Unlock()
-	if len(uh.unstuckHeapChunks)+len(uh.stuckHeapChunks) > 0 {
-		fmt.Println("  resetting filled heap")
-	}
 	uh.unstuckHeapChunks = make(map[uploadChunkID]*unfinishedUploadChunk)
 	uh.stuckHeapChunks = make(map[uploadChunkID]*unfinishedUploadChunk)
 	return uh.heap.reset()
@@ -425,7 +421,6 @@ func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType)
 
 	// If the new chunk doesn't have a sourceReader there is nothing to do
 	if uuc.sourceReader == nil {
-		println("no source reader")
 		return nil
 	}
 
@@ -438,7 +433,6 @@ func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType)
 	// If the chunk doesn't already exist there is nothing to update
 	if !exists {
 		uh.mu.Unlock()
-		println("nothing to update")
 		return nil
 	}
 
@@ -453,7 +447,6 @@ func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType)
 	// If the existing chunk already has a sourceReader there is nothing to do
 	if existingUUC.sourceReader != nil {
 		uh.mu.Unlock()
-		println("already source reader")
 		return nil
 	}
 	uh.mu.Unlock()
@@ -469,7 +462,6 @@ func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType)
 	existingUUC.cancelWG.Wait()
 
 	// Mark the repair as done.
-	println("updated")
 	return nil
 }
 
@@ -500,16 +492,11 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 
 	// Check if the chunk is already being repaired before building it.
 	r.repairingChunksMu.Lock()
-	fmt.Println("check", cid)
 	if _, repairing := r.repairingChunks[cid]; repairing && !force {
 		r.repairingChunksMu.Unlock()
-		fmt.Println("  nope", cid)
 		return nil, nil // already being repaired
-	} else if repairing && force {
-		println("SNEAKY")
 	}
 	r.repairingChunks[cid] = struct{}{}
-	fmt.Println("  locked", cid)
 	r.repairingChunksMu.Unlock()
 
 	// If this method fails, remove the chunk again.
@@ -597,8 +584,7 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 		return nil, errors.AddContext(err, "error trying to get the pieces for the chunk")
 	}
 	for pieceIndex, pieceSet := range pieces {
-		for index, piece := range pieceSet {
-			fmt.Printf("Piece %v/%v\n", pieceIndex, index)
+		for _, piece := range pieceSet {
 			// Determine whether this piece counts towards the redundancy.
 			// Several criteria must be met:
 			//
@@ -617,13 +603,13 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 			if exists && goodForRenew && exists2 && !offline && exists3 && !redundantPiece {
 				uuc.pieceUsage[pieceIndex] = true
 				uuc.piecesCompleted++
-				println("  mark", pieceIndex, index)
 			} else if redundantPiece && build.Release == "testing" {
+				// This shouldn't happen in testing unless
+				// explicitly tested for.
 				build.Critical("same piece was uploaded to multiple hosts")
 			} else {
-				println("  neither", exists, goodForRenew, exists2, !offline, exists3, !redundantPiece)
+				println("neither", exists, goodForRenew, exists2, !offline, exists3, !redundantPiece)
 			}
-
 			// In all cases, if this host already has a piece, the host cannot
 			// appear in the set of unused hosts.
 			delete(uuc.unusedHosts, hpk)
@@ -1036,7 +1022,6 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	for len(tempChunkHeap) > 0 && (r.staticUploadHeap.managedLen() < maxUploadHeapChunks || target == targetBackupChunks) {
 		// Add this chunk to the upload heap.
 		chunk := heap.Pop(&tempChunkHeap).(*unfinishedUploadChunk)
-		fmt.Println("push2", chunk.id)
 		_, pushed, err := r.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
 			r.staticRepairLog.Println("WARN: Error pushing chunk for repair", err)
