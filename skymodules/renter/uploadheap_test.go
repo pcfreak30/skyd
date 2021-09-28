@@ -36,6 +36,7 @@ func TestUploadHeap(t *testing.T) {
 	t.Run("managedBuildUnfinishedChunks", testManagedBuildUnfinishedChunks)
 	t.Run("managedPushChunkForRepair", testManagedPushChunkForRepair)
 	t.Run("managedTryUpdate", testManagedTryUpdate)
+	t.Run("managedPruneIncompleteChunks", testManagedPruneIncompleteChunks)
 
 	// Specific condition unit tests
 	t.Run("AddChunksToHeapPanic", testAddChunksToHeapPanic)
@@ -1226,4 +1227,148 @@ func testAddChunksToHeapPanic(t *testing.T) {
 
 	// Call managedAddChunksToHeap
 	rt.renter.managedAddChunksToHeap(nil)
+}
+
+// testManagedPruneIncompleteChunks probes the managedPruneIncompleteChunks
+// method
+func testManagedPruneIncompleteChunks(t *testing.T) {
+	// Create Renter
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Create a siafile and make sure it has 4 chunks
+	file, err := rt.renter.createRenterTestFile(skymodules.RandomSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := file.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	err = file.GrowNumChunks(4)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mark the first 2 chunks as stuck
+	if err = file.SetStuck(uint64(0), true); err != nil {
+		t.Fatal(err)
+	}
+	if err = file.SetStuck(uint64(1), true); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create helper for checking all chunk stuck statuses
+	checkChunks := func(offset uint64, stuck bool) error {
+		isStuck, err := file.StuckChunkByIndex(offset)
+		if err != nil {
+			return err
+		}
+		if isStuck != stuck {
+			return errors.New("incorrect stuck status")
+		}
+		return nil
+	}
+
+	// Confirm chunk statuses
+	if err := checkChunks(0, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkChunks(1, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkChunks(2, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkChunks(3, false); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create 4 unfinsihedUploadChunks.
+	// unhealthy unstuck
+	// healthy unstuck
+	// unhealthy stuck
+	// healthy stuck
+
+	// check an unhealthy unstuck chunk
+	copy1 := file.Copy()
+	unstuckUnhealhy := &unfinishedUploadChunk{
+		fileEntry: copy1,
+		health:    1,
+		offset:    3,
+	}
+	// Close file for unhealthy chunk at end of test
+	defer func() {
+		if err := copy1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// check an healthy unstuck chunk
+	unstuckHealthy := &unfinishedUploadChunk{
+		fileEntry: file.Copy(),
+		health:    0,
+		offset:    2,
+	}
+	// No need to close file for healthy chunk at end of test because it is
+	// closed by managedPruneIncompleteChunks
+
+	// check an unhealthy stuck chunk
+	copy2 := file.Copy()
+	stuckUnhealhy := &unfinishedUploadChunk{
+		fileEntry: copy2,
+		health:    1,
+		offset:    1,
+		stuck:     true,
+	}
+	// Close file for unhealthy chunk at end of test
+	defer func() {
+		if err := copy2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// check an healthy stuck chunk
+	stuckHealthy := &unfinishedUploadChunk{
+		fileEntry: file.Copy(),
+		health:    0,
+		offset:    0,
+		stuck:     true,
+	}
+	// No need to close file for healthy chunk at end of test because it is
+	// closed by managedPruneIncompleteChunks
+
+	// Create a slice of unfinished chunks
+	uucs := []*unfinishedUploadChunk{unstuckUnhealhy, unstuckHealthy, stuckUnhealhy, stuckHealthy}
+
+	// Call managedPruneIncompleteChunks
+	incompleteChunks := rt.renter.managedPruneIncompleteChunks(uucs)
+
+	// There should be 2 chunks in incompleteChunks
+	if len(incompleteChunks) != 2 {
+		t.Fatal("expected 2 chunks but found", len(incompleteChunks))
+	}
+
+	// Confirm chunk statuses. The chunk at the first index, the healthy
+	// stuck chunk should now be unstuck.
+	if err := checkChunks(0, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkChunks(1, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkChunks(2, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkChunks(3, false); err != nil {
+		t.Fatal(err)
+	}
 }
