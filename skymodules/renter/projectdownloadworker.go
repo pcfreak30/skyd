@@ -496,8 +496,14 @@ LOOP:
 			continue
 		}
 
-		// get some information on the expensive worker
+		// if the current worker is a chimera worker, and we're cheaper, swap
 		expensiveWorkerIndex := originalIndexMap[w.identifier()]
+		if _, ok := w.(*chimeraWorker); ok {
+			swapIndex = expensiveWorkerIndex
+			break LOOP
+		}
+
+		// get some information on the expensive worker
 		expensiveWorkerPiece := w.getPieceForDownload()
 
 		// range over the candidate's pieces and see whether we can swap
@@ -913,7 +919,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 
 		// update the available pieces
 		updated := pdc.updateAvailablePieces()
-		if updated {
+		if updated || time.Since(prevRecalc) > 50*time.Millisecond {
 			// recreate the download workers, we only do this when we know the
 			// resolved vs unresolved workers configuration changed, because
 			// that might cause a different set of download workers
@@ -925,14 +931,6 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			downloadWorkers = buildDownloadWorkers(workers, numPieces, time.Since(pdc.launchTime))
 			prevRecalc = time.Now()
 			buildDownloadWorkersCnt++
-		}
-
-		// recalculate the cache every so often
-		if time.Since(prevRecalc) > 100*time.Millisecond {
-			for _, w := range downloadWorkers {
-				w.recalculateChanceAfter(time.Since(pdc.launchTime))
-			}
-			prevRecalc = time.Now()
 		}
 
 		// create a worker set and launch it
