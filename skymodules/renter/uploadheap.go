@@ -600,9 +600,7 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 			} else if redundantPiece && build.Release == "testing" {
 				// This shouldn't happen in testing unless
 				// explicitly tested for.
-				//build.Critical("same piece was uploaded to multiple hosts")
-			} else {
-				println("neither", exists, goodForRenew, exists2, !offline, exists3, !redundantPiece)
+				build.Critical("same piece was uploaded to multiple hosts")
 			}
 			// In all cases, if this host already has a piece, the host cannot
 			// appear in the set of unused hosts.

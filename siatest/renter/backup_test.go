@@ -51,6 +51,13 @@ func TestCreateLoadBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Make sure to start with fresh contracts to avoid a mid-test renew.
+	err = siatest.RenewContractsByRenewWindow(r, tg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Add a file to that dir.
 	lf, err := subDir.NewFile(100)
 	if err != nil {
