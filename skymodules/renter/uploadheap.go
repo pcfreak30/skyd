@@ -319,8 +319,6 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk, ct chunkType) (*un
 	// Check if chunk is in any of the heap maps
 	uh.mu.Lock()
 	defer uh.mu.Unlock()
-	fmt.Println("  push locked", uuc.id, uuc.pieceUsage)
-	defer fmt.Println("  push unlocked", uuc.id)
 	uucUnstuck, existsUnstuckHeap := uh.unstuckHeapChunks[uuc.id]
 	uucStuck, existsStuckHeap := uh.stuckHeapChunks[uuc.id]
 	exists := existsUnstuckHeap || existsStuckHeap
@@ -868,7 +866,6 @@ func (r *Renter) managedBuildAndPushRandomChunk(siaPath skymodules.SiaPath, host
 	}()
 
 	// Push chunk onto the uploadHeap
-	fmt.Println("push3", randChunk.id)
 	_, pushed, err := r.managedPushChunkForRepair(randChunk, chunkTypeLocalChunk)
 	if err != nil {
 		return errors.Compose(allErrs, err, randChunk.Close())
@@ -1273,7 +1270,6 @@ func (r *Renter) managedPushChunkForRepair(uuc *unfinishedUploadChunk, ct chunkT
 	}
 	// Push the chunk onto the upload heap
 	existingUUC, pushed := r.staticUploadHeap.managedPush(uuc, ct)
-	fmt.Println("push done", uuc.id, pushed)
 	// If we were not able to push the chunk, or if the chunkType is localChunk we
 	// return
 	if !pushed || ct == chunkTypeLocalChunk {
