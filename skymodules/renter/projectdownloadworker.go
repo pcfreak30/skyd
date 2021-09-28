@@ -1092,6 +1092,19 @@ OUTER:
 	if bestSet != nil && !bestSet.chanceGreaterThanHalf(bestSet.staticBucketIndex) {
 		build.Critical("uh oh, best set's chance not greater than half")
 	}
+
+	if span := opentracing.SpanFromContext(pdc.ctx); bestSet == nil && span != nil && len(downloadWorkers) > 0 {
+		msg := ""
+		for _, dw := range downloadWorkers {
+			msg += fmt.Sprintf("worker: %v chance: %v\n", dw.identifier(), dw.chanceAfter(skymodules.DistributionTrackerTotalBuckets-1))
+		}
+		span.LogKV(
+			"bestSetNil", msg,
+			"maxOverdriveWorkers", maxOverdriveWorkers,
+			"workersNeeded", minPieces+maxOverdriveWorkers,
+		)
+	}
+
 	// fmt.Println("best set", bestSet)
 	return bestSet, nil
 }
