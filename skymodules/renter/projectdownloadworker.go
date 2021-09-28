@@ -906,7 +906,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	prevRecalc := time.Now()
 	for {
 		// fmt.Println("ITER")
-		if span := opentracing.SpanFromContext(pdc.ctx); span != nil && time.Since(prevLog) > 100*time.Millisecond {
+		if span := opentracing.SpanFromContext(pdc.ctx); span != nil && time.Since(prevLog) > 50*time.Millisecond {
 			span.LogKV(
 				"downloadLoopIter", time.Since(pdc.launchTime),
 				"currWorkerSet", currWorkerSet,
@@ -935,12 +935,12 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 
 		// create a worker set and launch it
 		workerSet, err := pdc.createWorkerSet(downloadWorkers, maxOverdriveWorkers)
+		currWorkerSet = workerSet
 		if err != nil {
 			pdc.fail(err)
 			return
 		}
 		if workerSet != nil {
-			currWorkerSet = workerSet
 			if workerSet.staticNumOverdrive > 0 && !odConsidered {
 				odConsidered = true
 				if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
@@ -1089,6 +1089,9 @@ OUTER:
 		}
 	}
 
+	if bestSet != nil && !bestSet.chanceGreaterThanHalf(bestSet.staticBucketIndex) {
+		build.Critical("uh oh, best set's chance not greater than half")
+	}
 	// fmt.Println("best set", bestSet)
 	return bestSet, nil
 }
