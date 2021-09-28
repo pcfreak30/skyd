@@ -371,9 +371,6 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 
 // managedReset will reset the slice and maps within the heap to free up memory.
 func (uh *uploadHeap) managedReset() error {
-	if true {
-		return nil
-	}
 	uh.mu.Lock()
 	defer uh.mu.Unlock()
 	uh.unstuckHeapChunks = make(map[uploadChunkID]*unfinishedUploadChunk)
@@ -500,7 +497,6 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 	// If this method fails, remove the chunk again.
 	defer func() {
 		if err != nil {
-			fmt.Println("  unlocked", cid, err)
 			delete(r.repairingChunks, cid)
 		}
 	}()
@@ -604,7 +600,7 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 			} else if redundantPiece && build.Release == "testing" {
 				// This shouldn't happen in testing unless
 				// explicitly tested for.
-				build.Critical("same piece was uploaded to multiple hosts")
+				//build.Critical("same piece was uploaded to multiple hosts")
 			} else {
 				println("neither", exists, goodForRenew, exists2, !offline, exists3, !redundantPiece)
 			}

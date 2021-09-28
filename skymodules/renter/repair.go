@@ -139,7 +139,6 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath skymodules.SiaPath, hosts m
 		unfinishedStuckChunks = unfinishedStuckChunks[1:]
 		chunk.stuckRepair = true
 		chunk.fileRecentlySuccessful = true
-		fmt.Println("push4", chunk.id)
 		_, pushed, err := r.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
 			return errors.Compose(allErrors, err, chunk.Close())
