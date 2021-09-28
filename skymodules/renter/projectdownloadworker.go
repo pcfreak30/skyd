@@ -1221,6 +1221,12 @@ func buildDownloadWorkers(workers []*individualWorker, numPieces int, shift time
 // method will split the given workers array in a list of most likely workers,
 // and a list of less likely workers.
 func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWorker, bI int, workersNeeded int) ([]downloadWorker, []downloadWorker) {
+	minPieces := pdc.workerSet.staticErasureCoder.MinPieces()
+	var overdriveWorkers int
+	if workersNeeded > minPieces {
+		overdriveWorkers = workersNeeded - minPieces
+	}
+
 	// calculate the less likely cap, taking into account underflow
 	var lessLikelyCap int
 	if len(workers) > workersNeeded {
@@ -1298,6 +1304,25 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 			pieces[pieceIndex] = struct{}{}
 			addWorker(w)
 			break // only use a worker once
+		}
+	}
+
+	if overdriveWorkers > 0 && len(mostLikely) < workersNeeded {
+		overdrive := make(map[uint64]struct{}, 0)
+		for _, w := range workers {
+			_, added := added[w.identifier()]
+			if added {
+				continue
+			}
+			for _, pieceIndex := range w.pieces() {
+				w.markPieceForDownload(pieceIndex)
+				overdrive[pieceIndex] = struct{}{}
+				addWorker(w)
+				break // only use a worker once
+			}
+			if len(overdrive) >= overdriveWorkers {
+				break
+			}
 		}
 	}
 
