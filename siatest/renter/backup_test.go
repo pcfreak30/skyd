@@ -31,7 +31,7 @@ func TestCreateLoadBackup(t *testing.T) {
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
-		Hosts:   3,
+		Hosts:   2,
 		Miners:  1,
 		Renters: 1,
 	}
@@ -167,7 +167,7 @@ func TestCreateLoadBackup(t *testing.T) {
 	}
 	// Wait for enough contracts to be gfu after the recovery.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		return siatest.CheckExpectedNumberOfContracts(r, 2, 0, 0, 0, 0, 0)
+		return siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, 0, 0)
 	})
 	if err != nil {
 		t.Fatal(err)
