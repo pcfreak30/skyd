@@ -1098,7 +1098,7 @@ OUTER:
 
 		msg := ""
 		for _, dw := range downloadWorkers {
-			msg += fmt.Sprintf("worker: %v chance: %v\n", dw.identifier(), dw.chanceAfter(skymodules.DistributionTrackerTotalBuckets-1))
+			msg += fmt.Sprintf("worker: %v chance: %v pieces: %v\n", dw.identifier(), dw.chanceAfter(skymodules.DistributionTrackerTotalBuckets-1), dw.pieces())
 		}
 		span.LogKV(
 			"bestSetNil", msg,
