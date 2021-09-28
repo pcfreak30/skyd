@@ -31,7 +31,7 @@ func TestCreateLoadBackup(t *testing.T) {
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
-		Hosts:   2,
+		Hosts:   3,
 		Miners:  1,
 		Renters: 1,
 	}
