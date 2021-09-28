@@ -146,6 +146,10 @@ func (uc *unfinishedUploadChunk) Cancel() {
 func (uc *unfinishedUploadChunk) Close() error {
 	r := uc.staticRenter
 
+	// Close entry.
+	err := uc.fileEntry.Close()
+
+	// Remove entry from repairingChunks
 	r.repairingChunksMu.Lock()
 	if _, repairing := r.repairingChunks[uc.id]; !repairing {
 		build.Critical("closed chunk is not repairing")
@@ -153,7 +157,7 @@ func (uc *unfinishedUploadChunk) Close() error {
 	delete(r.repairingChunks, uc.id)
 	r.repairingChunksMu.Unlock()
 
-	return uc.fileEntry.Close()
+	return err
 }
 
 // managedSetStuckAndClose sets the unfinishedUploadChunk's stuck status and
