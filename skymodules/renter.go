@@ -1183,7 +1183,10 @@ type FanoutChunkReader interface {
 type RegistrySubscriber interface {
 	io.Closer
 
+	// Subscribe subscribes to a new entry.
 	Subscribe(spk types.SiaPublicKey, tweak crypto.Hash) *modules.SignedRegistryValue
+
+	// Unsubscribe unsubscribes from an entry.
 	Unsubscribe(eid modules.RegistryEntryID)
 }
 

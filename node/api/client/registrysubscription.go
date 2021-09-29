@@ -22,10 +22,12 @@ func (c *Client) BeginRegistrySubscription() (*RegistrySubscription, error) {
 	h.Set("User-Agent", agent)
 
 	// Init the connection.
-	wsconn, _, err := websocket.DefaultDialer.Dial(url, h)
+	wsconn, resp, err := websocket.DefaultDialer.Dial(url, h)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to connect to subscription endpoint")
 	}
+	defer resp.Body.Close()
+
 	return &RegistrySubscription{
 		staticConn: wsconn,
 	}, nil
