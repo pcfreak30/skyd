@@ -152,16 +152,11 @@ func (uc *unfinishedUploadChunk) Close() error {
 	// Decrease reference count of chunk in repairingChunks.
 	r.repairingChunksMu.Lock()
 	defer r.repairingChunksMu.Unlock()
-	rc, repairing := r.repairingChunks[uc.id]
-	if !repairing || rc.references == 0 {
+	_, repairing := r.repairingChunks[uc.id]
+	if !repairing {
 		build.Critical("closed chunk is not repairing")
 	}
-	rc.references--
-	if rc.references == 0 {
-		delete(r.repairingChunks, uc.id)
-	} else {
-		r.repairingChunks[uc.id] = rc
-	}
+	delete(r.repairingChunks, uc.id)
 	return err
 }
 

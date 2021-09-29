@@ -203,11 +203,6 @@ type cachedUtilities struct {
 	used         []types.SiaPublicKey
 }
 
-// repairingChunk represents a chunk that is currently being repaired.
-type repairingChunk struct {
-	references int
-}
-
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
@@ -253,7 +248,7 @@ type Renter struct {
 	cachedUtilities cachedUtilities
 
 	repairingChunksMu sync.Mutex
-	repairingChunks   map[uploadChunkID]repairingChunk
+	repairingChunks   map[uploadChunkID]*unfinishedUploadChunk
 
 	// staticSubscriptionManager is the global manager of registry
 	// subscriptions.
@@ -1076,7 +1071,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		// Initiate skynet resources
 		staticSkylinkManager: newSkylinkManager(),
 
-		repairingChunks: make(map[uploadChunkID]repairingChunk),
+		repairingChunks: make(map[uploadChunkID]*unfinishedUploadChunk),
 
 		// Making newDownloads a buffered channel means that most of the time, a
 		// new download will trigger an unnecessary extra iteration of the

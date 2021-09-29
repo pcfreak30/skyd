@@ -482,35 +482,22 @@ func (r *Renter) ResumeRepairsAndUploads() error {
 }
 
 // managedBuildUnfinishedChunk will pull out a single unfinished chunk of a file.
-func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesystem.FileNode, chunkIndex uint64, hosts map[string]struct{}, priority bool, offline, goodForRenew map[string]bool, mm *memoryManager, force bool) (_ *unfinishedUploadChunk, err error) {
+func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesystem.FileNode, chunkIndex uint64, hosts map[string]struct{}, priority bool, offline, goodForRenew map[string]bool, mm *memoryManager) (_ *unfinishedUploadChunk, _ bool, err error) {
 	cid := uploadChunkID{entry.UID(), chunkIndex}
 
 	// Check if the chunk is already being repaired before building it.
 	r.repairingChunksMu.Lock()
-	if rc, repairing := r.repairingChunks[cid]; repairing && !force {
-		r.repairingChunksMu.Unlock()
-		return nil, nil // already being repaired
-	} else if repairing && force {
-		rc.references++
-		r.repairingChunks[cid] = rc
-	} else {
-		r.repairingChunks[cid] = repairingChunk{references: 1}
+	defer r.repairingChunksMu.Unlock()
+	if uc, repairing := r.repairingChunks[cid]; repairing {
+		return uc, true, nil // already being repaired
 	}
-	r.repairingChunksMu.Unlock()
-
-	// If this method fails, remove the chunk again.
-	defer func() {
-		if err != nil {
-			delete(r.repairingChunks, cid)
-		}
-	}()
 
 	// Copy entry
 	entryCopy := entry.Copy()
 	stuck, err := entry.StuckChunkByIndex(chunkIndex)
 	if err != nil {
 		r.staticLog.Println("WARN: unable to get 'stuck' status:", err)
-		return nil, errors.AddContext(err, "unable to get 'stuck' status")
+		return nil, false, errors.AddContext(err, "unable to get 'stuck' status")
 	}
 	_, err = os.Stat(entryCopy.LocalPath())
 	onDisk := err == nil
@@ -579,7 +566,7 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 		if err := entry.SetStuck(chunkIndex, true); err != nil {
 			r.staticLog.Printf("failed to set chunk %v stuck: %v", chunkIndex, err)
 		}
-		return nil, errors.AddContext(err, "error trying to get the pieces for the chunk")
+		return nil, false, errors.AddContext(err, "error trying to get the pieces for the chunk")
 	}
 	for pieceIndex, pieceSet := range pieces {
 		for _, piece := range pieceSet {
@@ -621,7 +608,10 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 	// Now that we have calculated the completed pieces for the chunk we can
 	// calculate the health of the chunk to avoid a call to ChunkHealth
 	uuc.health = siafile.CalculateHealth(uuc.piecesCompleted, uuc.staticMinimumPieces, uuc.staticPiecesNeeded)
-	return uuc, nil
+
+	// Add the chunk to the repairing chunks.
+	r.repairingChunks[cid] = uuc
+	return uuc, false, nil
 }
 
 // managedBuildUnfinishedChunks will pull all of the unfinished chunks out of a
@@ -694,13 +684,13 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		}
 
 		// Create unfinishedUploadChunk
-		chunk, err := r.managedBuildUnfinishedChunk(r.tg.StopCtx(), entry, uint64(index), hosts, memoryPriorityLow, offline, goodForRenew, mm, false)
+		chunk, exists, err := r.managedBuildUnfinishedChunk(r.tg.StopCtx(), entry, uint64(index), hosts, memoryPriorityLow, offline, goodForRenew, mm)
 		if err != nil {
 			r.staticLog.Debugln("Error when building an unfinished chunk:", err)
 			continue
 		}
 		// Chunk might already being repaired.
-		if chunk == nil {
+		if exists {
 			continue
 		}
 		newUnfinishedChunks = append(newUnfinishedChunks, chunk)
