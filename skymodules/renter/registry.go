@@ -213,16 +213,7 @@ func (r *Renter) ReadRegistryRID(ctx context.Context, rid modules.RegistryEntryI
 
 // UpdateRegistry updates the registries on all workers with the given
 // registry value.
-func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegistryValue, timeout time.Duration) error {
-	// Create a context. If the timeout is greater than zero, have the context
-	// expire when the timeout triggers.
-	ctx := r.tg.StopCtx()
-	if timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
-		defer cancel()
-	}
-
+func (r *Renter) UpdateRegistry(ctx context.Context, spk types.SiaPublicKey, srv modules.SignedRegistryValue) error {
 	// Block until there is memory available, and then ensure the memory gets
 	// returned.
 	// Since registry entries are very small we use a fairly generous multiple.
@@ -232,11 +223,23 @@ func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegist
 	defer r.staticRegistryMemoryManager.Return(updateRegistryMemory)
 
 	// Start the UpdateRegistry jobs.
-	err := r.managedUpdateRegistry(ctx, spk, srv, make(map[string]struct{}), MinUpdateRegistrySuccesses)
-	if errors.Contains(err, ErrRegistryUpdateTimeout) {
-		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
+	return r.managedUpdateRegistry(ctx, spk, srv)
+}
+
+// UpdateRegistryMulti updates the registries on the given workers with the
+// corresponding registry values.
+func (r *Renter) UpdateRegistryMulti(ctx context.Context, srvs map[string]skymodules.RegistryEntry) error {
+	// Block until there is memory available, and then ensure the memory gets
+	// returned.
+	// Since registry entries are very small we use a fairly generous multiple.
+	if !r.staticRegistryMemoryManager.Request(ctx, updateRegistryMemory, memoryPriorityHigh) {
+		return errors.New("timeout while waiting in job queue - server is busy")
 	}
-	return err
+	defer r.staticRegistryMemoryManager.Return(updateRegistryMemory)
+
+	// Start the UpdateRegistry jobs.
+	workers := r.staticWorkerPool.callWorkers()
+	return r.managedUpdateRegistryMulti(ctx, workers, srvs, MinUpdateRegistrySuccesses)
 }
 
 // managedRegistryEntryHealth reads an entry from all hosts on the network until
@@ -321,12 +324,19 @@ func (r *Renter) managedRegistryEntryHealth(ctx context.Context, rid modules.Reg
 			continue
 		}
 		nTotal++
-		update, reason := bestSRV.ShouldUpdateWith(&resp.staticSignedRegistryValue.RegistryValue, resp.staticWorker.staticHostPubKey)
+		// We call ShouldUpdateWith without pubkey here because we don't
+		// want to prefer primary entries here. We will explicitly check
+		// for them afterwards.
+		update, reason := bestSRV.ShouldUpdateWith(&resp.staticSignedRegistryValue.RegistryValue, types.SiaPublicKey{})
 		if update {
 			nPrimary++
 		}
 		if update || errors.Contains(reason, modules.ErrSameRevNum) {
 			nBestTotal++
+			// Check if it is a primary entry.
+			if resp.staticSignedRegistryValue.IsPrimaryEntry(resp.staticWorker.staticHostPubKey) {
+				nPrimary++
+			}
 			// Check if we have waited for enough workers.
 			if beforeCutoff {
 				nBestTotalBeforeCutoff++
@@ -351,6 +361,14 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	tracer := opentracing.GlobalTracer()
 	span := tracer.StartSpan("managedReadRegistry")
 	defer span.Finish()
+
+	// Check if we are subscribed to the entry first.
+	subscribedRV, ok := r.staticSubscriptionManager.Get(rid)
+	span.SetTag("cached", ok)
+	if ok {
+		// We are, no need to look it up.
+		return subscribedRV, nil
+	}
 
 	// Measure the time it takes to fetch the entry.
 	startTime := time.Now()
@@ -517,22 +535,42 @@ func (r *Renter) managedLaunchReadRegistryWorkers(ctx context.Context, span open
 // NOTE: the input ctx only unblocks the call if it fails to hit the threshold
 // before the timeout. It doesn't stop the update jobs. That's because we want
 // to always make sure we update as many hosts as possble.
-func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicKey, srv modules.SignedRegistryValue, skipHosts map[string]struct{}, minUpdates int) (err error) {
+func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicKey, srv modules.SignedRegistryValue) (err error) {
+	workers := r.staticWorkerPool.callWorkers()
+	srvs := make(map[string]skymodules.RegistryEntry, len(workers))
+	for _, w := range workers {
+		srvs[w.staticHostPubKeyStr] = skymodules.NewRegistryEntry(spk, srv)
+	}
+	return r.managedUpdateRegistryMulti(ctx, workers, srvs, MinUpdateRegistrySuccesses)
+}
+
+// managedUpdateRegistry updates the registries on all workers with the given
+// registry value.
+// NOTE: the input ctx only unblocks the call if it fails to hit the threshold
+// before the timeout. It doesn't stop the update jobs. That's because we want
+// to always make sure we update as many hosts as possble.
+func (r *Renter) managedUpdateRegistryMulti(ctx context.Context, workers []*worker, srvs map[string]skymodules.RegistryEntry, minUpdates int) (err error) {
 	// Start tracing.
 	start := time.Now()
 	tracer := opentracing.GlobalTracer()
-	span := tracer.StartSpan("managedUpdateRegistry")
+	span := tracer.StartSpan("managedUpdateRegistryMulti")
 	defer span.Finish()
 
-	// Verify the signature before updating the hosts.
-	if err := srv.Verify(spk.ToPublicKey()); err != nil {
-		return errors.AddContext(err, "managedUpdateRegistry: failed to verify signature of entry")
+	// Check how many updates we expect at the very least.
+	if minUpdates > len(srvs) {
+		minUpdates = len(srvs)
 	}
-	// Get the full list of workers and create a channel to receive all of the
+
+	// Verify the signatures before updating the hosts.
+	for _, srv := range srvs {
+		if err := srv.Verify(); err != nil {
+			return errors.AddContext(err, "managedUpdateRegistry: failed to verify signature of entry")
+		}
+	}
+	// Create a channel to receive all of the
 	// results from the workers. The channel is buffered with one slot per
 	// worker, so that the workers do not have to block when returning the
 	// result of the job, even if this thread is not listening.
-	workers := r.staticWorkerPool.callWorkers()
 	staticResponseChan := make(chan *jobUpdateRegistryResponse, len(workers))
 	span.LogKV("workers", len(workers))
 
@@ -550,32 +588,18 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	// Filter out hosts that don't support the registry.
 	numRegistryWorkers := 0
 	for _, worker := range workers {
-		_, skip := skipHosts[worker.staticHostPubKeyStr]
-		if skip {
+		// Filter out workers that we don't have an srv for.
+		srv, exists := srvs[worker.staticHostPubKeyStr]
+		if !exists {
 			continue
 		}
-
-		// Check version.
-		cache := worker.staticCache()
-		if build.VersionCmp(cache.staticHostVersion, minRegistryVersion) < 0 {
-			continue
-		}
-
-		// Skip !goodForUpload workers.
-		if !cache.staticContractUtility.GoodForUpload {
-			continue
-		}
-
-		// check for price gouging
-		pt := worker.staticPriceTable().staticPriceTable
-		err = checkUploadGougingPT(pt, cache.staticRenterAllowance)
-		if err != nil {
-			r.staticLog.Debugf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
+		// Check if worker is good for updating the registry.
+		if !isWorkerGoodForRegistryUpdate(worker) {
 			continue
 		}
 
 		// Create the job.
-		jrr := worker.newJobUpdateRegistry(updateTimeoutCtx, span, staticResponseChan, spk, srv)
+		jrr := worker.newJobUpdateRegistry(updateTimeoutCtx, span, staticResponseChan, srv.PubKey, srv.SignedRegistryValue)
 		if !worker.staticJobUpdateRegistryQueue.callAdd(jrr) {
 			// This will filter out any workers that are on cooldown or
 			// otherwise can't participate in the project.
@@ -746,11 +770,42 @@ func (r *Renter) threadedHandleRegistryRepairs(ctx context.Context, parentSpan o
 		return
 	}
 
+	// Prepare the updates.
+	workers := r.staticWorkerPool.callWorkers()
+	srvs := make(map[string]skymodules.RegistryEntry, len(workers))
+	for _, w := range workers {
+		if _, upToDate := upToDateHosts[w.staticHostPubKeyStr]; upToDate {
+			continue
+		}
+		srvs[w.staticHostPubKeyStr] = *best.staticSignedRegistryValue
+	}
+
 	// Update the registry.
-	err := r.managedUpdateRegistry(ctx, bestSRV.PubKey, best.staticSignedRegistryValue.SignedRegistryValue, upToDateHosts, RegistryEntryRepairThreshold-len(upToDateHosts))
+	err := r.managedUpdateRegistryMulti(ctx, workers, srvs, RegistryEntryRepairThreshold-len(upToDateHosts))
 	if err != nil {
 		r.staticLog.Debugln("threadedHandleRegistryRepairs: failed to update registry", err)
 	}
+}
+
+// isWorkerGoodForRegistryUpdate is a helper function which returns 'true' if a
+// worker can be used for updating the registry.
+func isWorkerGoodForRegistryUpdate(worker *worker) bool {
+	cache := worker.staticCache()
+	if build.VersionCmp(cache.staticHostVersion, minRegistryVersion) < 0 {
+		return false
+	}
+	// Skip !goodForUpload workers.
+	if !cache.staticContractUtility.GoodForUpload {
+		return false
+	}
+
+	// check for price gouging
+	pt := worker.staticPriceTable().staticPriceTable
+	err := checkUploadGougingPT(pt, cache.staticRenterAllowance)
+	if err != nil {
+		return false
+	}
+	return true
 }
 
 // regReadCutoffWorkers returns the workers to wait for before considering the

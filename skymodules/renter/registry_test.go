@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unsafe"
@@ -303,5 +304,58 @@ func TestRegReadCutoffWorkers(t *testing.T) {
 				t.Fatal("wrong worker remaining", result)
 			}
 		}
+	}
+}
+
+// TestIsWorkerGoodForRegistryUpdate is a unit test for
+// IsWorkerGoodForRegistryUpdate.
+func TestIsWorkerGoodForRegistryUpdate(t *testing.T) {
+	t.Parallel()
+
+	goodWorker := func() *worker {
+		return &worker{
+			atomicCache: unsafe.Pointer(&workerCache{
+				staticHostVersion: "1.5.5",
+				staticContractUtility: skymodules.ContractUtility{
+					GoodForUpload: true,
+				},
+				staticRenterAllowance: skymodules.DefaultAllowance,
+			}),
+			atomicPriceTable: unsafe.Pointer(&workerPriceTable{
+				staticPriceTable: newDefaultPriceTable()}),
+		}
+	}
+
+	// happy case
+	isGood := isWorkerGoodForRegistryUpdate(goodWorker())
+	if !isGood {
+		t.Fatal("unexpected")
+	}
+	// bad version
+	badWorker := goodWorker()
+	cache := badWorker.staticCache()
+	cache.staticHostVersion = "1.0.0"
+	atomic.StorePointer(&badWorker.atomicCache, unsafe.Pointer(cache))
+	isGood = isWorkerGoodForRegistryUpdate(badWorker)
+	if isGood {
+		t.Fatal("unexpected")
+	}
+	// !gfu
+	badWorker = goodWorker()
+	cache = badWorker.staticCache()
+	cache.staticContractUtility.GoodForUpload = false
+	atomic.StorePointer(&badWorker.atomicCache, unsafe.Pointer(cache))
+	isGood = isWorkerGoodForRegistryUpdate(badWorker)
+	if isGood {
+		t.Fatal("unexpected")
+	}
+	// too expensive
+	badWorker = goodWorker()
+	cache = badWorker.staticCache()
+	cache.staticRenterAllowance.Funds = types.NewCurrency64(1)
+	atomic.StorePointer(&badWorker.atomicCache, unsafe.Pointer(cache))
+	isGood = isWorkerGoodForRegistryUpdate(badWorker)
+	if isGood {
+		t.Fatal("unexpected")
 	}
 }

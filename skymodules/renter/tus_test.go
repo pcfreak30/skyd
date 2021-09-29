@@ -40,8 +40,9 @@ func TestWriteChunkSetLastWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stu := upload.(*skynetTUSUpload)
-	if stu.lastWrite.IsZero() {
+	stu := upload.(*ongoingTUSUpload)
+	imu := stu.staticUpload.(*skynetInMemoryUpload)
+	if imu.lastWrite.IsZero() {
 		t.Fatal("lastWrite wasn't initialized")
 	}
 	start := time.Now()
@@ -52,8 +53,8 @@ func TestWriteChunkSetLastWrite(t *testing.T) {
 	if n != info.Size {
 		t.Fatal("wrong n", n)
 	}
-	if start.After(stu.lastWrite) {
-		t.Fatal("last write wasn't updated", start, stu.lastWrite)
+	if start.After(imu.lastWrite) {
+		t.Fatal("last write wasn't updated", start, imu.lastWrite)
 	}
 
 	// Large upload.
@@ -65,8 +66,9 @@ func TestWriteChunkSetLastWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stu = upload.(*skynetTUSUpload)
-	if stu.lastWrite.IsZero() {
+	stu = upload.(*ongoingTUSUpload)
+	imu = stu.staticUpload.(*skynetInMemoryUpload)
+	if imu.lastWrite.IsZero() {
 		t.Fatal("lastWrite wasn't initialized")
 	}
 	start = time.Now()
@@ -77,7 +79,7 @@ func TestWriteChunkSetLastWrite(t *testing.T) {
 	if n != info.Size {
 		t.Fatal("wrong n", n)
 	}
-	if start.After(stu.lastWrite) {
-		t.Fatal("last write wasn't updated", start, stu.lastWrite)
+	if start.After(imu.lastWrite) {
+		t.Fatal("last write wasn't updated", start, imu.lastWrite)
 	}
 }

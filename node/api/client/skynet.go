@@ -60,6 +60,12 @@ func (ts *tusStore) Close() {
 	ts.store = nil
 }
 
+// HostsForRegistryUpdateGET queries the /skynet/registry/hosts endpoint.
+func (c *Client) HostsForRegistryUpdateGET() (hg api.HostsForRegistryUpdateGET, err error) {
+	err = c.get("/skynet/registry/hosts", &hg)
+	return
+}
+
 // SkynetBaseSectorGet uses the /skynet/basesector endpoint to fetch a reader of
 // the basesector data.
 func (c *Client) SkynetBaseSectorGet(skylink string) (io.ReadCloser, error) {
@@ -959,6 +965,33 @@ func (c *Client) RegistryEntryHealthRID(rid modules.RegistryEntryID) (reh skymod
 // RegistryUpdate queries the /skynet/registry [POST] endpoint.
 func (c *Client) RegistryUpdate(spk types.SiaPublicKey, dataKey crypto.Hash, revision uint64, sig crypto.Signature, skylink skymodules.Skylink) error {
 	return c.RegistryUpdateWithEntry(spk, modules.NewSignedRegistryValue(dataKey, skylink.Bytes(), revision, sig, modules.RegistryTypeWithoutPubkey))
+}
+
+// RegistryUpdateMulti queries the /skynet/registrymulti [POST] endpoint.
+func (c *Client) RegistryUpdateMulti(srvs map[string]skymodules.RegistryEntry) error {
+	req := make([]api.RegistryHandlerMultiRequestPOST, 0, len(srvs))
+	for hk, srv := range srvs {
+		var hpk types.SiaPublicKey
+		if err := hpk.LoadString(hk); err != nil {
+			return fmt.Errorf("invalid hostkey %v", hk)
+		}
+		req = append(req, api.RegistryHandlerMultiRequestPOST{
+			RegistryHandlerRequestPOST: api.RegistryHandlerRequestPOST{
+				PublicKey: srv.PubKey,
+				DataKey:   srv.Tweak,
+				Revision:  srv.Revision,
+				Signature: srv.Signature,
+				Data:      srv.Data,
+				Type:      srv.Type,
+			},
+			HostKey: hpk,
+		})
+	}
+	reqBytes, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+	return c.post("/skynet/registrymulti", string(reqBytes), nil)
 }
 
 // RegistryUpdateWithEntry queries the /skynet/registry [POST] endpoint.

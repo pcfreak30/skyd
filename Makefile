@@ -120,27 +120,25 @@ spellcheck: markdown-spellcheck
 staticcheck:
 	staticcheck $(pkgs)
 
-# starts a mongo container for testing and removes any existing ones.
 start-mongo:
 # Remove existing container.
-	-docker stop mongo
+	-docker stop mongo-test
 
 # Start primary node.
 	docker run \
       --rm \
       --detach \
-      --name mongo \
+      --name mongo-test \
       -p 127.0.0.1:27017:27017 \
-      -e MONGODB_ADVERTISED_HOSTNAME=$(mongohost) \
+      -e MONGODB_ADVERTISED_HOSTNAME=localhost \
       -e MONGODB_REPLICA_SET_MODE=primary \
       -e MONGODB_PRIMARY_HOST=localhost \
       -e MONGODB_ROOT_PASSWORD=pwd \
       -e MONGODB_REPLICA_SET_KEY=testkey \
       bitnami/mongodb:4.4.1
 
-# stops an existing mongo container.
 stop-mongo:
-	-docker stop mongo
+	-docker stop mongo-test
 
 # debug builds and installs debug binaries. This will also install the utils.
 debug:
@@ -177,7 +175,7 @@ test:
 	go test -short -tags='debug testing netgo' -timeout=5s $(pkgs) -run=$(run) -count=$(count)
 test-v:
 	GORACE='$(racevars)' go test -race -v -short -tags='debug testing netgo' -timeout=15s $(pkgs) -run=$(run) -count=$(count)
-test-long: clean fmt vet lint
+test-long: clean 
 	@mkdir -p cover
 	GORACE='$(racevars)' MONGODB_URI=$(mongouri) go test -race --coverprofile='./cover/cover.out' -v -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=$(run) -count=$(count)
 

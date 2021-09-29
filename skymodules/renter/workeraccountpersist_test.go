@@ -235,7 +235,8 @@ func TestAccountCorrupted(t *testing.T) {
 	// reopen the renter
 	persistDir := filepath.Join(rt.dir, skymodules.RenterDir)
 	rl := ratelimit.NewRateLimit(0, 0, 0)
-	r, errChan := New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, rl, persistDir)
+	tus := NewSkynetTUSInMemoryUploadStore()
+	r, errChan := New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, tus, rl, persistDir)
 	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
