@@ -267,6 +267,14 @@ var (
 	unfinishedFilePruneDuration = build.Select(build.Var{
 		Dev:      time.Minute * 30,
 		Standard: time.Hour * 24 * 30, // 30 Days
+		Testing:  time.Second * 10,
+	}).(time.Duration)
+
+	// unfinishedFileUploadPeriod is the length of time unfinished file are
+	// given to finished uploading.
+	unfinishedFileUploadPeriod = build.Select(build.Var{
+		Dev:      time.Minute * 30,
+		Standard: time.Hour * 24, // 1 Days
 		Testing:  time.Second * 5,
 	}).(time.Duration)
 

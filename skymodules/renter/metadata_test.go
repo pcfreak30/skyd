@@ -13,7 +13,6 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siadir"
-	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 )
 
@@ -157,12 +156,11 @@ func TestCalculateDirectoryMetadata(t *testing.T) {
 	fileSize := uint64(100)
 	var dp, pp int = 1, 1
 	rsc, _ := skymodules.NewRSCode(dp, pp)
-	ct := crypto.RandomCipherType()
 	worstFileHealth := 1 - (0-float64(dp))/float64(pp)
 	repairSize := modules.SectorSize * uint64(dp+pp)
 
 	// Add a file to the root directory
-	rootFile, err := rt.renter.createRenterTestFileWithParamsAndSize(skymodules.RandomSiaPath(), rsc, ct, fileSize)
+	rootFile, err := rt.newTestSiaFile(skymodules.RandomSiaPath(), "", rsc, fileSize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +171,7 @@ func TestCalculateDirectoryMetadata(t *testing.T) {
 	}()
 
 	// Add a file to the root directory that has a skylink
-	rootSkyFile, err := rt.renter.createRenterTestFileWithParamsAndSize(skymodules.RandomSiaPath(), rsc, ct, fileSize)
+	rootSkyFile, err := rt.newTestSiaFile(skymodules.RandomSiaPath(), "", rsc, fileSize)
 	if err != nil {
 		t.Fatal(err)
 	}

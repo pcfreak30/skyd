@@ -100,20 +100,7 @@ func TestDirectoryModTime(t *testing.T) {
 		ErasureCode: rsc,
 	}
 	fileSize := uint64(100)
-	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, persist.DefaultDiskPermissionsTest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sp2, err := subDir1_2.Join(hex.EncodeToString(fastrand.Bytes(8)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	up.SiaPath = sp2
-	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, persist.DefaultDiskPermissionsTest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	f1, err := rt.renter.staticFileSystem.OpenSiaFile(sp1)
+	f1, err := rt.newTestSiaFile(up.SiaPath, up.Source, up.ErasureCode, fileSize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +109,12 @@ func TestDirectoryModTime(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	f2, err := rt.renter.staticFileSystem.OpenSiaFile(sp2)
+	sp2, err := subDir1_2.Join(hex.EncodeToString(fastrand.Bytes(8)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	up.SiaPath = sp2
+	f2, err := rt.newTestSiaFile(up.SiaPath, up.Source, up.ErasureCode, fileSize)
 	if err != nil {
 		t.Fatal(err)
 	}
