@@ -5551,7 +5551,7 @@ func TestRenterRepairSize(t *testing.T) {
 	// Define helper
 	m := tg.Miners()[0]
 	checkDirRepairSize := func(dirSiaPath skymodules.SiaPath, repairExpected, stuckExpected uint64) error {
-		return build.Retry(15, time.Second, func() error {
+		return build.Retry(5, time.Second, func() error {
 			// Make sure the directory is being updated
 			err := r.RenterBubblePost(dirSiaPath, true)
 			if err != nil {
@@ -5613,7 +5613,7 @@ func TestRenterRepairSize(t *testing.T) {
 		})
 	}
 	checkFileRepairSize := func(rf *siatest.RemoteFile, repairExpected, stuckExpected uint64) error {
-		return build.Retry(15, time.Second, func() error {
+		return build.Retry(5, time.Second, func() error {
 			// Mine a block to make sure contracts are being updated for hosts.
 			if err := m.MineBlock(); err != nil {
 				return err
@@ -5669,27 +5669,6 @@ func TestRenterRepairSize(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Mark as stuck
-	err = r.RenterSetFileStuckPost(rf.SiaPath(), false, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Since the file is marked as stuck it should register that stuck repair
-	expected := modules.SectorSize
-	if err := checkDirRepairSize(dirSiaPath, 0, expected); err != nil {
-		t.Error(err)
-	}
-	if err := checkFileRepairSize(rf, 0, expected); err != nil {
-		t.Error(err)
-	}
-
-	// Mark as not stuck
-	err = r.RenterSetFileStuckPost(rf.SiaPath(), false, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// With only one host taken down there should be no repair needed since the
 	// file won't be seen as needing repair
 	if err := checkDirRepairSize(dirSiaPath, 0, 0); err != nil {
@@ -5706,6 +5685,7 @@ func TestRenterRepairSize(t *testing.T) {
 
 	// Take down the rest of the hosts one by one and verify the repair values are dropping.
 	hosts = hosts[1:]
+	expected := modules.SectorSize
 	for i, host := range hosts {
 		// Stop the host
 		if err := tg.StopNode(host); err != nil {
