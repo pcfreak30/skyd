@@ -143,10 +143,15 @@ func encryptBaseSectorWithSkykey(baseSector []byte, plaintextLayout skymodules.S
 	if err != nil {
 		return errors.AddContext(err, "Unable to get baseSector cipherkey")
 	}
-	_, err = ck.DecryptBytesInPlace(baseSector, 0)
-	if err != nil {
-		return errors.New("Error decrypting baseSector for download")
+
+	// Encrypt the base sector.
+	ct := ck.EncryptBytes(baseSector)
+	if len(ct) != len(baseSector) {
+		err := errors.New("encrypted basesector size doesn't match plaintext base sector size")
+		build.Critical(err)
+		return err
 	}
+	copy(baseSector, ct)
 
 	// Re-add the visible-by-default fields of the baseSector.
 	var encryptedLayout skymodules.SkyfileLayout

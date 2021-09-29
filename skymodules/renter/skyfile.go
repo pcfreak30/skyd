@@ -571,17 +571,17 @@ func (r *Renter) managedUploadSkyfileSmallFile(ctx context.Context, sup skymodul
 	// fanout.
 	sl := skymodules.NewSkyfileLayoutV1NoFanout(uint64(len(fileBytes)), uint64(len(metadataBytes)), crypto.TypePlain)
 
+	// Create the base sector. This is done as late as possible so that any
+	// errors are caught before a large block of memory is allocated.
+	baseSector, fetchSize := skymodules.BuildBaseSector(sl.Encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
+
 	// Add encryption if required.
 	if encryptionEnabled(&sup) {
-		err = sl.Encrypt(sup.FileSpecificSkykey)
+		err = encryptBaseSectorWithSkykey(baseSector, sl, sup.FileSpecificSkykey)
 		if err != nil {
 			return skymodules.Skylink{}, errors.AddContext(err, "Failed to encrypt base sector for upload")
 		}
 	}
-
-	// Create the base sector. This is done as late as possible so that any
-	// errors are caught before a large block of memory is allocated.
-	baseSector, fetchSize := skymodules.BuildBaseSector(sl.Encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
 
 	// Create the skylink.
 	baseSectorRoot := crypto.MerkleRoot(baseSector) // Should be identical to the sector roots for each sector in the siafile.
