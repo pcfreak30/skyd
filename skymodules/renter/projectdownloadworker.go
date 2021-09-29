@@ -932,6 +932,10 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			prevLog = time.Now()
 		}
 
+		if !latestExpectedDur.IsZero() && time.Now().After(latestExpectedDur) {
+			numOverdriveWorkersMemo++
+		}
+
 		// update the workers on every iteration
 		pdc.updateWorkers(workers)
 
@@ -946,11 +950,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			// recomputes the chances after duration, which is a computationally
 			// very intensive
 			// fmt.Println("rebuild download workers")
-			var latePenalty time.Duration
-			if !latestExpectedDur.IsZero() && time.Now().After(latestExpectedDur) {
-				latePenalty = time.Since(latestExpectedDur)
-			}
-			downloadWorkers = buildDownloadWorkers(workers, numPieces, time.Since(pdc.launchTime)+latePenalty)
+			downloadWorkers = buildDownloadWorkers(workers, numPieces, time.Since(pdc.launchTime))
 			prevRecalc = time.Now()
 			buildDownloadWorkersCnt++
 		}
