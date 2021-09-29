@@ -546,6 +546,52 @@ type SkyfileLayout struct {
 	KeyData            [layoutKeyDataSize]byte // keyData is incompatible with ciphers that need keys larger than 64 bytes
 }
 
+// NewSkyfileLayoutV1 creates a new version 1 layout with fanout.
+func NewSkyfileLayoutV1(fileSize, metadataSize, fanoutSize uint64, fanoutEC ErasureCoder, ct crypto.CipherType) SkyfileLayout {
+	sl := NewSkyfileLayoutV1NoFanout(fileSize, metadataSize, ct)
+	sl.FanoutSize = fanoutSize
+	sl.FanoutDataPieces = uint8(fanoutEC.MinPieces())
+	sl.FanoutParityPieces = uint8(fanoutEC.NumPieces() - fanoutEC.MinPieces())
+	return sl
+}
+
+// NewSkyfileLayoutV1NoFanout creates a new version 1 layout without fanout.
+func NewSkyfileLayoutV1NoFanout(fileSize, metadataSize uint64, ct crypto.CipherType) SkyfileLayout {
+	return SkyfileLayout{
+		Version:      SkyfileVersion,
+		Filesize:     fileSize,
+		MetadataSize: metadataSize,
+		CipherType:   ct,
+	}
+}
+
+// Encrypt adds encryption info the the layout given a skykey.
+func (sl *SkyfileLayout) Encrypt(sk skykey.Skykey) error {
+	// Add the key ID or the encrypted skyfile identifier, depending on the key
+	// type.
+	switch sk.Type {
+	case skykey.TypePublicID:
+		keyID := sk.ID()
+		copy(sl.KeyData[:skykey.SkykeyIDLen], keyID[:])
+
+	case skykey.TypePrivateID:
+		encryptedIdentifier, err := sk.GenerateSkyfileEncryptionID()
+		if err != nil {
+			return errors.AddContext(err, "Unable to generate encrypted skyfile ID")
+		}
+		copy(sl.KeyData[:skykey.SkykeyIDLen], encryptedIdentifier[:])
+
+	default:
+		build.Critical("No encryption implemented for this skykey type")
+		return errors.AddContext(errors.New("No encryption implemented for skykey type"), string(sk.Type))
+	}
+
+	// Add the nonce to the key data.
+	nonce := sk.Nonce()
+	copy(sl.KeyData[skykey.SkykeyIDLen:skykey.SkykeyIDLen+len(nonce)], nonce[:])
+	return nil
+}
+
 // Decode will take a []byte and load the layout from that []byte.
 func (sl *SkyfileLayout) Decode(b []byte) {
 	offset := 0

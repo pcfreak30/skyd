@@ -283,15 +283,8 @@ func (r *Renter) managedCreateSkylinkRawMD(ctx context.Context, sup skymodules.S
 	}
 
 	// Assemble the first chunk of the skyfile.
-	sl = skymodules.SkyfileLayout{
-		Version:            skymodules.SkyfileVersion,
-		Filesize:           size,
-		MetadataSize:       uint64(len(metadataBytes)),
-		FanoutSize:         uint64(len(fanoutBytes)),
-		FanoutDataPieces:   uint8(ec.MinPieces()),
-		FanoutParityPieces: uint8(ec.NumPieces() - ec.MinPieces()),
-		CipherType:         masterKey.Type(),
-	}
+	sl = skymodules.NewSkyfileLayoutV1(size, uint64(len(metadataBytes)), uint64(len(fanoutBytes)), ec, masterKey.Type())
+
 	// If we're uploading in plaintext, we put the key in the baseSector
 	if !encryptionEnabled(&sup) {
 		copy(sl.KeyData[:], masterKey.Key())
@@ -574,25 +567,21 @@ func (r *Renter) managedUploadSkyfileSmallFile(ctx context.Context, sup skymodul
 		}()
 	}
 
-	sl := skymodules.SkyfileLayout{
-		Version:      skymodules.SkyfileVersion,
-		Filesize:     uint64(len(fileBytes)),
-		MetadataSize: uint64(len(metadataBytes)),
-		// No fanout is set yet.
-		// If encryption is set in the upload params, this will be overwritten.
-		CipherType: crypto.TypePlain,
+	// Create the layout. Since this is a small upload it doesn't have a
+	// fanout.
+	sl := skymodules.NewSkyfileLayoutV1NoFanout(uint64(len(fileBytes)), uint64(len(metadataBytes)), crypto.TypePlain)
+
+	// Add encryption if required.
+	if encryptionEnabled(&sup) {
+		err = sl.Encrypt(sup.FileSpecificSkykey)
+		if err != nil {
+			return skymodules.Skylink{}, errors.AddContext(err, "Failed to encrypt base sector for upload")
+		}
 	}
 
 	// Create the base sector. This is done as late as possible so that any
 	// errors are caught before a large block of memory is allocated.
 	baseSector, fetchSize := skymodules.BuildBaseSector(sl.Encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
-
-	if encryptionEnabled(&sup) {
-		err = encryptBaseSectorWithSkykey(baseSector, sl, sup.FileSpecificSkykey)
-		if err != nil {
-			return skymodules.Skylink{}, errors.AddContext(err, "Failed to encrypt base sector for upload")
-		}
-	}
 
 	// Create the skylink.
 	baseSectorRoot := crypto.MerkleRoot(baseSector) // Should be identical to the sector roots for each sector in the siafile.
