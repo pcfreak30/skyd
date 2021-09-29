@@ -144,14 +144,14 @@ func encryptBaseSectorWithSkykey(baseSector []byte, plaintextLayout skymodules.S
 		return errors.AddContext(err, "Unable to get baseSector cipherkey")
 	}
 
-	// Encrypt the base sector.
-	ct := ck.EncryptBytes(baseSector)
-	if len(ct) != len(baseSector) {
-		err := errors.New("encrypted basesector size doesn't match plaintext base sector size")
-		build.Critical(err)
-		return err
+	// Encrypt the base sector. This is calling DecryptBytesInPlace because
+	// we only allow the stream cipher ChaCha for which encryption and
+	// decryption are the same thing since its just xoring the data with a
+	// keystream.
+	_, err = ck.DecryptBytesInPlace(baseSector, 0)
+	if err != nil {
+		return errors.New("Error decrypting baseSector for download")
 	}
-	copy(baseSector, ct)
 
 	// Re-add the visible-by-default fields of the baseSector.
 	var encryptedLayout skymodules.SkyfileLayout
