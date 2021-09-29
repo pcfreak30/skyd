@@ -19,7 +19,7 @@ var (
 	// maxWaitUnresolvedWorkerUpdate defines the amount of time we want to wait
 	// for unresolved workers to become resolved when trying to create the
 	// initial worker set.
-	maxWaitUnresolvedWorkerUpdate = 10 * time.Millisecond
+	maxWaitUnresolvedWorkerUpdate = 25 * time.Millisecond
 )
 
 // NOTE: all of the following defined types are used by the PDC, which is
