@@ -1310,6 +1310,10 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 	if overdriveWorkers > 0 && len(mostLikely) < workersNeeded {
 		overdrive := make(map[uint64]struct{}, 0)
 		for _, w := range workers {
+			if len(overdrive) >= overdriveWorkers {
+				break
+			}
+
 			_, added := added[w.identifier()]
 			if added {
 				continue
@@ -1319,9 +1323,6 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 				overdrive[pieceIndex] = struct{}{}
 				addWorker(w)
 				break // only use a worker once
-			}
-			if len(overdrive) >= overdriveWorkers {
-				break
 			}
 		}
 	}
