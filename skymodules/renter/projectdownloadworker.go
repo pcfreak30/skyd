@@ -827,6 +827,7 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, allWorkers []dow
 	minPieces := pdc.workerSet.staticErasureCoder.MinPieces()
 
 	// range over all workers in the set and launch if possible
+	var overdriveLaunched bool
 	for _, w := range ws.workers {
 		// continue if the worker is a chimera worker
 		_, ok := w.(*chimeraWorker)
@@ -840,11 +841,19 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, allWorkers []dow
 			continue
 		}
 
-		// launch the piece
+		// continue if we've already launched an overdrive worker
 		isOverdrive := len(pdc.launchedWorkers) >= minPieces
+		if overdriveLaunched {
+			continue
+		}
+
+		// launch the worker
 		expectedCompleteTime, launched := pdc.launchWorker(w, piece, isOverdrive)
 		// fmt.Printf("- %v launched for %v success %v\n", w.identifier(), piece, launched)
 		if launched {
+			if isOverdrive {
+				overdriveLaunched = true
+			}
 			// Log the event.
 			chimeras := ""
 			for _, dw := range allWorkers {
@@ -948,6 +957,9 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 						"overdriveConsidered", true,
 					)
 				}
+			}
+			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+				span.LogKV("launchingWorkerSet", currWorkerSet)
 			}
 			// fmt.Println(workerSet.String())
 			pdc.launchWorkerSet(workerSet, downloadWorkers)
