@@ -822,7 +822,7 @@ func (pdc *projectDownloadChunk) currentDownload(w downloadWorker) (uint64, bool
 // launchWorkerSet will range over the workers in the given worker set and will
 // try to launch every worker that has not yet been launched and is ready to
 // launch.
-func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, allWorkers []downloadWorker) {
+func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, allWorkers []downloadWorker) bool {
 	// convenience variables
 	minPieces := pdc.workerSet.staticErasureCoder.MinPieces()
 
@@ -885,7 +885,7 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, allWorkers []dow
 			span.LogKV("launchedWorkerSet", ws)
 		}
 	}
-	return
+	return hasLaunched
 }
 
 // threadedLaunchProjectDownload performs the main download loop, every
@@ -918,6 +918,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 
 	var numOverdriveWorkersMemo int
 	var currWorkerSet *workerSet
+	var latestExpectedDur time.Time
 	var odConsidered bool
 	prevLog := time.Now()
 	prevRecalc := time.Now()
@@ -945,7 +946,11 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			// recomputes the chances after duration, which is a computationally
 			// very intensive
 			// fmt.Println("rebuild download workers")
-			downloadWorkers = buildDownloadWorkers(workers, numPieces, time.Since(pdc.launchTime))
+			var latePenalty time.Duration
+			if !latestExpectedDur.IsZero() && time.Now().After(latestExpectedDur) {
+				latePenalty = time.Since(latestExpectedDur)
+			}
+			downloadWorkers = buildDownloadWorkers(workers, numPieces, time.Since(pdc.launchTime)+latePenalty)
 			prevRecalc = time.Now()
 			buildDownloadWorkersCnt++
 		}
@@ -969,7 +974,10 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			}
 
 			// fmt.Println(workerSet.String())
-			pdc.launchWorkerSet(workerSet, downloadWorkers)
+			launched := pdc.launchWorkerSet(workerSet, downloadWorkers)
+			if launched {
+				latestExpectedDur = time.Now().Add(workerSet.staticExpectedDuration)
+			}
 		}
 
 		// iterate

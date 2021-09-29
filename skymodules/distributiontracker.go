@@ -241,7 +241,7 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 func (d *Distribution) ChanceAfter(dur time.Duration) float64 {
 	// Check for negative inputs.
 	if dur < 0 {
-		build.Critical("cannot call ChanceAfter with negatime duration")
+		build.Critical("cannot call ChanceAfter with negative duration")
 		return 0
 	}
 
@@ -411,7 +411,7 @@ func (d *Distribution) PStat(p float64) time.Duration {
 func (d *Distribution) Shift(dur time.Duration) {
 	// Check for negative inputs.
 	if dur < 0 {
-		build.Critical("cannot call Shift with negatime duration")
+		build.Critical("cannot call Shift with negative duration")
 		return
 	}
 
