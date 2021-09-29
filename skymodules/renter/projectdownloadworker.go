@@ -550,9 +550,13 @@ func (ws *workerSet) adjustedDuration(ppms types.Currency) time.Duration {
 // chancesAfter is a small helper function that returns a list of every worker's
 // chance it's completed after the given duration.
 func (ws *workerSet) chancesAfter(index int) coinflips {
-	chances := make(coinflips, len(ws.workers))
-	for i, w := range ws.workers {
-		chances[i] = w.chanceAfter(index)
+	chances := make(coinflips, 0, len(ws.workers))
+	for _, w := range ws.workers {
+		_, launched := ws.staticPDC.launchedPiecesByWorker[w.identifier()]
+		if launched {
+			continue
+		}
+		chances = append(chances, w.chanceAfter(index))
 	}
 	return chances
 }
