@@ -5703,3 +5703,39 @@ func TestRegistryReadRepair(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRegistrySubscriptionWebsocketSmoke(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	testDir := skynetTestDir(t.Name())
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   renter.MinUpdateRegistrySuccesses,
+		Portals: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Start the subscription.
+	p := tg.Portals()[0]
+	subscription, err := p.BeginRegistrySubscription()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := subscription.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+}

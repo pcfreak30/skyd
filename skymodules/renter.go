@@ -1178,6 +1178,15 @@ type FanoutChunkReader interface {
 	Fanout() []byte
 }
 
+// RegistrySubscriber is the interface for an object capable of subscribing to
+// the skynet registry.
+type RegistrySubscriber interface {
+	io.Closer
+
+	Subscribe(spk types.SiaPublicKey, tweak crypto.Hash) *modules.SignedRegistryValue
+	Unsubscribe(eid modules.RegistryEntryID)
+}
+
 // A Renter uploads, tracks, repairs, and downloads a set of files for the
 // user.
 type Renter interface {
@@ -1248,6 +1257,10 @@ type Renter interface {
 
 	// MountInfo returns the list of currently mounted FUSE filesystems.
 	MountInfo() []MountInfo
+
+	// NewRegistrySubscriber creates a new registry subscriber which can be
+	// used to subscribe to registry entries for updates.
+	NewRegistrySubscriber(notifyFunc func(srv *modules.SignedRegistryValue) error) (RegistrySubscriber, error)
 
 	// Unmount unmounts the FUSE filesystem currently mounted at mountPoint.
 	Unmount(mountPoint string) error
