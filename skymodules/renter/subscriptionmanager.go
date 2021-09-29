@@ -33,15 +33,15 @@ type (
 		staticSPK   types.SiaPublicKey
 		staticTweak crypto.Hash
 
-		latestValue *modules.SignedRegistryValue
+		latestValue *skymodules.RegistryEntry
 		subscribers map[subscriberID]struct{}
 	}
 
 	// renterSubscriber contains information about a subscriber.
 	renterSubscriber struct {
-		subscriptions map[modules.RegistryEntryID]*modules.SignedRegistryValue
+		subscriptions map[modules.RegistryEntryID]*skymodules.RegistryEntry
 
-		staticNotifyFunc          func(*modules.SignedRegistryValue) error
+		staticNotifyFunc          func(skymodules.RegistryEntry) error
 		staticSubscriberID        subscriberID
 		staticSubscriptionManager *registrySubscriptionManager
 
@@ -75,24 +75,27 @@ func (sm *registrySubscriptionManager) Notify(notifications ...modules.RPCRegist
 		if !exists {
 			continue
 		}
-		srv := &notification.Entry
+		srv := skymodules.RegistryEntry{
+			SignedRegistryValue: notification.Entry,
+			PubKey:              sub.staticSPK,
+		}
 
-		if moreRecentSRV(sub.latestValue, srv) {
-			sub.latestValue = srv
+		if moreRecentSRV(sub.latestValue, &srv) {
+			sub.latestValue = &srv
 			changedSubs[eid] = sub
 			continue
 		}
 	}
 
 	// Notify subscribers.
-	for eid, sub := range changedSubs {
+	for _, sub := range changedSubs {
 		for sid := range sub.subscribers {
 			// Get subscriber.
 			subscriber, exists := sm.subscribers[sid]
 			if !exists {
 				continue
 			}
-			go subscriber.threadedNotify(eid, sub.latestValue)
+			go subscriber.threadedNotify(sub.staticSPK, sub.latestValue)
 		}
 	}
 }
@@ -104,7 +107,7 @@ func (rs *renterSubscriber) Close() error {
 }
 
 // Subscribe subscribes the subscriber to an entry.
-func (rs *renterSubscriber) Subscribe(spk types.SiaPublicKey, tweak crypto.Hash) *modules.SignedRegistryValue {
+func (rs *renterSubscriber) Subscribe(spk types.SiaPublicKey, tweak crypto.Hash) *skymodules.RegistryEntry {
 	return rs.managedSubscribe(spk, tweak)
 }
 
@@ -114,11 +117,12 @@ func (rs *renterSubscriber) Unsubscribe(eid modules.RegistryEntryID) {
 }
 
 // threadedNotify notifies a subscriber about an updated entry.
-func (rs *renterSubscriber) threadedNotify(eid modules.RegistryEntryID, srv *modules.SignedRegistryValue) {
+func (rs *renterSubscriber) threadedNotify(spk types.SiaPublicKey, srv *skymodules.RegistryEntry) {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
 
 	// Check if subscriber is interested in the change.
+	eid := modules.DeriveRegistryEntryID(spk, srv.Tweak)
 	latestSRV, exists := rs.subscriptions[eid]
 	if !exists {
 		return
@@ -130,7 +134,7 @@ func (rs *renterSubscriber) threadedNotify(eid modules.RegistryEntryID, srv *mod
 	}
 
 	// Notify subscriber.
-	err := rs.staticNotifyFunc(srv)
+	err := rs.staticNotifyFunc(*srv)
 	if err != nil {
 		return // notification func will log error
 	}
@@ -141,27 +145,24 @@ func (rs *renterSubscriber) threadedNotify(eid modules.RegistryEntryID, srv *mod
 
 // Get allows for fetching the latest value of a subscribed entry from the
 // subscription manager.
-func (sm *registrySubscriptionManager) Get(eid modules.RegistryEntryID) (skymodules.RegistryEntry, bool) {
+func (sm *registrySubscriptionManager) Get(eid modules.RegistryEntryID) (*skymodules.RegistryEntry, bool) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	sub, exists := sm.subscriptions[eid]
-	if !exists || sub.latestValue == nil {
-		return skymodules.RegistryEntry{}, false
+	if !exists {
+		return &skymodules.RegistryEntry{}, false
 	}
-	if sub.latestValue == nil {
-		return skymodules.RegistryEntry{}, false
-	}
-	return skymodules.NewRegistryEntry(sub.staticSPK, *sub.latestValue), true
+	return sub.latestValue, true
 }
 
 // NewSubscriber creates a new subscriber that can subscribe to and unsubscribe
 // from entries. It needs to be closed to make sure it is cleanly unsubscribed
 // from all entries.
-func (sm *registrySubscriptionManager) NewSubscriber(notifyFunc func(*modules.SignedRegistryValue) error) *renterSubscriber {
+func (sm *registrySubscriptionManager) NewSubscriber(notifyFunc func(skymodules.RegistryEntry) error) *renterSubscriber {
 	var sid subscriberID
 	fastrand.Read(sid[:])
 	return &renterSubscriber{
-		subscriptions:             make(map[modules.RegistryEntryID]*modules.SignedRegistryValue),
+		subscriptions:             make(map[modules.RegistryEntryID]*skymodules.RegistryEntry),
 		staticNotifyFunc:          notifyFunc,
 		staticSubscriberID:        sid,
 		staticSubscriptionManager: sm,
@@ -169,7 +170,7 @@ func (sm *registrySubscriptionManager) NewSubscriber(notifyFunc func(*modules.Si
 }
 
 // managedSubscribe subscribes a subscriber to an entry.
-func (rs *renterSubscriber) managedSubscribe(spk types.SiaPublicKey, tweak crypto.Hash) *modules.SignedRegistryValue {
+func (rs *renterSubscriber) managedSubscribe(spk types.SiaPublicKey, tweak crypto.Hash) *skymodules.RegistryEntry {
 	sm := rs.staticSubscriptionManager
 	eid := modules.DeriveRegistryEntryID(spk, tweak)
 
@@ -256,7 +257,7 @@ func (rs *renterSubscriber) managedUnsubscribeAll() {
 	// Unsubscribe from all subscribed entries.
 	rs.mu.Lock()
 	oldSubscriptions := rs.subscriptions
-	rs.subscriptions = make(map[modules.RegistryEntryID]*modules.SignedRegistryValue)
+	rs.subscriptions = make(map[modules.RegistryEntryID]*skymodules.RegistryEntry)
 	rs.mu.Unlock()
 	for eid := range oldSubscriptions {
 		rs.managedUnsubscribe(eid)
@@ -315,7 +316,7 @@ func (sm *registrySubscriptionManager) managedUpdateWorkersWithRequests(requests
 
 // moreRecentSRV returns true if srv1 should be replaced by the more recent
 // srv2.
-func moreRecentSRV(srv1, srv2 *modules.SignedRegistryValue) bool {
+func moreRecentSRV(srv1, srv2 *skymodules.RegistryEntry) bool {
 	// If the latest value is nil, update it.
 	if srv1 == nil {
 		return true

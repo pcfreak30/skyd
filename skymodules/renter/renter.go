@@ -1011,7 +1011,7 @@ func (r *Renter) CreateSkykey(name string, skType skykey.SkykeyType) (skykey.Sky
 }
 
 // NewRegistrySubscriber creates a new registry subscriber.
-func (r *Renter) NewRegistrySubscriber(notifyFunc func(srv *modules.SignedRegistryValue) error) (skymodules.RegistrySubscriber, error) {
+func (r *Renter) NewRegistrySubscriber(notifyFunc func(entry skymodules.RegistryEntry) error) (skymodules.RegistrySubscriber, error) {
 	if err := r.tg.Add(); err != nil {
 		return nil, err
 	}

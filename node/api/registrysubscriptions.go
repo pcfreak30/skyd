@@ -6,6 +6,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/julienschmidt/httprouter"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -63,11 +64,11 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 	defer c.Close()
 
 	// Declare a handler for notifications.
-	notifier := func(srv *modules.SignedRegistryValue) error {
+	notifier := func(srv skymodules.RegistryEntry) error {
 		return c.WriteJSON(RegistrySubscriptionResponse{
 			Error:     "",
 			DataKey:   srv.Tweak,
-			PubKey:    types.SiaPublicKey{}, // TODO: add this
+			PubKey:    srv.PubKey,
 			Signature: srv.Signature,
 			Data:      srv.Data,
 			Revision:  srv.Revision,
@@ -95,7 +96,7 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 		case RegistrySubscriptionActionSubscribe:
 			srv := subscriber.Subscribe(r.PubKey, r.DataKey)
 			if srv != nil {
-				if err := notifier(srv); err != nil {
+				if err := notifier(*srv); err != nil {
 					return // connection is broken, nothing we can do
 				}
 			}

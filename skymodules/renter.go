@@ -1184,7 +1184,7 @@ type RegistrySubscriber interface {
 	io.Closer
 
 	// Subscribe subscribes to a new entry.
-	Subscribe(spk types.SiaPublicKey, tweak crypto.Hash) *modules.SignedRegistryValue
+	Subscribe(spk types.SiaPublicKey, tweak crypto.Hash) *RegistryEntry
 
 	// Unsubscribe unsubscribes from an entry.
 	Unsubscribe(eid modules.RegistryEntryID)
@@ -1263,7 +1263,7 @@ type Renter interface {
 
 	// NewRegistrySubscriber creates a new registry subscriber which can be
 	// used to subscribe to registry entries for updates.
-	NewRegistrySubscriber(notifyFunc func(srv *modules.SignedRegistryValue) error) (RegistrySubscriber, error)
+	NewRegistrySubscriber(notifyFunc func(entry RegistryEntry) error) (RegistrySubscriber, error)
 
 	// Unmount unmounts the FUSE filesystem currently mounted at mountPoint.
 	Unmount(mountPoint string) error

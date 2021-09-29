@@ -5731,20 +5731,23 @@ func TestRegistrySubscription(t *testing.T) {
 
 	// Run basic test.
 	t.Run("Basic", func(t *testing.T) {
-		testRegistrySubscriptionWebsocketBasic(t, p)
+		testRegistrySubscriptionBasic(t, p)
 	})
 }
 
-// testRegistrySubscriptionWebsocketBasic tests the basic case of subscribing to
+// testRegistrySubscriptionBasic tests the basic case of subscribing to
 // an entry and then updating it.
-func testRegistrySubscriptionWebsocketBasic(t *testing.T, p *siatest.TestNode) {
+func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 	// Collect notifications in a slice.
-	var notifications []*modules.SignedRegistryValue
+	var notifications []skymodules.RegistryEntry
 	var notificationMu sync.Mutex
-	notifyFunc := func(srv *modules.SignedRegistryValue) {
+	notifyFunc := func(entry skymodules.RegistryEntry) {
+		if err := entry.Verify(); err != nil {
+			t.Fatal("failed to verify entry", err)
+		}
 		notificationMu.Lock()
 		defer notificationMu.Unlock()
-		notifications = append(notifications, srv)
+		notifications = append(notifications, entry)
 	}
 
 	// Start the subscription.
@@ -5811,15 +5814,15 @@ func testRegistrySubscriptionWebsocketBasic(t *testing.T, p *siatest.TestNode) {
 	}
 
 	// Make sure first notification matches.
-	if !reflect.DeepEqual(srv1, *notifications[0]) {
+	if !reflect.DeepEqual(srv1, notifications[0].SignedRegistryValue) {
 		t.Log(srv1)
-		t.Log(*notifications[0])
+		t.Log(notifications[0].SignedRegistryValue)
 		t.Fatal("notification mismatch")
 	}
 	// Make sure second notification matches.
-	if !reflect.DeepEqual(srv2, *notifications[1]) {
+	if !reflect.DeepEqual(srv2, *&notifications[1].SignedRegistryValue) {
 		t.Log(srv2)
-		t.Log(*notifications[1])
+		t.Log(notifications[1].SignedRegistryValue)
 		t.Fatal("notification mismatch")
 	}
 }

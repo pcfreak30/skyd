@@ -1,13 +1,12 @@
 package client
 
 import (
-	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/gorilla/websocket"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/node/api"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -15,7 +14,7 @@ import (
 )
 
 // BeginRegistrySubscription starts a new subscription.
-func (c *Client) BeginRegistrySubscription(notifyFunc func(srv *modules.SignedRegistryValue)) (*RegistrySubscription, error) {
+func (c *Client) BeginRegistrySubscription(notifyFunc func(skymodules.RegistryEntry)) (*RegistrySubscription, error) {
 	// Build the URL.
 	url := "ws://" + c.Address + "/skynet/registry/subscribe"
 
@@ -50,7 +49,7 @@ func (c *Client) BeginRegistrySubscription(notifyFunc func(srv *modules.SignedRe
 type RegistrySubscription struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
-	notifyFunc func(srv *modules.SignedRegistryValue)
+	notifyFunc func(skymodules.RegistryEntry)
 	staticConn *websocket.Conn
 }
 
@@ -63,28 +62,21 @@ func (rs *RegistrySubscription) Close() error {
 	return errors.Compose(err, rs.staticConn.Close())
 }
 
+// threadedListen listens for notifications from the server.
 func (rs *RegistrySubscription) threadedListen() {
 	var resp api.RegistrySubscriptionResponse
 	for {
 		err := rs.staticConn.ReadJSON(&resp)
-		if err != nil && strings.Contains(err.Error(), "use of closed network connection") {
-			return // done
-		}
 		if err != nil {
-			fmt.Println("err", err)
 			_ = rs.staticConn.Close()
 			return
 		}
 		if resp.Error != "" {
-			fmt.Println("err2", resp.Error)
 			_ = rs.staticConn.Close()
 			return
 		}
 		srv := modules.NewSignedRegistryValue(resp.DataKey, resp.Data, resp.Revision, resp.Signature, resp.Type)
-
-		// TODO: verify entry
-
-		rs.notifyFunc(&srv)
+		rs.notifyFunc(skymodules.NewRegistryEntry(resp.PubKey, srv))
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -16,7 +17,7 @@ import (
 // newSubscriber creates a new subscriber with a no-op notification function for
 // testing.
 func (sm *registrySubscriptionManager) newSubscriber() *renterSubscriber {
-	return sm.NewSubscriber(func(*modules.SignedRegistryValue) error { return nil })
+	return sm.NewSubscriber(func(skymodules.RegistryEntry) error { return nil })
 }
 
 // TestSubscriptionManager runs all subscription manager related unit tests.
@@ -97,8 +98,8 @@ func testSubscriptionManagerSubscribeUnsubscribe(t *testing.T, r *Renter) {
 	}
 
 	// Update the latest value.
-	rs.latestValue = &srv
-	expectedRS.latestValue = &srv
+	rs.latestValue = &skymodules.RegistryEntry{SignedRegistryValue: srv, PubKey: spk}
+	expectedRS.latestValue = rs.latestValue
 
 	// Subscribe again as the same subscriber. This is a no-op but returns the
 	// new latest value.
@@ -171,7 +172,7 @@ func testSubscriptionManagerSubscribeUnsubscribe(t *testing.T, r *Renter) {
 	if !exists || len(subscriber.subscriptions) != 1 {
 		t.Fatal("missing subscriber")
 	}
-	expectedSRV = rs.latestValue
+	expectedSRV = &rs.latestValue.SignedRegistryValue
 	sub, exists = subscriber.subscriptions[eid]
 	if !exists || !reflect.DeepEqual(sub, expectedSRV) {
 		t.Fatal("wrong rs")
@@ -241,10 +242,10 @@ func testSubscriptionManagerNotify(t *testing.T, r *Renter) {
 
 	// Create a subscriber for that pair which counts the number of updates and
 	// allows for returning a custom error.
-	var updates []*modules.SignedRegistryValue
+	var updates []skymodules.RegistryEntry
 	var updateMu sync.Mutex
 	var notifyErr error
-	subscriber := sm.NewSubscriber(func(srv *modules.SignedRegistryValue) error {
+	subscriber := sm.NewSubscriber(func(srv skymodules.RegistryEntry) error {
 		updateMu.Lock()
 		defer updateMu.Unlock()
 		updates = append(updates, srv)
