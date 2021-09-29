@@ -603,7 +603,7 @@ func (ws *workerSet) numOverdriveWorkers() int {
 
 // String returns a string representation of the worker set
 func (ws *workerSet) String() string {
-	output := fmt.Sprintf("WORKERSET:\nexpected dur: %v\nworkers:\n", ws.staticExpectedDuration)
+	output := fmt.Sprintf("WORKERSET expected dur: %v num overdrive: %v \nworkers:\n", ws.staticExpectedDuration, ws.staticNumOverdrive)
 	for i, w := range ws.workers {
 		_, chimera := w.(*chimeraWorker)
 		selected := -1
@@ -828,6 +828,7 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, allWorkers []dow
 
 	// range over all workers in the set and launch if possible
 	var overdriveLaunched bool
+	var hasLaunched bool
 	for _, w := range ws.workers {
 		// continue if the worker is a chimera worker
 		_, ok := w.(*chimeraWorker)
@@ -851,6 +852,7 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, allWorkers []dow
 		expectedCompleteTime, launched := pdc.launchWorker(w, piece, isOverdrive)
 		// fmt.Printf("- %v launched for %v success %v\n", w.identifier(), piece, launched)
 		if launched {
+			hasLaunched = true
 			if isOverdrive {
 				overdriveLaunched = true
 			}
@@ -876,6 +878,11 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, allWorkers []dow
 
 			iw := w.(*individualWorker)
 			iw.launchedAt = time.Now()
+		}
+	}
+	if hasLaunched {
+		if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+			span.LogKV("launchedWorkerSet", ws)
 		}
 	}
 	return
@@ -909,6 +916,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	// register for a worker update chan
 	workerUpdateChan := ws.managedRegisterForWorkerUpdate()
 
+	var numOverdriveWorkersMemo int
 	var currWorkerSet *workerSet
 	var odConsidered bool
 	prevLog := time.Now()
@@ -943,13 +951,14 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		}
 
 		// create a worker set and launch it
-		workerSet, err := pdc.createWorkerSet(downloadWorkers, maxOverdriveWorkers)
+		workerSet, err := pdc.createWorkerSet(downloadWorkers, numOverdriveWorkersMemo, maxOverdriveWorkers)
 		currWorkerSet = workerSet
 		if err != nil {
 			pdc.fail(err)
 			return
 		}
 		if workerSet != nil {
+			numOverdriveWorkersMemo = workerSet.staticNumOverdrive
 			if workerSet.staticNumOverdrive > 0 && !odConsidered {
 				odConsidered = true
 				if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
@@ -958,9 +967,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 					)
 				}
 			}
-			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-				span.LogKV("launchingWorkerSet", currWorkerSet)
-			}
+
 			// fmt.Println(workerSet.String())
 			pdc.launchWorkerSet(workerSet, downloadWorkers)
 		}
@@ -1015,7 +1022,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 // createWorkerSet tries to create a worker set from the pdc's resolved and
 // unresolved workers, the maximum amount of overdrive workers in the set is
 // defined by the given 'maxOverdriveWorkers' argument.
-func (pdc *projectDownloadChunk) createWorkerSet(downloadWorkers []downloadWorker, maxOverdriveWorkers int) (*workerSet, error) {
+func (pdc *projectDownloadChunk) createWorkerSet(downloadWorkers []downloadWorker, numOverdriveMemo, maxOverdriveWorkers int) (*workerSet, error) {
 	// convenience variables
 	ppms := pdc.pricePerMS
 	length := pdc.pieceLength
@@ -1030,7 +1037,7 @@ func (pdc *projectDownloadChunk) createWorkerSet(downloadWorkers []downloadWorke
 	}
 
 OUTER:
-	for numOverdrive := 0; numOverdrive <= maxOverdriveWorkers; numOverdrive++ {
+	for numOverdrive := numOverdriveMemo; numOverdrive <= maxOverdriveWorkers; numOverdrive++ {
 		workersNeeded := minPieces + numOverdrive
 		for bI := 0; bI < skymodules.DistributionTrackerTotalBuckets; bI++ {
 			bDur := skymodules.DistributionDurationForBucketIndex(bI)
