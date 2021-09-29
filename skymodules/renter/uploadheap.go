@@ -165,7 +165,7 @@ func (uch *uploadChunkHeap) removeByID(uuc *unfinishedUploadChunk) {
 	}
 
 	//Remove the chunk from the heap
-	if index == -1 || (*uch)[index] != uuc {
+	if index == -1 || (*uch)[index].id != uuc.id {
 		// Chunk not found
 		return
 	}

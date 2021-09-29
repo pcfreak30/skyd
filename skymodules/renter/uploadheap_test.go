@@ -1015,12 +1015,13 @@ func testManagedPushChunkForRepair(t *testing.T) {
 	// Pushing the chunk to the repair map should succeed
 	pushAndVerify(streamChunk)
 
-	// Pushing again should fail
+	// Pushing again should work because stream chunks are not deduplicated
+	// within the heap.
 	_, pushed, err := rt.renter.managedPushChunkForRepair(streamChunk, chunkTypeStreamChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pushed {
+	if !pushed {
 		t.Error("chunk should not be able to be added twice")
 	}
 
