@@ -362,6 +362,14 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	span := tracer.StartSpan("managedReadRegistry")
 	defer span.Finish()
 
+	// Check if we are subscribed to the entry first.
+	subscribedRV, ok := r.staticSubscriptionManager.Get(rid)
+	span.SetTag("cached", ok)
+	if ok {
+		// We are, no need to look it up.
+		return subscribedRV, nil
+	}
+
 	// Measure the time it takes to fetch the entry.
 	startTime := time.Now()
 	defer func() {
