@@ -788,7 +788,10 @@ func testUploadHeapMaps(t *testing.T) {
 			staticAvailableChan:       make(chan struct{}),
 			staticUploadCompletedChan: make(chan struct{}),
 			staticMemoryManager:       rt.renter.staticRepairMemoryManager,
+			staticRenter:              rt.renter,
 		}
+		// Add chunk to repairing chunks.
+		rt.renter.repairingChunks[chunk.id] = chunk
 		// push chunk to heap
 		_, pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
@@ -832,14 +835,14 @@ func testUploadHeapMaps(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if pushed {
-			t.Fatal("should not have been able to push chunk back onto heap")
+		if !pushed {
+			t.Fatal("should have been able to push chunk back onto heap")
 		}
 	}
 
 	// Confirm length of maps
 	remainingChunks := len(rt.renter.staticUploadHeap.unstuckHeapChunks) + len(rt.renter.staticUploadHeap.stuckHeapChunks)
-	if remainingChunks != int(numHeapChunks)-poppedChunks {
+	if remainingChunks != int(numHeapChunks) {
 		t.Fatalf("Expected %v chunks to still be in the heap maps but found %v", int(numHeapChunks)-poppedChunks, remainingChunks)
 	}
 
