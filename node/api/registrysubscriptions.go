@@ -52,7 +52,6 @@ type RegistrySubscriptionRequest struct {
 
 // skynetRegistrySubscriptionHandler handles websocket subscriptions to the registry.
 func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	println("HANDLER")
 	// Upgrade connection to use websocket.
 	c, err := upgrader.Upgrade(w, req, nil)
 	if err != nil {
@@ -102,6 +101,8 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 			}
 		case RegistrySubscriptionActionUnsubscribe:
 			subscriber.Unsubscribe(modules.DeriveRegistryEntryID(r.PubKey, r.DataKey))
+		default:
+			c.WriteJSON(RegistrySubscriptionResponse{Error: "unknown action"})
 		}
 	}
 }
