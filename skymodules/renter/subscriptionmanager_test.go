@@ -50,7 +50,8 @@ func testSubscriptionManagerSubscribeUnsubscribe(t *testing.T, r *Renter) {
 	sm := newSubscriptionManager(r)
 
 	// Create random pubkey tweak pair.
-	srv, spk, _ := randomRegistryValue()
+	value, spk, _ := randomRegistryValue()
+	srv := skymodules.NewRegistryEntry(spk, value)
 	tweak := srv.Tweak
 	eid := modules.DeriveRegistryEntryID(spk, tweak)
 
@@ -61,7 +62,7 @@ func testSubscriptionManagerSubscribeUnsubscribe(t *testing.T, r *Renter) {
 		staticTweak: tweak,
 		subscribers: make(map[subscriberID]struct{}),
 	}
-	var expectedSRV *modules.SignedRegistryValue
+	var expectedSRV *skymodules.RegistryEntry
 
 	// Get a subscriber.
 	subscriber1 := sm.newSubscriber()
@@ -93,18 +94,18 @@ func testSubscriptionManagerSubscribeUnsubscribe(t *testing.T, r *Renter) {
 		t.Fatal("missing subscriber")
 	}
 	sub, exists := subscriber.subscriptions[eid]
-	if !exists || !reflect.DeepEqual(sub, expectedSRV) {
+	if !exists || sub != nil || expectedSRV != nil {
 		t.Fatal("wrong us")
 	}
 
 	// Update the latest value.
-	rs.latestValue = &skymodules.RegistryEntry{SignedRegistryValue: srv, PubKey: spk}
+	rs.latestValue = &srv
 	expectedRS.latestValue = rs.latestValue
 
 	// Subscribe again as the same subscriber. This is a no-op but returns the
 	// new latest value.
 	rv = subscriber1.Subscribe(spk, tweak)
-	if !reflect.DeepEqual(*rv, srv) {
+	if !reflect.DeepEqual(rv, &srv) {
 		t.Fatal("wrong rv")
 	}
 	// Expect 1 subscription and 1 subscriber.
@@ -126,7 +127,7 @@ func testSubscriptionManagerSubscribeUnsubscribe(t *testing.T, r *Renter) {
 		t.Fatal("missing subscriber")
 	}
 	sub, exists = subscriber.subscriptions[eid]
-	if !exists || !reflect.DeepEqual(sub, expectedSRV) {
+	if !exists || sub != nil || expectedSRV != nil {
 		t.Fatal("wrong rs")
 	}
 
@@ -134,7 +135,7 @@ func testSubscriptionManagerSubscribeUnsubscribe(t *testing.T, r *Renter) {
 	subscriber2 := sm.newSubscriber()
 	sid2 := subscriber2.staticSubscriberID
 	rv = subscriber2.Subscribe(spk, tweak)
-	if !reflect.DeepEqual(*rv, srv) {
+	if !reflect.DeepEqual(rv, &srv) {
 		t.Fatal("wrong rv")
 	}
 	expectedRS.subscribers[sid2] = struct{}{}
@@ -172,7 +173,7 @@ func testSubscriptionManagerSubscribeUnsubscribe(t *testing.T, r *Renter) {
 	if !exists || len(subscriber.subscriptions) != 1 {
 		t.Fatal("missing subscriber")
 	}
-	expectedSRV = &rs.latestValue.SignedRegistryValue
+	expectedSRV = rs.latestValue
 	sub, exists = subscriber.subscriptions[eid]
 	if !exists || !reflect.DeepEqual(sub, expectedSRV) {
 		t.Fatal("wrong rs")
@@ -222,7 +223,8 @@ func testSubscriptionManagerNotify(t *testing.T, r *Renter) {
 	sm := newSubscriptionManager(r)
 
 	// Create random pubkey tweak pair.
-	srv1, spk, sk := randomRegistryValue()
+	value1, spk, sk := randomRegistryValue()
+	srv1 := skymodules.NewRegistryEntry(spk, value1)
 	tweak := srv1.Tweak
 	eid := modules.DeriveRegistryEntryID(spk, tweak)
 
@@ -236,7 +238,7 @@ func testSubscriptionManagerNotify(t *testing.T, r *Renter) {
 
 	// Notify the manager of this pair before subscribing.
 	sm.Notify(modules.RPCRegistrySubscriptionNotificationEntryUpdate{
-		Entry:  srv1,
+		Entry:  srv1.SignedRegistryValue,
 		PubKey: spk,
 	})
 
@@ -259,7 +261,7 @@ func testSubscriptionManagerNotify(t *testing.T, r *Renter) {
 
 	// Notify the manager again after subscribing.
 	sm.Notify(modules.RPCRegistrySubscriptionNotificationEntryUpdate{
-		Entry:  srv1,
+		Entry:  srv1.SignedRegistryValue,
 		PubKey: spk,
 	})
 	// Latest values should be updated.
@@ -282,7 +284,7 @@ func testSubscriptionManagerNotify(t *testing.T, r *Renter) {
 
 	// Notify the manager of the same entry again.
 	sm.Notify(modules.RPCRegistrySubscriptionNotificationEntryUpdate{
-		Entry:  srv1,
+		Entry:  srv1.SignedRegistryValue,
 		PubKey: spk,
 	})
 	// Latest values should be the same.
@@ -305,7 +307,7 @@ func testSubscriptionManagerNotify(t *testing.T, r *Renter) {
 
 	// Notify the manager of a higher revision entry.
 	sm.Notify(modules.RPCRegistrySubscriptionNotificationEntryUpdate{
-		Entry:  srv2,
+		Entry:  srv2.SignedRegistryValue,
 		PubKey: spk,
 	})
 	// Latest values should be updated.
@@ -330,7 +332,7 @@ func testSubscriptionManagerNotify(t *testing.T, r *Renter) {
 	// function fail.
 	notifyErr = errors.New("failure")
 	sm.Notify(modules.RPCRegistrySubscriptionNotificationEntryUpdate{
-		Entry:  srv3,
+		Entry:  srv3.SignedRegistryValue,
 		PubKey: spk,
 	})
 	// The manager's value should be updated but not the subscriber's.
@@ -356,7 +358,7 @@ func testSubscriptionManagerNotify(t *testing.T, r *Renter) {
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		updateMu.Lock()
 		defer updateMu.Unlock()
-		expectedUpdates := []*modules.SignedRegistryValue{&srv1, &srv2, &srv3}
+		expectedUpdates := []skymodules.RegistryEntry{srv1, srv2, srv3}
 		if !reflect.DeepEqual(updates, expectedUpdates) {
 			return errors.New("updates don't match")
 		}
