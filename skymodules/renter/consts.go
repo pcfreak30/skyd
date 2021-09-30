@@ -270,14 +270,6 @@ var (
 		Testing:  time.Second * 10,
 	}).(time.Duration)
 
-	// unfinishedFileUploadPeriod is the length of time unfinished file are
-	// given to finished uploading.
-	unfinishedFileUploadPeriod = build.Select(build.Var{
-		Dev:      time.Minute * 30,
-		Standard: time.Hour * 24, // 1 Days
-		Testing:  time.Second * 5,
-	}).(time.Duration)
-
 	// uploadAndRepairErrorSleepDuration indicates how long a repair process
 	// should sleep before retrying if there is an error fetching the metadata
 	// of the root directory of the renter's filesystem.

@@ -163,16 +163,7 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 				// Update the unfinished metadata fields
 				metadata.AggregateNumUnfinishedFiles++
 				metadata.NumUnfinishedFiles++
-
-				// If the file was recently created, move on so
-				// that the directory metadata reflects the new
-				// upload and the health/repair process properly
-				// repairs/uploads any files that are not
-				// streaming uploads and rely on those
-				// background processes to complete the upload.
-				if time.Since(fileMetadata.CreateTime) > unfinishedFileUploadPeriod {
-					continue
-				}
+				continue
 			}
 
 			// If 75% or more of the redundancy is missing, register an alert
