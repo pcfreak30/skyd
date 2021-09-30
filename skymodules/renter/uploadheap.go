@@ -25,6 +25,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/types"
 )
@@ -634,7 +635,7 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 	}
 	// Now that we have calculated the completed pieces for the chunk we can
 	// calculate the health of the chunk to avoid a call to ChunkHealth
-	uuc.health = 1 - (float64(uuc.piecesCompleted-uuc.staticMinimumPieces) / float64(uuc.staticPiecesNeeded-uuc.staticMinimumPieces))
+	uuc.health = siafile.CalculateHealth(uuc.piecesCompleted, uuc.staticMinimumPieces, uuc.staticPiecesNeeded)
 	return uuc, nil
 }
 
@@ -716,32 +717,30 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		newUnfinishedChunks = append(newUnfinishedChunks, chunk)
 	}
 
+	// Prune the incomplete chunks
+	return r.managedPruneIncompleteChunks(newUnfinishedChunks)
+}
+
+// managedPruneIncompleteChunks will remove any completed chunks from the list
+// of unfinishedUploadChunks
+func (r *Renter) managedPruneIncompleteChunks(newUnfinishedChunks []*unfinishedUploadChunk) []*unfinishedUploadChunk {
 	// Iterate through the set of newUnfinishedChunks and remove any that are
-	// completed or are not downloadable.
+	// completed.
 	incompleteChunks := newUnfinishedChunks[:0]
 	for _, chunk := range newUnfinishedChunks {
-		// Check the chunk status. A chunk is repairable if it can be fully
-		// downloaded, or if the source file is available on disk. We also check
-		// if the chunk needs repair, which is only true if more than a certain
-		// amount of redundancy is missing. We only repair above a certain
-		// threshold of missing redundancy to minimize the amount of repair work
-		// that gets triggered by host churn.
-		//
-		// While a file could be on disk as long as !os.IsNotExist(err), for the
-		// purposes of repairing a file is only considered on disk if it can be
-		// accessed without error. If there is an error accessing the file then
-		// it is likely that we can not read the file in which case it can not
-		// be used for repair.
+		// Check if the chunk needs repair
 		needsRepair := skymodules.NeedsRepair(chunk.health)
 
-		// Add chunk to list of incompleteChunks if it is incomplete.
+		// Add chunk to list of incompleteChunks if it is in need of repair.
 		if needsRepair {
 			incompleteChunks = append(incompleteChunks, chunk)
 			continue
 		}
 
-		// Close entry of completed chunk
-		err := r.managedSetStuckAndClose(chunk, false)
+		// Close entry of completed chunk. Since the chunk doesn't need
+		// repair we should make sure that it is not marked as stuck.
+		chunk.stuck = false
+		err := chunk.managedSetStuckAndClose(true)
 		if err != nil {
 			r.staticLog.Debugln("WARN: unable to set chunk stuck status and close:", err)
 		}
@@ -1420,7 +1419,7 @@ func (r *Renter) managedRepairLoop() error {
 					nextChunk.stuck = true
 				}
 			}
-			err := r.managedSetStuckAndClose(nextChunk, setStuck)
+			err := nextChunk.managedSetStuckAndClose(setStuck)
 			if err != nil {
 				r.staticRepairLog.Println("Unable to set chunk stuck status and close:", err)
 			}
