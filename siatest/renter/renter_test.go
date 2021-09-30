@@ -6096,6 +6096,26 @@ func TestRenterUnfinishedFiles(t *testing.T) {
 		t.Fatal("Redundancy is greater than 1", fi.Redundancy)
 	}
 
+	// Upload a small skyfile. This uses the streaming endpoint and doesn't
+	// create a local file and so the skyfile won't have a local path.
+	_, sup, _, err := r.UploadNewSkyfileBlocking("small", 100, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Grab file, it should be marked as finished
+	sp, err := skymodules.SkynetFolder.Join(sup.SiaPath.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	renterFile, err := r.RenterFileRootGet(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !renterFile.File.Finished {
+		t.Fatal("File not marked as finished")
+	}
+
 	// Stop on of the hosts to ensure there are not enough hosts to be able
 	// to upload a skyfile
 	h := tg.Hosts()[0]
