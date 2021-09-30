@@ -648,6 +648,10 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 // they are done and so cannot share a SiaFileSetEntry as the first chunk to
 // finish would then close the Entry and consequentially impact the remaining
 // chunks.
+//
+// NOTE: The caller is responsible for ensuring that the file should be repair,
+// therefore we do not check if a file is Unfinished in this method or lower
+// down. This is to avoid blocking or failing uploads.
 func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool, mm *memoryManager) []*unfinishedUploadChunk {
 	// If we don't have enough workers for the file, don't repair it right now.
 	minPieces := entry.ErasureCode().MinPieces()
@@ -927,6 +931,11 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	}
 	// Loop through all the files and build the temporary heap.
 	for _, file := range files {
+		// Skip any unfinished files
+		if !file.Finished() {
+			continue
+		}
+
 		// If this file has better health than other files that we have ignored,
 		// this file can be skipped. This only counts for unstuck chunks, if we
 		// are adding stuck files, we ignore health as a consideration.
