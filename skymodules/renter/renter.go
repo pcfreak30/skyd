@@ -1101,8 +1101,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 		staticDownloadHistory: newDownloadHistory(),
 
-		staticSubscriptionManager: newSubscriptionManager(),
-
 		ongoingRegistryRepairs: make(map[modules.RegistryEntryID]struct{}),
 
 		staticConsensusSet:   cs,
@@ -1246,6 +1244,14 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		if err != nil {
 			return nil, errors.AddContext(err, "failed to add initial spending")
 		}
+	}
+
+	// Create the subscription manager and launch the thread that updates the
+	// workers.
+	r.staticSubscriptionManager = newSubscriptionManager(r)
+	err = r.tg.Launch(r.staticSubscriptionManager.threadedUpdateWorkers)
+	if err != nil {
+		return nil, err
 	}
 
 	// Spin up the skynet fee paying goroutine.

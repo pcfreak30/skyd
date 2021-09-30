@@ -797,6 +797,9 @@ func (w *worker) threadedSubscriptionLoop() {
 
 		// Get a valid price table.
 		pt := w.managedPriceTableForSubscription(modules.SubscriptionPeriod)
+		if pt == nil {
+			return // shutdown
+		}
 
 		// Compute the initial deadline.
 		deadline := time.Now().Add(modules.SubscriptionPeriod)
@@ -825,14 +828,18 @@ func (w *worker) threadedSubscriptionLoop() {
 			continue
 		}
 
+		// Mark withdrawal as successful.
+		w.staticAccount.managedCommitWithdrawal(categorySubscription, initialBudget, types.ZeroCurrency, false)
+
 		// Run the subscription. The error is checked after closing the handler
 		// and the refund.
 		errSubscription := w.managedSubscriptionLoop(stream, pt, deadline, budget, initialBudget, subscriberStr)
 
-		// Commit the withdrawal now we know the refund.
+		// Deposit the refund.
+		// TODO: (f/u) the refund should be reflected in the spending metrics.
 		refund := budget.Remaining()
-		withdrawal := initialBudget.Sub(refund)
-		w.staticAccount.managedCommitWithdrawal(categorySubscription, withdrawal, refund, true)
+		w.staticAccount.managedTrackDeposit(refund)
+		w.staticAccount.managedCommitDeposit(refund, true)
 
 		// Check the error.
 		if errors.Contains(errSubscription, threadgroup.ErrStopped) {

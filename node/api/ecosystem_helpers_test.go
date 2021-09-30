@@ -17,7 +17,7 @@ import (
 	"net/url"
 	"time"
 
-	"go.sia.tech/siad/build"
+	"gitlab.com/SkynetLabs/skyd/build"
 	"go.sia.tech/siad/node/api"
 	"go.sia.tech/siad/types"
 )
