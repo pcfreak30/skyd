@@ -185,7 +185,7 @@ func (rt *renterTester) newTestSiaFile(siaPath skymodules.SiaPath, source string
 	if err != nil {
 		return nil, err
 	}
-	// Mark it as finished
+	// Mark it as finished for backwards compatibility in testing
 	err = f.SetFinished(0)
 	if err != nil {
 		return nil, err

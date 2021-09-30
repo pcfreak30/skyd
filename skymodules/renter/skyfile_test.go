@@ -154,12 +154,6 @@ func TestShortFanoutPanic(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Mark it as finished for compatibility in testing.
-	err = fileNode.SetFinished(0)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// Upload the fanout.
 	chunkReader := NewFanoutChunkReader(bytes.NewReader(data), fileNode.ErasureCode(), false, fileNode.MasterKey())
 	_, err = r.callUploadStreamFromReaderWithFileNode(context.Background(), fileNode, chunkReader, 0)

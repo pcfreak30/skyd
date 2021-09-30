@@ -144,12 +144,7 @@ func customTestFileAndWAL(siaFilePath, source string, rc skymodules.ErasureCoder
 // contain.
 func newBlankTestFileAndWAL(minChunks int) (*SiaFile, *writeaheadlog.WAL, string) {
 	siaFilePath, _, source, rc, sk, fileSize, numChunks, fileMode := newTestFileParams(minChunks, true)
-	sf, wal, walPath := customTestFileAndWAL(siaFilePath, source, rc, sk, fileSize, numChunks, fileMode)
-	// Mark it as finished for backwards compatibility in testing
-	if err := sf.SetFinished(0); err != nil {
-		panic(err)
-	}
-	return sf, wal, walPath
+	return customTestFileAndWAL(siaFilePath, source, rc, sk, fileSize, numChunks, fileMode)
 }
 
 // newBlankTestFile is a helper method to create a SiaFile for testing without
