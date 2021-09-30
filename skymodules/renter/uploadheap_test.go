@@ -1239,7 +1239,7 @@ func testManagedPruneIncompleteChunks(t *testing.T) {
 	}()
 
 	// Create a siafile and make sure it has 4 chunks
-	file, err := rt.renter.createRenterTestFile(skymodules.RandomSiaPath())
+	file, err := rt.renter.newRenterTestFile()
 	if err != nil {
 		t.Fatal(err)
 	}

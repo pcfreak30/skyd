@@ -1717,6 +1717,15 @@ func TestUpdateUnfinishedStuckStatus(t *testing.T) {
 	siaFilePath, _, source, _, sk, _, _, fileMode := newTestFileParams(1, true)
 	file, _, _ := customTestFileAndWAL(siaFilePath, source, rsc, sk, 100, 1, fileMode)
 
+	// File should be marked as finished because of the localpath set by
+	// source
+	if !file.Finished() {
+		t.Fatal("file is not marked as finished")
+	}
+
+	// Create a file with no source
+	file, _, _ = customTestFileAndWAL(siaFilePath, "", rsc, sk, 100, 1, fileMode)
+
 	// File should be unfinished
 	if file.Finished() {
 		t.Fatal("file is already marked as finished")
