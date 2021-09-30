@@ -372,8 +372,14 @@ func TestFileHealth(t *testing.T) {
 		t.Errorf("Stuck Bytes of file not as expected, got %v expected %v", stuckBytes, 0)
 	}
 
+	// Mark file as finished before marking it as stuck
+	err := f.SetFinished(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Mark chunk as stuck
-	err := f.SetStuck(0, true)
+	err = f.SetStuck(0, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -533,6 +539,12 @@ func TestFileHealth(t *testing.T) {
 	}
 	if stuckBytes != 0 {
 		t.Errorf("Stuck Bytes of file not as expected, got %v expected %v", stuckBytes, 0)
+	}
+
+	// Mark file as finished before marking it as stuck
+	err = f.SetFinished(0)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Mark second chunk as stuck
