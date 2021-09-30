@@ -547,9 +547,6 @@ func TestCommitWriteChunk(t *testing.T) {
 	if upload.LastWrite.Unix() != lastWrite.Unix() {
 		t.Fatal("wrong lastWrite", upload.LastWrite, lastWrite)
 	}
-	if upload.IsSmallFile != false {
-		t.Fatal("wrong isSmallFile", upload.IsSmallFile, false)
-	}
 	if !bytes.Equal(upload.Metadata, sm) {
 		t.Fatal("wrong metadata")
 	}
@@ -580,50 +577,6 @@ func TestCommitWriteChunk(t *testing.T) {
 	}
 	if upload.LastWrite.Unix() != lastWrite.Unix() {
 		t.Fatal("wrong lastWrite", upload.LastWrite, lastWrite)
-	}
-	if upload.IsSmallFile != false {
-		t.Fatal("wrong isSmallFile", upload.IsSmallFile, false)
-	}
-	if !bytes.Equal(upload.Metadata, sm) {
-		t.Fatal("wrong metadata")
-	}
-	if !reflect.DeepEqual(upload.PortalNames, []string{"create", "commit"}) {
-		t.Fatal("wrong portalnames", upload.PortalNames)
-	}
-
-	// Small upload.
-	sm = fastrand.Bytes(10)
-	u, err = createStore.CreateUpload(context.Background(), handler.FileInfo{ID: "small"}, skymodules.RandomSiaPath(), "small", 1, 1, 1, sm, crypto.TypePlain)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Commit.
-	lastWrite = time.Now().UTC()
-	newOffset = 30
-	smallFileData := fastrand.Bytes(50)
-	err = u.CommitWriteChunkSmallFile(context.Background(), newOffset, lastWrite, smallFileData)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Check upload.
-	u, err = getUploadStore.GetUpload(context.Background(), "small")
-	if err != nil {
-		t.Fatal(err)
-	}
-	upload = u.(*MongoTUSUpload)
-	if !bytes.Equal(upload.SmallUploadData, smallFileData) {
-		t.Fatal("wrong file data", len(upload.SmallUploadData), len(smallFileData))
-	}
-	if upload.FileInfo.Offset != newOffset {
-		t.Fatal("wrong offset", upload.FileInfo.Offset, newOffset)
-	}
-	if upload.LastWrite.Unix() != lastWrite.Unix() {
-		t.Fatal("wrong lastWrite", upload.LastWrite, lastWrite)
-	}
-	if upload.IsSmallFile != true {
-		t.Fatal("wrong isSmallFile", upload.IsSmallFile, true)
 	}
 	if !bytes.Equal(upload.Metadata, sm) {
 		t.Fatal("wrong metadata")

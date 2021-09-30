@@ -263,15 +263,28 @@ func (u *ongoingTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.
 		// upload. In that case we still upload it the same way as a
 		// large upload to receive a fanout.
 		if isSmall && !fi.IsPartial {
-			err = u.staticUpload.CommitWriteChunkSmallFile(ctx, fi.Size, time.Now(), smallFileData)
-			return int64(len(smallFileData)), err
+			// Finish the small upload.
+			sup, _, err := u.staticUpload.UploadParams(ctx)
+			if err != nil {
+				return 0, errors.AddContext(err, "failed to fetch upload params")
+			}
+			smBytes, err := u.staticUpload.SkyfileMetadata(ctx)
+			if err != nil {
+				return 0, errors.AddContext(err, "failed to fetch smBytes")
+			}
+			skylink, err := u.finishUploadSmall(ctx, sup, smBytes, smallFileData)
+			if err != nil {
+				return 0, err
+			}
+			err = u.staticUpload.CommitFinishUpload(ctx, skylink)
+			if err != nil {
+				return 0, errors.AddContext(err, "failed to finish small upload")
+			}
+			return int64(len(smallFileData)), nil
 		}
+		// Otherwise we add the data to a reader to be uploaded as a
+		// large file.
 		src = io.MultiReader(bytes.NewReader(smallFileData), src)
-	} else {
-		isSmall, err = u.staticUpload.IsSmallUpload(ctx)
-		if err != nil {
-			return 0, err
-		}
 	}
 
 	// If we get to this point with a small file, something is wrong.
@@ -400,45 +413,46 @@ func (u *ongoingTUSUpload) FinishUpload(ctx context.Context) (err error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 
+	// If the upload is a partial upload we are done. We don't need to
+	// upload the metadata or create a skylink.
 	fi, err := u.staticUpload.GetInfo(ctx)
 	if err != nil {
 		return errors.AddContext(err, "failed to fetch fileinfo")
 	}
+	if fi.IsPartial {
+		return nil
+	}
+	// If the upload is a small file upload with >0 size we are done because
+	// it was already finalised in WriteChunk.
+	if u.fileNode == nil && fi.Size > 0 {
+		return nil
+	}
+
+	// Finish the large or 0-byte upload.
 	sup, _, err := u.staticUpload.UploadParams(ctx)
 	if err != nil {
 		return errors.AddContext(err, "failed to fetch upload params")
-	}
-	isSmall, err := u.staticUpload.IsSmallUpload(ctx)
-	if err != nil {
-		return errors.AddContext(err, "failed to fetch isSmall")
-	}
-	fanout, err := u.staticUpload.Fanout(ctx)
-	if err != nil {
-		return errors.AddContext(err, "failed to fetch fanout")
 	}
 	smBytes, err := u.staticUpload.SkyfileMetadata(ctx)
 	if err != nil {
 		return errors.AddContext(err, "failed to fetch smBytes")
 	}
-	smallUploadData, err := u.staticUpload.SmallFileData(ctx)
+	fanout, err := u.staticUpload.Fanout(ctx)
 	if err != nil {
-		return errors.AddContext(err, "failed to fetch smallUploadData")
+		return errors.AddContext(err, "failed to fetch fanout")
 	}
 
+	// If the upload is 0-byte, WriteChunk is skipped. So we need to finish
+	// the upload here.
 	var skylink skymodules.Skylink
-	if fi.IsPartial {
-		// If the upload is a partial upload we are done. We don't need to
-		// upload the metadata or create a skylink.
-		return nil
-	} else if isSmall || fi.Size == 0 {
-		skylink, err = u.finishUploadSmall(ctx, sup, smBytes, smallUploadData)
+	if fi.Size == 0 {
+		skylink, err = u.finishUploadSmall(ctx, sup, smBytes, []byte{})
 	} else {
 		skylink, err = u.finishUploadLarge(ctx, fanout, sup, fi, u.fileNode.MasterKey(), u.fileNode.ErasureCode(), smBytes)
 	}
 	if err != nil {
 		return errors.AddContext(err, "failed to finish upload")
 	}
-
 	return u.staticUpload.CommitFinishUpload(ctx, skylink)
 }
 
@@ -563,22 +577,24 @@ func (u *ongoingTUSUpload) ConcatUploads(ctx context.Context, partialUploads []h
 	// uploads may never consist of small uploads except for the last
 	// upload.
 	pu := partialUploads[0].(*ongoingTUSUpload)
-	sup, _, err := u.staticUpload.UploadParams(ctx)
+	sup, fup, err := u.staticUpload.UploadParams(ctx)
 	if err != nil {
 		return err
 	}
+	chunkSize := skymodules.ChunkSize(fup.CipherType, uint64(fup.ErasureCode.MinPieces()))
 	ec := pu.fileNode.ErasureCode()
 	masterKey := pu.fileNode.MasterKey()
 	var fanout []byte
 	for i := range partialUploads {
-		pu := partialUploads[i].(*ongoingTUSUpload)
-		isSmall, err := pu.staticUpload.IsSmallUpload(ctx)
+		fi, err := pu.GetInfo(ctx)
 		if err != nil {
-			return errors.AddContext(err, "failed to fetch whether partial upload is small or not")
+			return errors.AddContext(err, "failed to get partial upload's fileinfo")
 		}
+		isSmall := fi.Size%int64(chunkSize) != 0
 		if i < len(partialUploads)-1 && isSmall {
 			return errors.New("only last upload is allowed to be small")
 		}
+		pu := partialUploads[i].(*ongoingTUSUpload)
 		if pu.fileNode.ErasureCode().Identifier() != ec.Identifier() {
 			return errors.New("all partial uploads need to use the same erasure coding")
 		}

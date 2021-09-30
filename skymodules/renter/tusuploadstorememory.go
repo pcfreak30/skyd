@@ -28,8 +28,6 @@ type (
 		complete       bool
 		fanout         []byte
 		fi             handler.FileInfo
-		isSmallFile    bool
-		smallFileData  []byte
 		lastWrite      time.Time
 		staticFilename string
 		staticSP       skymodules.SiaPath
@@ -104,6 +102,7 @@ func (us *skynetTUSInMemoryUploadStore) NewLock(id string) (handler.Lock, error)
 func (u *skynetInMemoryUpload) CommitFinishUpload(_ context.Context, skylink skymodules.Skylink) error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
+	u.fi.Offset = u.fi.Size
 	u.complete = true
 	u.fi.MetaData["Skylink"] = skylink.String()
 	return nil
@@ -116,15 +115,6 @@ func (u *skynetInMemoryUpload) CommitWriteChunk(_ context.Context, newOffset int
 	defer u.mu.Unlock()
 	u.fanout = append(u.fanout, fanout...)
 	return u.commitWriteChunk(newOffset, newLastWrite, isSmall)
-}
-
-// CommitWriteChunkSmallFile commits the changes to the upload after
-// successfully writing a chunk to the store.
-func (u *skynetInMemoryUpload) CommitWriteChunkSmallFile(_ context.Context, newOffset int64, newLastWrite time.Time, smallFileData []byte) error {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	u.smallFileData = smallFileData
-	return u.commitWriteChunk(newOffset, newLastWrite, true)
 }
 
 // GetInfo returns the upload's underlying handler.FileInfo.
@@ -170,26 +160,11 @@ func (u *skynetInMemoryUpload) Fanout(ctx context.Context) ([]byte, error) {
 	return u.fanout, nil
 }
 
-// IsSmallUpload indicates whether an upload is considered a small upload.
-// That's the case when it doesn't consist of a full chunk.
-func (u *skynetInMemoryUpload) IsSmallUpload(ctx context.Context) (bool, error) {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	return u.isSmallFile, nil
-}
-
 // SkyfileMetadata returns the raw SkyfileMetadata of the upload.
 func (u *skynetInMemoryUpload) SkyfileMetadata(ctx context.Context) ([]byte, error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	return u.staticMetadata, nil
-}
-
-// SmallFileData returns the data for a small upload.
-func (u *skynetInMemoryUpload) SmallFileData(ctx context.Context) ([]byte, error) {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	return u.smallFileData, nil
 }
 
 // Skylink returns the skylink of the upload if it was set already.
@@ -250,6 +225,5 @@ func (us *skynetTUSInMemoryUploadStore) WithTransaction(ctx context.Context, han
 func (u *skynetInMemoryUpload) commitWriteChunk(newOffset int64, newLastWrite time.Time, smallFile bool) error {
 	u.fi.Offset = newOffset
 	u.lastWrite = newLastWrite
-	u.isSmallFile = smallFile
 	return nil
 }

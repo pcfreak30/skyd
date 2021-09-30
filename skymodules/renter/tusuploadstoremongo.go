@@ -63,16 +63,12 @@ type (
 		FileInfo    handler.FileInfo   `bson:"fileinfo"`
 		FileName    string             `bson:"filename"`
 		SiaPath     skymodules.SiaPath `bson:"siapath"`
-		Skylink     skymodules.Skylink `bson:"skylink"`
 
 		BaseChunkRedundancy uint8             `bson:"basechunkredundancy"`
 		Metadata            []byte            `bson:"metadata"`
 		FanoutDataPieces    int               `bson:"fanoutdatapieces"`
 		FanoutParityPieces  int               `bson:"fanoutparitypieces"`
 		CipherType          crypto.CipherType `bson:"ciphertype"`
-
-		IsSmallFile     bool   `bson:"issmallfile"`
-		SmallUploadData []byte `bson:"smalluploaddata"`
 
 		staticUploadStore *skynetTUSMongoUploadStore
 	}
@@ -293,22 +289,20 @@ func (us *skynetTUSMongoUploadStore) staticLockCollection() *mongo.Collection {
 
 // GetSkylink returns the upload's skylink if available already.
 func (u *MongoTUSUpload) GetSkylink() (skymodules.Skylink, bool) {
-	return u.Skylink, u.Complete
+	sl, exists := u.FileInfo.MetaData["Skylink"]
+	if !exists {
+		return skymodules.Skylink{}, false
+	}
+	var skylink skymodules.Skylink
+	if err := skylink.LoadString(sl); err != nil {
+		return skymodules.Skylink{}, false
+	}
+	return skylink, true
 }
 
 // GetInfo returns the FileInfo of the upload.
 func (u *MongoTUSUpload) GetInfo(ctx context.Context) (handler.FileInfo, error) {
-	if u.Complete {
-		return handler.FileInfo{}, os.ErrNotExist
-	}
 	return u.FileInfo, nil
-}
-
-// IsSmallUpload indicates whether the upload is considered a
-// small upload. That means the upload contained less than a
-// chunksize of data.
-func (u *MongoTUSUpload) IsSmallUpload(ctx context.Context) (bool, error) {
-	return u.IsSmallFile, nil
 }
 
 // PruneInfo returns the info required to prune uploads.
@@ -337,15 +331,6 @@ func (u *MongoTUSUpload) UploadParams(ctx context.Context) (skymodules.SkyfileUp
 	return sup, up, nil
 }
 
-// CommitWriteChunkSmallFile commits writing a chunk of a small
-// file.
-func (u *MongoTUSUpload) CommitWriteChunkSmallFile(ctx context.Context, newOffset int64, newLastWrite time.Time, smallFileData []byte) error {
-	u.SmallUploadData = smallFileData
-	return u.commitWriteChunk(ctx, bson.M{
-		"smalluploaddata": u.SmallUploadData,
-	}, newOffset, newLastWrite, true)
-}
-
 // CommitWriteChunk commits writing a chunk of either a small or
 // large file with fanout.
 func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error {
@@ -354,19 +339,17 @@ func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, 
 	u.FanoutBytes = append(u.FanoutBytes, fanout...)
 	return u.commitWriteChunk(ctx, bson.M{
 		"fanoutbytes": u.FanoutBytes,
-	}, newOffset, newLastWrite, isSmall)
+	}, newOffset, newLastWrite)
 }
 
 // commitWriteChunk commits a chunk write and also applies the updates provided
 // by update.
-func (u *MongoTUSUpload) commitWriteChunk(ctx context.Context, set bson.M, newOffset int64, newLastWrite time.Time, smallFile bool) error {
+func (u *MongoTUSUpload) commitWriteChunk(ctx context.Context, set bson.M, newOffset int64, newLastWrite time.Time) error {
 	uploads := u.staticUploadStore.staticUploadCollection()
 	u.FileInfo.Offset = newOffset
 	u.LastWrite = newLastWrite
-	u.IsSmallFile = smallFile
 	set["fileinfo"] = u.FileInfo
 	set["lastwrite"] = u.LastWrite.UTC()
-	set["issmallfile"] = u.IsSmallFile
 	set["portalnames"] = u.PortalNames
 	update := bson.M{
 		"$set": set,
@@ -388,18 +371,18 @@ func (u *MongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodu
 	}
 	uploads := u.staticUploadStore.staticUploadCollection()
 	u.Complete = true
-	u.Skylink = skylink
+	u.FileInfo.Offset = u.FileInfo.Size
+	u.FileInfo.MetaData["Skylink"] = skylink.String()
+	u.LastWrite = time.Now()
 	result := uploads.FindOneAndUpdate(ctx, bson.M{"_id": u.FileInfo.ID}, bson.M{
 		"$set": bson.M{
 			"complete": u.Complete,
-			"skylink":  u.Skylink,
+			"fileinfo": u.FileInfo,
+			"skylink":  skylink,
 		},
 		// Clean up some space.
 		"$unset": bson.M{
-			"fanoutbytes":     "",
-			"fileinfo":        "",
-			"issmallfile":     "",
-			"smalluploaddata": "",
+			"fanoutbytes": "",
 		},
 	})
 	if errors.Contains(result.Err(), mongo.ErrNoDocuments) {
@@ -418,12 +401,6 @@ func (u *MongoTUSUpload) Fanout(ctx context.Context) ([]byte, error) {
 // only be called once it's done uploading.
 func (u *MongoTUSUpload) SkyfileMetadata(ctx context.Context) ([]byte, error) {
 	return u.Metadata, nil
-}
-
-// SmallFileData returns the data to upload for a small file
-// upload.
-func (u *MongoTUSUpload) SmallFileData(ctx context.Context) ([]byte, error) {
-	return u.SmallUploadData, nil
 }
 
 // NewSkynetTUSMongoUploadStore creates a new upload store using a mongodb as

@@ -289,21 +289,12 @@ type (
 		// GetInfo returns the FileInfo of the upload.
 		GetInfo(ctx context.Context) (handler.FileInfo, error)
 
-		// IsSmallUpload indicates whether the upload is considered a
-		// small upload. That means the upload contained less than a
-		// chunksize of data.
-		IsSmallUpload(ctx context.Context) (bool, error)
-
 		// PruneInfo returns the info required to prune uploads.
 		PruneInfo(ctx context.Context) (id string, sp SiaPath, err error)
 
 		// UploadParams returns the upload parameters used for the
 		// upload.
 		UploadParams(ctx context.Context) (SkyfileUploadParameters, FileUploadParams, error)
-
-		// CommitWriteChunkSmallFile commits writing a chunk of a small
-		// file.
-		CommitWriteChunkSmallFile(ctx context.Context, newOffset int64, newLastWrite time.Time, smallUploadData []byte) error
 
 		// CommitWriteChunk commits writing a chunk of either a small or
 		// large file with fanout.
@@ -319,10 +310,6 @@ type (
 		// SkyfileMetadata returns the metadata of the upload. Should
 		// only be called once it's done uploading.
 		SkyfileMetadata(ctx context.Context) ([]byte, error)
-
-		// SmallFileData returns the data to upload for a small file
-		// upload.
-		SmallFileData(ctx context.Context) ([]byte, error)
 	}
 
 	// SkynetTUSUploadStore defines an interface for a storage backend that is
