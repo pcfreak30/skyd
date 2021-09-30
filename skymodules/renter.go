@@ -1396,7 +1396,11 @@ type Renter interface {
 
 	// UpdateRegistry updates the registries on all workers with the given
 	// registry value.
-	UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegistryValue, timeout time.Duration) error
+	UpdateRegistry(ctx context.Context, spk types.SiaPublicKey, srv modules.SignedRegistryValue) error
+
+	// UpdateRegistryMulti updates the registries on the given workers with the
+	// corresponding registry values.
+	UpdateRegistryMulti(ctx context.Context, srvs map[string]RegistryEntry) error
 
 	// PauseRepairsAndUploads pauses the renter's repairs and uploads for a time
 	// duration

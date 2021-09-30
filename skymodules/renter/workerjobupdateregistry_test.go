@@ -100,14 +100,15 @@ func TestUpdateRegistryJob(t *testing.T) {
 	deps.Fail()
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
 	deps.Disable()
-	if !errors.Contains(err, crypto.ErrInvalidSignature) {
+	if !errors.Contains(err, crypto.ErrInvalidSignature) && !errors.Contains(err, modules.ErrUnknownRegistryEntryType) {
 		t.Fatal(err)
 	}
 
 	// Make sure the recent error is an invalid signature error and reset the
 	// cooldown.
 	wt.staticJobUpdateRegistryQueue.mu.Lock()
-	if !errors.Contains(wt.staticJobUpdateRegistryQueue.recentErr, crypto.ErrInvalidSignature) {
+	if !errors.Contains(wt.staticJobUpdateRegistryQueue.recentErr, crypto.ErrInvalidSignature) &&
+		!errors.Contains(wt.staticJobUpdateRegistryQueue.recentErr, modules.ErrUnknownRegistryEntryType) {
 		t.Fatal(err)
 	}
 	if wt.staticJobUpdateRegistryQueue.cooldownUntil == (time.Time{}) {
@@ -142,7 +143,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 	deps.Fail()
 	err = wt.UpdateRegistry(context.Background(), spk, rvLowRevNum)
 	deps.Disable()
-	if !errors.Contains(err, crypto.ErrInvalidSignature) {
+	if !errors.Contains(err, crypto.ErrInvalidSignature) && !errors.Contains(err, modules.ErrUnknownRegistryEntryType) {
 		t.Fatal(err)
 	}
 	if modules.IsRegistryEntryExistErr(err) {
@@ -152,7 +153,8 @@ func TestUpdateRegistryJob(t *testing.T) {
 	// Make sure the recent error is an invalid signature error and reset the
 	// cooldown.
 	wt.staticJobUpdateRegistryQueue.mu.Lock()
-	if !errors.Contains(wt.staticJobUpdateRegistryQueue.recentErr, crypto.ErrInvalidSignature) {
+	if !errors.Contains(wt.staticJobUpdateRegistryQueue.recentErr, crypto.ErrInvalidSignature) &&
+		!errors.Contains(wt.staticJobUpdateRegistryQueue.recentErr, modules.ErrUnknownRegistryEntryType) {
 		t.Fatal(err)
 	}
 	if modules.IsRegistryEntryExistErr(err) {

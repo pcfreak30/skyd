@@ -111,6 +111,7 @@ func TestSkynetSuiteTwo(t *testing.T) {
 		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
 		{Name: "Registry", Test: testSkynetRegistryReadWrite},
 		{Name: "Stats", Test: testSkynetStats},
+		{Name: "RegistryUpdateMulti", Test: testUpdateRegistryMulti},
 		{Name: "HostsForRegistryUpdate", Test: testHostsForRegistryUpdate},
 	}
 
@@ -4343,10 +4344,10 @@ func TestRegistryHealth(t *testing.T) {
 		return nil
 	}
 
-	// TODO: Change the line below to use modules.RegistryTypeWithPubkey
-	// once Sia hosts have support for setting primary entries.
+	// Update the registry with an entry that's a primary entry on one host but not
+	// on the others.
 	revision := fastrand.Uint64n(1000)
-	srv := modules.NewRegistryValue(dataKey, hpkh[:], revision, modules.RegistryTypeWithoutPubkey).Sign(sk)
+	srv := modules.NewRegistryValue(dataKey, hpkh[:], revision, modules.RegistryTypeWithPubkey).Sign(sk)
 
 	// Update the registry.
 	err = r.RegistryUpdateWithEntry(spk, srv)
@@ -4359,7 +4360,7 @@ func TestRegistryHealth(t *testing.T) {
 		NumBestEntries:             3,
 		NumBestEntriesBeforeCutoff: 2, // cutoff is at 2 of 3 hosts
 		NumEntries:                 3,
-		NumBestPrimaryEntries:      0,
+		NumBestPrimaryEntries:      1,
 		RevisionNumber:             srv.Revision,
 	})
 	if err != nil {
@@ -4392,7 +4393,7 @@ func TestRegistryHealth(t *testing.T) {
 		NumEntries:                 uint64(len(tg.Hosts())) - 1,
 		NumBestEntries:             uint64(len(tg.Hosts())) - 1,
 		NumBestEntriesBeforeCutoff: 2, // cutoff is at 2 of 3 hosts
-		NumBestPrimaryEntries:      0,
+		NumBestPrimaryEntries:      1,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -4418,7 +4419,7 @@ func TestRegistryHealth(t *testing.T) {
 			NumEntries:                 uint64(len(tg.Hosts())),
 			NumBestEntries:             uint64(len(tg.Hosts())) - 1,
 			NumBestEntriesBeforeCutoff: 2, // cutoff is at 3 of 4 hosts
-			NumBestPrimaryEntries:      0,
+			NumBestPrimaryEntries:      1,
 		})
 	})
 	if err != nil {
@@ -4433,7 +4434,7 @@ func TestRegistryHealth(t *testing.T) {
 		NumEntries:                 uint64(len(tg.Hosts())),
 		NumBestEntries:             uint64(len(tg.Hosts())) - 1,
 		NumBestEntriesBeforeCutoff: 0,
-		NumBestPrimaryEntries:      0,
+		NumBestPrimaryEntries:      1,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -5524,6 +5525,60 @@ func TestHostLosingRegistryEntry(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryEntryNotFound.Error()) {
 		t.Fatal(err)
 	}
+}
+
+// testUpdateRegistryMulti tests the endpoint for updating multiple host with
+// different entries.
+func testUpdateRegistryMulti(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Make sure we got at least 3 hosts.
+	// One to update with a primary key.
+	// One to update with a secondary key.
+	// Two to not update at all.
+	hosts := tg.Hosts()
+	if len(hosts) < 3 {
+		t.Fatal("not enough hosts for test")
+	}
+
+	// Ignore the first host. We don't use it.
+	hosts = hosts[1:]
+
+	// Prepare an entry that's a primary entry on the second host.
+	hpk, err := hosts[0].HostPublicKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hpkh := crypto.HashObject(hpk)
+	sk, pk := crypto.GenerateKeyPair()
+	spk := types.Ed25519PublicKey(pk)
+	var dataKey crypto.Hash
+	fastrand.Read(dataKey[:])
+	data := hpkh[:modules.RegistryPubKeyHashSize]
+	srv := modules.NewRegistryValue(dataKey, data, 0, modules.RegistryTypeWithPubkey).Sign(sk)
+	entry := skymodules.NewRegistryEntry(spk, srv)
+
+	// Set the entry on all hosts from the second till the last.
+	srvs := make(map[string]skymodules.RegistryEntry)
+	for _, h := range hosts {
+		hostKey, err := h.HostPublicKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		srvs[hostKey.String()] = entry
+	}
+	err = r.RegistryUpdateMulti(srvs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check the health. We should find the entry on every host but one and
+	// one host should be considered a primary entry.
+	reh, err := r.RegistryEntryHealth(spk, dataKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(siatest.PrintJSON(reh))
 }
 
 // testHostsForRegistryUpdate is a basic smoke test for /skynet/registry/hosts.
