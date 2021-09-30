@@ -1269,9 +1269,11 @@ func testManagedPruneIncompleteChunks(t *testing.T) {
 	// check an unhealthy unstuck chunk
 	copy1 := file.Copy()
 	unstuckUnhealhy := &unfinishedUploadChunk{
-		fileEntry: copy1,
-		health:    1,
-		offset:    3,
+		id:           uploadChunkID{index: 0},
+		fileEntry:    copy1,
+		health:       1,
+		offset:       3,
+		staticRenter: rt.renter,
 	}
 	// Close file for unhealthy chunk at end of test
 	defer func() {
@@ -1282,20 +1284,24 @@ func testManagedPruneIncompleteChunks(t *testing.T) {
 
 	// check an healthy unstuck chunk
 	unstuckHealthy := &unfinishedUploadChunk{
-		fileEntry: file.Copy(),
-		health:    0,
-		offset:    2,
+		id:           uploadChunkID{index: 1},
+		fileEntry:    file.Copy(),
+		health:       0,
+		offset:       2,
+		staticRenter: rt.renter,
 	}
 	// No need to close file for healthy chunk at end of test because it is
 	// closed by managedPruneIncompleteChunks
 
 	// check an unhealthy stuck chunk
 	copy2 := file.Copy()
-	stuckUnhealhy := &unfinishedUploadChunk{
-		fileEntry: copy2,
-		health:    1,
-		offset:    1,
-		stuck:     true,
+	stuckUnhealthy := &unfinishedUploadChunk{
+		id:           uploadChunkID{index: 2},
+		fileEntry:    copy2,
+		health:       1,
+		offset:       1,
+		stuck:        true,
+		staticRenter: rt.renter,
 	}
 	// Close file for unhealthy chunk at end of test
 	defer func() {
@@ -1306,16 +1312,26 @@ func testManagedPruneIncompleteChunks(t *testing.T) {
 
 	// check an healthy stuck chunk
 	stuckHealthy := &unfinishedUploadChunk{
-		fileEntry: file.Copy(),
-		health:    0,
-		offset:    0,
-		stuck:     true,
+		id:           uploadChunkID{index: 3},
+		fileEntry:    file.Copy(),
+		health:       0,
+		offset:       0,
+		stuck:        true,
+		staticRenter: rt.renter,
 	}
+
+	rt.renter.repairingChunksMu.Lock()
+	rt.renter.repairingChunks[unstuckHealthy.id] = unstuckHealthy
+	rt.renter.repairingChunks[unstuckUnhealhy.id] = unstuckUnhealhy
+	rt.renter.repairingChunks[stuckHealthy.id] = stuckHealthy
+	rt.renter.repairingChunks[stuckUnhealthy.id] = stuckUnhealthy
+	rt.renter.repairingChunksMu.Unlock()
+
 	// No need to close file for healthy chunk at end of test because it is
 	// closed by managedPruneIncompleteChunks
 
 	// Create a slice of unfinished chunks
-	uucs := []*unfinishedUploadChunk{unstuckUnhealhy, unstuckHealthy, stuckUnhealhy, stuckHealthy}
+	uucs := []*unfinishedUploadChunk{unstuckUnhealhy, unstuckHealthy, stuckUnhealthy, stuckHealthy}
 
 	// Call managedPruneIncompleteChunks
 	incompleteChunks := rt.renter.managedPruneIncompleteChunks(uucs)
