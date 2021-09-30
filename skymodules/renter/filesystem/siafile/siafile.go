@@ -892,7 +892,7 @@ func (sf *SiaFile) setAllStuck(stuck bool) (err error) {
 	}
 
 	// If the file is unfinished then do not set the chunks as stuck
-	if !sf.staticMetadata.Finished && stuck {
+	if !sf.finished() && stuck {
 		err = errors.AddContext(ErrUnfinished, "cannot set an unfinished file as stuck")
 		build.Critical(err)
 		return err
@@ -1021,7 +1021,7 @@ func (sf *SiaFile) updateMetadata(offlineMap, goodForRenew map[string]bool, cont
 	// Compatibility check.
 	// If a file is unfinished it should not be stuck. This is the case for
 	// files prior to creating the Finished field in the metadata.
-	if !sf.staticMetadata.Finished && sf.staticMetadata.NumStuckChunks != 0 {
+	if !sf.finished() && sf.staticMetadata.NumStuckChunks != 0 {
 		err = sf.setAllStuck(false)
 		if err != nil {
 			return errors.AddContext(err, "unable to mark unfinished file as unstuck")
@@ -1409,6 +1409,10 @@ func (sf *SiaFile) SetFinished(health float64) (err error) {
 // setFinished sets the file's Finished field in the metadata
 func (sf *SiaFile) setFinished(health float64) {
 	// Once a file is finished if cannot be unfinished.
+	//
+	// NOTE: we only care about the actual field here instead of using the
+	// finished() method because we are looking if we should update the
+	// field.
 	if sf.staticMetadata.Finished {
 		return
 	}
@@ -1423,7 +1427,7 @@ func (sf *SiaFile) setStuck(index uint64, stuck bool) (err error) {
 		return errors.AddContext(ErrDeleted, "can't call SetStuck on deleted file")
 	}
 	// A file can only be marked as stuck if the file has previously finished
-	if !sf.staticMetadata.Finished && stuck {
+	if !sf.finished() && stuck {
 		err = errors.AddContext(ErrUnfinished, "cannot set an unfinished file as stuck")
 		build.Critical(err)
 		return err
