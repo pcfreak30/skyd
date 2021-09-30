@@ -4702,8 +4702,7 @@ func TestSkynetCleanupOnError(t *testing.T) {
 	}
 
 	// Create a helper function that returns true if the siapath does not exist.
-	skyfileDeleted := func(path skymodules.SiaPath) bool {
-		_, err = r.RenterFileRootGet(path)
+	skyfileDeleted := func(err error) bool {
 		return err != nil && strings.Contains(err.Error(), filesystem.ErrNotExist.Error())
 	}
 
@@ -4717,7 +4716,7 @@ func TestSkynetCleanupOnError(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = r.RenterFileRootGet(smallPath)
-	if !skyfileDeleted(smallPath) {
+	if !skyfileDeleted(err) {
 		t.Fatal("unexpected error on getting root for a small file", err)
 	}
 
@@ -4731,16 +4730,17 @@ func TestSkynetCleanupOnError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !skyfileDeleted(largePath) {
-		t.Fatal("unexpected error on deleting a large file", err)
+	_, err = r.RenterFileRootGet(largePath)
+	if !skyfileDeleted(err) {
+		t.Fatal("unexpected error on getting root for a large file", err)
 	}
-
 	largePathExtended, err := largePath.AddSuffixStr(skymodules.ExtendedSuffix)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !skyfileDeleted(largePathExtended) {
-		t.Fatal("unexpected error on deleting a large file extended", err)
+	_, err = r.RenterFileRootGet(largePathExtended)
+	if !skyfileDeleted(err) {
+		t.Fatal("unexpected error on getting root for a large file extended", err)
 	}
 
 	// Disable the dependency and verify the files are not removed
@@ -4749,22 +4749,25 @@ func TestSkynetCleanupOnError(t *testing.T) {
 	// Re-upload the small file and re-test
 	_, small, _, err = r.UploadNewSkyfileBlocking("smallfile", 100, true)
 	if uploadFailed(err) {
-		t.Fatal("unexpected error on reuploading a small file", err)
+		t.Fatal("unexpected error on re-uploading a small file", err)
 	}
-	if skyfileDeleted(smallPath) {
-		t.Fatal("unexpected error on deleting a reuploaded small file", err)
+	_, err = r.RenterFileRootGet(smallPath)
+	if skyfileDeleted(err) {
+		t.Fatal("unexpected error on getting root for a small file", err)
 	}
 
 	// Re-upload the large file and re-test
 	_, large, _, err = r.UploadNewSkyfileBlocking("largefile", ss*2, true)
 	if uploadFailed(err) {
-		t.Fatal("unexpected error on reuploading a large file", err)
+		t.Fatal("unexpected error on re-uploading a large file", err)
 	}
-	if skyfileDeleted(largePath) {
-		t.Fatal("unexpected error on deleting a reuploaded large file", err)
+	_, err = r.RenterFileRootGet(largePath)
+	if skyfileDeleted(err) {
+		t.Fatal("unexpected error on getting root for a large file", err)
 	}
-	if skyfileDeleted(largePathExtended) {
-		t.Fatal("unexpected error on deleting reuploaded larde file extended", err)
+	_, err = r.RenterFileRootGet(largePathExtended)
+	if skyfileDeleted(err) {
+		t.Fatal("unexpected error on getting root for a large file extended", err)
 	}
 }
 
