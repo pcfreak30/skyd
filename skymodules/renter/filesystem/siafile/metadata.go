@@ -270,6 +270,7 @@ func (sf *SiaFile) Metadata() Metadata {
 	defer sf.mu.RUnlock()
 	md := sf.staticMetadata
 	md.NumStuckChunks = sf.numStuckChunks()
+	md.Finished = sf.finished()
 	return md
 }
 

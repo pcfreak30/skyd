@@ -6107,17 +6107,48 @@ func TestRenterUnfinishedFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Since the upload will not be successful the file should not be marked
-	// as finished
-	if fi.Finished {
-		t.Fatal("file marked as finished")
+	// Even though the upload cannot be successful, the file will be
+	// considered finished because there is a localpath.
+	if !fi.Finished {
+		t.Fatal("file not marked as finished")
+	}
+	if fi.Redundancy >= 1 {
+		t.Fatal("Redundancy is greater than 1", fi.Redundancy)
 	}
 
-	// Since the file is unfinished it should be removed from the renter
-	err = build.Retry(10, time.Second, func() error {
+	// Stop on of the hosts to ensure there are not enough hosts to be able
+	// to upload a skyfile
+	h := tg.Hosts()[0]
+	err = tg.StopNode(h)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload a Skyfile. This uses the streaming endpoint and doesn't create
+	// a local file and so the skyfile won't have a local path. The Skyfile
+	// should be a large skyfile so that the erasure coding is N-of-M
+	data := fastrand.Bytes(int(2 * modules.SectorSize))
+	_, _, _, rf, err = r.UploadSkyfileCustom("skyfile", data, "", 3, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the file info
+	fi, err = r.File(rf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// File should be considered unfinished
+	if fi.Finished {
+		t.Fatal("File is marked as finished")
+	}
+
+	// The unfinished file should be pruned
+	err = build.Retry(15, time.Second, func() error {
 		_, err = r.File(rf)
 		if err == nil || !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
-			return fmt.Errorf("Unexpected err %v", err)
+			return fmt.Errorf("Unexpected error %v", err)
 		}
 		return nil
 	})
