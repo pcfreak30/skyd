@@ -102,6 +102,9 @@ func (us *skynetTUSInMemoryUploadStore) NewLock(id string) (handler.Lock, error)
 func (u *skynetInMemoryUpload) CommitFinishUpload(_ context.Context, skylink skymodules.Skylink) error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
+	if u.complete {
+		return ErrUploadFinished
+	}
 	u.fi.Offset = u.fi.Size
 	u.complete = true
 	u.fi.MetaData["Skylink"] = skylink.String()

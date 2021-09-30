@@ -708,26 +708,6 @@ func testTUSUploaderConcat(t *testing.T, r *siatest.TestNode) {
 		t.Fatal("shouldn't work")
 	}
 
-	// Concat only the small file. This should work.
-	urlConcat, err = concat(urlPartial, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	sl, err = skylink(urlConcat)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Download the skylink.
-	downloaded, err = r.SkynetSkylinkGet(sl)
-	if err != nil {
-		t.Fatal(err)
-	}
-	expected = partialData
-	if !bytes.Equal(downloaded, expected) {
-		t.Fatal("data mismatch", len(downloaded), len(expected))
-	}
-
 	// Wait for two full pruning intervals to make sure pruning ran at least
 	// once.
 	time.Sleep(2 * renter.PruneTUSUploadTimeout)
@@ -737,8 +717,8 @@ func testTUSUploaderConcat(t *testing.T, r *siatest.TestNode) {
 		t.Fatal(err)
 	}
 	nFilesAfter := dir.Directories[0].AggregateNumFiles
-	if nFilesAfter-nFiles != 4 {
-		t.Fatal("expected 4 .sia files to be created for the 2 parts but got", nFilesAfter-nFiles)
+	if nFilesAfter-nFiles != 3 {
+		t.Fatal("expected 3 .sia files to be created for the 2 parts but got", nFilesAfter-nFiles)
 	}
 }
 
