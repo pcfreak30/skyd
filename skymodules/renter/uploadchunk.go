@@ -829,19 +829,6 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	}
 }
 
-// managedSetStuckAndClose sets the unfinishedUploadChunk's stuck status and
-// closes the fileEntry.
-func (r *Renter) managedSetStuckAndClose(uc *unfinishedUploadChunk, setStuck bool) error {
-	// Check for ignore failed repairs dependency
-	if r.staticDeps.Disrupt("IgnoreFailedRepairs") {
-		uc.mu.Lock()
-		uc.stuck = false
-		uc.mu.Unlock()
-	}
-
-	return uc.managedSetStuckAndClose(setStuck)
-}
-
 // managedUpdateUploadChunkStuckStatus checks to see if the repair was
 // successful and then updates the chunk's stuck status
 func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) {
