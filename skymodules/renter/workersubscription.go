@@ -800,6 +800,7 @@ func (w *worker) threadedSubscriptionLoop() {
 			select {
 			case <-subInfo.staticWakeChan:
 				// Wait for work
+				continue
 			case <-w.staticTG.StopChan():
 				return // shutdown
 			}
@@ -877,6 +878,10 @@ func (w *worker) threadedSubscriptionLoop() {
 
 // UpdateSubscriptions updates the entries the worker is subscribed to.
 func (w *worker) UpdateSubscriptions(requests ...modules.RPCRegistrySubscriptionRequest) {
+	if len(requests) == 0 {
+		return // nothing to do
+	}
+
 	subInfo := w.staticSubscriptionInfo
 	subInfo.mu.Lock()
 	defer subInfo.mu.Unlock()
