@@ -17,6 +17,7 @@ import (
 	"gitlab.com/NebulousLabs/threadgroup"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -1477,7 +1478,7 @@ func TestSyncAccountBalanceToHostSubscriptionPanic(t *testing.T) {
 	}
 	t.Parallel()
 
-	wt, err := newWorkerTester(t.Name())
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyPreventEARefill{}, skymodules.SkydProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1486,6 +1487,9 @@ func TestSyncAccountBalanceToHostSubscriptionPanic(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
+
+	// Manually fill the EA once.
+	wt.managedRefillAccount()
 
 	// Random registry value.
 	srv, spk, _ := randomRegistryValue()
