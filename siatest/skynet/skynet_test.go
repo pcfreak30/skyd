@@ -4748,25 +4748,25 @@ func TestSkynetCleanupOnError(t *testing.T) {
 
 	// Re-upload the small file and re-test
 	_, small, _, err = r.UploadNewSkyfileBlocking("smallfile", 100, true)
-	if uploadFailed(err) {
-		t.Fatal("unexpected error on re-uploading a small file", err)
+	if err != nil {
+		t.Fatal("re-uploading a small file should succeed", err)
 	}
 	_, err = r.RenterFileRootGet(smallPath)
-	if skyfileDeleted(err) {
+	if err != nil {
 		t.Fatal("unexpected error on getting root for a small file", err)
 	}
 
 	// Re-upload the large file and re-test
 	_, large, _, err = r.UploadNewSkyfileBlocking("largefile", ss*2, true)
-	if uploadFailed(err) {
-		t.Fatal("unexpected error on re-uploading a large file", err)
+	if err != nil {
+		t.Fatal("re-uploading a large file should succeed", err)
 	}
 	_, err = r.RenterFileRootGet(largePath)
-	if skyfileDeleted(err) {
+	if err != nil {
 		t.Fatal("unexpected error on getting root for a large file", err)
 	}
 	_, err = r.RenterFileRootGet(largePathExtended)
-	if skyfileDeleted(err) {
+	if err != nil {
 		t.Fatal("unexpected error on getting root for a large file extended", err)
 	}
 }

@@ -264,11 +264,7 @@ var (
 
 	// unfinishedFilePruneDuration is the length of time before an
 	// unfinished file is pruned from the filesystem.
-	unfinishedFilePruneDuration = build.Select(build.Var{
-		Dev:      time.Minute * 30,
-		Standard: time.Hour * 24 * 30, // 30 Days
-		Testing:  time.Second * 10,
-	}).(time.Duration)
+	unfinishedFilePruneDuration = time.Hour * 24 * 30 // 30 Days
 
 	// uploadAndRepairErrorSleepDuration indicates how long a repair process
 	// should sleep before retrying if there is an error fetching the metadata

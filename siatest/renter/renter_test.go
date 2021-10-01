@@ -6042,9 +6042,8 @@ func TestRenterUnfinishedFiles(t *testing.T) {
 
 	// Create a group for testing
 	groupParams := siatest.GroupParams{
-		Hosts:   2,
-		Miners:  1,
-		Renters: 1,
+		Hosts:  2,
+		Miners: 1,
 	}
 	testDir := renterTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
@@ -6056,6 +6055,14 @@ func TestRenterUnfinishedFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
+
+	// Add renter with depenedency
+	renterParams := node.Renter(testDir)
+	renterParams.RenterDeps = &dependencies.DependencyShortUnfinishedFilesPruneDuration{}
+	_, err = tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Upload a file
 	r := tg.Renters()[0]

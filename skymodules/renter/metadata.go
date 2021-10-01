@@ -147,8 +147,15 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 
 			// Check if the file is unfinished
 			if !fileMetadata.Finished {
+				// Check if the dependency for a shorted prune
+				// duration is enabled. We rely on a dependency
+				// instead of a build variable to reduce NDFs in
+				// testing.
+				if r.staticDeps.Disrupt("ShortUnfinishedFilesPruneDuration") {
+					unfinishedFilePruneDuration = time.Second * 10
+				}
 				// Check if it is time to prune the file
-				timeToPrune := time.Since(fileMetadata.CreateTime) > unfinishedFilePruneDuration && !r.staticDeps.Disrupt("TUSUnstable")
+				timeToPrune := time.Since(fileMetadata.CreateTime) > unfinishedFilePruneDuration
 				if timeToPrune {
 					// Delete the file if it is still unfinished after a month
 					err := r.staticFileSystem.DeleteFile(fileSiaPath)
