@@ -51,6 +51,7 @@ func TestCreateLoadBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	// Add a file to that dir.
 	lf, err := subDir.NewFile(100)
 	if err != nil {
@@ -155,6 +156,13 @@ func TestCreateLoadBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	lf, err = subDir.NewFileWithName(lf.FileName(), 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Wait for enough contracts to be gfu after the recovery.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		return siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, 0, 0)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
