@@ -2,6 +2,7 @@ package renter
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"sort"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
@@ -307,7 +309,7 @@ func TestPruneUnfinishedFiles(t *testing.T) {
 	t.Parallel()
 
 	// Create renter
-	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyShortUnfinishedFilesPruneDuration{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,28 +354,32 @@ func TestPruneUnfinishedFiles(t *testing.T) {
 		t.Fatal("Expected 1 unfinished file, found", dirs[0].NumUnfinishedFiles)
 	}
 
-	// Wait timeout
-	time.Sleep(unfinishedFilePruneDuration)
+	// Wait for file to be pruned
+	err = build.Retry(15, time.Second, func() error {
+		// Trigger bubble
+		err = rt.renter.UpdateMetadata(skymodules.RootSiaPath(), true)
+		if err != nil {
+			return err
+		}
 
-	// Trigger bubble
-	err = rt.renter.UpdateMetadata(skymodules.RootSiaPath(), true)
+		// Verify file is deleted
+		dirs, err = rt.renter.DirList(skymodules.RootSiaPath())
+		if err != nil {
+			return err
+		}
+		if dirs[0].AggregateNumUnfinishedFiles != 0 {
+			return fmt.Errorf("Expected 0 aggregate unfinished file, found %v", dirs[0].AggregateNumUnfinishedFiles)
+		}
+		if dirs[0].NumUnfinishedFiles != 0 {
+			return fmt.Errorf("Expected 0 unfinished file, found %v", dirs[0].NumUnfinishedFiles)
+		}
+		_, err = rt.renter.File(sp)
+		if err == nil || !errors.Contains(err, filesystem.ErrNotExist) {
+			return fmt.Errorf("expected file to be deleted but got %v", err)
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	// Verify file is deleted
-	dirs, err = rt.renter.DirList(skymodules.RootSiaPath())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if dirs[0].AggregateNumUnfinishedFiles != 0 {
-		t.Fatal("Expected 0 aggregate unfinished file, found", dirs[0].AggregateNumUnfinishedFiles)
-	}
-	if dirs[0].NumUnfinishedFiles != 0 {
-		t.Fatal("Expected 0 unfinished file, found", dirs[0].NumUnfinishedFiles)
-	}
-	_, err = rt.renter.File(sp)
-	if err == nil || !errors.Contains(err, filesystem.ErrNotExist) {
-		t.Fatal("expected file to be deleted but got", err)
 	}
 }
