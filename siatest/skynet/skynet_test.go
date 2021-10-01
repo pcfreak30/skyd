@@ -784,11 +784,11 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	emptyFile := siatest.TestFile{Name: "file", Data: []byte{}}
 	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(fileName, []siatest.TestFile{emptyFile}, "", false, false)
 	if err != nil {
-		t.Fatal("Expected upload of empty file to succeed")
+		t.Fatal("Expected upload of empty file to succeed", err)
 	}
 	data, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
-		t.Fatal("Expected download of empty file to succeed")
+		t.Fatal("Expected download of empty file to succeed", err)
 	}
 	_, md, err := r.SkynetMetadataGet(skylink)
 	if err != nil {
@@ -798,7 +798,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Unexpected data")
 	}
 	if md.Length != 0 {
-		t.Fatal("Unexpected metadata")
+		t.Fatal("Unexpected metadata length", md.Length)
 	}
 
 	// TEST SMALL SUBFILE
