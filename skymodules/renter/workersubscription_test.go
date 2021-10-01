@@ -1283,7 +1283,8 @@ func TestThreadedSubscriptionLoop(t *testing.T) {
 	case <-c:
 	}
 	subInfo.mu.Lock()
-	if !reflect.DeepEqual(*reqSub.latestRV, rv) {
+	if reqSub.latestRV == nil || !reflect.DeepEqual(*reqSub.latestRV, rv) {
+		subInfo.mu.Unlock()
 		t.Fatal("entries don't match")
 	}
 	subInfo.mu.Unlock()

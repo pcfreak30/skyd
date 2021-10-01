@@ -308,9 +308,6 @@ func (sm *registrySubscriptionManager) managedUpdateWorkers() {
 
 // managedUpdateWorkersWithRequests updates all workers with the given requests.
 func (sm *registrySubscriptionManager) managedUpdateWorkersWithRequests(requests []modules.RPCRegistrySubscriptionRequest) {
-	if len(requests) == 0 {
-		return
-	}
 	// Update workers.
 	for _, w := range sm.staticRenter.staticWorkerPool.callWorkers() {
 		w.UpdateSubscriptions(requests...)
