@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -111,6 +110,9 @@ func testManagedBuildUnfinishedChunks(t *testing.T) {
 		if c.stuck {
 			t.Fatal("Found stuck chunk when expecting only unstuck chunks")
 		}
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// Call managedBuildUnfinishedChunks as stuck loop, all stuck chunks should
@@ -122,6 +124,9 @@ func testManagedBuildUnfinishedChunks(t *testing.T) {
 	for _, c := range uucs {
 		if !c.stuck {
 			t.Fatal("Found unstuck chunk when expecting only stuck chunks")
+		}
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
 		}
 	}
 
@@ -365,9 +370,6 @@ func testUploadHeapBasic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	uh.mu.Lock()
-	uh.repairingChunks = make(map[uploadChunkID]*unfinishedUploadChunk)
-	uh.mu.Unlock()
 
 	// Add the chunks back to the heap
 	for _, chunk := range chunks {
@@ -782,7 +784,10 @@ func testUploadHeapMaps(t *testing.T) {
 			staticAvailableChan:       make(chan struct{}),
 			staticUploadCompletedChan: make(chan struct{}),
 			staticMemoryManager:       rt.renter.staticRepairMemoryManager,
+			staticRenter:              rt.renter,
 		}
+		// Add chunk to repairing chunks.
+		rt.renter.repairingChunks[chunk.id] = chunk
 		// push chunk to heap
 		_, pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
@@ -815,36 +820,25 @@ func testUploadHeapMaps(t *testing.T) {
 	if len(rt.renter.staticUploadHeap.stuckHeapChunks) != int(numHeapChunks/2) {
 		t.Fatalf("Expected %v stuck chunks in map but found %v", numHeapChunks/2, len(rt.renter.staticUploadHeap.stuckHeapChunks))
 	}
-	if len(rt.renter.staticUploadHeap.repairingChunks) != 0 {
-		t.Fatalf("Expected %v repairing chunks in map but found %v", 0, len(rt.renter.staticUploadHeap.repairingChunks))
-	}
 
 	// Pop off some chunks
 	poppedChunks := 3
 	for i := 0; i < poppedChunks; i++ {
 		// Pop chunk
 		chunk := rt.renter.staticUploadHeap.managedPop()
-		// Confirm it is in the repairing map
-		_, ok := rt.renter.staticUploadHeap.repairingChunks[chunk.id]
-		if !ok {
-			t.Fatal("popped chunk not found in repairing map")
-		}
 		// Confirm the chunk cannot be pushed back onto the heap
 		_, pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if pushed {
-			t.Fatal("should not have been able to push chunk back onto heap")
+		if !pushed {
+			t.Fatal("should have been able to push chunk back onto heap")
 		}
 	}
 
 	// Confirm length of maps
-	if len(rt.renter.staticUploadHeap.repairingChunks) != poppedChunks {
-		t.Fatalf("Expected %v repairing chunks in map but found %v", poppedChunks, len(rt.renter.staticUploadHeap.repairingChunks))
-	}
 	remainingChunks := len(rt.renter.staticUploadHeap.unstuckHeapChunks) + len(rt.renter.staticUploadHeap.stuckHeapChunks)
-	if remainingChunks != int(numHeapChunks)-poppedChunks {
+	if remainingChunks != int(numHeapChunks) {
 		t.Fatalf("Expected %v chunks to still be in the heap maps but found %v", int(numHeapChunks)-poppedChunks, remainingChunks)
 	}
 
@@ -854,9 +848,6 @@ func testUploadHeapMaps(t *testing.T) {
 	}
 
 	// Confirm length of maps
-	if len(rt.renter.staticUploadHeap.repairingChunks) != poppedChunks {
-		t.Fatalf("Expected %v repairing chunks in map but found %v", poppedChunks, len(rt.renter.staticUploadHeap.repairingChunks))
-	}
 	remainingChunks = len(rt.renter.staticUploadHeap.unstuckHeapChunks) + len(rt.renter.staticUploadHeap.stuckHeapChunks)
 	if remainingChunks != 0 {
 		t.Fatalf("Expected %v chunks to still be in the heap maps but found %v", 0, remainingChunks)
@@ -1008,20 +999,9 @@ func testManagedPushChunkForRepair(t *testing.T) {
 		uh.mu.Lock()
 		_, stuckExists := uh.stuckHeapChunks[chunk.id]
 		_, unstuckExists := uh.unstuckHeapChunks[chunk.id]
-		repairChunk, repairExists := uh.repairingChunks[chunk.id]
 		uh.mu.Unlock()
 		if stuckExists || unstuckExists {
 			t.Fatal("chunk should not exist in stuck or unstuck maps")
-		}
-		if !repairExists {
-			t.Fatal("chunk should have been added to repair map")
-		}
-
-		// Verify the chunk in the heap is the chunk pushed
-		if !reflect.DeepEqual(repairChunk, chunk) {
-			t.Log("chunk:", chunk)
-			t.Log("repairChunk:", repairChunk)
-			t.Fatal("chunk in repair map not equal to the chunk added")
 		}
 
 		// The underlying heap slice should be empty
@@ -1034,17 +1014,15 @@ func testManagedPushChunkForRepair(t *testing.T) {
 	// Pushing the chunk to the repair map should succeed
 	pushAndVerify(streamChunk)
 
-	// Pushing again should fail
+	// Pushing again should work because stream chunks are not deduplicated
+	// within the heap.
 	_, pushed, err := rt.renter.managedPushChunkForRepair(streamChunk, chunkTypeStreamChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pushed {
+	if !pushed {
 		t.Error("chunk should not be able to be added twice")
 	}
-
-	// Clear the stream chunk from the repair map
-	uh.managedMarkRepairDone(streamChunk)
 
 	// Add a local chunk to the heap
 	localChunk := &unfinishedUploadChunk{
@@ -1064,14 +1042,6 @@ func testManagedPushChunkForRepair(t *testing.T) {
 	// Pushing the stream chunk should clear the local chunk from both maps and be
 	// successful
 	pushAndVerify(streamChunk)
-
-	// Clear the stream chunk from the repair map
-	uh.managedMarkRepairDone(streamChunk)
-
-	// Add the local chunk directly to the repair map
-	uh.mu.Lock()
-	uh.repairingChunks[localChunk.id] = localChunk
-	uh.mu.Unlock()
 
 	// Pushing the stream chunk should replace the local chunk in the repair map
 	pushAndVerify(streamChunk)
@@ -1105,7 +1075,6 @@ func testManagedTryUpdate(t *testing.T) {
 		ct               chunkType
 		existsUnstuck    bool // Indicates if there should be an existing chunk in the unstuck map
 		existsStuck      bool // Indicates if there should be an existing chunk in the stuck map
-		existsRepairing  bool // Indicates if there should be an existing chunk in the repair map
 		existingChunkSR  skymodules.ChunkReader
 		newChunkSR       skymodules.ChunkReader
 		existAfterUpdate bool // Indicates if tryUpdate will cancel and remove the chunk from the heap
@@ -1113,22 +1082,22 @@ func testManagedTryUpdate(t *testing.T) {
 	}{
 		// Pushing a chunkTypeLocalChunk should always be a no-op regardless of the
 		// start of the chunk in the heap.
-		{"PushLocalChunk_EmptyHeap", chunkTypeLocalChunk, false, false, false, nil, nil, false, true},                // no chunk in heap
-		{"PushLocalChunk_UnstuckChunkNoSRInHeap", chunkTypeLocalChunk, true, false, false, nil, nil, true, false},    // chunk in unstuck map
-		{"PushLocalChunk_UnstuckChunkWithSRInHeap", chunkTypeLocalChunk, true, false, false, sr, nil, true, false},   // chunk in unstuck map with sourceReader
-		{"PushLocalChunk_StuckChunkNoSRInHeap", chunkTypeLocalChunk, false, true, false, nil, nil, true, false},      // chunk in stuck map
-		{"PushLocalChunk_StuckChunkWithSRInHeap", chunkTypeLocalChunk, false, true, false, sr, nil, true, false},     // chunk in stuck map with sourceReader
-		{"PushLocalChunk_RepairingChunkNoSRInHeap", chunkTypeLocalChunk, false, false, true, nil, nil, true, false},  // chunk in repair map
-		{"PushLocalChunk_RepairingChunkWithSRInHeap", chunkTypeLocalChunk, false, false, true, sr, nil, true, false}, // chunk in repair map with sourceReader
+		{"PushLocalChunk_EmptyHeap", chunkTypeLocalChunk, false, false, nil, nil, false, true},                 // no chunk in heap
+		{"PushLocalChunk_UnstuckChunkNoSRInHeap", chunkTypeLocalChunk, true, false, nil, nil, true, false},     // chunk in unstuck map
+		{"PushLocalChunk_UnstuckChunkWithSRInHeap", chunkTypeLocalChunk, true, false, sr, nil, true, false},    // chunk in unstuck map with sourceReader
+		{"PushLocalChunk_StuckChunkNoSRInHeap", chunkTypeLocalChunk, false, true, nil, nil, true, false},       // chunk in stuck map
+		{"PushLocalChunk_StuckChunkWithSRInHeap", chunkTypeLocalChunk, false, true, sr, nil, true, false},      // chunk in stuck map with sourceReader
+		{"PushLocalChunk_RepairingChunkNoSRInHeap", chunkTypeLocalChunk, false, false, nil, nil, false, true},  // chunk in repair map
+		{"PushLocalChunk_RepairingChunkWithSRInHeap", chunkTypeLocalChunk, false, false, sr, nil, false, true}, // chunk in repair map with sourceReader
 
 		// Pushing a chunkTypeStreamChunk tests
-		{"PushStreamChunk_EmptyHeap", chunkTypeStreamChunk, false, false, false, nil, sr, false, true},                // no chunk in heap
-		{"PushStreamChunk_UnstuckChunkNoSRInHeap", chunkTypeStreamChunk, true, false, false, nil, sr, false, true},    // chunk in unstuck map
-		{"PushStreamChunk_UnstuckChunkWithSRInHeap", chunkTypeStreamChunk, true, false, false, sr, sr, true, true},    // chunk in unstuck map with sourceReader
-		{"PushStreamChunk_StuckChunkNoSRInHeap", chunkTypeStreamChunk, false, true, false, nil, sr, false, true},      // chunk in stuck map
-		{"PushStreamChunk_StuckChunkWithSRInHeap", chunkTypeStreamChunk, false, true, false, sr, sr, true, true},      // chunk in stuck map with sourceReader
-		{"PushStreamChunk_RepairingChunkNoSRInHeap", chunkTypeStreamChunk, false, false, true, nil, sr, false, true},  // chunk in repair map
-		{"PushStreamChunk_RepairingChunkWithSRInHeap", chunkTypeStreamChunk, false, false, true, sr, sr, true, false}, // chunk in repair map with sourceReader
+		{"PushStreamChunk_EmptyHeap", chunkTypeStreamChunk, false, false, nil, sr, false, true},                 // no chunk in heap
+		{"PushStreamChunk_UnstuckChunkNoSRInHeap", chunkTypeStreamChunk, true, false, nil, sr, true, true},      // chunk in unstuck map
+		{"PushStreamChunk_UnstuckChunkWithSRInHeap", chunkTypeStreamChunk, true, false, sr, sr, true, true},     // chunk in unstuck map with sourceReader
+		{"PushStreamChunk_StuckChunkNoSRInHeap", chunkTypeStreamChunk, false, true, nil, sr, true, true},        // chunk in stuck map
+		{"PushStreamChunk_StuckChunkWithSRInHeap", chunkTypeStreamChunk, false, true, sr, sr, true, true},       // chunk in stuck map with sourceReader
+		{"PushStreamChunk_RepairingChunkNoSRInHeap", chunkTypeStreamChunk, false, false, nil, sr, false, true},  // chunk in repair map
+		{"PushStreamChunk_RepairingChunkWithSRInHeap", chunkTypeStreamChunk, false, false, sr, sr, false, true}, // chunk in repair map with sourceReader
 	}
 
 	// Create a test file for the chunks
@@ -1144,50 +1113,49 @@ func testManagedTryUpdate(t *testing.T) {
 
 	// Run test cases
 	for i, test := range tests {
-		// Initialize chunks and heap based on test parameters
-		existingChunk := &unfinishedUploadChunk{
-			id: uploadChunkID{
-				fileUID: siafile.SiafileUID(test.name),
-				index:   uint64(i),
-			},
-			fileEntry:           entry.Copy(),
-			sourceReader:        test.existingChunkSR,
-			piecesRegistered:    1, // This is so the chunk is viewed as incomplete
-			staticMemoryManager: rt.renter.staticRepairMemoryManager,
-		}
-		if test.existsUnstuck {
-			uh.unstuckHeapChunks[existingChunk.id] = existingChunk
-		}
-		if test.existsStuck {
-			existingChunk.stuck = true
-			uh.stuckHeapChunks[existingChunk.id] = existingChunk
-		}
-		if test.existsRepairing {
-			uh.repairingChunks[existingChunk.id] = existingChunk
-		}
-		newChunk := &unfinishedUploadChunk{
-			id:                  existingChunk.id,
-			sourceReader:        test.newChunkSR,
-			piecesRegistered:    1, // This is so the chunk is viewed as incomplete
-			staticMemoryManager: rt.renter.staticRepairMemoryManager,
-		}
+		t.Run(test.name, func(t *testing.T) {
+			// Initialize chunks and heap based on test parameters
+			existingChunk := &unfinishedUploadChunk{
+				id: uploadChunkID{
+					fileUID: siafile.SiafileUID(test.name),
+					index:   uint64(i),
+				},
+				fileEntry:           entry.Copy(),
+				sourceReader:        test.existingChunkSR,
+				piecesRegistered:    1, // This is so the chunk is viewed as incomplete
+				staticMemoryManager: rt.renter.staticRepairMemoryManager,
+			}
+			if test.existsUnstuck {
+				uh.unstuckHeapChunks[existingChunk.id] = existingChunk
+			}
+			if test.existsStuck {
+				existingChunk.stuck = true
+				uh.stuckHeapChunks[existingChunk.id] = existingChunk
+			}
+			newChunk := &unfinishedUploadChunk{
+				id:                  existingChunk.id,
+				sourceReader:        test.newChunkSR,
+				piecesRegistered:    1, // This is so the chunk is viewed as incomplete
+				staticMemoryManager: rt.renter.staticRepairMemoryManager,
+			}
 
-		// Try and Update the Chunk in the Heap
-		err := uh.managedTryUpdate(newChunk, test.ct)
-		if err != nil {
-			t.Fatalf("Error with TryUpdate for test %v; err: %v", test.name, err)
-		}
+			// Try and Update the Chunk in the Heap
+			err := uh.managedTryUpdate(newChunk, test.ct)
+			if err != nil {
+				t.Fatalf("Error with TryUpdate for test %v; err: %v", test.name, err)
+			}
 
-		// Check to see if the chunk is still in the heap
-		if test.existAfterUpdate != uh.managedExists(existingChunk.id) {
-			t.Errorf("Chunk should exist after update %v for test %v", test.existAfterUpdate, test.name)
-		}
+			// Check to see if the chunk is still in the heap
+			if test.existAfterUpdate != uh.managedExists(existingChunk.id) {
+				t.Errorf("Chunk should exist after update %v for test %v", test.existAfterUpdate, test.name)
+			}
 
-		// Push the new chunk onto the heap
-		_, pushed := uh.managedPush(newChunk, test.ct)
-		if test.pushAfterUpdate != pushed {
-			t.Errorf("Chunk should have been pushed %v for test %v", test.pushAfterUpdate, test.name)
-		}
+			// Push the new chunk onto the heap
+			_, pushed := uh.managedPush(newChunk, test.ct)
+			if test.pushAfterUpdate != pushed {
+				t.Errorf("Chunk should have been pushed %v for test %v", test.pushAfterUpdate, test.name)
+			}
+		})
 	}
 }
 
@@ -1296,9 +1264,11 @@ func testManagedPruneIncompleteChunks(t *testing.T) {
 	// check an unhealthy unstuck chunk
 	copy1 := file.Copy()
 	unstuckUnhealhy := &unfinishedUploadChunk{
-		fileEntry: copy1,
-		health:    1,
-		offset:    3,
+		id:           uploadChunkID{index: 0},
+		fileEntry:    copy1,
+		health:       1,
+		offset:       3,
+		staticRenter: rt.renter,
 	}
 	// Close file for unhealthy chunk at end of test
 	defer func() {
@@ -1309,20 +1279,24 @@ func testManagedPruneIncompleteChunks(t *testing.T) {
 
 	// check an healthy unstuck chunk
 	unstuckHealthy := &unfinishedUploadChunk{
-		fileEntry: file.Copy(),
-		health:    0,
-		offset:    2,
+		id:           uploadChunkID{index: 1},
+		fileEntry:    file.Copy(),
+		health:       0,
+		offset:       2,
+		staticRenter: rt.renter,
 	}
 	// No need to close file for healthy chunk at end of test because it is
 	// closed by managedPruneIncompleteChunks
 
 	// check an unhealthy stuck chunk
 	copy2 := file.Copy()
-	stuckUnhealhy := &unfinishedUploadChunk{
-		fileEntry: copy2,
-		health:    1,
-		offset:    1,
-		stuck:     true,
+	stuckUnhealthy := &unfinishedUploadChunk{
+		id:           uploadChunkID{index: 2},
+		fileEntry:    copy2,
+		health:       1,
+		offset:       1,
+		stuck:        true,
+		staticRenter: rt.renter,
 	}
 	// Close file for unhealthy chunk at end of test
 	defer func() {
@@ -1333,16 +1307,26 @@ func testManagedPruneIncompleteChunks(t *testing.T) {
 
 	// check an healthy stuck chunk
 	stuckHealthy := &unfinishedUploadChunk{
-		fileEntry: file.Copy(),
-		health:    0,
-		offset:    0,
-		stuck:     true,
+		id:           uploadChunkID{index: 3},
+		fileEntry:    file.Copy(),
+		health:       0,
+		offset:       0,
+		stuck:        true,
+		staticRenter: rt.renter,
 	}
+
+	rt.renter.repairingChunksMu.Lock()
+	rt.renter.repairingChunks[unstuckHealthy.id] = unstuckHealthy
+	rt.renter.repairingChunks[unstuckUnhealhy.id] = unstuckUnhealhy
+	rt.renter.repairingChunks[stuckHealthy.id] = stuckHealthy
+	rt.renter.repairingChunks[stuckUnhealthy.id] = stuckUnhealthy
+	rt.renter.repairingChunksMu.Unlock()
+
 	// No need to close file for healthy chunk at end of test because it is
 	// closed by managedPruneIncompleteChunks
 
 	// Create a slice of unfinished chunks
-	uucs := []*unfinishedUploadChunk{unstuckUnhealhy, unstuckHealthy, stuckUnhealhy, stuckHealthy}
+	uucs := []*unfinishedUploadChunk{unstuckUnhealhy, unstuckHealthy, stuckUnhealthy, stuckHealthy}
 
 	// Call managedPruneIncompleteChunks
 	incompleteChunks := rt.renter.managedPruneIncompleteChunks(uucs)

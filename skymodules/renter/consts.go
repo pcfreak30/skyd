@@ -46,7 +46,7 @@ var (
 	cachedUtilitiesUpdateInterval = build.Select(build.Var{
 		Dev:      time.Minute,
 		Standard: time.Minute * 10,
-		Testing:  time.Second * 3,
+		Testing:  100 * time.Millisecond,
 	}).(time.Duration)
 )
 
