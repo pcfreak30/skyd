@@ -201,8 +201,8 @@ func tryAutoUnlock(srv *server.Server) {
 	}
 }
 
-// parseMongoConfig establishes a connection to a mongodb if specified by the
-// environment vars.
+// parseMongoConfig parses the information required for connecting to a mongodb
+// instance and adds it to the params.
 func parseMongoConfig(params node.NodeParams) (node.NodeParams, error) {
 	// Check if the uri was set. If not, we are done
 	mongouri, ok := build.MongoDBURI()
@@ -254,7 +254,7 @@ func startDaemon(config Config) (err error) {
 	// Create the node params by parsing the modules specified in the config.
 	nodeParams := parseModules(config)
 
-	// Load mongdb config.
+	// Load mongodb config.
 	nodeParams, err = parseMongoConfig(nodeParams)
 	if err != nil {
 		return errors.AddContext(err, "failed to load mongodb config")

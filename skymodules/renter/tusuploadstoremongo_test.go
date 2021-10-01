@@ -172,6 +172,12 @@ func TestMongoLocking(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Unlock A again. This should be legal.
+	err = lockA1.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Now locking A should work with lockA2.
 	err = lockA2.Lock()
 	if err != nil {
@@ -190,7 +196,6 @@ func TestPrune(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
 
 	us, err := newMongoTestStore(t.Name())
 	if err != nil {
@@ -213,32 +218,32 @@ func TestPrune(t *testing.T) {
 	uploadRecent := MongoTUSUpload{
 		ID:          "recent",
 		LastWrite:   time.Now().UTC(),
-		PortalNames: []string{us.staticPortalHostname},
+		ServerNames: []string{us.staticPortalHostname},
 	}
 
 	// The outdated one will be pruned.
 	uploadOutdated := MongoTUSUpload{
 		ID:          "outdated",
-		PortalNames: []string{us.staticPortalHostname},
+		ServerNames: []string{us.staticPortalHostname},
 	}
 
 	// The outdated one without portal will be pruned.
 	uploadOutdatedNoPortal := MongoTUSUpload{
 		ID:          "outdatedNoPortal",
-		PortalNames: []string{},
+		ServerNames: []string{},
 	}
 
 	// The outdated one which was set by some other portal won't be pruned.
 	uploadOutdatedButWrongPortal := MongoTUSUpload{
 		ID:          "outdatedWrongPortal",
-		PortalNames: []string{"someOtherPortal"},
+		ServerNames: []string{"someOtherPortal"},
 	}
 
 	// The outdated one which was successfully completed won't be pruned.
 	uploadOutdatedButComplete := MongoTUSUpload{
 		ID:          "outdatedButComplete",
 		Complete:    true,
-		PortalNames: []string{us.staticPortalHostname},
+		ServerNames: []string{us.staticPortalHostname},
 	}
 
 	// The outdated one with multiple hosts won't be fully pruned but the portal
@@ -246,7 +251,7 @@ func TestPrune(t *testing.T) {
 	uploadOutdatedMultiPortal := MongoTUSUpload{
 		ID:          "outdatedMultiPortal",
 		Complete:    false,
-		PortalNames: []string{us.staticPortalHostname, "otherPortal"},
+		ServerNames: []string{us.staticPortalHostname, "otherPortal"},
 	}
 
 	// Reset collection.
@@ -290,11 +295,23 @@ func TestPrune(t *testing.T) {
 		for i, u := range toPrune {
 			t.Log(i, u.(*MongoTUSUpload).ID)
 		}
-		t.Fatalf("expected %v uploads but got %v", 4, len(toPrune))
+		t.Fatalf("expected %v uploads but got %v", 3, len(toPrune))
 	}
+
+	// Check the result. The outdated upload, the outdated upload without
+	// portal name and the outdated upload with multiple portal names should
+	// be returned.
 	prunedUpload := toPrune[0].(*MongoTUSUpload)
 	if !reflect.DeepEqual(*prunedUpload, uploadOutdated) {
 		t.Fatal("wrong upload", toPrune[0], uploadOutdated)
+	}
+	prunedUpload = toPrune[1].(*MongoTUSUpload)
+	if !reflect.DeepEqual(*prunedUpload, uploadOutdatedNoPortal) {
+		t.Fatal("wrong upload", toPrune[1], uploadOutdatedNoPortal)
+	}
+	prunedUpload = toPrune[2].(*MongoTUSUpload)
+	if !reflect.DeepEqual(*prunedUpload, uploadOutdatedMultiPortal) {
+		t.Fatal("wrong upload", toPrune[2], uploadOutdatedMultiPortal)
 	}
 
 	// Prune the uploads.
@@ -331,8 +348,8 @@ func TestPrune(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	portalNames := upload.(*MongoTUSUpload).PortalNames
-	if !reflect.DeepEqual(portalNames, uploadRecent.PortalNames) {
+	portalNames := upload.(*MongoTUSUpload).ServerNames
+	if !reflect.DeepEqual(portalNames, uploadRecent.ServerNames) {
 		t.Fatal("wrong portal name", portalNames)
 	}
 	// The outdated but complete one should still exist.
@@ -340,8 +357,8 @@ func TestPrune(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	portalNames = upload.(*MongoTUSUpload).PortalNames
-	if !reflect.DeepEqual(portalNames, uploadOutdatedButComplete.PortalNames) {
+	portalNames = upload.(*MongoTUSUpload).ServerNames
+	if !reflect.DeepEqual(portalNames, uploadOutdatedButComplete.ServerNames) {
 		t.Fatal("wrong portal name", portalNames)
 	}
 	// The outdated one with the wrong portal should still exist but is no
@@ -355,8 +372,8 @@ func TestPrune(t *testing.T) {
 	if err = r.Decode(&mu); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(mu.PortalNames, uploadOutdatedButWrongPortal.PortalNames) {
-		t.Fatal("wrong portal name", mu.PortalNames)
+	if !reflect.DeepEqual(mu.ServerNames, uploadOutdatedButWrongPortal.ServerNames) {
+		t.Fatal("wrong portal name", mu.ServerNames)
 	}
 	// The one with multiple portals should exist and have 1 portal left but
 	// it's also no longer fetchable using GetUpload.
@@ -368,7 +385,7 @@ func TestPrune(t *testing.T) {
 	if err = r.Decode(&mu); err != nil {
 		t.Fatal(err)
 	}
-	if len(mu.PortalNames) != 1 || mu.PortalNames[0] != "otherPortal" {
+	if len(mu.ServerNames) != 1 || mu.ServerNames[0] != "otherPortal" {
 		t.Fatal("wrong portal name remains", portalNames)
 	}
 }
@@ -378,7 +395,6 @@ func TestCreateGetUpload(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
 
 	us, err := newMongoTestStore(t.Name())
 	if err != nil {
@@ -410,7 +426,7 @@ func TestCreateGetUpload(t *testing.T) {
 	expectedUpload := MongoTUSUpload{
 		ID:          fi.ID,
 		Complete:    false,
-		PortalNames: []string{us.staticPortalHostname},
+		ServerNames: []string{us.staticPortalHostname},
 
 		FanoutBytes: nil,
 		FileInfo:    fi,
@@ -488,7 +504,6 @@ func TestCommitWriteChunk(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
 
 	// Use different stores for creating the uploads and getting the upload.
 	createStore, err := newMongoTestStore("create")
@@ -550,8 +565,8 @@ func TestCommitWriteChunk(t *testing.T) {
 	if !bytes.Equal(upload.Metadata, sm) {
 		t.Fatal("wrong metadata")
 	}
-	if !reflect.DeepEqual(upload.PortalNames, []string{"create", "commit"}) {
-		t.Fatal("wrong portalnames", upload.PortalNames)
+	if !reflect.DeepEqual(upload.ServerNames, []string{"create", "commit"}) {
+		t.Fatal("wrong portalnames", upload.ServerNames)
 	}
 
 	// Second commit.
@@ -581,8 +596,31 @@ func TestCommitWriteChunk(t *testing.T) {
 	if !bytes.Equal(upload.Metadata, sm) {
 		t.Fatal("wrong metadata")
 	}
-	if !reflect.DeepEqual(upload.PortalNames, []string{"create", "commit"}) {
-		t.Fatal("wrong portalnames", upload.PortalNames)
+	if !reflect.DeepEqual(upload.ServerNames, []string{"create", "commit"}) {
+		t.Fatal("wrong portalnames", upload.ServerNames)
+	}
+}
+
+// TestNewSkynetTUSMongoUploadStore tests newSkynetTUSMongoUploadStore.
+func TestNewSkynetTUSMongoUploadStore(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Try create with empty name. Shouldn't work.
+	us, err := newMongoTestStore("")
+	if err == nil {
+		t.Fatal("shouldn't work")
+	}
+
+	// Try create with name. Should work.
+	us, err = newMongoTestStore(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := us.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -592,7 +630,6 @@ func TestCommitFinishUpload(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
 
 	us, err := newMongoTestStore(t.Name())
 	if err != nil {

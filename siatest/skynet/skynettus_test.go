@@ -789,6 +789,9 @@ func TestSkynetResumeOnSeparatePortal(t *testing.T) {
 
 	// Create uploader.
 	tcA, upload, err := portalA.SkynetTUSNewUploadFromBytes(uploadData, chunkSize)
+	if err != nil {
+		t.Fatal(err)
+	}
 	uploaderA, err := tcA.CreateUpload(upload)
 	if err != nil {
 		t.Fatal(err)
@@ -799,6 +802,21 @@ func TestSkynetResumeOnSeparatePortal(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Both portal should not be able to provide a skylink yet.
+	urlA, found := tcA.Config.Store.Get(upload.Fingerprint)
+	if !found {
+		t.Fatal("url should exist")
+	}
+	uploadID := filepath.Base(urlA)
+	skylinkA, err := portalA.SkylinkFromTUSID(uploadID)
+	if err == nil {
+		t.Fatal(err)
+	}
+	skylinkB, err := portalB.SkylinkFromTUSID(uploadID)
+	if err == nil {
+		t.Fatal(err)
+	}
+
 	// Create a new client for portal B.
 	tcB, err := portalB.SkynetTUSClient(chunkSize)
 	if err != nil {
@@ -806,11 +824,6 @@ func TestSkynetResumeOnSeparatePortal(t *testing.T) {
 	}
 
 	// Store the upload's url in tcB's storage for 'ResumeUpload' to work.
-	urlA, found := tcA.Config.Store.Get(upload.Fingerprint)
-	if !found {
-		t.Fatal("url should exist")
-	}
-	uploadID := filepath.Base(urlA)
 	urlB := fmt.Sprintf("%s/%s", tcB.Url, uploadID)
 	tcB.Config.Store.Set(upload.Fingerprint, urlB)
 
@@ -824,11 +837,11 @@ func TestSkynetResumeOnSeparatePortal(t *testing.T) {
 	}
 
 	// Both portal should be able to provide a skylink and download it.
-	skylinkA, err := portalA.SkylinkFromTUSID(uploadID)
+	skylinkA, err = portalA.SkylinkFromTUSID(uploadID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	skylinkB, err := portalB.SkylinkFromTUSID(uploadID)
+	skylinkB, err = portalB.SkylinkFromTUSID(uploadID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -867,19 +880,19 @@ func TestSkynetResumeOnSeparatePortal(t *testing.T) {
 	// Should have 1 upload.
 	if len(uploads) != 1 {
 		for _, u := range uploads {
-			t.Log(u.ID, u.PortalNames)
+			t.Log(u.ID, u.ServerNames)
 		}
 		t.Fatal("expected 1 upload got", len(uploads))
 	}
 	u := uploads[0]
 
 	// Upload should contain both portal names.
-	if len(u.PortalNames) != 2 {
-		t.Fatal("expected 2 portals got", u.PortalNames)
+	if len(u.ServerNames) != 2 {
+		t.Fatal("expected 2 portals got", u.ServerNames)
 	}
-	portalNames := strings.Join(u.PortalNames, "")
+	portalNames := strings.Join(u.ServerNames, "")
 	if portalNames != "AB" && portalNames != "BA" {
-		t.Fatal("wrong portal names", u.PortalNames)
+		t.Fatal("wrong portal names", u.ServerNames)
 	}
 
 	// Drop uploads at the end of the test.

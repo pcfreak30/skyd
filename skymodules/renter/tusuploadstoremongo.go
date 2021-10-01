@@ -2,7 +2,6 @@ package renter
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"time"
 
@@ -26,6 +25,11 @@ const (
 	// then crashes before unlocking it.
 	mongoLockTTL = 300 // 5 minutes
 
+	// mongoDefaultTimeout is the default timeout for mongo operations that
+	// require a context but where the input arguments don't contain a
+	// context.
+	mongoDefaultTimeout = time.Minute
+
 	// TusDBName is the name of the database all TUS related data is stored
 	// in.
 	TusDBName = "tus"
@@ -37,6 +41,10 @@ const (
 	// tusLocksMongoCollectionName is the name of the collection within the
 	// database used to store locks.
 	tusLocksMongoCollectionName = "locks"
+
+	// tusLockOwnerName is passed as the 'Owner' when creating a new lock in
+	// the db for tus uploads.
+	tusLockOwnerName = "TUS"
 )
 
 // ErrUploadFinished is returned if we try to finish an upload that is already
@@ -45,8 +53,6 @@ var ErrUploadFinished = errors.New("upload already finished")
 
 type (
 	skynetTUSMongoUploadStore struct {
-		ctx context.Context
-
 		staticClient         *mongo.Client
 		staticLockClient     *lock.Client
 		staticPortalHostname string
@@ -57,7 +63,7 @@ type (
 		ID          string    `bson:"_id"`
 		Complete    bool      `bson:"complete"`
 		LastWrite   time.Time `bson:"lastwrite"`
-		PortalNames []string  `bson:"portalnames"`
+		ServerNames []string  `bson:"servernames"`
 
 		FanoutBytes []byte             `bson:"fanoutbytes"`
 		FileInfo    handler.FileInfo   `bson:"fileinfo"`
@@ -83,7 +89,7 @@ type (
 
 // Close closes the upload store and disconnects it from the backend.
 func (us *skynetTUSMongoUploadStore) Close() error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), mongoDefaultTimeout)
 	defer cancel()
 	return us.staticClient.Disconnect(ctx)
 }
@@ -104,11 +110,13 @@ func (us *skynetTUSMongoUploadStore) NewLock(uploadID string) (handler.Lock, err
 func (l *skynetMongoLock) Lock() error {
 	client := l.staticClient
 	ld := lock.LockDetails{
-		Owner: "TUS",
+		Owner: tusLockOwnerName,
 		Host:  l.staticPortalHostname,
 		TTL:   mongoLockTTL,
 	}
-	err := client.XLock(context.Background(), l.staticUploadID, l.staticUploadID, ld)
+	ctx, cancel := context.WithTimeout(context.Background(), mongoDefaultTimeout)
+	defer cancel()
+	err := client.XLock(ctx, l.staticUploadID, l.staticUploadID, ld)
 	if err == lock.ErrAlreadyLocked {
 		return handler.ErrFileLocked
 	}
@@ -118,23 +126,21 @@ func (l *skynetMongoLock) Lock() error {
 // Unlock attempts to unlock an upload. It will retry doing so for a certain
 // time before giving up.
 func (l *skynetMongoLock) Unlock() error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), mongoDefaultTimeout)
 	defer cancel()
 	var err error
-LOOP:
 	for {
-		_, err = l.staticClient.Unlock(context.Background(), l.staticUploadID)
+		_, err = l.staticClient.Unlock(ctx, l.staticUploadID)
 		if err == nil {
 			return nil
 		}
 		select {
 		case <-ctx.Done():
-			break LOOP
+			build.Critical("Failed to unlock the lock", err)
+			return err
 		case <-time.After(time.Second):
 		}
 	}
-	build.Critical("Failed to unlock the lock", err)
-	return err
 }
 
 // ToPrune returns the uploads which should be pruned by the portal.
@@ -147,8 +153,8 @@ func (us *skynetTUSMongoUploadStore) ToPrune(ctx context.Context) ([]skymodules.
 		},
 		"complete": false,
 		"$or": bson.A{
-			bson.M{"portalnames": us.staticPortalHostname},
-			bson.M{"portalnames": bson.M{"$size": 0}},
+			bson.M{"servernames": us.staticPortalHostname},
+			bson.M{"servernames": bson.M{"$size": 0}},
 		},
 	}
 	// Find uploads.
@@ -161,7 +167,8 @@ func (us *skynetTUSMongoUploadStore) ToPrune(ctx context.Context) ([]skymodules.
 	for cursor.Next(ctx) {
 		var upload MongoTUSUpload
 		if err := cursor.Decode(&upload); err != nil {
-			return nil, err
+			build.Critical("ToPrune: failed to decode upload", err)
+			continue
 		}
 		uploads = append(uploads, &upload)
 	}
@@ -181,7 +188,7 @@ func (us *skynetTUSMongoUploadStore) Prune(ctx context.Context, ids []string) er
 	}
 	_, err := c.UpdateMany(ctx, updateFilter, bson.M{
 		"$pull": bson.M{
-			"portalnames": us.staticPortalHostname,
+			"servernames": us.staticPortalHostname,
 		},
 	})
 	if err != nil {
@@ -193,10 +200,8 @@ func (us *skynetTUSMongoUploadStore) Prune(ctx context.Context, ids []string) er
 		"_id": bson.M{
 			"$in": ids,
 		},
-		"complete": false,
-		"$or": bson.A{
-			bson.M{"portalnames": bson.M{"$size": 0}},
-		},
+		"complete":    false,
+		"servernames": bson.M{"$size": 0},
 	})
 	if err != nil {
 		return errors.AddContext(err, "failed to purge uploads")
@@ -204,7 +209,7 @@ func (us *skynetTUSMongoUploadStore) Prune(ctx context.Context, ids []string) er
 
 	// Finally purge old locks.
 	purger := lock.NewPurger(us.staticLockClient)
-	_, err = purger.Purge(us.ctx)
+	_, err = purger.Purge(ctx)
 	if err != nil {
 		return errors.AddContext(err, "failed to purge old locks")
 	}
@@ -224,7 +229,7 @@ func (us *skynetTUSMongoUploadStore) CreateUpload(ctx context.Context, fi handle
 
 		BaseChunkRedundancy: baseChunkRedundancy,
 		Metadata:            sm,
-		PortalNames:         []string{us.staticPortalHostname},
+		ServerNames:         []string{us.staticPortalHostname},
 
 		FanoutDataPieces:   fanoutDataPieces,
 		FanoutParityPieces: fanoutParityPieces,
@@ -243,11 +248,11 @@ func (us *skynetTUSMongoUploadStore) CreateUpload(ctx context.Context, fi handle
 // GetUpload returns the upload specified by the given id. The upload will also
 // have this portal's name added to it.
 func (us *skynetTUSMongoUploadStore) GetUpload(ctx context.Context, id string) (skymodules.SkynetTUSUpload, error) {
-	r := us.staticUploadCollection().FindOneAndUpdate(ctx, bson.M{
+	// Ignore uploads which are ready to be pruned to avoid a loop
+	// where portals keep adding themselves back and then remove
+	// themselves again as part of the pruning process.
+	filter := bson.M{
 		"_id": id,
-		// Ignore uploads which are ready to be pruned to avoid a loop
-		// where portals keep adding themselves back and then remove
-		// themselves again as part of the pruning process.
 		"$or": bson.A{
 			bson.M{
 				"lastwrite": bson.M{
@@ -258,17 +263,21 @@ func (us *skynetTUSMongoUploadStore) GetUpload(ctx context.Context, id string) (
 				"complete": true,
 			},
 		},
-	}, bson.M{
+	}
+	// Add the portal to the set of servers.
+	update := bson.M{
 		"$addToSet": bson.M{
-			"portalnames": us.staticPortalHostname,
+			"servernames": us.staticPortalHostname,
 		},
-	}, options.FindOneAndUpdate().SetReturnDocument(options.After))
+	}
+	r := us.staticUploadCollection().FindOneAndUpdate(ctx, filter, update, options.FindOneAndUpdate().SetReturnDocument(options.After))
 	if errors.Contains(r.Err(), mongo.ErrNoDocuments) {
 		return nil, os.ErrNotExist // return os.ErrNotExist for TUS
 	}
 	if r.Err() != nil {
 		return nil, r.Err()
 	}
+	// Decode result.
 	var upload MongoTUSUpload
 	if err := r.Decode(&upload); err != nil {
 		return nil, errors.AddContext(err, "failed to decode upload")
@@ -277,7 +286,7 @@ func (us *skynetTUSMongoUploadStore) GetUpload(ctx context.Context, id string) (
 	return &upload, nil
 }
 
-// staticLockCollection returns the mongo collection for the uploads.
+// staticUploadCollection returns the mongo collection for the uploads.
 func (us *skynetTUSMongoUploadStore) staticUploadCollection() *mongo.Collection {
 	return us.staticClient.Database(TusDBName).Collection(TusUploadsMongoCollectionName)
 }
@@ -350,16 +359,13 @@ func (u *MongoTUSUpload) commitWriteChunk(ctx context.Context, set bson.M, newOf
 	u.LastWrite = newLastWrite
 	set["fileinfo"] = u.FileInfo
 	set["lastwrite"] = u.LastWrite.UTC()
-	set["portalnames"] = u.PortalNames
+	set["servernames"] = u.ServerNames
 	update := bson.M{
 		"$set": set,
 	}
 	result := uploads.FindOneAndUpdate(ctx, bson.M{"_id": u.FileInfo.ID}, update)
 	if errors.Contains(result.Err(), mongo.ErrNoDocuments) {
 		return os.ErrNotExist // return os.ErrNotExist for TUS
-	}
-	if result.Err() != nil {
-		fmt.Println("ERR:", result.Err())
 	}
 	return result.Err()
 }
@@ -394,12 +400,18 @@ func (u *MongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodu
 // Fanout returns the fanout of the upload. Should only be
 // called once it's done uploading.
 func (u *MongoTUSUpload) Fanout(ctx context.Context) ([]byte, error) {
+	if !u.Complete {
+		return nil, errors.New("Fanout: called before upload is complete")
+	}
 	return u.FanoutBytes, nil
 }
 
 // SkyfileMetadata returns the metadata of the upload. Should
 // only be called once it's done uploading.
 func (u *MongoTUSUpload) SkyfileMetadata(ctx context.Context) ([]byte, error) {
+	if !u.Complete {
+		return nil, errors.New("SkyfileMetadata: called before upload is complete")
+	}
 	return u.Metadata, nil
 }
 
@@ -426,6 +438,11 @@ func newSkynetTUSMongoUploadStore(ctx context.Context, uri, portalName string, c
 	client, err := mongo.Connect(ctx, opts)
 	if err != nil {
 		return nil, err
+	}
+
+	// Sanity check portal name.
+	if portalName == "" {
+		return nil, errors.New("portalName can't be empty string")
 	}
 
 	// Create store.
