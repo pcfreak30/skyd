@@ -400,18 +400,12 @@ func (u *MongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodu
 // Fanout returns the fanout of the upload. Should only be
 // called once it's done uploading.
 func (u *MongoTUSUpload) Fanout(ctx context.Context) ([]byte, error) {
-	if !u.Complete {
-		return nil, errors.New("Fanout: called before upload is complete")
-	}
 	return u.FanoutBytes, nil
 }
 
 // SkyfileMetadata returns the metadata of the upload. Should
 // only be called once it's done uploading.
 func (u *MongoTUSUpload) SkyfileMetadata(ctx context.Context) ([]byte, error) {
-	if !u.Complete {
-		return nil, errors.New("SkyfileMetadata: called before upload is complete")
-	}
 	return u.Metadata, nil
 }
 
