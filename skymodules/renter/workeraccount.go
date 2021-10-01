@@ -659,6 +659,7 @@ func (w *worker) managedRefillAccount() {
 	//
 	// At the same time that we track the deposit, we defer a function to check
 	// the error on the deposit
+	w.accountSyncMu.Lock()
 	w.staticAccount.managedTrackDeposit(amount)
 	var err error
 	defer func() {
@@ -666,6 +667,7 @@ func (w *worker) managedRefillAccount() {
 		// need to be refilled until the worker has spent up the funds in the
 		// account.
 		w.staticAccount.managedCommitDeposit(amount, err == nil)
+		w.accountSyncMu.Unlock()
 
 		// Track the outcome of the account refill - this ensures a proper
 		// working of the maintenance cooldown mechanism.

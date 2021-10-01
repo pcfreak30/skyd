@@ -149,6 +149,8 @@ func lookupRegistry(w *worker, sid modules.RegistryEntryID, spk *types.SiaPublic
 	resp := responses[0]
 	if resp.OutputLength == 0 {
 		// If the entry wasn't found, we are issued a refund.
+		w.accountSyncMu.Lock()
+		defer w.accountSyncMu.Unlock()
 		w.staticAccount.managedTrackDeposit(refund)
 		w.staticAccount.managedCommitDeposit(refund, true)
 		return nil, nil
