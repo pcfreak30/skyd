@@ -728,7 +728,29 @@ func TestSkynetResumeOnSeparatePortal(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	// NOTE: Don't run this test in parallel with other tests to make sure
+	// we can drop the collection
+
+	// Connect to db directly.
+	uri, ok := build.MongoDBURI()
+	if !ok {
+		t.Fatal("uri not set")
+	}
+	opts := options.Client().
+		ApplyURI(uri).
+		SetAuth(mongoTestCreds)
+
+	client, err := mongo.Connect(context.Background(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Disconnect(context.Background())
+
+	// Clear collection before the test.
+	collection := client.Database(renter.TusDBName).Collection(renter.TusUploadsMongoCollectionName)
+	if err := collection.Drop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 
 	// Prepare a testgroup.
 	groupParams := siatest.GroupParams{
@@ -746,13 +768,9 @@ func TestSkynetResumeOnSeparatePortal(t *testing.T) {
 		}
 	}()
 
-	// Create 2 portal with a mongo connection.
+	// Create 2 portals with a mongo connection.
 	rt := node.RenterTemplate
 	rt.CreatePortal = true
-	uri, ok := build.MongoDBURI()
-	if !ok {
-		t.Fatal("uri not set")
-	}
 	rt.MongoUploadStoreURI = uri
 	rt.MongoUploadStoreCreds = mongoTestCreds
 	rtA, rtB := rt, rt
@@ -830,19 +848,6 @@ func TestSkynetResumeOnSeparatePortal(t *testing.T) {
 	if !bytes.Equal(dataB, uploadData) {
 		t.Fatal("dataB mismatch")
 	}
-
-	// Connect to db directly.
-	opts := options.Client().
-		ApplyURI(uri).
-		SetAuth(mongoTestCreds)
-
-	client, err := mongo.Connect(context.Background(), opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer client.Disconnect(context.Background())
-
-	collection := client.Database(renter.TusDBName).Collection(renter.TusUploadsMongoCollectionName)
 
 	// Get all uploads.
 	c, err := collection.Find(context.Background(), bson.M{})

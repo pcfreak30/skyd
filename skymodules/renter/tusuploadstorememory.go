@@ -107,6 +107,7 @@ func (u *skynetInMemoryUpload) CommitFinishUpload(_ context.Context, skylink sky
 	}
 	u.fi.Offset = u.fi.Size
 	u.complete = true
+	u.lastWrite = time.Now()
 	u.fi.MetaData["Skylink"] = skylink.String()
 	return nil
 }
