@@ -1539,3 +1539,53 @@ func TestCheckSubscriptionGouging(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestSyncAccountBalanceToHostSubscriptionPanic is a regression test to verify
+// that calling externSyncAccountBalanceToHost while running a subscription
+// won't trigger a build.Critical in externSyncAccountBalanceToHost.
+func TestSyncAccountBalanceToHostSubscriptionPanic(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyPreventEARefill{}, skymodules.SkydProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Manually fill the EA once.
+	wt.managedRefillAccount()
+
+	// Random registry value.
+	srv, spk, _ := randomRegistryValue()
+
+	timeout := time.After(10 * time.Second)
+	finished := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-timeout:
+				close(finished)
+				return
+			default:
+			}
+			wt.externSyncAccountBalanceToHost()
+		}
+	}()
+
+	// Create a subscriber.
+	sub := wt.staticRenter.staticSubscriptionManager.NewSubscriber(func(_ skymodules.RegistryEntry) error { return nil })
+	defer sub.Close()
+
+	// Start a subscription.
+	_ = sub.Subscribe(spk, srv.Tweak)
+
+	// Wait for loop to end.
+	<-finished
+}

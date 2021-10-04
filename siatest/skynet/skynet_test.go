@@ -5593,8 +5593,8 @@ func testHostsForRegistryUpdate(t *testing.T, tg *siatest.TestGroup) {
 
 	// Store them in a map for easier lookup.
 	hostMap := make(map[string]struct{})
-	for _, hpk := range hg.Hosts {
-		hostMap[hpk.String()] = struct{}{}
+	for _, host := range hg.Hosts {
+		hostMap[host.Pubkey.String()] = struct{}{}
 	}
 
 	// Compare them to the active contracts.
