@@ -524,11 +524,6 @@ func newWithdrawalMessage(id modules.AccountID, amount types.Currency, blockHeig
 // only called by that thread, and no other thread launches jobs, this function
 // is threadsafe.
 func (w *worker) externSyncAccountBalanceToHost() {
-	// Grab the account sync lock to prevent the subscription loop from
-	// starting new pending deposits or withdrawals.
-	w.accountSyncMu.Lock()
-	defer w.accountSyncMu.Unlock()
-
 	// Spin/block until the worker has no jobs in motion. This should only be
 	// called from the primary loop of the worker, meaning that no new jobs will
 	// be launched while we spin.
@@ -556,6 +551,13 @@ func (w *worker) externSyncAccountBalanceToHost() {
 			return
 		}
 	}
+
+	// Grab the account sync lock to prevent the subscription loop from
+	// starting new pending deposits or withdrawals. We do this after the
+	// idle check since it might take a while for all jobs to finish and we
+	// don't want to unnecessarily block subscriptions.
+	w.accountSyncMu.Lock()
+	defer w.accountSyncMu.Unlock()
 
 	// Do a check to ensure that the worker is still idle after the function is
 	// complete. This should help to catch any situation where the worker is
