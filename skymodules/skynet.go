@@ -118,6 +118,11 @@ var SkynetFeePayoutCheckInterval = build.Select(build.Var{
 }).(time.Duration)
 
 type (
+	// HostForRegistryUpdate describes a single host for a registry update.
+	HostForRegistryUpdate struct {
+		Pubkey types.SiaPublicKey `json:"pubkey"`
+	}
+
 	// SkyfileSubfiles contains the subfiles of a skyfile, indexed by their
 	// filename.
 	SkyfileSubfiles map[string]SkyfileSubfileMetadata

@@ -433,6 +433,8 @@ func (w *worker) managedRefillSubscription(stream siamux.Stream, pt *modules.RPC
 	fundAmt := expectedBudget.Sub(budget.Remaining())
 
 	// Track the withdrawal.
+	w.accountSyncMu.Lock()
+	defer w.accountSyncMu.Unlock()
 	w.staticAccount.managedTrackWithdrawal(fundAmt)
 
 	// Fund the subscription.
@@ -812,6 +814,7 @@ func (w *worker) threadedSubscriptionLoop() {
 		budget := modules.NewBudget(initialBudget)
 
 		// Track the withdrawal.
+		w.accountSyncMu.Lock()
 		w.staticAccount.managedTrackWithdrawal(initialBudget)
 
 		// Prepare a unique handler for the host to subscribe to.
@@ -824,6 +827,7 @@ func (w *worker) threadedSubscriptionLoop() {
 		if err != nil {
 			// Mark withdrawal as failed.
 			w.staticAccount.managedCommitWithdrawal(categorySubscription, initialBudget, types.ZeroCurrency, false)
+			w.accountSyncMu.Unlock()
 
 			// Log error and increment cooldown.
 			w.staticRenter.staticLog.Printf("Worker %v: failed to begin subscription: %v", w.staticHostPubKeyStr, err)
@@ -833,6 +837,7 @@ func (w *worker) threadedSubscriptionLoop() {
 
 		// Mark withdrawal as successful.
 		w.staticAccount.managedCommitWithdrawal(categorySubscription, initialBudget, types.ZeroCurrency, false)
+		w.accountSyncMu.Unlock()
 
 		// Run the subscription. The error is checked after closing the handler
 		// and the refund.
@@ -841,8 +846,10 @@ func (w *worker) threadedSubscriptionLoop() {
 		// Deposit the refund.
 		// TODO: (f/u) the refund should be reflected in the spending metrics.
 		refund := budget.Remaining()
+		w.accountSyncMu.Lock()
 		w.staticAccount.managedTrackDeposit(refund)
 		w.staticAccount.managedCommitDeposit(refund, true)
+		w.accountSyncMu.Unlock()
 
 		// Check the error.
 		if errors.Contains(errSubscription, threadgroup.ErrStopped) {
