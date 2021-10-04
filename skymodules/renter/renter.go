@@ -247,6 +247,9 @@ type Renter struct {
 	// prevent recomputing them too often.
 	cachedUtilities cachedUtilities
 
+	repairingChunksMu sync.Mutex
+	repairingChunks   map[uploadChunkID]*unfinishedUploadChunk
+
 	// staticSubscriptionManager is the global manager of registry
 	// subscriptions.
 	staticSubscriptionManager *registrySubscriptionManager
@@ -1077,6 +1080,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		// Initiate skynet resources
 		staticSkylinkManager: newSkylinkManager(),
 
+		repairingChunks: make(map[uploadChunkID]*unfinishedUploadChunk),
+
 		// Making newDownloads a buffered channel means that most of the time, a
 		// new download will trigger an unnecessary extra iteration of the
 		// download heap loop, searching for a chunk that's not there. This is
@@ -1089,7 +1094,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		staticFanoutSectorDownloadStats: skymodules.NewSectorDownloadStats(),
 
 		staticUploadHeap: uploadHeap{
-			repairingChunks:   make(map[uploadChunkID]*unfinishedUploadChunk),
 			stuckHeapChunks:   make(map[uploadChunkID]*unfinishedUploadChunk),
 			unstuckHeapChunks: make(map[uploadChunkID]*unfinishedUploadChunk),
 
