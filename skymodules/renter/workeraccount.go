@@ -552,6 +552,13 @@ func (w *worker) externSyncAccountBalanceToHost() {
 		}
 	}
 
+	// Grab the account sync lock to prevent the subscription loop from
+	// starting new pending deposits or withdrawals. We do this after the
+	// idle check since it might take a while for all jobs to finish and we
+	// don't want to unnecessarily block subscriptions.
+	w.accountSyncMu.Lock()
+	defer w.accountSyncMu.Unlock()
+
 	// Do a check to ensure that the worker is still idle after the function is
 	// complete. This should help to catch any situation where the worker is
 	// spinning up new jobs, even though it is not supposed to be spinning up

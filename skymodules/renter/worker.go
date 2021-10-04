@@ -69,6 +69,22 @@ type (
 		atomicPriceTable                 unsafe.Pointer // points to a workerPriceTable object
 		atomicPriceTableUpdateRunning    uint64         // used for a sanity check
 
+		// accountSyncMu is a special mutex used when syncing the
+		// worker's account balance with the host's. During the sync,
+		// the worker can't have any pending withdrawals or deposits. To
+		// avoid that, externSyncAccountBalanceToHost waits for all
+		// serial and async jobs to finish before doing the sync.
+		// Unfortunately that won't work for the subscription background
+		// loop since it's always running. That's why accountSyncMu
+		// needs to be locked by the subscription loop every time before
+		// it starts a pending deposit/withdrawal and unlocked after
+		// committing that deposit/withdrawal. That way
+		// externSyncAccountBalanceToHost only executes when the pending
+		// deposits/withdrawals are 0 and vice versa the subscription
+		// loop is blocked for a short period of time while the worker
+		// and host sync up on their balance.
+		accountSyncMu sync.Mutex
+
 		// The host pub key also serves as an id for the worker, as there is
 		// only one worker per host.
 		staticHostPubKey    types.SiaPublicKey
