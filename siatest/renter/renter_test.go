@@ -6123,7 +6123,7 @@ func TestRenterUnfinishedFiles(t *testing.T) {
 		t.Fatal("File not marked as finished")
 	}
 
-	// Stop on of the hosts to ensure there are not enough hosts to be able
+	// Stop one of the hosts to ensure there are not enough hosts to be able
 	// to upload a skyfile
 	h := tg.Hosts()[0]
 	err = tg.StopNode(h)

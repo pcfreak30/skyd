@@ -238,7 +238,7 @@ func (sf *SiaFile) finished() bool {
 	// between stuck files and files that never finished the initial upload.
 	// If the siafile has a localpath, then it was uploaded in a way that we
 	// expect to upload/repair from that localpath. So if a localpath exists
-	// then a file is always repairable, even if it have <1x redundancy.
+	// then a file is always repairable, even if it has <1x redundancy.
 	// This means if there is an issue with upload/repair we should mark it
 	// as stuck and therefore we consider it finished.
 	return sf.staticMetadata.Finished || sf.staticMetadata.LocalPath != ""
