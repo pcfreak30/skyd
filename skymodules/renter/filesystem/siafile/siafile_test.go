@@ -1692,6 +1692,68 @@ func TestUpdateMetadataPruneHosts(t *testing.T) {
 	}
 }
 
+// TestFinished is a simple unit test to probe the Finished and SetFinished
+// Method of the siafile
+func TestFinished(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create file
+	siaFilePath, _, _, rc, sk, fileSize, numChunks, fileMode := newTestFileParams(1, true)
+	file, _, _ := customTestFileAndWAL(siaFilePath, "", rc, sk, fileSize, numChunks, fileMode)
+
+	// Create helper
+	checkFinished := func(finished bool) error {
+		if file.Finished() != finished {
+			return fmt.Errorf("Expected file to be finished %v but found finished %v", finished, file.Finished())
+		}
+		return nil
+	}
+
+	// Initial File should be unfinished
+	if err := checkFinished(false); err != nil {
+		t.Fatal(err)
+	}
+
+	// File should be considered finished with local path
+	file.staticMetadata.LocalPath = "notblank"
+	if err := checkFinished(true); err != nil {
+		t.Fatal(err)
+	}
+
+	// Reset
+	file.staticMetadata.LocalPath = ""
+	if err := checkFinished(false); err != nil {
+		t.Fatal(err)
+	}
+
+	// SetFinished shouldn't change status for health > 1
+	file.SetFinished(1.1)
+	if err := checkFinished(false); err != nil {
+		t.Fatal(err)
+	}
+
+	// SetFinished with health of 1 should mark as finished
+	file.SetFinished(1)
+	if err := checkFinished(true); err != nil {
+		t.Fatal(err)
+	}
+
+	// Manually reset
+	file.staticMetadata.Finished = false
+	if err := checkFinished(false); err != nil {
+		t.Fatal(err)
+	}
+
+	// SetFinished with health of 0 should mark as finished
+	file.SetFinished(0)
+	if err := checkFinished(true); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestUpdateUnfinishedStuckStatus tests that unfinished files that were
 // previously marked as stuck will be marked as not stuck
 func TestUpdateUnfinishedStuckStatus(t *testing.T) {
@@ -1701,9 +1763,8 @@ func TestUpdateUnfinishedStuckStatus(t *testing.T) {
 	t.Parallel()
 
 	// Create a file
-	rsc, _ := skymodules.NewRSCode(10, 20)
-	siaFilePath, _, source, _, sk, _, _, fileMode := newTestFileParams(1, true)
-	file, _, _ := customTestFileAndWAL(siaFilePath, source, rsc, sk, 100, 1, fileMode)
+	siaFilePath, _, source, rsc, sk, fileSize, numChunks, fileMode := newTestFileParams(1, false)
+	file, _, _ := customTestFileAndWAL(siaFilePath, source, rsc, sk, fileSize, numChunks, fileMode)
 
 	// File should be marked as finished because of the localpath set by
 	// source

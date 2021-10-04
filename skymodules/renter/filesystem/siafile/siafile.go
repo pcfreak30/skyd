@@ -1416,8 +1416,8 @@ func (sf *SiaFile) setFinished(health float64) {
 	if sf.staticMetadata.Finished {
 		return
 	}
-	// A file is finished if the health is < 1
-	sf.staticMetadata.Finished = health < 1
+	// A file is finished if the health is <= 1
+	sf.staticMetadata.Finished = health <= 1
 }
 
 // setStuck sets the Stuck field of the chunk at the given index
