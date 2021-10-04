@@ -5776,26 +5776,24 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 		t.Fatal(err)
 	}
 
+	// There should be 1 notification now.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		notificationMu.Lock()
+		defer notificationMu.Unlock()
+		if len(notifications) != 1 {
+			return fmt.Errorf("notifications: %v != %v", len(notifications), 2)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Increase the revision number and set again.
 	srv2 := srv1
 	srv2.Revision++
 	srv2 = srv2.Sign(sk)
 	err = p.RegistryUpdateWithEntry(spk, srv2)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Unsubscribe.
-	err = subscription.Unsubscribe(spk, srv2.Tweak)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Increase the revision number and set again.
-	srv3 := srv2
-	srv3.Revision++
-	srv3 = srv3.Sign(sk)
-	err = p.RegistryUpdateWithEntry(spk, srv3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5811,6 +5809,32 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Unsubscribe
+	err = subscription.Unsubscribe(spk, srv2.Tweak)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Increase the revision number and set again.
+	srv3 := srv2
+	srv3.Revision++
+	srv3 = srv3.Sign(sk)
+	err = p.RegistryUpdateWithEntry(spk, srv3)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for a bit to give the notification some time.
+	time.Sleep(2 * time.Second)
+
+	// There should still be 2 notifications.
+	notificationMu.Lock()
+	nNotifications := len(notifications)
+	notificationMu.Unlock()
+	if nNotifications != 2 {
+		t.Fatalf("notifications: %v != %v", len(notifications), 2)
 	}
 
 	// Make sure first notification matches.
