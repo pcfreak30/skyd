@@ -434,7 +434,7 @@ func newSkynetTUSMongoUploadStore(ctx context.Context, uri, portalName string, c
 		return nil, err
 	}
 
-	// Create the indices.
+	// Create the indices for the uploads collection.
 	indexes := []mongo.IndexModel{
 		{Keys: bson.M{"complete": 1}},
 		{Keys: bson.M{"lastwrite": 1}},
