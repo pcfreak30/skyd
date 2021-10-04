@@ -434,6 +434,19 @@ func newSkynetTUSMongoUploadStore(ctx context.Context, uri, portalName string, c
 		return nil, err
 	}
 
+	// Create the indices.
+	indexes := []mongo.IndexModel{
+		{Keys: bson.M{"complete": 1}},
+		{Keys: bson.M{"lastwrite": 1}},
+		{Keys: bson.M{"servernames": 1}},
+	}
+	for _, idx := range indexes {
+		_, err = client.Database(TusDBName).Collection(TusUploadsMongoCollectionName).Indexes().CreateOne(ctx, idx)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// Sanity check portal name.
 	if portalName == "" {
 		return nil, errors.New("portalName can't be empty string")
