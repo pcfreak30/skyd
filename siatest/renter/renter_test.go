@@ -6064,8 +6064,8 @@ func TestRenterUnfinishedFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Upload a file
 	r := tg.Renters()[0]
+	// Upload a file
 	_, rf, err := r.UploadNewFileBlocking(100, 1, 1, false)
 	if err != nil {
 		t.Fatal(err)
@@ -6081,9 +6081,12 @@ func TestRenterUnfinishedFiles(t *testing.T) {
 	if !fi.Finished {
 		t.Fatal("file not marked as finished")
 	}
+	if fi.Redundancy < 1 {
+		t.Fatal("Redundancy is less than 1", fi.Redundancy)
+	}
 
 	// Upload a file that won't reach full health
-	_, rf, err = r.UploadNewFile(100, 5, 1, false)
+	lf, rf, err := r.UploadNewFile(100, 3, 1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -6103,57 +6106,44 @@ func TestRenterUnfinishedFiles(t *testing.T) {
 		t.Fatal("Redundancy is greater than 1", fi.Redundancy)
 	}
 
-	// Upload a small skyfile. This uses the streaming endpoint and doesn't
-	// create a local file and so the skyfile won't have a local path.
-	_, sup, _, err := r.UploadNewSkyfileBlocking("small", 100, false)
+	// Remove the local file. This would simulate a streaming upload
+	// failing, leaving a file without a localfile to repair from and not
+	// ever reaching 1x redundancy.
+	if err := lf.Delete(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a host so that there are enough hosts for the repair loop to
+	// consider repairing the file
+	_, err = tg.AddNodes(node.HostTemplate)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Grab file, it should be marked as finished
-	sp, err := skymodules.SkynetFolder.Join(sup.SiaPath.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	renterFile, err := r.RenterFileRootGet(sp)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !renterFile.File.Finished {
-		t.Fatal("File not marked as finished")
-	}
-
-	// Stop one of the hosts to ensure there are not enough hosts to be able
-	// to upload a skyfile
-	h := tg.Hosts()[0]
-	err = tg.StopNode(h)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Upload a Skyfile. This uses the streaming endpoint and doesn't create
-	// a local file and so the skyfile won't have a local path. The Skyfile
-	// should be a large skyfile so that the erasure coding is N-of-M
-	data := fastrand.Bytes(int(2 * modules.SectorSize))
-	_, _, _, rf, err = r.UploadSkyfileCustom("skyfile", data, "", 3, false)
+	// File should become marked as unfinished because the repair/health
+	// loops should overwrite the localpath once the localfile cannot be
+	// accessed.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Get the file info
+		fi, err = r.File(rf)
+		// Ignore ErrNotExist errors to avoid NDFs as the file is
+		// eventually expected to be deleted.
+		if err != nil && !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+			return err
+		}
+		if fi.Finished {
+			fmt.Println(fi.Redundancy, fi.MaxHealth, fi.Health, fi.Stuck, fi.LocalPath)
+			return errors.New("File is marked as finished")
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Get the file info
-	fi, err = r.File(rf)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// File should be considered unfinished
-	if fi.Finished {
-		t.Fatal("File is marked as finished")
-	}
-
-	// The unfinished file should be pruned
+	// File should be deleted now that it is marked as unfinished
 	err = build.Retry(15, time.Second, func() error {
-		_, err = r.File(rf)
+		fi, err = r.File(rf)
 		if err == nil || !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 			return fmt.Errorf("Unexpected error %v", err)
 		}

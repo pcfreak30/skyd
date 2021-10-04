@@ -1752,6 +1752,12 @@ func TestFinished(t *testing.T) {
 	if err := checkFinished(true); err != nil {
 		t.Fatal(err)
 	}
+
+	// Calling SetFinished with a high health again should have no effect.
+	file.SetFinished(10)
+	if err := checkFinished(true); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestUpdateUnfinishedStuckStatus tests that unfinished files that were
