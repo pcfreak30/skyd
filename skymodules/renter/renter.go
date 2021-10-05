@@ -247,6 +247,9 @@ type Renter struct {
 	// prevent recomputing them too often.
 	cachedUtilities cachedUtilities
 
+	repairingChunksMu sync.Mutex
+	repairingChunks   map[uploadChunkID]*unfinishedUploadChunk
+
 	// staticSubscriptionManager is the global manager of registry
 	// subscriptions.
 	staticSubscriptionManager *registrySubscriptionManager
@@ -1068,6 +1071,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		// Initiate skynet resources
 		staticSkylinkManager: newSkylinkManager(),
 
+		repairingChunks: make(map[uploadChunkID]*unfinishedUploadChunk),
+
 		// Making newDownloads a buffered channel means that most of the time, a
 		// new download will trigger an unnecessary extra iteration of the
 		// download heap loop, searching for a chunk that's not there. This is
@@ -1080,7 +1085,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		staticFanoutSectorDownloadStats: skymodules.NewSectorDownloadStats(),
 
 		staticUploadHeap: uploadHeap{
-			repairingChunks:   make(map[uploadChunkID]*unfinishedUploadChunk),
 			stuckHeapChunks:   make(map[uploadChunkID]*unfinishedUploadChunk),
 			unstuckHeapChunks: make(map[uploadChunkID]*unfinishedUploadChunk),
 
@@ -1373,18 +1377,20 @@ func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpoo
 
 // HostsForRegistryUpdate returns a list of hosts that the renter would be using
 // for updating the registry.
-func (r *Renter) HostsForRegistryUpdate() ([]types.SiaPublicKey, error) {
+func (r *Renter) HostsForRegistryUpdate() ([]skymodules.HostForRegistryUpdate, error) {
 	if err := r.tg.Add(); err != nil {
 		return nil, err
 	}
 	defer r.tg.Done()
 
-	var hpks []types.SiaPublicKey
+	var hosts []skymodules.HostForRegistryUpdate
 	for _, w := range r.staticWorkerPool.callWorkers() {
 		if !isWorkerGoodForRegistryUpdate(w) {
 			continue
 		}
-		hpks = append(hpks, w.staticHostPubKey)
+		hosts = append(hosts, skymodules.HostForRegistryUpdate{
+			Pubkey: w.staticHostPubKey,
+		})
 	}
-	return hpks, nil
+	return hosts, nil
 }
