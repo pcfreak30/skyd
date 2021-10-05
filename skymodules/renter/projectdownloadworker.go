@@ -1330,25 +1330,29 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 		}
 	}
 
-	// if overdriveWorkers > 0 && len(mostLikely) < workersNeeded {
-	// 	overdrive := make(map[uint64]struct{}, 0)
-	// 	for _, w := range workers {
-	// 		if len(overdrive) >= overdriveWorkers {
-	// 			break
-	// 		}
+	var overdriveWorkers int
+	minPieces := pdc.workerSet.staticErasureCoder.MinPieces()
+	if workersNeeded > minPieces {
+		overdriveWorkers = workersNeeded - minPieces
+	}
 
-	// 		_, added := added[w.identifier()]
-	// 		if added {
-	// 			continue
-	// 		}
-	// 		for _, pieceIndex := range w.pieces() {
-	// 			w.markPieceForDownload(pieceIndex)
-	// 			overdrive[pieceIndex] = struct{}{}
-	// 			addWorker(w)
-	// 			break // only use a worker once
-	// 		}
-	// 	}
-	// }
+	if overdriveWorkers > 0 && len(mostLikely) < workersNeeded {
+		overdrive := make(map[uint64]struct{}, 0)
+		for _, w := range workers {
+			if len(overdrive) >= overdriveWorkers {
+				break
+			}
+
+			_, added := added[w.identifier()]
+			if added {
+				continue
+			}
+			for _, pieceIndex := range w.pieces() {
+				addWorker(w, pieceIndex)
+				break // only use a worker once
+			}
+		}
+	}
 
 	return mostLikely, lessLikely
 }
