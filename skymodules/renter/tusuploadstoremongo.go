@@ -384,7 +384,6 @@ func (u *MongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodu
 		"$set": bson.M{
 			"complete": u.Complete,
 			"fileinfo": u.FileInfo,
-			"skylink":  skylink,
 		},
 		// Clean up some space.
 		"$unset": bson.M{
