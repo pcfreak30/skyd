@@ -138,7 +138,7 @@ func NewFromLegacyData(fd FileData, siaFilePath string, wal *writeaheadlog.WAL) 
 	return file, err
 }
 
-// metadataCompatCheck handles the compatability checks for the metadata based
+// metadataCompatCheck handles the compatibility checks for the metadata based
 // on the version
 func (sf *SiaFile) metadataCompatCheck() (err error) {
 	// backup the changed metadata before changing it. Revert the change on
