@@ -71,6 +71,7 @@ func TestSkynetTUSUploader(t *testing.T) {
 			}
 			rt.MongoUploadStoreURI = uri
 			rt.MongoUploadStoreCreds = mongoTestCreds
+			rt.MongoUploadStorePortalName = t.Name()
 		}
 		if _, err := tg.AddNodes(rt); err != nil {
 			t.Fatal(err)
