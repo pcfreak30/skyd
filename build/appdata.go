@@ -59,7 +59,7 @@ func MongoDBPassword() (string, bool) {
 // SkynetPortalHostname returns the hostname of the portal and whether it was
 // set.
 func SkynetPortalHostname() (string, bool) {
-	return os.LookupEnv(skynetServerAPI)
+	return os.LookupEnv(portalName)
 }
 
 // ProfileDir returns the directory where any profiles for the running siad

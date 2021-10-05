@@ -10,9 +10,9 @@ var (
 	// mongoDBPassword is the environment variable for the mongodb password.
 	mongoDBPassword = "MONGODB_PASSWORD"
 
-	// skynetServerAPI is the hostname of the portal. Might be an empty
+	// portalName is the hostname of the portal. Might be an empty
 	// string on standalone skyd deploy.
-	skynetServerAPI = "SKYNET_SERVER_API"
+	portalName = "PORTAL_NAME"
 
 	// siaAPIPassword is the environment variable that sets a custom API
 	// password if the default is not used
