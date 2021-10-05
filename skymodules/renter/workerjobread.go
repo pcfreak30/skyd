@@ -23,6 +23,17 @@ const (
 	// predictor tends to be more accurate over time, but is less responsive to
 	// things like network load.
 	jobReadPerformanceDecay = 0.9
+
+	// jobLength64k is the threshold we use to label a download as 64kb
+	// jobLength1m is the threshold we use to label a download as 1m
+	// jobLength4m is the threshold we use to label a download as 4m
+	//
+	// usually the length is evaluated using an if-else structure, comparing the
+	// length to these threshold in ascending fashion, so we first check to see
+	// whether it's a 64kb, then a 1mb and so on
+	jobLength64k = uint64(1 << 16)
+	jobLength1m  = uint64(1 << 20)
+	jobLength4m  = uint64(1 << 24)
 )
 
 type (
@@ -272,9 +283,9 @@ func (jrs *jobReadStats) callExpectedJobTime(length uint64) time.Duration {
 // expectedJobTime returns the expected job time, based on recent performance,
 // for the given read length.
 func (jrs *jobReadStats) expectedJobTime(length uint64) time.Duration {
-	if length <= 1<<16 {
+	if length <= jobLength64k {
 		return time.Duration(jrs.weightedJobTime64k)
-	} else if length <= 1<<20 {
+	} else if length <= jobLength1m {
 		return time.Duration(jrs.weightedJobTime1m)
 	} else {
 		return time.Duration(jrs.weightedJobTime4m)
@@ -309,9 +320,9 @@ func (jq *jobReadQueue) callExpectedJobCost(length uint64) types.Currency {
 func (jrs *jobReadStats) callUpdateJobTimeMetrics(length uint64, jobTime time.Duration) {
 	jrs.mu.Lock()
 	defer jrs.mu.Unlock()
-	if length <= 1<<16 {
+	if length <= jobLength64k {
 		jrs.weightedJobTime64k = expMovingAvgHotStart(jrs.weightedJobTime64k, float64(jobTime), jobReadPerformanceDecay)
-	} else if length <= 1<<20 {
+	} else if length <= jobLength1m {
 		jrs.weightedJobTime1m = expMovingAvgHotStart(jrs.weightedJobTime1m, float64(jobTime), jobReadPerformanceDecay)
 	} else {
 		jrs.weightedJobTime4m = expMovingAvgHotStart(jrs.weightedJobTime4m, float64(jobTime), jobReadPerformanceDecay)
@@ -325,9 +336,9 @@ func (jrs *jobReadStats) callUpdateJobTimeMetrics(length uint64, jobTime time.Du
 // distributionTrackerForLength returns the distribution tracker that
 // corresponds to the given length.
 func (jrs *jobReadStats) distributionTrackerForLength(length uint64) *skymodules.DistributionTracker {
-	if length <= 1<<16 {
+	if length <= jobLength64k {
 		return jrs.staticDT64k
-	} else if length <= 1<<20 {
+	} else if length <= jobLength1m {
 		return jrs.staticDT1m
 	} else {
 		return jrs.staticDT4m

@@ -239,10 +239,6 @@ func (pd *pieceDownload) successful() bool {
 // updateAvailablePieces updates the available pieces with new pieces coming
 // from freshly resolved workers. Essentially this is pulling new information
 // from the overarching PCWS worker state.
-//
-// TODO: this can be thrown out entirely and replaced with our other state on
-// the pdc, providing we add availablePiecesByIndex, only the `finished` method
-// really needs it to count hopeful pieces
 func (pdc *projectDownloadChunk) updateAvailablePieces() bool {
 	ws := pdc.workerState
 	ws.mu.Lock()
@@ -300,12 +296,17 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 	launchedWorker.jobErr = jrr.staticErr
 	launchedWorker.totalDuration = time.Since(launchedWorker.staticLaunchTime)
 
-	// If the job failed, mark the piece as completed.
+	// Update the piece information
+	pdc.completedPiecesByWorker[workerKey][pieceIndex] = struct{}{}
+	pdc.availablePiecesByIndex[pieceIndex]--
+
+	// If the job failed, we can return.
 	if downloadErr != nil {
-		pdc.completedPiecesByWorker[workerKey][pieceIndex] = struct{}{}
-		pdc.availablePiecesByIndex[pieceIndex]--
 		return
 	}
+
+	// If the job succeeded, mark the piece as downloaded
+	pdc.downloadedPiecesByIndex[pieceIndex] = struct{}{}
 
 	// Decrypt the piece that has come back.
 	key := pdc.workerSet.staticMasterKey.Derive(pdc.workerSet.staticChunkIndex, uint64(pieceIndex))
@@ -318,11 +319,6 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 	// The download succeeded, add the piece to the appropriate index.
 	pdc.dataPieces[pieceIndex] = jrr.staticData
 	jrr.staticData = nil // Just in case there's a reference to the job response elsewhere.
-
-	// If the job succeeded, mark the piece as downloaded
-	pdc.completedPiecesByWorker[workerKey][pieceIndex] = struct{}{}
-	pdc.downloadedPiecesByIndex[pieceIndex] = struct{}{}
-	pdc.availablePiecesByIndex[pieceIndex]--
 }
 
 // fail will send an error down the download response channel.
@@ -494,7 +490,6 @@ func (pdc *projectDownloadChunk) launchWorker(worker downloadWorker, pieceIndex 
 	}
 
 	// Track the launched piece
-	// pdcId := hex.EncodeToString(pdc.uid[:])
 	pdc.launchedPiecesByWorker[workerKey][pieceIndex] = time.Now()
 
 	// Track the launched worker

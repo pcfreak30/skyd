@@ -222,9 +222,9 @@ func (w *worker) staticUpdatePriceTable() {
 		}
 		w.staticSetInitialEstimates.Do(func() {
 			w.staticJobHasSectorQueue.callUpdateJobTimeMetrics(elapsed)
-			w.staticJobReadQueue.staticStats.callUpdateJobTimeMetrics(1<<16, elapsed)
-			w.staticJobReadQueue.staticStats.callUpdateJobTimeMetrics(1<<20, elapsed)
-			w.staticJobReadQueue.staticStats.callUpdateJobTimeMetrics(1<<24, elapsed)
+			w.staticJobReadQueue.staticStats.callUpdateJobTimeMetrics(jobLength64k, elapsed)
+			w.staticJobReadQueue.staticStats.callUpdateJobTimeMetrics(jobLength1m, elapsed)
+			w.staticJobReadQueue.staticStats.callUpdateJobTimeMetrics(jobLength4m, elapsed)
 
 			// Seed the read registry distribution tracker with the
 			// first price table roundtrip.

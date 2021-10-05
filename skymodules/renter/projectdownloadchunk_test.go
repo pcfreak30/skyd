@@ -398,7 +398,8 @@ func TestProjectDownloadChunk_launchWorker(t *testing.T) {
 
 	// launch a worker and expect it to have enqueued a job and expect the
 	// complete time to be somewhere in the future
-	expectedCompleteTime, added := pdc.launchWorker(worker, 0, false)
+	iw := &individualWorker{staticWorker: worker}
+	expectedCompleteTime, added := pdc.launchWorker(iw, 0, false)
 	if !added {
 		t.Fatal("unexpected")
 	}

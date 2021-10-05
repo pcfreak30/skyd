@@ -115,8 +115,7 @@ func TestChimeraWorker(t *testing.T) {
 	// check the distribution's chance of resolving after 100ms, due to the
 	// large weight of the 3rd worker that has a distribution with datapoints
 	// over a second, this should be over than 50%
-	_, distribution := cw.distributions()
-	if distribution.ChanceAfter(100*time.Millisecond) > .5 {
+	if cw.staticReadDistribution.ChanceAfter(100*time.Millisecond) > .5 {
 		t.Fatal("bad")
 	}
 
@@ -257,7 +256,6 @@ func TestWorkerSet(t *testing.T) {
 	t.Run("CheaperSetFromCandidate", testWorkerSetCheaperSetFromCandidate)
 	t.Run("Clone", testWorkerSetClone)
 	t.Run("GreaterThanHalf", testWorkerSetGreaterThanHalf)
-	t.Run("NumOverdriveWorkers", testWorkerSetNumOverdriveWorkers)
 }
 
 // testWorkerSetAdjustedDuration is a unit test that verifies the functionality
@@ -479,7 +477,7 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 			point := DistributionDurationForBucketIndex(i)
 			distribution.AddDataPoint(point)
 		}
-		w.recalculateChanceAfter(0)
+		w.rebuildChanceAfterCache(time.Now())
 	}
 
 	// indexForPct is a helper function that returns the index at which the
@@ -525,7 +523,7 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 	// worker, which influences the 'chanceGreaterThanHalf' because now we have
 	// one worker to spare, increasing our total chance
 	ws.workers = append(ws.workers, iw3)
-	if ws.numOverdriveWorkers() != 1 {
+	if ws.staticNumOverdrive != 1 {
 		t.Fatal("bad")
 	}
 
@@ -548,7 +546,7 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 	// add another worker, this makes it so the worker set has two overdrive
 	// workers
 	ws.workers = append(ws.workers, iw4)
-	if ws.numOverdriveWorkers() != 2 {
+	if ws.staticNumOverdrive != 2 {
 		t.Fatal("bad")
 	}
 
@@ -599,39 +597,6 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 		t.Fatal("bad")
 	}
 	if !ws.chanceGreaterThanHalf(indexForPct(.41)) {
-		t.Fatal("bad")
-	}
-}
-
-// testWorkerSetNumOverdriveWorkers is a unit test that verifies the
-// functionality of the NumOverdriveWorkers method on the worker set.
-func testWorkerSetNumOverdriveWorkers(t *testing.T) {
-	t.Parallel()
-
-	// create some workers
-	iw1 := newTestIndivualWorker("w1", .1, 100*time.Millisecond, nil)
-	iw2 := newTestIndivualWorker("w2", .1, 100*time.Millisecond, nil)
-	iw3 := newTestIndivualWorker("w3", .1, 100*time.Millisecond, nil)
-
-	// create an empty worker set and assert the basic case
-	ws := &workerSet{staticMinPieces: 1}
-	if ws.numOverdriveWorkers() != 0 {
-		t.Fatal("bad")
-	}
-
-	// add one worker and asser the number of overdrive workers is still zero
-	ws.workers = append(ws.workers, iw1)
-	if ws.numOverdriveWorkers() != 0 {
-		t.Fatal("bad")
-	}
-
-	// add another worker and assert it now counts as an overdrive worker
-	ws.workers = append(ws.workers, iw2)
-	if ws.numOverdriveWorkers() != 1 {
-		t.Fatal("bad")
-	}
-	ws.workers = append(ws.workers, iw3)
-	if ws.numOverdriveWorkers() != 2 {
 		t.Fatal("bad")
 	}
 }
@@ -840,7 +805,6 @@ func TestBuildChimeraWorkers(t *testing.T) {
 
 	var workers []*individualWorker
 	numPieces := fastrand.Intn(10) + 1
-	now := time.Now()
 
 	// empty case
 	chimeras := buildChimeraWorkers(workers, numPieces)
@@ -851,9 +815,9 @@ func TestBuildChimeraWorkers(t *testing.T) {
 	// add couple of workers with resolve chance not adding up to 1
 	workers = append(
 		workers,
-		&individualWorker{resolveChance: 0.3, staticExpectedResolveTime: now},
-		&individualWorker{resolveChance: 0.1, staticExpectedResolveTime: now},
-		&individualWorker{resolveChance: 0.5, staticExpectedResolveTime: now},
+		newTestIndivualWorker("w", 0.3, 0, nil),
+		newTestIndivualWorker("w", 0.1, 0, nil),
+		newTestIndivualWorker("w", 0.5, 0, nil),
 	)
 
 	// check we still don't have a full chimera
@@ -865,11 +829,11 @@ func TestBuildChimeraWorkers(t *testing.T) {
 	// add more workers we should end up with 2 chimeras
 	workers = append(
 		workers,
-		&individualWorker{resolveChance: 0.4, staticExpectedResolveTime: now},
+		newTestIndivualWorker("w", 0.4, 0, nil),
 		// chimera 1 complete
-		&individualWorker{resolveChance: 0.2, staticExpectedResolveTime: now},
-		&individualWorker{resolveChance: 0.3, staticExpectedResolveTime: now},
-		&individualWorker{resolveChance: 0.3, staticExpectedResolveTime: now},
+		newTestIndivualWorker("w", 0.2, 0, nil),
+		newTestIndivualWorker("w", 0.3, 0, nil),
+		newTestIndivualWorker("w", 0.3, 0, nil),
 		// chimera 2 complete, .1 remainder
 	)
 
@@ -895,8 +859,8 @@ func TestBuildChimeraWorkers(t *testing.T) {
 
 	// add workers with resolve chances of 1
 	workers = []*individualWorker{
-		{resolveChance: 1, staticExpectedResolveTime: now},
-		{resolveChance: 1, staticExpectedResolveTime: now},
+		newTestIndivualWorker("w", 1, 0, nil),
+		newTestIndivualWorker("w", 1, 0, nil),
 	}
 
 	// check we build 2 chimeras out of them
@@ -925,7 +889,7 @@ func TestBuildDownloadWorkers(t *testing.T) {
 	}
 
 	// empty case
-	downloadWorkers := buildDownloadWorkers(workers, numPieces, 0)
+	downloadWorkers := buildDownloadWorkers(workers, numPieces, time.Now())
 	if len(downloadWorkers) != 0 {
 		t.Fatal("bad")
 	}
@@ -939,7 +903,7 @@ func TestBuildDownloadWorkers(t *testing.T) {
 	)
 
 	// empty case
-	downloadWorkers = buildDownloadWorkers(workers, numPieces, 0)
+	downloadWorkers = buildDownloadWorkers(workers, numPieces, time.Now())
 	if len(downloadWorkers) != 0 {
 		t.Fatal("bad")
 	}
@@ -956,7 +920,7 @@ func TestBuildDownloadWorkers(t *testing.T) {
 	)
 
 	// assert we have two download workers, both chimera workers
-	downloadWorkers = buildDownloadWorkers(workers, numPieces, 0)
+	downloadWorkers = buildDownloadWorkers(workers, numPieces, time.Now())
 	if len(downloadWorkers) != 2 {
 		t.Fatal("bad")
 	}
@@ -976,7 +940,7 @@ func TestBuildDownloadWorkers(t *testing.T) {
 		newTestIndividualWorker(1),
 	)
 
-	downloadWorkers = buildDownloadWorkers(workers, numPieces, 0)
+	downloadWorkers = buildDownloadWorkers(workers, numPieces, time.Now())
 	if len(downloadWorkers) != 5 {
 		t.Fatal("bad")
 	}

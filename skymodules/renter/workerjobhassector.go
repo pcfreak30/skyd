@@ -43,11 +43,6 @@ const (
 	// the sector was available.
 	jobHasSectorQueueMinAvailabilityRate = 0.001
 
-	// jobHasSectorQueueMaxAvailabilityRate is the maximum availability rate we
-	// return, it is strictly less than one because we consider a worker with an
-	// availability rate of 1 as resolved at all times
-	jobHasSectorQueueMaxAvailabilityRate = 0.99
-
 	// hasSectorBatchSize is the number of has sector jobs batched together upon
 	// calling callNext.
 	// This number is the result of empirical testing which determined that 13
@@ -347,14 +342,6 @@ func (j jobHasSectorBatch) callExecute() {
 		}
 		// If it was successful, attach the result.
 		if err == nil {
-			var foundOneOrMore bool
-			for _, available := range availables[i] {
-				if available {
-					foundOneOrMore = true
-					break
-				}
-			}
-			hsj.staticSpan.LogKV("availables", availables[i], "foundOneOrMore", foundOneOrMore)
 			response.staticAvailables = availables[i]
 		}
 		// Send the response.
@@ -450,7 +437,16 @@ func (j *jobHasSectorBatch) managedHasSector() (results [][]bool, err error) {
 	}
 
 	for _, hsj := range j.staticJobs {
-		results = append(results, hasSectors[:len(hsj.staticSectors)])
+		availables := hasSectors[:len(hsj.staticSectors)]
+		var foundOneOrMore bool
+		for _, available := range availables {
+			if available {
+				foundOneOrMore = true
+				break
+			}
+		}
+		hsj.staticSpan.SetTag("hasSector", foundOneOrMore)
+		results = append(results, availables)
 		hasSectors = hasSectors[len(hsj.staticSectors):]
 	}
 	return results, nil
@@ -509,11 +505,7 @@ func (jq *jobHasSectorQueue) callAvailabilityRate(numPieces int) float64 {
 		return jobHasSectorQueueMinAvailabilityRate
 	}
 
-	availabilityRate := bucket.totalAvailable / bucket.totalLookups
-	if availabilityRate > jobHasSectorQueueMaxAvailabilityRate {
-		return jobHasSectorQueueMaxAvailabilityRate
-	}
-	return availabilityRate
+	return bucket.totalAvailable / bucket.totalLookups
 }
 
 // callUpdateAvailabilityMetrics updates the fields on the has sector queue that

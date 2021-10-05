@@ -30,17 +30,22 @@ type (
 	// downloadWorker is an interface implemented by both the individual and
 	// chimera workers that represents a worker that can be used for downloads.
 	downloadWorker interface {
+		// chanceAfterCached returns the chance this download worker completes a
+		// read within the given duration, these values are cached as it
+		// requires a decent amount of computation to calculate on the fly.
+		chanceAfterCached(index int) float64
+
 		// cost returns the expected job cost for downloading a piece of data
 		// with given length from the worker. If the worker has already been
 		// launched, its cost will be zero.
 		cost(length uint64) types.Currency
 
-		// getPieceForDownload returns the piece to download next
-		getPieceForDownload() uint64
-
 		// identifier returns a unique identifier for the download worker, this
 		// identifier can be used as a key when mapping the download worker
 		identifier() string
+
+		// getPieceForDownload returns the piece to download next
+		getPieceForDownload() uint64
 
 		// markPieceForDownload allows specifying what piece to download for
 		// this worker in the case the worker resolved multiple pieces
@@ -49,14 +54,8 @@ type (
 		// pieces returns all piece indices this worker can resolve
 		pieces() []uint64
 
-		// chanceAfter returns the chance this download worker completes a read
-		// within the given duration
-		//
-		// recalculateChanceAfter recalculates the chances that are cached on
-		// the download workers because it's computationally intensive to
-		// calculate those
-		chanceAfter(index int) float64
-		recalculateChanceAfter(shift time.Duration)
+		// rebuildChanceAfterCache rebuilds the cached chances
+		rebuildChanceAfterCache(launchTime time.Time)
 
 		// worker returns the underlying worker
 		worker() *worker
@@ -67,21 +66,10 @@ type (
 	// worker exactly the same as a resolved worker in the download algorithm
 	// that constructs the best worker set.
 	chimeraWorker struct {
-		// cachedCost returns the read cost of the chimera worker, which is the
-		// average across all workers this chimera worker is comprised of
-		cachedCost types.Currency
-
 		// cachedChancesAfter maps a duration to the chance this worker can
 		// download a piece in the timespan defined by that duration, we have to
 		// cache this because it's computationally expensive to compute
 		cachedChancesAfter [skymodules.DistributionTrackerTotalBuckets]float64
-
-		// cachedReadDistribution contains a distribution that is the weighted
-		// combination of all worker read distrubtions in this chimera worker,
-		// it is cached meaning it will only be calculated the first time the
-		// distribution is requested after the chimera worker was finalized.
-		cachedLookupDistribution *skymodules.Distribution
-		cachedReadDistribution   *skymodules.Distribution
 
 		// remaining keeps track of how much "chance" is remaining until the
 		// chimeraworker is comprised of enough to workers to be able to resolve
@@ -89,10 +77,13 @@ type (
 		// 1-SUM(weights) over and over again
 		remaining float64
 
-		// distributions contains the read distribution for every worker that is
-		// part of the chimera worker
-		readDistributions   []*skymodules.Distribution
+		// lookupDistributions contains the lookup distribution for every worker
+		// that is part of the chimera worker
 		lookupDistributions []*skymodules.Distribution
+
+		// readDistributions contains the read distribution for every worker
+		// that is part of the chimera worker
+		readDistributions []*skymodules.Distribution
 
 		// weights contains the weight for every worker, the weight represents
 		// the chance the worker will resolve and influences how much each
@@ -102,12 +93,30 @@ type (
 		// workers contains all workers that make up the chimera worker
 		workers []*worker
 
+		// staticCost returns the cost of the chimera worker, which is the
+		// average cost taken across all workers this chimera worker is
+		// comprised of, it is static because it never gets updated after the
+		// chimera is finalized and this field is calculated
+		staticCost types.Currency
+
+		// staticIdentifier uniquely identifies the chimera worker
+		staticIdentifier string
+
+		// staticLookupDistribution contains a distribution that is the
+		// combination of all worker lookup distrubtions in this chimera worker,
+		// it is static because it never gets updated after the chimera is
+		// finalized and this field is calculated
+		staticLookupDistribution *skymodules.Distribution
+
 		// staticPieceIndices contains a list of piece indices, for a chimera
 		// worker this will be an array containing every piece index
 		staticPieceIndices []uint64
 
-		// staticUID uniquely identifies the chimera worker
-		staticUID string
+		// staticReadDistribution contains a distribution that is the weighted
+		// combination of all worker read distrubtions in this chimera worker,
+		// it is static because it never gets updated after the chimera is
+		// finalized and this field is calculated
+		staticReadDistribution *skymodules.Distribution
 	}
 
 	// individualWorker is a struct that represents a single worker object, both
@@ -163,31 +172,35 @@ type (
 
 // NewChimeraWorker returns a new chimera worker object.
 func NewChimeraWorker(numPieces int) *chimeraWorker {
+	// a chimera worker can theoretically resolve all pieces so we build a slice
+	// that contains all possible piece indices using `numPieces`.
 	pieceIndices := make([]uint64, numPieces)
 	for i := 0; i < numPieces; i++ {
 		pieceIndices[i] = uint64(i)
 	}
 
-	var staticUID [16]byte
-	fastrand.Read(staticUID[:])
-
-	ch := &chimeraWorker{
+	return &chimeraWorker{
 		remaining: 1,
 
+		staticIdentifier:   hex.EncodeToString(fastrand.Bytes(16)),
 		staticPieceIndices: pieceIndices,
-		staticUID:          hex.EncodeToString(staticUID[:]),
 	}
-
-	// generate a uid for the chimera that'll serve as a unique identifier
-	return ch
 }
 
 // addWorker adds the given worker to the chimera worker.
 func (cw *chimeraWorker) addWorker(w *individualWorker) *individualWorker {
-	// calculate the remaining chance this chimera worker needs to be complete
+	// if the chimera is finalized, simply return the given worker
 	if cw.remaining == 0 {
 		return w
 	}
+
+	// defer a call to finalize if the chimera is complete after adding this
+	// worker
+	defer func() {
+		if cw.remaining == 0 {
+			cw.finalize()
+		}
+	}()
 
 	// the given worker's chance can be higher than the remaining chance of this
 	// chimera worker, in that case we have to split the worker in a part we
@@ -216,48 +229,45 @@ func (cw *chimeraWorker) cost(length uint64) types.Currency {
 		return types.ZeroCurrency
 	}
 
-	if cw.cachedCost.IsZero() {
-		var total types.Currency
-		for _, w := range cw.workers {
-			jrq := w.staticJobReadQueue
-			total = total.Add(jrq.callExpectedJobCost(length))
-		}
-		cw.cachedCost = total.Div64(uint64(len(cw.workers)))
-	}
-
-	return cw.cachedCost
+	return cw.staticCost
 }
 
-// chanceAfter returns the chance this worker completes a read after the given
-// duration.
-func (cw *chimeraWorker) chanceAfter(index int) float64 {
+// chanceAfterCached returns the chance this worker completes a read after the
+// given duration. Note that this value is not created on the fly but rather
+// comes from a cache that gets rebuilt only when necessary.
+func (cw *chimeraWorker) chanceAfterCached(index int) float64 {
 	return cw.cachedChancesAfter[index]
 }
 
-// distribution implements the downloadWorker interface.
-func (cw *chimeraWorker) distributions() (*skymodules.Distribution, *skymodules.Distribution) {
-	if cw.remaining != 0 {
-		build.Critical("developer error, chimera is not complete")
-		return nil, nil
+// finalize gets called on the chimera worker if its remaining chance field is
+// zero and the worker is thus finalized. When that happens, the following
+// "static" fields have to be calculated. Finalize can only be called once.
+func (cw *chimeraWorker) finalize() {
+	// sanity check to verify it gets called once
+	if cw.staticLookupDistribution != nil || cw.staticReadDistribution != nil {
+		build.Critical("finalize can only be called once")
+		return
 	}
 
-	if cw.cachedReadDistribution == nil && len(cw.readDistributions) > 0 {
-		halfLife := cw.readDistributions[0].HalfLife()
-		cw.cachedReadDistribution = skymodules.NewDistribution(halfLife)
-		for i, distribution := range cw.readDistributions {
-			cw.cachedReadDistribution.MergeWith(distribution, cw.weights[i])
-		}
+	// sanity check to verify at least one worker got added (allows [0] later)
+	if len(cw.lookupDistributions) == 0 || len(cw.readDistributions) == 0 {
+		build.Critical("finalize called on chimera with missing distributions")
+		return
 	}
 
-	if cw.cachedLookupDistribution == nil && len(cw.lookupDistributions) > 0 {
-		halfLife := cw.lookupDistributions[0].HalfLife()
-		cw.cachedLookupDistribution = skymodules.NewDistribution(halfLife)
-		for i, distribution := range cw.lookupDistributions {
-			cw.cachedLookupDistribution.MergeWith(distribution, cw.weights[i])
-		}
+	// merge all lookup distributions into one
+	lookupDTHalfLife := cw.lookupDistributions[0].HalfLife()
+	cw.staticLookupDistribution = skymodules.NewDistribution(lookupDTHalfLife)
+	for i, distribution := range cw.lookupDistributions {
+		cw.staticLookupDistribution.MergeWith(distribution, cw.weights[i])
 	}
 
-	return cw.cachedLookupDistribution, cw.cachedReadDistribution
+	// merge all read distributions into one
+	readDTHalfLife := cw.readDistributions[0].HalfLife()
+	cw.staticReadDistribution = skymodules.NewDistribution(readDTHalfLife)
+	for i, distribution := range cw.readDistributions {
+		cw.staticReadDistribution.MergeWith(distribution, cw.weights[i])
+	}
 }
 
 // getPieceForDownload returns the piece to download next, for a chimera worker
@@ -270,7 +280,7 @@ func (cw *chimeraWorker) getPieceForDownload() uint64 {
 
 // identifier returns a unqiue identifier for this worker.
 func (cw *chimeraWorker) identifier() string {
-	return cw.staticUID
+	return cw.staticIdentifier
 }
 
 // markPieceForDownload takes a piece index and marks it as the piece to
@@ -286,15 +296,14 @@ func (cw *chimeraWorker) pieces() []uint64 {
 	return cw.staticPieceIndices
 }
 
-// recalculateChanceAfter recalculates the chances reads complete after every
+// rebuildChanceAfterCache recalculates the chances reads complete after every
 // duration from the distribution tracker.
-func (cw *chimeraWorker) recalculateChanceAfter(shift time.Duration) {
-	lookupDistribution, readDistribution := cw.distributions()
-	clonedLookupDistribution := lookupDistribution.Clone()
-	clonedLookupDistribution.Shift(shift)
+func (cw *chimeraWorker) rebuildChanceAfterCache(launchTime time.Time) {
+	clonedLookupDistribution := cw.staticLookupDistribution.Clone()
+	clonedLookupDistribution.Shift(time.Since(launchTime))
 
 	lookupChances := clonedLookupDistribution.ChancesAfter()
-	readChances := readDistribution.ChancesAfter()
+	readChances := cw.staticReadDistribution.ChancesAfter()
 
 	chances := readChances
 	for i := range readChances {
@@ -318,15 +327,15 @@ func (iw *individualWorker) cost(length uint64) types.Currency {
 	return iw.staticExpectedCost
 }
 
-// chanceAfter returns the chance this worker completes a read after the given
-// duration.
-func (iw *individualWorker) chanceAfter(index int) float64 {
+// chanceAfterCached returns the chance this worker completes a read after the
+// given duration.
+func (iw *individualWorker) chanceAfterCached(index int) float64 {
 	return iw.cachedChancesAfter[index]
 }
 
-// recalculateChanceAfter recalculates the chances reads complete after every
+// rebuildChanceAfterCache recalculates the chances reads complete after every
 // duration from the distribution tracker.
-func (iw *individualWorker) recalculateChanceAfter(_ time.Duration) {
+func (iw *individualWorker) rebuildChanceAfterCache(_ time.Time) {
 	distribution := iw.staticReadDistribution
 
 	// if the worker has been launched already, we want to shift the
@@ -552,7 +561,7 @@ func (ws *workerSet) adjustedDuration(ppms types.Currency) time.Duration {
 func (ws *workerSet) chancesAfter(index int) coinflips {
 	chances := make(coinflips, len(ws.workers))
 	for i, w := range ws.workers {
-		chances[i] = w.chanceAfter(index)
+		chances[i] = w.chanceAfterCached(index)
 	}
 	return chances
 }
@@ -600,7 +609,7 @@ func (ws *workerSet) String() string {
 		if !chimera {
 			selected = int(w.getPieceForDownload())
 		}
-		output += fmt.Sprintf("%v) worker: %v chimera: %v chance: %v cost: %v pieces: %v selected: %v\n", i+1, w.identifier(), chimera, w.chanceAfter(ws.staticBucketIndex), w.cost(ws.staticLength), w.pieces(), selected)
+		output += fmt.Sprintf("%v) worker: %v chimera: %v chance: %v cost: %v pieces: %v selected: %v\n", i+1, w.identifier(), chimera, w.chanceAfterCached(ws.staticBucketIndex), w.cost(ws.staticLength), w.pieces(), selected)
 	}
 	return output
 }
@@ -842,7 +851,7 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, allWorkers []dow
 			chimeras := ""
 			for _, dw := range allWorkers {
 				if cw, ok := dw.(*chimeraWorker); ok {
-					chimeras += fmt.Sprintf("%v (%v) chance: %v chanceAtMaxIndex: %v\n", cw.identifier(), len(cw.workers), cw.chanceAfter(ws.staticBucketIndex), cw.chanceAfter(skymodules.DistributionTrackerTotalBuckets-1))
+					chimeras += fmt.Sprintf("%v (%v) chance: %v chanceAtMaxIndex: %v\n", cw.identifier(), len(cw.workers), cw.chanceAfterCached(ws.staticBucketIndex), cw.chanceAfterCached(skymodules.DistributionTrackerTotalBuckets-1))
 				}
 			}
 			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
@@ -850,7 +859,7 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, allWorkers []dow
 					"aWorkerLaunched", w.identifier(),
 					"overdriveWorker", isOverdrive,
 					"expectedDuration", time.Until(expectedCompleteTime),
-					"chanceAfterDur", w.chanceAfter(ws.staticBucketIndex),
+					"chanceAfterDur", w.chanceAfterCached(ws.staticBucketIndex),
 					"wsDuration", ws.staticExpectedDuration,
 					"wsIndex", ws.staticBucketIndex,
 					"chimeras", chimeras,
@@ -893,7 +902,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 
 	// create download workers out of the workers
 	buildDownloadWorkersCnt := 1
-	downloadWorkers := buildDownloadWorkers(workers, numPieces, time.Since(pdc.launchTime))
+	downloadWorkers := buildDownloadWorkers(workers, numPieces, pdc.launchTime)
 
 	// register for a worker update chan
 	workerUpdateChan := ws.managedRegisterForWorkerUpdate()
@@ -933,7 +942,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			// recomputes the chances after duration, which is a computationally
 			// very intensive
 			// fmt.Println("rebuild download workers")
-			downloadWorkers = buildDownloadWorkers(workers, numPieces, time.Since(pdc.launchTime))
+			downloadWorkers = buildDownloadWorkers(workers, numPieces, pdc.launchTime)
 			prevRecalc = time.Now()
 			buildDownloadWorkersCnt++
 		}
@@ -1100,7 +1109,7 @@ OUTER:
 
 		msg := ""
 		for _, dw := range downloadWorkers {
-			msg += fmt.Sprintf("worker: %v chance: %v pieces: %v\n", dw.identifier(), dw.chanceAfter(skymodules.DistributionTrackerTotalBuckets-1), dw.pieces())
+			msg += fmt.Sprintf("worker: %v chance: %v pieces: %v\n", dw.identifier(), dw.chanceAfterCached(skymodules.DistributionTrackerTotalBuckets-1), dw.pieces())
 		}
 		span.LogKV(
 			"bestSetNil", msg,
@@ -1186,7 +1195,7 @@ func buildChimeraWorkers(workers []*individualWorker, numPieces int) []downloadW
 
 // buildDownloadWorkers is a helper function that takes a list of individual
 // workers and turns them into download workers.
-func buildDownloadWorkers(workers []*individualWorker, numPieces int, shift time.Duration) []downloadWorker {
+func buildDownloadWorkers(workers []*individualWorker, numPieces int, launchTime time.Time) []downloadWorker {
 	// turn the given workers into download workers, if an individual worker is
 	// resolved it can be added straight away, unresolved workers are combined
 	// into chimera workers
@@ -1210,7 +1219,7 @@ func buildDownloadWorkers(workers []*individualWorker, numPieces int, shift time
 
 	// precompute the chanceAfterDur values
 	for _, w := range downloadWorkers {
-		w.recalculateChanceAfter(shift)
+		w.rebuildChanceAfterCache(launchTime)
 	}
 
 	return downloadWorkers
@@ -1256,8 +1265,8 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 	// now sort the workers by percentage chance they complete after the
 	// current bucket duration, hence most and less likely
 	sort.Slice(workers, func(i, j int) bool {
-		chanceI := workers[i].chanceAfter(bI)
-		chanceJ := workers[j].chanceAfter(bI)
+		chanceI := workers[i].chanceAfterCached(bI)
+		chanceJ := workers[j].chanceAfterCached(bI)
 		return chanceI > chanceJ
 	})
 
