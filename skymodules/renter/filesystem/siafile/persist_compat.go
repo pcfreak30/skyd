@@ -12,6 +12,19 @@ import (
 	"go.sia.tech/siad/modules"
 )
 
+var (
+	// errWrongMetadataVersion is the error returned when the metadata
+	// version is wrong
+	errWrongMetadataVersion = errors.New("wrong metadata version")
+
+	// metadataVersion is the current version of the siafile Metadata
+	metadataVersion = [16]byte{1}
+
+	// nilMetadataVesion is a helper for identifying an uninitialized
+	// metadata version
+	nilMetadataVesion = [16]byte{}
+)
+
 type (
 	// FileData is a helper struct that contains all the relevant information
 	// of a file. It simplifies passing the necessary data between modules and
@@ -123,4 +136,51 @@ func NewFromLegacyData(fd FileData, siaFilePath string, wal *writeaheadlog.WAL) 
 	// Update the cached fields for progress and uploaded bytes.
 	_, _, err = file.UploadProgressAndBytes()
 	return file, err
+}
+
+// metadataCompatCheck handles the compatability checks for the metadata based
+// on the version
+func (sf *SiaFile) metadataCompatCheck() (err error) {
+	// backup the changed metadata before changing it. Revert the change on
+	// error.
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+		}
+	}(sf.staticMetadata.backup())
+
+	// Check uninitialized case
+	if sf.staticMetadata.StaticVersion == nilMetadataVesion {
+		// COMPATv137 legacy files might not have a unique id.
+		if sf.staticMetadata.UniqueID == "" {
+			sf.staticMetadata.UniqueID = uniqueID()
+		}
+
+		// COMPATv140 legacy 0-byte files might not have correct cached fields since we
+		// never update them once they are created.
+		if sf.staticMetadata.FileSize == 0 {
+			ec := sf.staticMetadata.staticErasureCode
+			sf.staticMetadata.CachedHealth = 0
+			sf.staticMetadata.CachedStuckHealth = 0
+			sf.staticMetadata.CachedRedundancy = float64(ec.NumPieces()) / float64(ec.MinPieces())
+			sf.staticMetadata.CachedUserRedundancy = sf.staticMetadata.CachedRedundancy
+			sf.staticMetadata.CachedUploadProgress = 100
+		}
+
+		// Update the version now that we have complete the compat updates
+		sf.staticMetadata.StaticVersion = metadataVersion
+
+		// Save Metadata to persist updates
+		err := sf.saveMetadata()
+		if err != nil {
+			return err
+		}
+	}
+
+	// Check for current version
+	if sf.staticMetadata.StaticVersion != metadataVersion {
+		return errWrongMetadataVersion
+	}
+
+	return nil
 }

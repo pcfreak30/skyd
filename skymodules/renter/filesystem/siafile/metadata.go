@@ -193,11 +193,7 @@ func (sf *SiaFile) AddSkylink(s skymodules.Skylink) (err error) {
 	sf.staticMetadata.Skylinks = append(sf.staticMetadata.Skylinks, s.String())
 
 	// Save changes to metadata to disk.
-	updates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	return sf.createAndApplyTransaction(updates...)
+	return sf.saveMetadata()
 }
 
 // ChangeTime returns the ChangeTime timestamp of the file.
@@ -478,11 +474,7 @@ func (sf *SiaFile) SetMode(mode os.FileMode) (err error) {
 	sf.staticMetadata.ChangeTime = time.Now()
 
 	// Save changes to metadata to disk.
-	updates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	return sf.createAndApplyTransaction(updates...)
+	return sf.saveMetadata()
 }
 
 // SetLastHealthCheckTime sets the LastHealthCheckTime in memory to the current
@@ -512,11 +504,7 @@ func (sf *SiaFile) SetLocalPath(path string) (err error) {
 	sf.staticMetadata.LocalPath = path
 
 	// Save changes to metadata to disk.
-	updates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	return sf.createAndApplyTransaction(updates...)
+	return sf.saveMetadata()
 }
 
 // Size returns the file's size.
@@ -545,11 +533,7 @@ func (sf *SiaFile) UpdateAccessTime() (err error) {
 	sf.staticMetadata.AccessTime = time.Now()
 
 	// Save changes to metadata to disk.
-	updates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	return sf.createAndApplyTransaction(updates...)
+	return sf.saveMetadata()
 }
 
 // numStuckChunks returns the number of stuck chunks recorded in the file's
