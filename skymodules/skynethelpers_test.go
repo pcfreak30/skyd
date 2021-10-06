@@ -36,7 +36,7 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 		dataSize uint64
 		maxSize  uint64
 
-		result           []CompressedFanoutChunkSpan
+		result           []ChunkSpan
 		translatedOffset uint64
 	}{
 		{
@@ -45,7 +45,7 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 			length:           crypto.HashSize,
 			dataSize:         crypto.HashSize,
 			maxSize:          crypto.HashSize,
-			result:           []CompressedFanoutChunkSpan{},
+			result:           []ChunkSpan{},
 			translatedOffset: 1,
 		},
 		{
@@ -54,7 +54,7 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 			length:   modules.SectorSize,
 			dataSize: modules.SectorSize,
 			maxSize:  crypto.HashSize,
-			result: []CompressedFanoutChunkSpan{
+			result: []ChunkSpan{
 				{
 					minChunkIndex: 0,
 					maxChunkIndex: 0,
@@ -68,7 +68,7 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 			length:   2 * modules.SectorSize,
 			dataSize: 2 * modules.SectorSize,
 			maxSize:  2 * crypto.HashSize,
-			result: []CompressedFanoutChunkSpan{
+			result: []ChunkSpan{
 				{
 					minChunkIndex: 0,
 					maxChunkIndex: 1,
@@ -82,7 +82,7 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 			length:   modules.SectorSize,
 			dataSize: 2 * modules.SectorSize,
 			maxSize:  2 * crypto.HashSize,
-			result: []CompressedFanoutChunkSpan{
+			result: []ChunkSpan{
 				{
 					minChunkIndex: 0,
 					maxChunkIndex: 0,
@@ -96,7 +96,7 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 			length:   modules.SectorSize,
 			dataSize: 2 * modules.SectorSize,
 			maxSize:  2 * crypto.HashSize,
-			result: []CompressedFanoutChunkSpan{
+			result: []ChunkSpan{
 				{
 					minChunkIndex: 1,
 					maxChunkIndex: 1,
@@ -110,7 +110,7 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 			length:   modules.SectorSize * hashesPerSector,
 			dataSize: modules.SectorSize * hashesPerSector,
 			maxSize:  crypto.HashSize,
-			result: []CompressedFanoutChunkSpan{
+			result: []ChunkSpan{
 				{
 					minChunkIndex: 0,
 					maxChunkIndex: 0,
@@ -128,7 +128,7 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 			length:   modules.SectorSize * hashesPerSector,
 			dataSize: modules.SectorSize * hashesPerSector,
 			maxSize:  2 * crypto.HashSize,
-			result: []CompressedFanoutChunkSpan{
+			result: []ChunkSpan{
 				{
 					minChunkIndex: 0,
 					maxChunkIndex: 0,
@@ -146,7 +146,7 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 			length:   modules.SectorSize * hashesPerSector / 2,
 			dataSize: modules.SectorSize * hashesPerSector,
 			maxSize:  crypto.HashSize,
-			result: []CompressedFanoutChunkSpan{
+			result: []ChunkSpan{
 				{
 					minChunkIndex: 0,
 					maxChunkIndex: 0,
@@ -164,7 +164,7 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 			length:   modules.SectorSize * hashesPerSector / 2,
 			dataSize: modules.SectorSize * hashesPerSector,
 			maxSize:  crypto.HashSize,
-			result: []CompressedFanoutChunkSpan{
+			result: []ChunkSpan{
 				{
 					minChunkIndex: 0,
 					maxChunkIndex: 0,
@@ -182,7 +182,7 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 			length:   1,
 			dataSize: modules.SectorSize * hashesPerSector,
 			maxSize:  crypto.HashSize,
-			result: []CompressedFanoutChunkSpan{
+			result: []ChunkSpan{
 				{
 					minChunkIndex: 0,
 					maxChunkIndex: 0,
@@ -200,7 +200,7 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 			length:   1,
 			dataSize: modules.SectorSize * hashesPerSector * hashesPerSector,
 			maxSize:  crypto.HashSize,
-			result: []CompressedFanoutChunkSpan{
+			result: []ChunkSpan{
 				{
 					minChunkIndex: 0,
 					maxChunkIndex: 0,
@@ -222,7 +222,7 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 			length:   1,
 			dataSize: modules.SectorSize * hashesPerSector * hashesPerSector,
 			maxSize:  crypto.HashSize,
-			result: []CompressedFanoutChunkSpan{
+			result: []ChunkSpan{
 				{
 					minChunkIndex: 0,
 					maxChunkIndex: 0,
@@ -253,7 +253,6 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 // testCompressDataToFanout is a unit test for compressDataToFanout.

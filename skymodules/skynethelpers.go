@@ -65,13 +65,16 @@ func AddMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename st
 	return metadata, nil
 }
 
+// ChunkIndexByOffset returns the chunk offset and relative offset within that
+// chunk given an offset within some data and chunksize.
 func ChunkIndexByOffset(offset, chunkSize uint64) (chunkIndex, off uint64) {
 	chunkIndex = offset / chunkSize
 	off = offset % chunkSize
 	return
 }
 
-type CompressedFanoutChunkSpan struct {
+// ChunkSpan hold a span of chunks [minIndex, maxIndex].
+type ChunkSpan struct {
 	minChunkIndex uint64
 	maxChunkIndex uint64
 }
@@ -97,7 +100,7 @@ func compressedFanoutSize(dataSize, maxSize uint64) (usedHashes, depth uint64) {
 
 // TranslateOffset will translate the given offset and length within a
 // compressed fanout.  It returns a chain of spans that need to be downloaded
-func TranslateOffset(offset, length uint64, dataSize, maxSize uint64) (uint64, []CompressedFanoutChunkSpan) {
+func TranslateOffset(offset, length uint64, dataSize, maxSize uint64) (uint64, []ChunkSpan) {
 	// compute the max depth of the fanout.
 	usedHashes, maxDepth := compressedFanoutSize(dataSize, maxSize)
 
@@ -108,7 +111,7 @@ func TranslateOffset(offset, length uint64, dataSize, maxSize uint64) (uint64, [
 	paddedDataSize := numChunks * chunkSize
 	hashesPerSector := modules.SectorSize / crypto.HashSize
 
-	offsets := make([]CompressedFanoutChunkSpan, 0, maxDepth)
+	offsets := make([]ChunkSpan, 0, maxDepth)
 	numHashes := usedHashes
 	shift := uint64(0)
 	for depth := 0; depth < int(maxDepth); depth++ {
@@ -123,7 +126,7 @@ func TranslateOffset(offset, length uint64, dataSize, maxSize uint64) (uint64, [
 		minChunk -= shift
 		maxChunk -= shift
 		shift = newShift
-		offsets = append(offsets, CompressedFanoutChunkSpan{
+		offsets = append(offsets, ChunkSpan{
 			minChunkIndex: minChunk,
 			maxChunkIndex: maxChunk,
 		})
