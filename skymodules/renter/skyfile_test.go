@@ -178,7 +178,7 @@ func TestShortFanoutPanic(t *testing.T) {
 	}
 
 	// Prepare a base sector with fanout but also with the file data.
-	bs, fetchSize := skymodules.BuildBaseSector(sl.Encode(), fanout, metadataBytes, nil)
+	bs, fetchSize, _ := skymodules.BuildBaseSector(sl.Encode(), fanout, metadataBytes, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

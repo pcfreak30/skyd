@@ -5711,9 +5711,10 @@ func testRecursiveBaseSector(t *testing.T, tg *siatest.TestGroup) {
 	// sector. Keep the content small to make it a small upload.
 	data := fastrand.Bytes(10)
 	largeName := hex.EncodeToString(fastrand.Bytes(int(modules.SectorSize) + 1))
+	sp := skymodules.RandomSkynetFilePath()
 
 	sup := skymodules.SkyfileUploadParameters{
-		SiaPath:             skymodules.RandomSiaPath(),
+		SiaPath:             sp,
 		BaseChunkRedundancy: 2,
 		Filename:            largeName,
 		Mode:                skymodules.DefaultFilePerm,
@@ -5729,6 +5730,8 @@ func testRecursiveBaseSector(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
+	// TODO: download the base sector file and check that it's consistent.
+
 	// Download the full file.
 	downloadedData, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
@@ -5737,4 +5740,6 @@ func testRecursiveBaseSector(t *testing.T, tg *siatest.TestGroup) {
 	if !bytes.Equal(data, downloadedData) {
 		t.Fatal("data mismatch")
 	}
+
+	// TODO: fetch the metadata.
 }

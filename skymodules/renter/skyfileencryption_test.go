@@ -63,7 +63,7 @@ func testBaseSectorEncryptionWithType(t *testing.T, r *Renter, skykeyType skykey
 		MetadataSize: uint64(len(metadataBytes)),
 		CipherType:   crypto.TypePlain,
 	}
-	baseSector, _ := skymodules.BuildBaseSector(ll.Encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
+	baseSector, _, _ := skymodules.BuildBaseSector(ll.Encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
 
 	// Make a helper function for producing copies of the basesector
 	// because encryption is done in-place.
@@ -320,7 +320,7 @@ func TestBaseSectorKeyID(t *testing.T) {
 		MetadataSize: uint64(len(metadataBytes)),
 		CipherType:   crypto.TypePlain,
 	}
-	baseSector, _ := skymodules.BuildBaseSector(ll.Encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
+	baseSector, _, _ := skymodules.BuildBaseSector(ll.Encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
 
 	// Make a helper function for producing copies of the basesector
 	// because encryption is done in-place.

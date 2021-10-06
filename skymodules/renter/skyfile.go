@@ -285,7 +285,17 @@ func (r *Renter) managedCreateSkylinkRawMD(ctx context.Context, sup skymodules.S
 	}
 
 	// Create the base sector.
-	baseSector, fetchSize := skymodules.BuildBaseSector(sl.Encode(), fanoutBytes, metadataBytes, nil)
+	baseSector, fetchSize, extendedFanout := skymodules.BuildBaseSector(sl.Encode(), fanoutBytes, metadataBytes, nil)
+	if len(extendedFanout) > 0 {
+		panic("handle extended fanout")
+	}
+
+	// We need to pin the extended fanout as well so we just add it to the
+	// base sector.
+	extendedBaseSector := baseSector
+	for _, ext := range extendedFanout {
+		extendedBaseSector = append(extendedBaseSector, ext...)
+	}
 
 	// Encrypt the base sector if necessary.
 	if encryptionEnabled(&sup) {
@@ -322,7 +332,7 @@ func (r *Renter) managedCreateSkylinkRawMD(ctx context.Context, sup skymodules.S
 	}
 
 	// Upload the base sector.
-	err = r.managedUploadBaseSector(ctx, sup, baseSector, skylink)
+	err = r.managedUploadBaseSector(ctx, sup, extendedBaseSector, skylink)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "Unable to upload base sector for file node. ")
 	}
@@ -476,7 +486,9 @@ func (r *Renter) managedUploadBaseSector(ctx context.Context, sup skymodules.Sky
 		return errors.AddContext(err, "failed to create siafile upload parameters")
 	}
 
-	// Turn the base sector into a reader
+	// Turn the base sector into a reader. The extended fanout is also
+	// added. Make sure every piece of the extended fanout ends up in its
+	// own chunk.
 	reader := bytes.NewReader(baseSector)
 
 	// Perform the actual upload.
@@ -567,7 +579,12 @@ func (r *Renter) managedUploadSkyfileSmallFile(ctx context.Context, sup skymodul
 
 	// Create the base sector. This is done as late as possible so that any
 	// errors are caught before a large block of memory is allocated.
-	baseSector, fetchSize := skymodules.BuildBaseSector(sl.Encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
+	baseSector, fetchSize, extendedFanout := skymodules.BuildBaseSector(sl.Encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
+	if len(extendedFanout) > 0 {
+		err = errors.New("shouldn't have an extended fanout in small file upload")
+		build.Critical(err)
+		return skymodules.Skylink{}, err
+	}
 
 	// Add encryption if required.
 	if encryptionEnabled(&sup) {
@@ -929,9 +946,12 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 	}
 
 	// Parse out the metadata of the skyfile.
-	layout, _, _, _, _, err := skymodules.ParseSkyfileMetadata(baseSector)
+	layout, _, _, _, _, _ := r.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		return errors.AddContext(err, "error parsing skyfile metadata")
+	}
+	if true {
+		panic("implemented extended fanout here")
 	}
 
 	// Set sane defaults for unspecified values.
@@ -1046,9 +1066,12 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 	}
 
 	// Parse the baseSector.
-	sl, _, sm, _, _, err := skymodules.ParseSkyfileMetadata(baseSector)
+	sl, _, sm, _, _, err := r.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "error parsing the baseSector")
+	}
+	if true {
+		panic("handle extended fanout here")
 	}
 
 	// Create the upload parameters
@@ -1426,7 +1449,7 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 	}
 
 	// Parse out the metadata of the skyfile.
-	layout, fanoutBytes, _, _, _, err := skymodules.ParseSkyfileMetadata(baseSector)
+	layout, fanoutBytes, _, _, _, err := r.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		return skymodules.SkylinkHealth{}, errors.AddContext(err, "error parsing skyfile metadata")
 	}
@@ -1592,4 +1615,11 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 		FanoutDataPieces:          layout.FanoutDataPieces,
 		FanoutParityPieces:        layout.FanoutParityPieces,
 	}, nil
+}
+
+// ParseSkyfileMetadata parses all the information from a base sector similar to
+// skymodules.ParseSkyfileMetadata. The difference is that it can also parse a
+// recursive base sector.
+func (r *Renter) ParseSkyfileMetadata(baseSector []byte) (sl skymodules.SkyfileLayout, fanoutBytes []byte, sm skymodules.SkyfileMetadata, rawSM, baseSectorPayload []byte, err error) {
+	panic("not implemented yet")
 }

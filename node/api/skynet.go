@@ -1615,7 +1615,7 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 	}
 
 	// Parse it.
-	_, _, _, rawMD, _, err := skymodules.ParseSkyfileMetadata(baseSector)
+	_, _, _, rawMD, _, err := api.renter.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return

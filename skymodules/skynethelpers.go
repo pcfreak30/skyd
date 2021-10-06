@@ -176,14 +176,14 @@ func compressDataToFanout(data []byte, size uint64) [][]byte {
 
 // BuildBaseSector will take all of the elements of the base sector and copy
 // them into a freshly created base sector.
-func BuildBaseSector(layoutBytes, fanoutBytes, metadataBytes, fileBytes []byte) ([]byte, uint64) {
+func BuildBaseSector(layoutBytes, fanoutBytes, metadataBytes, fileBytes []byte) ([]byte, uint64, [][]byte) {
 	// Sanity Check - small file uploads need to fit in the base sector.
 	totalSize := len(layoutBytes) + len(fanoutBytes) + len(metadataBytes) + len(fileBytes)
 	if uint64(totalSize) > modules.SectorSize && fileBytes != nil {
 		err := fmt.Errorf("inputs too large for baseSector: totalSize %v, layoutBytes %v, fanoutBytes %v, metadataBytes %v, fileBytes %v",
 			totalSize, len(layoutBytes), len(fanoutBytes), len(metadataBytes), len(fileBytes))
 		build.Critical(err)
-		return nil, 0
+		return nil, 0, nil
 	}
 
 	// Build baseSector
@@ -196,9 +196,16 @@ func BuildBaseSector(layoutBytes, fanoutBytes, metadataBytes, fileBytes []byte) 
 	// basesector, we compress the payload.
 	if uint64(totalSize) > modules.SectorSize {
 		payload := append(fanoutBytes, metadataBytes...)
-		copy(baseSector[offset:], payload)
-		offset += len(payload)
-		return baseSector, uint64(offset)
+		fanouts := compressDataToFanout(payload, modules.SectorSize-uint64(offset))
+
+		// The last part of fanouts is the one that goes into the base
+		// sector. The remaining ones have to be uploaded to the
+		// network.
+		compressedFanout, extendedFanout := fanouts[len(fanouts)-1], fanouts[:len(fanouts)-1]
+
+		copy(baseSector[offset:], compressedFanout)
+		offset += len(compressedFanout)
+		return baseSector, uint64(offset), extendedFanout
 	}
 
 	// Otherwise we finish the base sector.
@@ -208,7 +215,7 @@ func BuildBaseSector(layoutBytes, fanoutBytes, metadataBytes, fileBytes []byte) 
 	offset += len(metadataBytes)
 	copy(baseSector[offset:], fileBytes)
 	offset += len(fileBytes)
-	return baseSector, uint64(offset)
+	return baseSector, uint64(offset), nil
 }
 
 // DecodeFanout will take the fanout bytes from a baseSector and decode them.
@@ -352,19 +359,28 @@ func IsEncryptedLayout(sl SkyfileLayout) bool {
 	return sl.Version == 1 && sl.CipherType == crypto.TypeXChaCha20
 }
 
-// ParseSkyfileMetadata will pull the metadata (including layout and fanout) out
-// of a skyfile.
-func ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []byte, sm SkyfileMetadata, rawSM, baseSectorPayload []byte, err error) {
+// ParseSkyfileLayout parses a layout from a base sector.
+func ParseSkyfileLayout(baseSector []byte) (sl SkyfileLayout) {
 	// Sanity check - baseSector should not be more than modules.SectorSize.
-	// Note that the base sector may be smaller in the event of a packed
-	// skyfile.
 	if uint64(len(baseSector)) > modules.SectorSize {
-		build.Critical("parseSkyfileMetadata given a baseSector that is too large")
+		build.Critical("ParseSkyfileLayout given a baseSector that is too large")
 	}
 
 	// Parse the layout.
-	var offset uint64
 	sl.Decode(baseSector)
+	return
+}
+
+// ErrRecursiveBaseSector is returned if a base sector couldn't be parsed due to
+// being recursive.
+var ErrRecursiveBaseSector = errors.New("can't use skymodules.ParseSkyfileMetadata to parse recursive base sector - use renter.ParseSkyfileMetadata instead")
+
+// ParseSkyfileMetadata will pull the metadata (including layout and fanout) out
+// of a skyfile.
+func ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []byte, sm SkyfileMetadata, rawSM, baseSectorPayload []byte, err error) {
+	// Parse the layout.
+	var offset uint64
+	sl = ParseSkyfileLayout(baseSector)
 	offset += SkyfileLayoutSize
 
 	// Check the version.
@@ -375,7 +391,7 @@ func ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []by
 	// Currently there is no support for skyfiles with fanout + metadata that
 	// exceeds the base sector.
 	if offset+sl.FanoutSize+sl.MetadataSize > uint64(len(baseSector)) || sl.FanoutSize > modules.SectorSize || sl.MetadataSize > modules.SectorSize {
-		return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, nil, errors.New("this version of siad does not support skyfiles with large fanouts and metadata")
+		return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, nil, ErrRecursiveBaseSector
 	}
 
 	// Parse the fanout.
