@@ -807,6 +807,12 @@ func TestAddCostPenalty(t *testing.T) {
 func TestBuildChimeraWorkers(t *testing.T) {
 	t.Parallel()
 
+	// newIndividualWorker wraps newTestIndivualWorker
+	newIndividualWorker := func(resolveChance float64) *individualWorker {
+		iw := newTestIndivualWorker("w", resolveChance, 0, []uint64{0})
+		return iw
+	}
+
 	// create pdc
 	pcws := newTestProjectChunkWorkerSet()
 	pdc := newTestProjectDownloadChunk(pcws, nil)
@@ -821,9 +827,9 @@ func TestBuildChimeraWorkers(t *testing.T) {
 	// add couple of workers with resolve chance not adding up to 1
 	workers = append(
 		workers,
-		newTestIndivualWorker("w", 0.3, 0, nil),
-		newTestIndivualWorker("w", 0.1, 0, nil),
-		newTestIndivualWorker("w", 0.5, 0, nil),
+		newIndividualWorker(0.3),
+		newIndividualWorker(0.1),
+		newIndividualWorker(0.5),
 	)
 
 	// check we still don't have a full chimera
@@ -835,11 +841,11 @@ func TestBuildChimeraWorkers(t *testing.T) {
 	// add more workers we should end up with 2 chimeras
 	workers = append(
 		workers,
-		newTestIndivualWorker("w", 0.4, 0, nil),
+		newIndividualWorker(0.4),
 		// chimera 1 complete
-		newTestIndivualWorker("w", 0.2, 0, nil),
-		newTestIndivualWorker("w", 0.3, 0, nil),
-		newTestIndivualWorker("w", 0.3, 0, nil),
+		newIndividualWorker(0.2),
+		newIndividualWorker(0.3),
+		newIndividualWorker(0.3),
 		// chimera 2 complete, .1 remainder
 	)
 
@@ -866,8 +872,8 @@ func TestBuildChimeraWorkers(t *testing.T) {
 
 	// add workers with resolve chances of 1
 	workers = []*individualWorker{
-		newTestIndivualWorker("w", 1, 0, nil),
-		newTestIndivualWorker("w", 1, 0, nil),
+		newIndividualWorker(1),
+		newIndividualWorker(1),
 	}
 
 	// check we build 2 chimeras out of them
@@ -882,19 +888,16 @@ func TestBuildChimeraWorkers(t *testing.T) {
 func TestBuildDownloadWorkers(t *testing.T) {
 	t.Parallel()
 
+	// newIndividualWorker wraps newTestIndivualWorker
+	newIndividualWorker := func(resolveChance float64) *individualWorker {
+		iw := newTestIndivualWorker("w", resolveChance, 0, []uint64{0})
+		iw.hasResolved = resolveChance == 1
+		return iw
+	}
+
 	// create pdc
 	pcws := newTestProjectChunkWorkerSet()
 	pdc := newTestProjectDownloadChunk(pcws, nil)
-
-	// create a helper function to create individual workers with
-	newTestIndividualWorker := func(resolveChance float64) *individualWorker {
-		dt := skymodules.NewDistributionTrackerStandard().Distribution(0)
-		return &individualWorker{
-			resolveChance:          resolveChance,
-			staticReadDistribution: dt,
-			pieceIndices:           []uint64{0},
-		}
-	}
 
 	// empty case
 	var workers []*individualWorker
@@ -906,12 +909,12 @@ func TestBuildDownloadWorkers(t *testing.T) {
 	// add couple of workers with resolve chance not adding up to 1
 	workers = append(
 		workers,
-		newTestIndividualWorker(0.3),
-		newTestIndividualWorker(0.1),
-		newTestIndividualWorker(0.5),
+		newIndividualWorker(0.3),
+		newIndividualWorker(0.1),
+		newIndividualWorker(0.5),
 	)
 
-	// empty case
+	// assert we still don't have a chimera
 	downloadWorkers = pdc.buildDownloadWorkers(workers)
 	if len(downloadWorkers) != 0 {
 		t.Fatal("bad")
@@ -920,18 +923,18 @@ func TestBuildDownloadWorkers(t *testing.T) {
 	// add more workers we should end up with 2 chimeras
 	workers = append(
 		workers,
-		newTestIndividualWorker(0.4),
+		newIndividualWorker(0.4),
 		// chimera 1 complete
-		newTestIndividualWorker(0.2),
-		newTestIndividualWorker(0.3),
-		newTestIndividualWorker(0.3),
+		newIndividualWorker(0.2),
+		newIndividualWorker(0.3),
+		newIndividualWorker(0.3),
 		// chimera 2 complete, .1 remainder
 	)
 
 	// assert we have two download workers, both chimera workers
 	downloadWorkers = pdc.buildDownloadWorkers(workers)
 	if len(downloadWorkers) != 2 {
-		t.Fatal("bad")
+		t.Fatal("bad", len(downloadWorkers))
 	}
 	_, w1IsChimera := downloadWorkers[0].(*chimeraWorker)
 	_, w2IsChimera := downloadWorkers[1].(*chimeraWorker)
@@ -942,11 +945,11 @@ func TestBuildDownloadWorkers(t *testing.T) {
 	// add two resolved workers + enough unresolved to complete another chimera
 	workers = append(
 		workers,
-		newTestIndividualWorker(0.4),
-		newTestIndividualWorker(1),
-		newTestIndividualWorker(0.6),
+		newIndividualWorker(0.4),
+		newIndividualWorker(1),
+		newIndividualWorker(0.6),
 		// chimera 3 complete
-		newTestIndividualWorker(1),
+		newIndividualWorker(1),
 	)
 
 	downloadWorkers = pdc.buildDownloadWorkers(workers)
@@ -971,6 +974,7 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 	// define some variables
 	bucketIndex := 0
 	workersNeeded := 2
+	overdriveWorkers := 0
 
 	// create pdc
 	pcws := newTestProjectChunkWorkerSet()
@@ -985,18 +989,18 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 	worker := new(worker)
 	worker.staticHostPubKey = spk
 
-	// we will have 3 workers, one resolved one and two chimeras, the resolve
-	// chance is higher for the chimeras, meaning they are more likely to end up
-	// in the most likely set
+	// we will have 3 workers, one resolved one and two chimeras
 	iw1 := &individualWorker{
 		resolveChance: 1,
-		pieceIndices:  []uint64{1, 2},
+		hasResolved:   true,
+		pieceIndices:  []uint64{0, 1},
 		staticWorker:  worker,
 	}
-	cw1 := NewChimeraWorker(5, 0)
-	cw2 := NewChimeraWorker(5, 0)
+	cw1 := NewChimeraWorker(2, 1<<16)
+	cw2 := NewChimeraWorker(2, 1<<16)
 
-	// set chances after
+	// mock the chance afters, make sure the chimeras have a higher chance,
+	// meaning they are more likely to end up in the most likely set
 	iw1.cachedChancesAfter[0] = .1
 	cw1.cachedChancesAfter[0] = .2
 	cw2.cachedChancesAfter[0] = .3
@@ -1008,10 +1012,10 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 
 	// split the workers in most likely and less likely
 	workers := []downloadWorker{iw1, cw1, cw2}
-	mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(workers, bucketIndex, workersNeeded, 0)
+	mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(workers, bucketIndex, workersNeeded, overdriveWorkers)
 
 	// expect the most likely to consist of the 2 chimeras
-	if len(mostLikely) != 2 {
+	if len(mostLikely) != workersNeeded {
 		t.Fatal("bad")
 	}
 	mostLikelyKey1 := mostLikely[0].identifier()
@@ -1020,7 +1024,16 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 		t.Fatal("bad")
 	}
 
-	// expect the less likely set to contain the resolved worker
+	// assert the less likely set is empty
+	if len(lessLikely) != 0 {
+		t.Fatal("bad")
+	}
+
+	// add a piece to the individual worker
+	iw1.pieceIndices = append(iw1.pieceIndices, 2)
+
+	// assert it's now in the less likely set
+	_, lessLikely = pdc.splitMostlikelyLessLikely(workers, bucketIndex, workersNeeded, 1)
 	if len(lessLikely) != 1 {
 		t.Fatal("bad")
 	}
@@ -1029,34 +1042,28 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 		t.Fatal("bad")
 	}
 
-	// mock iw1 launched piece with index 1
-	w1Key := iw1.worker().staticHostPubKeyStr
-	pdc.workerProgress[w1Key] = workerProgress{
-		completedPieces: make(completedPieces),
-		launchedPieces:  make(launchedPieces),
-	}
-	pdc.workerProgress[w1Key].launchedPieces[1] = time.Now()
-	iw1.markPieceForDownload(1)
+	// rebuild cw1 and cw2 with only one piece
+	cw1 = NewChimeraWorker(1, 1<<16)
+	cw2 = NewChimeraWorker(1, 1<<16)
+	cw1.cachedChancesAfter[0] = .2
+	cw2.cachedChancesAfter[0] = .3
+	workers = []downloadWorker{cw1, cw2}
 
-	// now the resolved worker should have claimed a spot in the most likely set
+	// assert that we allow overdriving on the same piece if we don't have
+	// enough workers to meet the workersNeeded quota
 	mostLikely, lessLikely = pdc.splitMostlikelyLessLikely(workers, bucketIndex, workersNeeded, 0)
+	if len(mostLikely) != 1 {
+		t.Fatal("bad")
+	}
+	if len(lessLikely) != 0 {
+		t.Fatal("bad")
+	}
 
-	// expect the most likely to consist of the 2 chimeras
+	mostLikely, lessLikely = pdc.splitMostlikelyLessLikely(workers, bucketIndex, workersNeeded, 1)
 	if len(mostLikely) != 2 {
 		t.Fatal("bad")
 	}
-	mostLikelyKey1 = mostLikely[0].identifier()
-	mostLikelyKey2 = mostLikely[1].identifier()
-	if !(mostLikelyKey1 == iw1Key && mostLikelyKey2 == cw2Key) {
-		t.Fatal("bad")
-	}
-
-	// expect the less likely set to contain the resolved worker
-	if len(lessLikely) != 1 {
-		t.Fatal("bad")
-	}
-	lessLikelyKey1 = lessLikely[0].identifier()
-	if lessLikelyKey1 != cw1Key {
+	if len(lessLikely) != 0 {
 		t.Fatal("bad")
 	}
 }
@@ -1068,8 +1075,9 @@ func newTestIndivualWorker(hostPubKeyStr string, resolveChance float64, readDura
 	w.staticHostPubKeyStr = hostPubKeyStr
 
 	iw := &individualWorker{
-		resolveChance:            resolveChance,
-		pieceIndices:             pieceIndices,
+		resolveChance: resolveChance,
+		pieceIndices:  pieceIndices,
+
 		staticExpectedCost:       types.SiacoinPrecision,
 		staticLookupDistribution: skymodules.NewDistribution(15 * time.Minute),
 		staticReadDistribution:   skymodules.NewDistribution(15 * time.Minute),

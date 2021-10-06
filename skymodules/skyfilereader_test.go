@@ -33,7 +33,7 @@ func testSkyfileReaderBasic(t *testing.T) {
 	}
 
 	// create a reader
-	dataLen := fastrand.Intn(1000) + 10
+	dataLen := fastrand.Intn(1000) + 11
 	data := fastrand.Bytes(dataLen)
 	reader := bytes.NewReader(data)
 	sfReader := NewSkyfileReader(reader, sup)
