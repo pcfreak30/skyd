@@ -1,7 +1,9 @@
 package skymodules
 
 import (
+	"fmt"
 	"math"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -19,89 +21,366 @@ func TestSkynetHelpers(t *testing.T) {
 	t.Run("ValidateSkyfileMetadata", testValidateSkyfileMetadata)
 	t.Run("EnsurePrefix", testEnsurePrefix)
 	t.Run("EnsureSuffix", testEnsureSuffix)
-	t.Run("CompressDataToFanout", testCompressDataIntoSize)
+	t.Run("CompressDataToFanout", testCompressDataToFanout)
+	t.Run("ResolveCompressedDataOffsetLength", testResolveCompressedDataOffsetLength)
 }
 
-func testCompressDataIntoSize(t *testing.T) {
+// testCompressDataToFanout is a unit test for compressDataToFanout.
+func testResolveCompressedDataOffsetLength(t *testing.T) {
 	hashesPerSector := modules.SectorSize / crypto.HashSize
 
 	tests := []struct {
-		name string
-		data []byte
-		size uint64
+		name     string
+		offset   uint64
+		length   uint64
+		dataSize uint64
+		maxSize  uint64
+
+		result           []CompressedFanoutChunkSpan
+		translatedOffset uint64
+	}{
+		{
+			name:             "NoCompression",
+			offset:           1,
+			length:           crypto.HashSize,
+			dataSize:         crypto.HashSize,
+			maxSize:          crypto.HashSize,
+			result:           []CompressedFanoutChunkSpan{},
+			translatedOffset: 1,
+		},
+		{
+			name:     "FullSector-DownloadAll-SingleHash",
+			offset:   0,
+			length:   modules.SectorSize,
+			dataSize: modules.SectorSize,
+			maxSize:  crypto.HashSize,
+			result: []CompressedFanoutChunkSpan{
+				{
+					minChunkIndex: 0,
+					maxChunkIndex: 0,
+				},
+			},
+			translatedOffset: 0,
+		},
+		{
+			name:     "TwoFullSectors-DownloadAll-TwoHashes",
+			offset:   0,
+			length:   2 * modules.SectorSize,
+			dataSize: 2 * modules.SectorSize,
+			maxSize:  2 * crypto.HashSize,
+			result: []CompressedFanoutChunkSpan{
+				{
+					minChunkIndex: 0,
+					maxChunkIndex: 1,
+				},
+			},
+			translatedOffset: 0,
+		},
+		{
+			name:     "TwoFullSectors-DownloadFirstHalf-TwoHashes",
+			offset:   0,
+			length:   modules.SectorSize,
+			dataSize: 2 * modules.SectorSize,
+			maxSize:  2 * crypto.HashSize,
+			result: []CompressedFanoutChunkSpan{
+				{
+					minChunkIndex: 0,
+					maxChunkIndex: 0,
+				},
+			},
+			translatedOffset: 0,
+		},
+		{
+			name:     "TwoFullSectors-DownloadSecondHalf-TwoHashes",
+			offset:   modules.SectorSize,
+			length:   modules.SectorSize,
+			dataSize: 2 * modules.SectorSize,
+			maxSize:  2 * crypto.HashSize,
+			result: []CompressedFanoutChunkSpan{
+				{
+					minChunkIndex: 1,
+					maxChunkIndex: 1,
+				},
+			},
+			translatedOffset: 0,
+		},
+		{
+			name:     "Depth1-FullDownload-SingleHash",
+			offset:   0,
+			length:   modules.SectorSize * hashesPerSector,
+			dataSize: modules.SectorSize * hashesPerSector,
+			maxSize:  crypto.HashSize,
+			result: []CompressedFanoutChunkSpan{
+				{
+					minChunkIndex: 0,
+					maxChunkIndex: 0,
+				},
+				{
+					minChunkIndex: 0,
+					maxChunkIndex: hashesPerSector - 1,
+				},
+			},
+			translatedOffset: 0,
+		},
+		{
+			name:     "Depth1-FullDownload-TwoHashes",
+			offset:   0,
+			length:   modules.SectorSize * hashesPerSector,
+			dataSize: modules.SectorSize * hashesPerSector,
+			maxSize:  2 * crypto.HashSize,
+			result: []CompressedFanoutChunkSpan{
+				{
+					minChunkIndex: 0,
+					maxChunkIndex: 0,
+				},
+				{
+					minChunkIndex: 0,
+					maxChunkIndex: hashesPerSector - 1,
+				},
+			},
+			translatedOffset: 0,
+		},
+		{
+			name:     "Depth1-FirstHalf-SingleHash",
+			offset:   0,
+			length:   modules.SectorSize * hashesPerSector / 2,
+			dataSize: modules.SectorSize * hashesPerSector,
+			maxSize:  crypto.HashSize,
+			result: []CompressedFanoutChunkSpan{
+				{
+					minChunkIndex: 0,
+					maxChunkIndex: 0,
+				},
+				{
+					minChunkIndex: 0,
+					maxChunkIndex: hashesPerSector/2 - 1,
+				},
+			},
+			translatedOffset: 0,
+		},
+		{
+			name:     "Depth1-SecondHalf-SingleHash",
+			offset:   modules.SectorSize * hashesPerSector / 2,
+			length:   modules.SectorSize * hashesPerSector / 2,
+			dataSize: modules.SectorSize * hashesPerSector,
+			maxSize:  crypto.HashSize,
+			result: []CompressedFanoutChunkSpan{
+				{
+					minChunkIndex: 0,
+					maxChunkIndex: 0,
+				},
+				{
+					minChunkIndex: hashesPerSector / 2,
+					maxChunkIndex: hashesPerSector - 1,
+				},
+			},
+			translatedOffset: 0,
+		},
+		{
+			name:     "Depth1-LastByte-SingleHash",
+			offset:   modules.SectorSize*hashesPerSector - 1,
+			length:   1,
+			dataSize: modules.SectorSize * hashesPerSector,
+			maxSize:  crypto.HashSize,
+			result: []CompressedFanoutChunkSpan{
+				{
+					minChunkIndex: 0,
+					maxChunkIndex: 0,
+				},
+				{
+					minChunkIndex: hashesPerSector - 1,
+					maxChunkIndex: hashesPerSector - 1,
+				},
+			},
+			translatedOffset: modules.SectorSize - 1,
+		},
+		{
+			name:     "Depth2-LastByte-SingleHash",
+			offset:   modules.SectorSize*hashesPerSector*hashesPerSector - 1,
+			length:   1,
+			dataSize: modules.SectorSize * hashesPerSector * hashesPerSector,
+			maxSize:  crypto.HashSize,
+			result: []CompressedFanoutChunkSpan{
+				{
+					minChunkIndex: 0,
+					maxChunkIndex: 0,
+				},
+				{
+					minChunkIndex: hashesPerSector - 1,
+					maxChunkIndex: hashesPerSector - 1,
+				},
+				{
+					minChunkIndex: hashesPerSector - 1,
+					maxChunkIndex: hashesPerSector - 1,
+				},
+			},
+			translatedOffset: modules.SectorSize - 1,
+		},
+		{
+			name:     "Depth2-MiddleByte-SingleHash",
+			offset:   modules.SectorSize * hashesPerSector * hashesPerSector / 2,
+			length:   1,
+			dataSize: modules.SectorSize * hashesPerSector * hashesPerSector,
+			maxSize:  crypto.HashSize,
+			result: []CompressedFanoutChunkSpan{
+				{
+					minChunkIndex: 0,
+					maxChunkIndex: 0,
+				},
+				{
+					minChunkIndex: hashesPerSector / 2,
+					maxChunkIndex: hashesPerSector / 2,
+				},
+				{
+					minChunkIndex: 0,
+					maxChunkIndex: 0,
+				},
+			},
+			translatedOffset: 0,
+		},
+	}
+	// Run tests.
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			offset, offsets := TranslateOffset(test.offset, test.length, test.dataSize, test.maxSize)
+			if !reflect.DeepEqual(test.result, offsets) {
+				t.Log("wanted:", test.result)
+				t.Log("got:", offsets)
+				t.Fatal("wrong result")
+			}
+			if offset != test.translatedOffset {
+				t.Fatalf("wrong offset: %v != %v", offset, test.translatedOffset)
+			}
+		})
+	}
+
+}
+
+// testCompressDataToFanout is a unit test for compressDataToFanout.
+func testCompressDataToFanout(t *testing.T) {
+	hashesPerSector := modules.SectorSize / crypto.HashSize
+
+	tests := []struct {
+		name     string
+		dataSize int
+		size     uint64
 
 		fanoutSizes []int
 	}{
 		{
-			name: "LessDataThanSize",
-			data: fastrand.Bytes(crypto.HashSize - 1),
-			size: crypto.HashSize,
+			// Test having less data than the size. That means no
+			// compression is necessary.
+			name:     "LessDataThanSize",
+			dataSize: crypto.HashSize - 1,
+			size:     crypto.HashSize,
 		},
 		{
-			name: "SameDataAsSize",
-			data: fastrand.Bytes(crypto.HashSize),
-			size: crypto.HashSize,
+			// Same amount of data as size should also not require
+			// compression.
+			name:     "SameDataAsSize",
+			dataSize: crypto.HashSize,
+			size:     crypto.HashSize,
 		},
 		{
+			// Try more data than size. Should compress into a singe
+			// sector.
 			name:        "MoreDataThanSize",
-			data:        fastrand.Bytes(crypto.HashSize + 1),
+			dataSize:    crypto.HashSize + 1, // more than one hash
 			size:        crypto.HashSize,
 			fanoutSizes: []int{crypto.HashSize},
 		},
 		{
+			// Try a full sector of data. Should be compressed into
+			// a single hash.
 			name:        "FullSectorToSingleHash",
-			data:        fastrand.Bytes(int(crypto.HashSize * hashesPerSector)),
+			dataSize:    int(modules.SectorSize),
 			size:        crypto.HashSize,
 			fanoutSizes: []int{crypto.HashSize},
 		},
 		{
-			name:        "TwoSectorsToTwoHashes",
-			data:        fastrand.Bytes(int(crypto.HashSize*hashesPerSector) + 1),
+			// Try a full sector of data. This time we have 2 hashes
+			// of size remaining in the base sector. Since we can
+			// fit all into a single sector still, we end up with
+			// the same result as FullSectorToSingleHash.
+			name:        "FullSectorToTwoHashes",
+			dataSize:    int(modules.SectorSize),
 			size:        2 * crypto.HashSize,
-			fanoutSizes: []int{2 * crypto.HashSize},
+			fanoutSizes: []int{crypto.HashSize},
 		},
 		{
+			// Try compressing two sectors of data into a single
+			// hash. At first this will compress the data into 2
+			// hashes (one for each sector). Since the base sector
+			// only has room for 1 hash, those 2 hashes are
+			// compressed again into a single one.
 			name:        "TwoSectorsToSingleHash",
-			data:        fastrand.Bytes(int(crypto.HashSize*hashesPerSector) + 1),
+			dataSize:    2 * int(modules.SectorSize),
 			size:        crypto.HashSize,
 			fanoutSizes: []int{2 * crypto.HashSize, crypto.HashSize},
 		},
 		{
-			name:        "Squared",
-			data:        fastrand.Bytes(int(crypto.HashSize * hashesPerSector * hashesPerSector)),
-			size:        crypto.HashSize,
-			fanoutSizes: []int{int(hashesPerSector) * crypto.HashSize, crypto.HashSize},
-		},
-		{
-			name:        "Squared2",
-			data:        fastrand.Bytes(int(crypto.HashSize * hashesPerSector * hashesPerSector)),
+			// Try two sectors of data with 2 hashes of space. This
+			// results in the same 2 hash fanout as before but it
+			// doesn't need to be compressed further since it fits
+			// into the remaining space.
+			name:        "TwoSectorsToTwoHashes",
+			dataSize:    2 * int(modules.SectorSize),
 			size:        2 * crypto.HashSize,
-			fanoutSizes: []int{int(hashesPerSector) * crypto.HashSize, crypto.HashSize},
+			fanoutSizes: []int{2 * crypto.HashSize},
 		},
 		{
-			name:        "Squared2.1",
-			data:        fastrand.Bytes(int(crypto.HashSize * hashesPerSector * hashesPerSector)),
-			size:        crypto.HashSize * hashesPerSector,
-			fanoutSizes: []int{int(hashesPerSector) * crypto.HashSize},
-		},
-		{
-			name:        "Squared3",
-			data:        fastrand.Bytes(int(crypto.HashSize*hashesPerSector*hashesPerSector) + 1),
+			// Try compressing hashesPerSector sectors of data into
+			// a single hash. This means that after compressing the
+			// initial data we have enough hashes to fill a full
+			// sector. Which will be compressed again into a single
+			// hash.
+			name:        "HashesPerSectorSectorsToSingleHash",
+			dataSize:    int(modules.SectorSize * hashesPerSector),
 			size:        crypto.HashSize,
-			fanoutSizes: []int{int(hashesPerSector+1) * crypto.HashSize, 2 * crypto.HashSize, crypto.HashSize},
+			fanoutSizes: []int{int(modules.SectorSize), crypto.HashSize},
 		},
 		{
-			name:        "Squared4",
-			data:        fastrand.Bytes(int(crypto.HashSize*hashesPerSector*hashesPerSector) + 1),
+			// Try compressing hashesPerSector sectors of data into
+			// a two hashes. This means that after compressing the
+			// initial data we have enough hashes to fill a full
+			// sector. Which will be compressed again into a single
+			// hash. So the result will be the same.
+			name:        "HashesPerSectorSectorsToTwoHashes",
+			dataSize:    int(modules.SectorSize * hashesPerSector),
 			size:        2 * crypto.HashSize,
-			fanoutSizes: []int{int(hashesPerSector+1) * crypto.HashSize, 2 * crypto.HashSize},
+			fanoutSizes: []int{int(modules.SectorSize), crypto.HashSize},
+		},
+		{
+			// Try compressing hashesPerSector sectors plus one
+			// additional byte of data into a one hash. This means
+			// that after compressing the initial data we have
+			// enough hashes to fill a full sector plus one more.
+			// Which will be compressed again into two hashes. Which
+			// will be compressed into one.
+			name:        "HashesPerSectorPlusOneSectorsToOneHash",
+			dataSize:    int(modules.SectorSize*hashesPerSector + 1),
+			size:        crypto.HashSize,
+			fanoutSizes: []int{int(modules.SectorSize) + crypto.HashSize, 2 * crypto.HashSize, crypto.HashSize},
+		},
+		{
+			// Try compressing hashesPerSector sectors plus one
+			// additional byte of data into two hashes. This means
+			// that after compressing the initial data we have
+			// enough hashes to fill a full sector plus one more.
+			// Which will be compressed again into two hashes. Which
+			// is compressed enough to be put into the base sector.
+			// name:
+			// "HashesPerSectorPlusOneSectorsToOneHash",
+			dataSize:    int(modules.SectorSize*hashesPerSector + 1),
+			size:        2 * crypto.HashSize,
+			fanoutSizes: []int{int(modules.SectorSize) + crypto.HashSize, 2 * crypto.HashSize},
 		},
 	}
 
 	// Run tests.
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			fanouts := compressDataToFanout(test.data, test.size)
+			fanouts := compressDataToFanout(fastrand.Bytes(test.dataSize), test.size)
 			if len(fanouts) != len(test.fanoutSizes) {
 				t.Fatalf("invalid fanouts length: %v != %v", len(fanouts), len(test.fanoutSizes))
 			}
@@ -110,10 +389,28 @@ func testCompressDataIntoSize(t *testing.T) {
 					t.Fatalf("%v: invalid fanout size: %v != %v", i, len(fanout), test.fanoutSizes[i])
 				}
 			}
+			expectedUsedHashes, expectedDepth := compressedFanoutSize(uint64(test.dataSize), test.size)
+			if expectedDepth != uint64(len(fanouts)) {
+				t.Fatalf("depth %v != %v", len(fanouts), expectedDepth)
+			}
+			if len(fanouts) > 0 {
+				usedHashes := uint64(len(fanouts[len(fanouts)-1])) / crypto.HashSize
+				if expectedUsedHashes != usedHashes {
+					t.Fatalf("used hashes %v != %v", usedHashes, expectedUsedHashes)
+				}
+			}
 		})
 	}
 
-	// TODO: test edge case.
+	// Test sanity check edge case.
+	t.Run("SizeSanityCheck", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "can't compress to a size smaller than a single hash") {
+				t.Fatal("unexpected", r)
+			}
+		}()
+		compressDataToFanout(fastrand.Bytes(10), crypto.HashSize-1)
+	})
 }
 
 // testValidateDefaultPath ensures the functionality of 'validateDefaultPath'

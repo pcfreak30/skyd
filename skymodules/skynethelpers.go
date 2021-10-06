@@ -65,6 +65,72 @@ func AddMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename st
 	return metadata, nil
 }
 
+func ChunkIndexByOffset(offset, chunkSize uint64) (chunkIndex, off uint64) {
+	chunkIndex = offset / chunkSize
+	off = offset % chunkSize
+	return
+}
+
+type CompressedFanoutChunkSpan struct {
+	minChunkIndex uint64
+	maxChunkIndex uint64
+}
+
+func compressedFanoutSize(dataSize, maxSize uint64) (usedHashes, depth uint64) {
+	if dataSize <= maxSize {
+		return 0, 0
+	}
+
+	maxHashesInBaseSector := maxSize / crypto.HashSize
+	hashesPerSector := modules.SectorSize / crypto.HashSize
+
+	numHashes := uint64(1)
+	for depth = 1; ; depth++ {
+		for usedHashes := uint64(1); usedHashes <= maxHashesInBaseSector; usedHashes++ {
+			if usedHashes*numHashes*modules.SectorSize >= dataSize {
+				return usedHashes, depth
+			}
+		}
+		numHashes *= hashesPerSector // numHashes equals hashesPerSector**depth
+	}
+}
+
+// TranslateOffset will translate the given offset and length within a
+// compressed fanout.  It returns a chain of spans that need to be downloaded
+func TranslateOffset(offset, length uint64, dataSize, maxSize uint64) (uint64, []CompressedFanoutChunkSpan) {
+	// compute the max depth of the fanout.
+	usedHashes, maxDepth := compressedFanoutSize(dataSize, maxSize)
+
+	// compute how many chunks we need for the data and what the size of the
+	// padded data is.
+	numChunks := NumChunks(crypto.TypePlain, dataSize, 1)
+	chunkSize := ChunkSize(crypto.TypePlain, 1)
+	paddedDataSize := numChunks * chunkSize
+	hashesPerSector := modules.SectorSize / crypto.HashSize
+
+	offsets := make([]CompressedFanoutChunkSpan, 0, maxDepth)
+	numHashes := usedHashes
+	shift := uint64(0)
+	for depth := 0; depth < int(maxDepth); depth++ {
+		minChunk, _ := ChunkIndexByOffset(offset, paddedDataSize/numHashes)
+		maxChunk, maxChunkOffset := ChunkIndexByOffset(offset+length, paddedDataSize/numHashes)
+		if maxChunk > 0 && maxChunkOffset == 0 {
+			maxChunk--
+		}
+		numHashes *= hashesPerSector
+
+		newShift := minChunk * hashesPerSector
+		minChunk -= shift
+		maxChunk -= shift
+		shift = newShift
+		offsets = append(offsets, CompressedFanoutChunkSpan{
+			minChunkIndex: minChunk,
+			maxChunkIndex: maxChunk,
+		})
+	}
+	return offset % chunkSize, offsets
+}
+
 func compressDataToFanout(data []byte, size uint64) [][]byte {
 	if size < crypto.HashSize {
 		build.Critical("can't compress to a size smaller than a single hash")
@@ -74,8 +140,7 @@ func compressDataToFanout(data []byte, size uint64) [][]byte {
 
 	var fanouts [][]byte
 	for uint64(len(data)) > size {
-		println("len", len(data))
-		// Figure out how many chunks this data can be split into.
+		// Figure out how many chunks this data needs to be split into.
 		numChunks := NumChunks(crypto.TypePlain, uint64(len(data)), 1)
 
 		// Allocate the fanout.
@@ -98,7 +163,6 @@ func compressDataToFanout(data []byte, size uint64) [][]byte {
 		}
 
 		// Append the fanout to the array of fanouts.
-		println("fanout", len(fanout))
 		fanouts = append(fanouts, fanout)
 
 		// The fanout becomes the new data.
