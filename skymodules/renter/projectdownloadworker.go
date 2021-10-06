@@ -1028,6 +1028,9 @@ func (pdc *projectDownloadChunk) createWorkerSet(downloadWorkers []downloadWorke
 		return nil, nil
 	}
 
+	// TODO: we should not be passing this in but instead start at 0 every time
+	numOverdriveWorkers = 0
+
 OUTER:
 	for numOverdrive := numOverdriveWorkers; numOverdrive <= maxOverdriveWorkers; numOverdrive++ {
 		workersNeeded := minPieces + numOverdrive
