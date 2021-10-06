@@ -177,9 +177,9 @@ func compressDataToFanout(data []byte, size uint64) [][]byte {
 // BuildBaseSector will take all of the elements of the base sector and copy
 // them into a freshly created base sector.
 func BuildBaseSector(layoutBytes, fanoutBytes, metadataBytes, fileBytes []byte) ([]byte, uint64) {
-	// Sanity Check
+	// Sanity Check - small file uploads need to fit in the base sector.
 	totalSize := len(layoutBytes) + len(fanoutBytes) + len(metadataBytes) + len(fileBytes)
-	if uint64(totalSize) > modules.SectorSize {
+	if uint64(totalSize) > modules.SectorSize && fileBytes != nil {
 		err := fmt.Errorf("inputs too large for baseSector: totalSize %v, layoutBytes %v, fanoutBytes %v, metadataBytes %v, fileBytes %v",
 			totalSize, len(layoutBytes), len(fanoutBytes), len(metadataBytes), len(fileBytes))
 		build.Critical(err)
@@ -191,6 +191,17 @@ func BuildBaseSector(layoutBytes, fanoutBytes, metadataBytes, fileBytes []byte) 
 	offset := 0
 	copy(baseSector[offset:], layoutBytes)
 	offset += len(layoutBytes)
+
+	// If the upload is not a small upload, but it doesn't fit in the
+	// basesector, we compress the payload.
+	if uint64(totalSize) > modules.SectorSize {
+		payload := append(fanoutBytes, metadataBytes...)
+		copy(baseSector[offset:], payload)
+		offset += len(payload)
+		return baseSector, uint64(offset)
+	}
+
+	// Otherwise we finish the base sector.
 	copy(baseSector[offset:], fanoutBytes)
 	offset += len(fanoutBytes)
 	copy(baseSector[offset:], metadataBytes)
