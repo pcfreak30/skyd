@@ -511,26 +511,22 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 
 	// Build the full pdc.
 	pdc := &projectDownloadChunk{
-		launchTime: time.Now(),
-
-		offsetInChunk: offset,
 		lengthInChunk: length,
+		offsetInChunk: offset,
 
 		pieceOffset: pieceOffset,
 		pieceLength: pieceLength,
 
-		staticIsLowPrio: lowPrio,
-
 		pricePerMS: pricePerMS,
 
-		dataPieces: make([][]byte, ec.NumPieces()),
+		workerProgress: make(map[string]workerProgress),
 
-		availablePiecesByIndex:  make(map[uint64]int64),
-		downloadedPiecesByIndex: make(map[uint64]struct{}),
-		completedPiecesByWorker: make(map[string]completedPieces),
-		launchedPiecesByWorker:  make(map[string]launchedPieces),
-
+		piecesData:         make([][]byte, ec.NumPieces()),
+		piecesInfo:         make([]pieceInfo, ec.NumPieces()),
 		staticSkipRecovery: skipRecovery,
+
+		staticIsLowPrio:  lowPrio,
+		staticLaunchTime: time.Now(),
 
 		ctx:                  ctx,
 		workerResponseChan:   workerResponseChan,

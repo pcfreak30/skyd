@@ -3,6 +3,7 @@ package renter
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"math"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
 )
 
@@ -545,5 +547,45 @@ func TestWaitForResult(t *testing.T) {
 	// worker.
 	if len(result) != 1 {
 		t.Fatal("unexpected", len(result))
+	}
+}
+
+// newTestProjectChunkWorkerSet returns a PCWS used for testing
+func newTestProjectChunkWorkerSet() *projectChunkWorkerSet {
+	return newCustomTestProjectChunkWorkerSet(skymodules.NewRSSubCodeDefault())
+}
+
+// newCustomTestProjectChunkWorkerSet returns a PCWS used for testing and allows
+// to pass a custom erasure coder
+func newCustomTestProjectChunkWorkerSet(ec skymodules.ErasureCoder) *projectChunkWorkerSet {
+	// create a passhtrough cipher key
+	ck, err := crypto.NewSiaKey(crypto.TypePlain, nil)
+	if err != nil {
+		return nil
+	}
+
+	// create renter
+	renter := new(Renter)
+	renter.staticBaseSectorDownloadStats = skymodules.NewSectorDownloadStats()
+	renter.staticFanoutSectorDownloadStats = skymodules.NewSectorDownloadStats()
+
+	// create discard logger
+	logger, err := persist.NewLogger(ioutil.Discard)
+	if err != nil {
+		return nil
+	}
+	renter.staticLog = logger
+
+	// create PCWS manually
+	return &projectChunkWorkerSet{
+		workerState: new(pcwsWorkerState),
+
+		staticChunkIndex:   0,
+		staticErasureCoder: ec,
+		staticMasterKey:    ck,
+		staticPieceRoots:   make([]crypto.Hash, ec.NumPieces()),
+
+		staticCtx:    context.Background(),
+		staticRenter: renter,
 	}
 }

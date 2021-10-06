@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"strings"
 	"testing"
 	"time"
@@ -16,26 +15,153 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
 )
 
-// TestProjectDownloadChunk_finalize is a unit test for the 'finalize' function
+// TestPDC is a collection of unit test that verify the functionality of the
+// project download chunk object.
+func TestPDC(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	t.Run("handleJobResponse", testProjectDownloadChunkHandleJobResponse)
+	t.Run("finalize", testProjectDownloadChunkFinalize)
+	t.Run("finished", testProjectDownloadChunkFinished)
+	t.Run("launchWorker", testProjectDownloadChunkLaunchWorker)
+}
+
+// testProjectDownloadChunkHandleJobResponse is a unit test that verifies the
+// functionality of the 'handleJobResponse' function on the ProjectDownloadChunk
+func testProjectDownloadChunkHandleJobResponse(t *testing.T) {
+	t.Parallel()
+
+	// create pcws
+	pcws := newTestProjectChunkWorkerSet()
+	ec := pcws.staticErasureCoder
+
+	// create data and erasure code
+	data := fastrand.Bytes(int(modules.SectorSize))
+	pieces, err := ec.Encode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// update piece roots
+	empty := crypto.Hash{}
+	pcws.staticPieceRoots = []crypto.Hash{
+		empty,
+		crypto.MerkleRoot(pieces[1]),
+		empty,
+		empty,
+		empty,
+	}
+
+	// create pdc
+	pdc := newTestProjectDownloadChunk(pcws, nil)
+	pdc.piecesInfo[1].available++
+	pdc.piecesInfo[2].available++
+
+	// create worker
+	worker := new(worker)
+
+	// mock state after launching a worker
+	workerKey := worker.staticHostPubKey.ShortString()
+	pdc.workerProgress[workerKey] = workerProgress{
+		completedPieces: make(completedPieces),
+		launchedPieces:  make(launchedPieces),
+	}
+
+	lwi := &launchedWorkerInfo{staticLaunchTime: time.Now().Add(-time.Minute)}
+	pdc.launchedWorkers = []*launchedWorkerInfo{lwi}
+
+	// mock a successful read response for piece 1
+	success := &jobReadResponse{
+		staticData:    pieces[1],
+		staticErr:     nil,
+		staticJobTime: time.Duration(1),
+		staticMetadata: jobReadMetadata{
+			staticLaunchedWorkerIndex: 0,
+			staticPieceRootIndex:      1,
+			staticSectorRoot:          crypto.MerkleRoot(pieces[1]),
+			staticWorker:              worker,
+		},
+	}
+	pdc.handleJobReadResponse(success)
+
+	// assert pieces info got updated
+	if !pdc.piecesInfo[1].downloaded {
+		t.Fatal("unexpected")
+	}
+	if pdc.piecesInfo[1].available != 0 {
+		t.Fatal("unexpected")
+	}
+
+	// assert pieces data got updated and that we've unset the data
+	if !bytes.Equal(pdc.piecesData[1], pieces[1]) {
+		t.Fatal("unexpected")
+	}
+	if success.staticData != nil {
+		t.Fatal("unexpected")
+	}
+
+	// assert the launched worker information got updated
+	if lwi.completeTime == (time.Time{}) ||
+		lwi.jobDuration == 0 ||
+		lwi.totalDuration == 0 ||
+		lwi.jobErr != nil {
+		t.Fatal("unexpected")
+	}
+
+	// mock a failed read response for piece 2
+	pdc.handleJobReadResponse(&jobReadResponse{
+		staticData:    nil,
+		staticErr:     errors.New("read failed"),
+		staticJobTime: time.Duration(1),
+		staticMetadata: jobReadMetadata{
+			staticPieceRootIndex: 2,
+			staticSectorRoot:     empty,
+			staticWorker:         worker,
+		},
+	})
+
+	// assert pieces info got updated
+	if pdc.piecesInfo[2].downloaded {
+		t.Fatal("unexpected")
+	}
+	if pdc.piecesInfo[2].available != 0 {
+		t.Fatal("unexpected")
+	}
+
+	// assert pieces data
+	if pdc.piecesData[2] != nil {
+		t.Fatal("unexpected")
+	}
+
+	// assert the launched worker information got updated
+	if lwi.completeTime == (time.Time{}) ||
+		lwi.jobDuration == 0 ||
+		lwi.totalDuration == 0 ||
+		lwi.jobErr == nil {
+		t.Fatal("unexpected", lwi)
+	}
+}
+
+// testProjectDownloadChunkFinalize is a unit test for the 'finalize' function
 // on the pdc. It verifies whether the returned data is properly offset to
 // include only the pieces requested by the user.
-func TestProjectDownloadChunk_finalize(t *testing.T) {
+func testProjectDownloadChunkFinalize(t *testing.T) {
 	t.Parallel()
+
+	// create PCWS
+	pcws := newTestProjectChunkWorkerSet()
+	ec := pcws.staticErasureCoder
 
 	// create data
 	originalData := fastrand.Bytes(int(modules.SectorSize))
 	sectorRoot := crypto.MerkleRoot(originalData)
-
-	// create an EC and a passhtrough cipher key
-	ec := skymodules.NewRSSubCodeDefault()
-	ck, err := crypto.NewSiaKey(crypto.TypePlain, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	pcws.staticPieceRoots = []crypto.Hash{sectorRoot}
 
 	// RS encode the data
 	data := make([]byte, modules.SectorSize)
@@ -43,22 +169,6 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 	pieces, err := ec.Encode(data)
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	// create renter
-	renter := new(Renter)
-	renter.staticBaseSectorDownloadStats = skymodules.NewSectorDownloadStats()
-	renter.staticFanoutSectorDownloadStats = skymodules.NewSectorDownloadStats()
-
-	// create PCWS manually
-	pcws := &projectChunkWorkerSet{
-		staticChunkIndex:   0,
-		staticErasureCoder: ec,
-		staticMasterKey:    ck,
-		staticPieceRoots:   []crypto.Hash{sectorRoot},
-
-		staticCtx:    context.Background(),
-		staticRenter: renter,
 	}
 
 	// download a random amount of data at random offset
@@ -72,22 +182,14 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 		copy(sliced[i], piece[pieceOffset:pieceOffset+pieceLength])
 	}
 
-	// create PDC manually
+	// create a pdc
 	responseChan := make(chan *downloadResponse, 1)
-	pdc := &projectDownloadChunk{
-		offsetInChunk: offset,
-		lengthInChunk: length,
-
-		pieceOffset: pieceOffset,
-		pieceLength: pieceLength,
-
-		dataPieces: sliced,
-
-		downloadResponseChan: responseChan,
-		workerSet:            pcws,
-
-		ctx: context.Background(),
-	}
+	pdc := newTestProjectDownloadChunk(pcws, responseChan)
+	pdc.offsetInChunk = offset
+	pdc.lengthInChunk = length
+	pdc.pieceOffset = pieceOffset
+	pdc.pieceLength = pieceLength
+	pdc.piecesData = sliced
 
 	pdc.launchedWorkers = append(pdc.launchedWorkers, &launchedWorkerInfo{
 		staticLaunchTime:           time.Now(),
@@ -130,47 +232,19 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 	}
 }
 
-// TestProjectDownloadChunk_finished is a unit test for the 'finished' function
+// testProjectDownloadChunkFinished is a unit test for the 'finished' function
 // on the pdc. It verifies whether the hopeful and completed pieces are properly
 // counted and whether the return values are correct.
-func TestProjectDownloadChunk_finished(t *testing.T) {
-	// create an EC
-	ec, err := skymodules.NewRSCode(3, 9)
+func testProjectDownloadChunkFinished(t *testing.T) {
+	// create EC
+	ec, err := skymodules.NewRSCode(3, 5)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("unexpected")
 	}
 
-	// create a passhtrough cipher key
-	ck, err := crypto.NewSiaKey(crypto.TypePlain, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// create renter
-	renter := new(Renter)
-	renter.staticBaseSectorDownloadStats = skymodules.NewSectorDownloadStats()
-	renter.staticFanoutSectorDownloadStats = skymodules.NewSectorDownloadStats()
-
-	// create PCWS manually
-	pcws := &projectChunkWorkerSet{
-		staticChunkIndex:   0,
-		staticErasureCoder: ec,
-		staticMasterKey:    ck,
-		staticPieceRoots:   []crypto.Hash{},
-
-		staticCtx:    context.Background(),
-		staticRenter: renter,
-	}
-
-	// create PDC manually - only the essentials
-	pdc := &projectDownloadChunk{
-		workerSet: pcws,
-
-		availablePiecesByIndex:  make(map[uint64]int64),
-		downloadedPiecesByIndex: make(map[uint64]struct{}),
-		completedPiecesByWorker: make(map[string]completedPieces),
-		launchedPiecesByWorker:  make(map[string]launchedPieces),
-	}
+	// create pdc
+	pcws := newCustomTestProjectChunkWorkerSet(ec)
+	pdc := newTestProjectDownloadChunk(pcws, nil)
 
 	// mock unresolved state with hope of successful download
 	pdc.unresolvedWorkersRemaining = 4
@@ -182,9 +256,9 @@ func TestProjectDownloadChunk_finished(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 
-	// mock one downloaded piece - still unresolved and hopeful
+	// mock one resolved piece - still unfinished but hopeful
 	pdc.unresolvedWorkersRemaining = 3
-	pdc.downloadedPiecesByIndex[0] = struct{}{}
+	pdc.piecesInfo[0].available++
 	finished, err = pdc.finished()
 	if err != nil {
 		t.Fatal("unexpected error", err)
@@ -193,8 +267,9 @@ func TestProjectDownloadChunk_finished(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 
-	// mock resolved state - not hopeful and not finished
+	// mock all resolved, only 2 availables - should not be hopeful, need 3
 	pdc.unresolvedWorkersRemaining = 0
+	pdc.piecesInfo[1].available++
 	finished, err = pdc.finished()
 	if !errors.Contains(err, errNotEnoughPieces) {
 		t.Fatal("unexpected error", err)
@@ -203,10 +278,8 @@ func TestProjectDownloadChunk_finished(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 
-	// mock resolves state - add 3 pieces in limbo -> hopeful again
-	pdc.availablePiecesByIndex[1] = 1
-	pdc.availablePiecesByIndex[2] = 1
-	pdc.availablePiecesByIndex[3] = 1
+	// add one available - should be hopeful and unfinished
+	pdc.piecesInfo[2].available++
 	finished, err = pdc.finished()
 	if err != nil {
 		t.Fatal("unexpected error", err)
@@ -215,21 +288,13 @@ func TestProjectDownloadChunk_finished(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 
-	// mock two failures -> hope gone again
-	pdc.availablePiecesByIndex[1] = 0
-	pdc.availablePiecesByIndex[2] = 0
-	finished, err = pdc.finished()
-	if !errors.Contains(err, errNotEnoughPieces) {
-		t.Fatal("unexpected error", err)
-	}
-	if finished {
-		t.Fatal("unexpected")
-	}
-
-	// undo one failure and add 2 completed -> finished
-	pdc.downloadedPiecesByIndex[1] = struct{}{}
-	pdc.downloadedPiecesByIndex[2] = struct{}{}
-	pdc.downloadedPiecesByIndex[3] = struct{}{}
+	// mock all downloaded, should be finished
+	pdc.piecesInfo[0].available = 0
+	pdc.piecesInfo[0].downloaded = true
+	pdc.piecesInfo[1].available = 0
+	pdc.piecesInfo[1].downloaded = true
+	pdc.piecesInfo[2].available = 0
+	pdc.piecesInfo[2].downloaded = true
 	finished, err = pdc.finished()
 	if err != nil {
 		t.Fatal("unexpected error", err)
@@ -239,167 +304,27 @@ func TestProjectDownloadChunk_finished(t *testing.T) {
 	}
 }
 
-// TestProjectDownloadChunk_handleJobResponse is a unit test that verifies the
-// functionality of the 'handleJobResponse' function on the ProjectDownloadChunk
-func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
-	t.Parallel()
-
-	ec := skymodules.NewRSSubCodeDefault()
-	ptck, err := crypto.NewSiaKey(crypto.TypePlain, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	data := fastrand.Bytes(int(modules.SectorSize))
-	pieces, err := ec.Encode(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	w := new(worker)
-	w.staticHostPubKeyStr = "w"
-
-	empty := crypto.Hash{}
-	pcws := new(projectChunkWorkerSet)
-	pcws.staticMasterKey = ptck
-	pcws.staticErasureCoder = ec
-	pcws.staticPieceRoots = []crypto.Hash{
-		empty,
-		empty,
-		empty,
-		crypto.MerkleRoot(pieces[3]),
-		empty,
-	}
-
-	renter := new(Renter)
-	logger, err := persist.NewLogger(ioutil.Discard)
-	if err != nil {
-		t.Fatal("unexpected")
-	}
-	renter.staticLog = logger
-	pcws.staticRenter = renter
-
-	pdc := new(projectDownloadChunk)
-	pdc.workerState = new(pcwsWorkerState)
-	pdc.availablePiecesByIndex = make(map[uint64]int64)
-	pdc.downloadedPiecesByIndex = make(map[uint64]struct{}, 0)
-	pdc.completedPiecesByWorker = make(map[string]completedPieces, 0)
-	pdc.launchedPiecesByWorker = make(map[string]launchedPieces, 0)
-	pdc.workerSet = pcws
-	pdc.workerSet.staticChunkIndex = 0
-	pdc.dataPieces = make([][]byte, ec.NumPieces())
-
-	lwi := launchedWorkerInfo{
-		staticLaunchTime: time.Now().Add(-time.Minute),
-	}
-	pdc.launchedWorkers = []*launchedWorkerInfo{&lwi}
-	pdc.availablePiecesByIndex[3] = 1
-	pdc.availablePiecesByIndex[0] = 1
-
-	// verify the pdc after a successful read response for piece at index 3
-	success := &jobReadResponse{
-		staticData:    pieces[3],
-		staticErr:     nil,
-		staticJobTime: time.Duration(1),
-		staticMetadata: jobReadMetadata{
-			staticLaunchedWorkerIndex: 0,
-			staticPieceRootIndex:      3,
-			staticSectorRoot:          crypto.MerkleRoot(pieces[3]),
-			staticWorker:              w,
-		},
-	}
-	pdc.handleJobReadResponse(success)
-
-	if _, exists := pdc.downloadedPiecesByIndex[3]; !exists {
-		t.Fatal("unexpected")
-	}
-	if _, exists := pdc.completedPiecesByWorker["w"][3]; !exists {
-		t.Fatal("unexpected")
-	}
-	if pdc.availablePiecesByIndex[3] != 0 {
-		t.Fatal("unexpected")
-	}
-	if !bytes.Equal(pdc.dataPieces[3], pieces[3]) {
-		t.Fatal("unexpected")
-	}
-	if success.staticData != nil {
-		t.Fatal("unexpected") // verify we unset the data
-	}
-
-	// verify the worker information got updated
-	if lwi.completeTime == (time.Time{}) ||
-		lwi.jobDuration == 0 ||
-		lwi.totalDuration == 0 ||
-		lwi.jobErr != nil {
-		t.Fatal("unexpected")
-	}
-
-	// verify the pdc after a failed read
-	pdc.handleJobReadResponse(&jobReadResponse{
-		staticData:    nil,
-		staticErr:     errors.New("read failed"),
-		staticJobTime: time.Duration(1),
-		staticMetadata: jobReadMetadata{
-			staticPieceRootIndex: 0,
-			staticSectorRoot:     empty,
-			staticWorker:         w,
-		},
-	})
-	if _, exists := pdc.downloadedPiecesByIndex[0]; exists {
-		t.Fatal("unexpected")
-	}
-	if _, exists := pdc.completedPiecesByWorker["w"][0]; !exists {
-		t.Fatal("unexpected")
-	}
-	if pdc.availablePiecesByIndex[0] != 0 {
-		t.Fatal("unexpected")
-	}
-	if pdc.dataPieces[0] != nil {
-		t.Fatal("unexpected")
-	}
-
-	// verify the worker information got updated
-	if lwi.completeTime == (time.Time{}) ||
-		lwi.jobDuration == 0 ||
-		lwi.totalDuration == 0 ||
-		lwi.jobErr == nil {
-		t.Fatal("unexpected", lwi)
-	}
-}
-
-// TestProjectDownloadChunk_launchWorker is a unit test for the 'launchWorker'
+// testProjectDownloadChunkLaunchWorker is a unit test for the 'launchWorker'
 // function on the pdc.
-func TestProjectDownloadChunk_launchWorker(t *testing.T) {
+func testProjectDownloadChunkLaunchWorker(t *testing.T) {
 	t.Parallel()
-
-	ec := skymodules.NewRSCodeDefault()
-	spk := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       fastrand.Bytes(crypto.PublicKeySize),
-	}
 
 	// mock a worker, ensure the readqueue returns a non zero time estimate
 	worker := mockWorker(100 * time.Millisecond)
-	worker.staticHostPubKeyStr = spk.String()
+	workerIdentifier := worker.staticHostPubKey.ShortString()
+	workerHostPubKeyStr := worker.staticHostPubKeyStr
 
-	// mock a pcws
-	pcws := new(projectChunkWorkerSet)
-	pcws.staticPieceRoots = make([]crypto.Hash, ec.NumPieces())
-
-	// mock a pdc, ensure available pieces is not nil
-	pdc := new(projectDownloadChunk)
-	pdc.availablePiecesByIndex = make(map[uint64]int64)
-	pdc.downloadedPiecesByIndex = make(map[uint64]struct{}, 0)
-	pdc.completedPiecesByWorker = make(map[string]completedPieces, 0)
-	pdc.launchedPiecesByWorker = make(map[string]launchedPieces, 0)
-	pdc.ctx = context.Background()
-	pdc.workerSet = pcws
+	// create pdc
+	pcws := newTestProjectChunkWorkerSet()
+	pdc := newTestProjectDownloadChunk(pcws, nil)
 	pdc.pieceLength = 1 << 16 // 64kb
 
 	// launch a worker and expect it to have enqueued a job and expect the
 	// complete time to be somewhere in the future
-	iw := &individualWorker{staticWorker: worker}
-	expectedCompleteTime, added := pdc.launchWorker(iw, 0, false)
+	expectedCompleteTime, added := pdc.launchWorker(&individualWorker{
+		staticWorker:     worker,
+		staticIdentifier: workerIdentifier,
+	}, 0, false)
 	if !added {
 		t.Fatal("unexpected")
 	}
@@ -407,10 +332,15 @@ func TestProjectDownloadChunk_launchWorker(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 
-	// assert both launched pieces and downloaded pieces have been initialised
-	_, exists1 := pdc.launchedPiecesByWorker[spk.String()]
-	_, exists2 := pdc.completedPiecesByWorker[spk.String()]
-	if !(exists1 && exists2) {
+	// assert worker progress has been initialised
+	progress, exists := pdc.workerProgress[workerIdentifier]
+	if !exists {
+		t.Fatal("unexpected")
+	}
+
+	// verify one worker was launched without failure
+	launchTime := progress.launchedPieces[0]
+	if launchTime.IsZero() {
 		t.Fatal("unexpected")
 	}
 
@@ -430,12 +360,7 @@ func TestProjectDownloadChunk_launchWorker(t *testing.T) {
 		lw.totalDuration != 0 ||
 		lw.staticExpectedDuration == 0 ||
 		!bytes.Equal(lw.staticPDC.uid[:], pdc.uid[:]) ||
-		lw.staticWorker.staticHostPubKeyStr != spk.String() {
-		t.Fatal("unexpected")
-	}
-
-	// verify one worker was launched without failure
-	if pdc.launchedPiecesByWorker[spk.String()][0].IsZero() {
+		lw.staticWorker.staticHostPubKeyStr != workerHostPubKeyStr {
 		t.Fatal("unexpected")
 	}
 }
@@ -634,13 +559,43 @@ func TestLaunchedWorkerInfo_String(t *testing.T) {
 	}
 }
 
+// newTestProjectDownloadChunk returns a PDC used for testing
+func newTestProjectDownloadChunk(pcws *projectChunkWorkerSet, responseChan chan *downloadResponse) *projectDownloadChunk {
+	ec := pcws.staticErasureCoder
+
+	if responseChan == nil {
+		responseChan = make(chan *downloadResponse, 1)
+	}
+
+	return &projectDownloadChunk{
+		piecesInfo: make([]pieceInfo, ec.NumPieces()),
+		piecesData: make([][]byte, ec.NumPieces()),
+
+		workerProgress: make(map[string]workerProgress),
+
+		downloadResponseChan: responseChan,
+		workerSet:            pcws,
+
+		ctx: context.Background(),
+
+		staticLaunchTime: time.Now(),
+	}
+}
+
 // mockWorker is a helper function that returns a worker with a pricetable
 // and an initialised read queue that returns a non zero value for read
 // estimates depending on the given jobTime value.
 func mockWorker(jobTime time.Duration) *worker {
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       fastrand.Bytes(crypto.PublicKeySize),
+	}
+
 	worker := new(worker)
 	worker.newPriceTable()
 	worker.staticPriceTable().staticPriceTable = newDefaultPriceTable()
+	worker.staticHostPubKey = spk
+	worker.staticHostPubKeyStr = spk.String()
 
 	jrs := NewJobReadStats()
 	jrs.weightedJobTime64k = float64(jobTime)
