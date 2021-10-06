@@ -151,15 +151,6 @@ func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL,
 		return nil, err
 	}
 
-	// Compat check for metadata static version
-	//
-	// NOTE: This needs to be after the creation of the erasure coder since
-	// one of the compat checks uses the erasure coder.
-	err = sf.metadataCompatCheck()
-	if err != nil {
-		return nil, err
-	}
-
 	// Load the pubKeyTable.
 	pubKeyTableLen := sf.staticMetadata.ChunkOffset - sf.staticMetadata.PubKeyTableOffset
 	if pubKeyTableLen < 0 {
@@ -181,6 +172,16 @@ func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL,
 		if err != nil {
 			return nil, errors.AddContext(err, "failed to unmarshal pubKeyTable")
 		}
+	}
+
+	// Compat check for metadata static version
+	//
+	// NOTE: This needs to be after the creation of the erasure coder and the pubkeytable since
+	// one of the compat checks uses the erasure coder and the checks call
+	// SaveMetadata which requires the size of the pubkeytable to be known.
+	err = sf.metadataCompatCheck()
+	if err != nil {
+		return nil, err
 	}
 
 	// Seek to the start of the chunks.
