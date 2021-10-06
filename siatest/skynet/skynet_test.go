@@ -113,6 +113,7 @@ func TestSkynetSuiteTwo(t *testing.T) {
 		{Name: "Stats", Test: testSkynetStats},
 		{Name: "RegistryUpdateMulti", Test: testUpdateRegistryMulti},
 		{Name: "HostsForRegistryUpdate", Test: testHostsForRegistryUpdate},
+		{Name: "RecursiveBaseSector", Test: testRecursiveBaseSector},
 	}
 
 	// Run tests
@@ -5701,5 +5702,39 @@ func TestRegistryReadRepair(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+func testRecursiveBaseSector(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Choose a filename that is >SectorSize to guarantee we exceed the base
+	// sector. Keep the content small to make it a small upload.
+	data := fastrand.Bytes(10)
+	largeName := hex.EncodeToString(fastrand.Bytes(int(modules.SectorSize) + 1))
+
+	sup := skymodules.SkyfileUploadParameters{
+		SiaPath:             skymodules.RandomSiaPath(),
+		BaseChunkRedundancy: 2,
+		Filename:            largeName,
+		Mode:                skymodules.DefaultFilePerm,
+		Reader:              bytes.NewReader(data),
+		Force:               false,
+		Root:                false,
+		SkykeyName:          "",
+	}
+
+	// upload a skyfile
+	skylink, _, err := r.SkynetSkyfilePost(sup)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download the full file.
+	downloadedData, err := r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, downloadedData) {
+		t.Fatal("data mismatch")
 	}
 }

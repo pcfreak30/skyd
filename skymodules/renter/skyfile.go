@@ -276,12 +276,6 @@ func (r *Renter) managedCreateSkylinkRawMD(ctx context.Context, sup skymodules.S
 		return skymodules.Skylink{}, errors.New("siafile has unsupported erasure code type")
 	}
 
-	// Check the header size.
-	headerSize := uint64(skymodules.SkyfileLayoutSize + len(metadataBytes) + len(fanoutBytes))
-	if headerSize > modules.SectorSize {
-		return skymodules.Skylink{}, errors.AddContext(ErrMetadataTooBig, fmt.Sprintf("skyfile does not fit in leading chunk - metadata size plus fanout size must be less than %v bytes, metadata size is %v bytes and fanout size is %v bytes", modules.SectorSize-skymodules.SkyfileLayoutSize, len(metadataBytes), len(fanoutBytes)))
-	}
-
 	// Assemble the first chunk of the skyfile.
 	sl = skymodules.NewSkyfileLayout(size, uint64(len(metadataBytes)), uint64(len(fanoutBytes)), ec, masterKey.Type())
 
