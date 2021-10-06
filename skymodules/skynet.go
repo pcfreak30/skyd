@@ -551,17 +551,17 @@ type SkyfileLayout struct {
 	KeyData            [layoutKeyDataSize]byte // keyData is incompatible with ciphers that need keys larger than 64 bytes
 }
 
-// NewSkyfileLayoutV1 creates a new version 1 layout with fanout.
-func NewSkyfileLayoutV1(fileSize, metadataSize, fanoutSize uint64, fanoutEC ErasureCoder, ct crypto.CipherType) SkyfileLayout {
-	sl := NewSkyfileLayoutV1NoFanout(fileSize, metadataSize, ct)
+// NewSkyfileLayout creates a new version 1 layout with fanout.
+func NewSkyfileLayout(fileSize, metadataSize, fanoutSize uint64, fanoutEC ErasureCoder, ct crypto.CipherType) SkyfileLayout {
+	sl := NewSkyfileLayoutNoFanout(fileSize, metadataSize, ct)
 	sl.FanoutSize = fanoutSize
 	sl.FanoutDataPieces = uint8(fanoutEC.MinPieces())
 	sl.FanoutParityPieces = uint8(fanoutEC.NumPieces() - fanoutEC.MinPieces())
 	return sl
 }
 
-// NewSkyfileLayoutV1NoFanout creates a new version 1 layout without fanout.
-func NewSkyfileLayoutV1NoFanout(fileSize, metadataSize uint64, ct crypto.CipherType) SkyfileLayout {
+// NewSkyfileLayoutNoFanout creates a new version 1 layout without fanout.
+func NewSkyfileLayoutNoFanout(fileSize, metadataSize uint64, ct crypto.CipherType) SkyfileLayout {
 	return SkyfileLayout{
 		Version:      SkyfileVersion,
 		Filesize:     fileSize,

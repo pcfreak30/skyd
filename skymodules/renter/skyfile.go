@@ -283,7 +283,7 @@ func (r *Renter) managedCreateSkylinkRawMD(ctx context.Context, sup skymodules.S
 	}
 
 	// Assemble the first chunk of the skyfile.
-	sl = skymodules.NewSkyfileLayoutV1(size, uint64(len(metadataBytes)), uint64(len(fanoutBytes)), ec, masterKey.Type())
+	sl = skymodules.NewSkyfileLayout(size, uint64(len(metadataBytes)), uint64(len(fanoutBytes)), ec, masterKey.Type())
 
 	// If we're uploading in plaintext, we put the key in the baseSector
 	if !encryptionEnabled(&sup) {
@@ -569,7 +569,7 @@ func (r *Renter) managedUploadSkyfileSmallFile(ctx context.Context, sup skymodul
 
 	// Create the layout. Since this is a small upload it doesn't have a
 	// fanout.
-	sl := skymodules.NewSkyfileLayoutV1NoFanout(uint64(len(fileBytes)), uint64(len(metadataBytes)), crypto.TypePlain)
+	sl := skymodules.NewSkyfileLayoutNoFanout(uint64(len(fileBytes)), uint64(len(metadataBytes)), crypto.TypePlain)
 
 	// Create the base sector. This is done as late as possible so that any
 	// errors are caught before a large block of memory is allocated.

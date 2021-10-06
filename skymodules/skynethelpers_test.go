@@ -7,6 +7,7 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 )
 
@@ -18,6 +19,101 @@ func TestSkynetHelpers(t *testing.T) {
 	t.Run("ValidateSkyfileMetadata", testValidateSkyfileMetadata)
 	t.Run("EnsurePrefix", testEnsurePrefix)
 	t.Run("EnsureSuffix", testEnsureSuffix)
+	t.Run("CompressDataToFanout", testCompressDataIntoSize)
+}
+
+func testCompressDataIntoSize(t *testing.T) {
+	hashesPerSector := modules.SectorSize / crypto.HashSize
+
+	tests := []struct {
+		name string
+		data []byte
+		size uint64
+
+		fanoutSizes []int
+	}{
+		{
+			name: "LessDataThanSize",
+			data: fastrand.Bytes(crypto.HashSize - 1),
+			size: crypto.HashSize,
+		},
+		{
+			name: "SameDataAsSize",
+			data: fastrand.Bytes(crypto.HashSize),
+			size: crypto.HashSize,
+		},
+		{
+			name:        "MoreDataThanSize",
+			data:        fastrand.Bytes(crypto.HashSize + 1),
+			size:        crypto.HashSize,
+			fanoutSizes: []int{crypto.HashSize},
+		},
+		{
+			name:        "FullSectorToSingleHash",
+			data:        fastrand.Bytes(int(crypto.HashSize * hashesPerSector)),
+			size:        crypto.HashSize,
+			fanoutSizes: []int{crypto.HashSize},
+		},
+		{
+			name:        "TwoSectorsToTwoHashes",
+			data:        fastrand.Bytes(int(crypto.HashSize*hashesPerSector) + 1),
+			size:        2 * crypto.HashSize,
+			fanoutSizes: []int{2 * crypto.HashSize},
+		},
+		{
+			name:        "TwoSectorsToSingleHash",
+			data:        fastrand.Bytes(int(crypto.HashSize*hashesPerSector) + 1),
+			size:        crypto.HashSize,
+			fanoutSizes: []int{2 * crypto.HashSize, crypto.HashSize},
+		},
+		{
+			name:        "Squared",
+			data:        fastrand.Bytes(int(crypto.HashSize * hashesPerSector * hashesPerSector)),
+			size:        crypto.HashSize,
+			fanoutSizes: []int{int(hashesPerSector) * crypto.HashSize, crypto.HashSize},
+		},
+		{
+			name:        "Squared2",
+			data:        fastrand.Bytes(int(crypto.HashSize * hashesPerSector * hashesPerSector)),
+			size:        2 * crypto.HashSize,
+			fanoutSizes: []int{int(hashesPerSector) * crypto.HashSize, crypto.HashSize},
+		},
+		{
+			name:        "Squared2.1",
+			data:        fastrand.Bytes(int(crypto.HashSize * hashesPerSector * hashesPerSector)),
+			size:        crypto.HashSize * hashesPerSector,
+			fanoutSizes: []int{int(hashesPerSector) * crypto.HashSize},
+		},
+		{
+			name:        "Squared3",
+			data:        fastrand.Bytes(int(crypto.HashSize*hashesPerSector*hashesPerSector) + 1),
+			size:        crypto.HashSize,
+			fanoutSizes: []int{int(hashesPerSector+1) * crypto.HashSize, 2 * crypto.HashSize, crypto.HashSize},
+		},
+		{
+			name:        "Squared4",
+			data:        fastrand.Bytes(int(crypto.HashSize*hashesPerSector*hashesPerSector) + 1),
+			size:        2 * crypto.HashSize,
+			fanoutSizes: []int{int(hashesPerSector+1) * crypto.HashSize, 2 * crypto.HashSize},
+		},
+	}
+
+	// Run tests.
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fanouts := compressDataToFanout(test.data, test.size)
+			if len(fanouts) != len(test.fanoutSizes) {
+				t.Fatalf("invalid fanouts length: %v != %v", len(fanouts), len(test.fanoutSizes))
+			}
+			for i, fanout := range fanouts {
+				if len(fanout) != test.fanoutSizes[i] {
+					t.Fatalf("%v: invalid fanout size: %v != %v", i, len(fanout), test.fanoutSizes[i])
+				}
+			}
+		})
+	}
+
+	// TODO: test edge case.
 }
 
 // testValidateDefaultPath ensures the functionality of 'validateDefaultPath'

@@ -65,6 +65,48 @@ func AddMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename st
 	return metadata, nil
 }
 
+func compressDataToFanout(data []byte, size uint64) [][]byte {
+	if size < crypto.HashSize {
+		build.Critical("can't compress to a size smaller than a single hash")
+		return nil
+	}
+	chunkSize := ChunkSize(crypto.TypePlain, 1)
+
+	var fanouts [][]byte
+	for uint64(len(data)) > size {
+		println("len", len(data))
+		// Figure out how many chunks this data can be split into.
+		numChunks := NumChunks(crypto.TypePlain, uint64(len(data)), 1)
+
+		// Allocate the fanout.
+		fanout := make([]byte, 0, numChunks*crypto.HashSize)
+
+		// Create the fanout for the data.
+		buf := bytes.NewBuffer(data)
+		for buf.Len() > 0 {
+			// Pull off one chunk after another.
+			chunk := buf.Next(int(chunkSize))
+
+			// If the chunk is smaller than a chunkSize, add padding.
+			if uint64(len(chunk)) < chunkSize {
+				chunk = append(chunk, make([]byte, chunkSize-uint64(len(chunk)))...)
+			}
+
+			// Add the merkleroot to the fanout.
+			mr := crypto.MerkleRoot(chunk)
+			fanout = append(fanout, mr[:]...)
+		}
+
+		// Append the fanout to the array of fanouts.
+		println("fanout", len(fanout))
+		fanouts = append(fanouts, fanout)
+
+		// The fanout becomes the new data.
+		data = fanout
+	}
+	return fanouts
+}
+
 // BuildBaseSector will take all of the elements of the base sector and copy
 // them into a freshly created base sector.
 func BuildBaseSector(layoutBytes, fanoutBytes, metadataBytes, fileBytes []byte) ([]byte, uint64) {
