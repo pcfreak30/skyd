@@ -786,8 +786,8 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 
 			staticExpectedCost:       jrq.callExpectedJobCost(length),
 			staticIdentifier:         rw.worker.staticHostPubKey.ShortString(),
-			staticLookupDistribution: ldt.Distribution(0),
-			staticReadDistribution:   rdt.Distribution(0),
+			staticLookupDistribution: ldt.Distribution(0).Clone(),
+			staticReadDistribution:   rdt.Distribution(0).Clone(),
 			staticWorker:             rw.worker,
 		})
 	}
@@ -820,8 +820,8 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 			staticIdentifier:          w.staticHostPubKey.ShortString(),
 			staticExpectedCost:        jrq.callExpectedJobCost(length),
 			staticExpectedResolveTime: uw.staticExpectedResolvedTime,
-			staticLookupDistribution:  ldt.Distribution(0),
-			staticReadDistribution:    rdt.Distribution(0),
+			staticLookupDistribution:  ldt.Distribution(0).Clone(),
+			staticReadDistribution:    rdt.Distribution(0).Clone(),
 			staticWorker:              w,
 		})
 	}
