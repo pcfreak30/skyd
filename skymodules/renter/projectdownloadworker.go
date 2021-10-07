@@ -71,6 +71,7 @@ type (
 	// worker exactly the same as a resolved worker in the download algorithm
 	// that constructs the best worker set.
 	chimeraWorker struct {
+		cachedRebuiltAt time.Time
 		// cachedChancesAfter maps a duration to the chance this worker can
 		// download a piece in the timespan defined by that duration, we have to
 		// cache this because it's computationally expensive to compute
@@ -318,17 +319,15 @@ func (cw *chimeraWorker) pieces() []uint64 {
 // rebuildChanceAfterCache recalculates the chances reads complete after every
 // duration from the distribution tracker.
 func (cw *chimeraWorker) rebuildChanceAfterCache(launchTime time.Time) {
+	cw.cachedRebuiltAt = time.Now()
 	clonedLookupDistribution := cw.staticLookupDistribution.Clone()
 	clonedLookupDistribution.Shift(time.Since(launchTime))
 
 	lookupChances := clonedLookupDistribution.ChancesAfter()
 	readChances := cw.staticReadDistribution.ChancesAfter()
-
-	chances := readChances
 	for i := range readChances {
-		chances[i] *= lookupChances[i]
+		cw.cachedChancesAfter[i] = lookupChances[i] * readChances[i]
 	}
-	cw.cachedChancesAfter = chances
 }
 
 // worker implements the downloadWorker interface, chimera workers return nil
@@ -627,6 +626,7 @@ func (ws *workerSet) String() string {
 		var ldtChance float64
 		var ldtChanceShifted float64
 		var rdtChance float64
+		var timeSinceRebuilt time.Duration
 
 		selected := -1
 		if chimera {
@@ -639,11 +639,13 @@ func (ws *workerSet) String() string {
 			ldtChance = ldt.ChanceAfter(dur)
 			ldtChanceShifted = ldtc.ChanceAfter(dur)
 			rdtChance = rdt.ChanceAfter(dur)
+
+			timeSinceRebuilt = time.Since(cw.cachedRebuiltAt)
 		} else {
 			selected = int(w.getPieceForDownload())
 		}
 
-		output += fmt.Sprintf("%v) worker: %v chimera: %v chance: %v (%v, %v, %v) cost: %v pieces: %v selected: %v\n", i+1, w.identifier(), chimera, w.chanceAfterCached(ws.staticBucketIndex), ldtChance, ldtChanceShifted, rdtChance, w.cost(), w.pieces(), selected)
+		output += fmt.Sprintf("%v) worker: %v chimera: %v chance: %v (%v, %v, %v, %v) cost: %v pieces: %v selected: %v\n", i+1, w.identifier(), chimera, w.chanceAfterCached(ws.staticBucketIndex), ldtChance, ldtChanceShifted, rdtChance, timeSinceRebuilt, w.cost(), w.pieces(), selected)
 	}
 	return output
 }
