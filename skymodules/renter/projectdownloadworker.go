@@ -71,7 +71,8 @@ type (
 	// worker exactly the same as a resolved worker in the download algorithm
 	// that constructs the best worker set.
 	chimeraWorker struct {
-		cachedRebuiltAt time.Time
+		cachedRebuiltAt   time.Time
+		cachedLatestShift time.Duration
 		// cachedChancesAfter maps a duration to the chance this worker can
 		// download a piece in the timespan defined by that duration, we have to
 		// cache this because it's computationally expensive to compute
@@ -320,6 +321,7 @@ func (cw *chimeraWorker) pieces() []uint64 {
 // duration from the distribution tracker.
 func (cw *chimeraWorker) rebuildChanceAfterCache(launchTime time.Time) {
 	cw.cachedRebuiltAt = time.Now()
+	cw.cachedLatestShift = time.Since(launchTime)
 	clonedLookupDistribution := cw.staticLookupDistribution.Clone()
 	clonedLookupDistribution.Shift(time.Since(launchTime))
 
@@ -635,7 +637,7 @@ func (ws *workerSet) String() string {
 			rdt := cw.staticReadDistribution
 
 			ldtc := ldt.Clone()
-			ldtc.Shift(time.Since(ws.staticPDC.staticLaunchTime))
+			ldtc.Shift(cw.cachedLatestShift)
 			ldtChance = ldt.ChanceAfter(dur)
 			ldtChanceShifted = ldtc.ChanceAfter(dur)
 			rdtChance = rdt.ChanceAfter(dur)
@@ -645,7 +647,7 @@ func (ws *workerSet) String() string {
 			selected = int(w.getPieceForDownload())
 		}
 
-		output += fmt.Sprintf("%v) worker: %v chimera: %v chance: %v (%v, %v, %v, %v) cost: %v pieces: %v selected: %v\n", i+1, w.identifier(), chimera, w.chanceAfterCached(ws.staticBucketIndex), ldtChance, ldtChanceShifted, rdtChance, timeSinceRebuilt, w.cost(), w.pieces(), selected)
+		output += fmt.Sprintf("%v) worker: %v chimera: %v chance: %v (%v, %v, %v, %v, %v) cost: %v pieces: %v selected: %v\n", i+1, w.identifier(), chimera, w.chanceAfterCached(ws.staticBucketIndex), ldtChance, ldtChanceShifted, rdtChance, ldtChanceShifted*rdtChance, timeSinceRebuilt, w.cost(), w.pieces(), selected)
 	}
 	return output
 }
