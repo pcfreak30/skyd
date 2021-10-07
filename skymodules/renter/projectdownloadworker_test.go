@@ -263,15 +263,15 @@ func testWorkerSetAdjustedDuration(t *testing.T) {
 	t.Parallel()
 
 	ws := &workerSet{
-		staticExpectedDuration: 100 * time.Millisecond,
-		staticMinPieces:        1,
+		staticBucketDuration: 100 * time.Millisecond,
+		staticMinPieces:      1,
 	}
 
 	// default ppms
 	ppms := types.SiacoinPrecision.MulFloat(1e-7)
 
 	// expect no penalty if the ppms exceeds the job cost
-	if ws.adjustedDuration(ppms) != ws.staticExpectedDuration {
+	if ws.adjustedDuration(ppms) != ws.staticBucketDuration {
 		t.Fatal("bad")
 	}
 
@@ -288,7 +288,7 @@ func testWorkerSetAdjustedDuration(t *testing.T) {
 	// has been applied. We don't have to cover the actual cost penalty as that
 	// is unit tested by TestAddCostPenalty.
 	ws.workers = append(ws.workers, iw1)
-	if ws.adjustedDuration(ppms) <= ws.staticExpectedDuration {
+	if ws.adjustedDuration(ppms) <= ws.staticBucketDuration {
 		t.Fatal("bad")
 	}
 }
@@ -333,10 +333,10 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 	pcws := newTestProjectChunkWorkerSet()
 	pdc := newTestProjectDownloadChunk(pcws, nil)
 	ws := &workerSet{
-		workers:                []downloadWorker{iw1, iw2},
-		staticExpectedDuration: 100 * time.Millisecond,
-		staticMinPieces:        1,
-		staticPDC:              pdc,
+		workers:              []downloadWorker{iw1, iw2},
+		staticBucketDuration: 100 * time.Millisecond,
+		staticMinPieces:      1,
+		staticPDC:            pdc,
 	}
 
 	// create w3 without pieces
@@ -449,9 +449,9 @@ func testWorkerSetClone(t *testing.T) {
 
 	// build a worker set
 	ws := &workerSet{
-		workers:                []downloadWorker{iw1, iw2, iw3},
-		staticExpectedDuration: 100 * time.Millisecond,
-		staticMinPieces:        1,
+		workers:              []downloadWorker{iw1, iw2, iw3},
+		staticBucketDuration: 100 * time.Millisecond,
+		staticMinPieces:      1,
 	}
 
 	// use reflection to assert "clone" returns an identical object
@@ -492,37 +492,40 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 	// chance is exactly the requested percentage, this helper function will
 	// also ensure that it is the case and fail otherwise
 	indexForPct := func(pct float64) int {
-		index := distributionTotalBuckets * int(pct*100) / 100
-		return index - 1
+		index := (distributionTotalBuckets - 1) * int(pct*100) / 100
+		return index
 	}
 
 	// build a worker set with 0 overdrive workers
 	ws := &workerSet{
-		workers:                []downloadWorker{iw1},
-		staticExpectedDuration: 100 * time.Millisecond,
-		staticMinPieces:        2,
+		workers:              []downloadWorker{iw1},
+		staticBucketDuration: 100 * time.Millisecond,
+		staticMinPieces:      2,
 	}
 
 	// assert chance is not greater than .5 (it's exactly half)
-	if ws.chanceGreaterThanHalf(indexForPct(.5)) {
+	ws.staticBucketIndex = indexForPct(.5)
+	if ws.chanceGreaterThanHalf() {
 		t.Fatal("bad")
 	}
 
 	// push it right over the 50% mark
-	if !ws.chanceGreaterThanHalf(indexForPct(.51)) {
+	ws.staticBucketIndex = indexForPct(.51)
+	if !ws.chanceGreaterThanHalf() {
 		t.Fatal("bad")
 	}
 
 	// add another worker, seeing as the chances are multiplied and both workers
 	// have a chance ~= 50% the total chance should not be greater than half
 	ws.workers = append(ws.workers, iw2)
-	if ws.chanceGreaterThanHalf(indexForPct(.51)) {
+	if ws.chanceGreaterThanHalf() {
 		t.Fatal("bad")
 	}
 
 	// at 75% chance per worker the total chance should be ~56% which is greater
 	// than half
-	if !ws.chanceGreaterThanHalf(indexForPct(.75)) {
+	ws.staticBucketIndex = indexForPct(.75)
+	if !ws.chanceGreaterThanHalf() {
 		t.Fatal("bad")
 	}
 
@@ -538,13 +541,15 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 	// 0.5*0.5*0.5 = 0.125 is the chance they're all able to complete after dur
 	// 0.125/0.5*0.5 = 0.125 is the chance one is tails and the others are heads
 	// 0.125+(0.125*3) = 0.5 because every worker can be the one that's tails
-	if ws.chanceGreaterThanHalf(indexForPct(.5)) {
+	ws.staticBucketIndex = indexForPct(.5)
+	if ws.chanceGreaterThanHalf() {
 		t.Fatal("bad")
 	}
 
 	// now redo the calculation with a duration that's just over half of the
 	// distributand assert the chance is now greater than half
-	if !ws.chanceGreaterThanHalf(indexForPct(.51)) {
+	ws.staticBucketIndex = indexForPct(.51)
+	if !ws.chanceGreaterThanHalf() {
 		t.Fatal("bad")
 	}
 
@@ -575,7 +580,8 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 	// which is n choose k and equal to n!/k(n-k)! or in our case 4!/2*2! = 6
 	//
 	// the toal chance is thus ~= 0.4 which is not greater than half
-	if ws.chanceGreaterThanHalf(indexForPct(.33)) {
+	ws.staticBucketIndex = indexForPct(.33)
+	if ws.chanceGreaterThanHalf() {
 		t.Fatal("bad")
 	}
 
@@ -585,7 +591,8 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 	// (0,6^2*0,4^2)*6 ~= 0,35
 	//
 	// the toal chance is thus ~= 0.525 which is not greater than half
-	if !ws.chanceGreaterThanHalf(indexForPct(.4)) {
+	ws.staticBucketIndex = indexForPct(.4)
+	if !ws.chanceGreaterThanHalf() {
 		t.Fatal("bad")
 	}
 
@@ -597,10 +604,12 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 	// we have two minpieces and 5 workers so we have to exceed 40% per worker
 	ws.workers = append(ws.workers, iw5)
 	ws.staticNumOverdrive = 3
-	if ws.chanceGreaterThanHalf(indexForPct(.4)) {
+	ws.staticBucketIndex = indexForPct(.4)
+	if ws.chanceGreaterThanHalf() {
 		t.Fatal("bad")
 	}
-	if !ws.chanceGreaterThanHalf(indexForPct(.41)) {
+	ws.staticBucketIndex = indexForPct(.41)
+	if !ws.chanceGreaterThanHalf() {
 		t.Fatal("bad")
 	}
 }

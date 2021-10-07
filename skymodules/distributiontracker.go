@@ -132,6 +132,9 @@ type (
 	PersistedDistributionTracker struct {
 		Distributions []PersistedDistribution `json:"distributions"`
 	}
+
+	// Chances is a helper type that represent a distribition's chance array
+	Chances [DistributionTrackerTotalBuckets]float64
 )
 
 // Persist returns a PersistedDistributionTracker for the DistributionTracker by
@@ -269,8 +272,8 @@ func (d *Distribution) ChanceAfter(dur time.Duration) float64 {
 // ChancesAfter returns an array of chances, every entry represents the chance
 // we find a data point after the duration that corresponds with the bucket at
 // the index of the entry.
-func (d *Distribution) ChancesAfter() [DistributionTrackerTotalBuckets]float64 {
-	var chances [DistributionTrackerTotalBuckets]float64
+func (d *Distribution) ChancesAfter() Chances {
+	var chances Chances
 
 	// Get the total data points.
 	total := d.DataPoints()
