@@ -647,7 +647,11 @@ func (ws *workerSet) String() string {
 			selected = int(w.getPieceForDownload())
 		}
 
-		output += fmt.Sprintf("%v) worker: %v chimera: %v chance: %v (%v, %v, %v, %v, %v) cost: %v pieces: %v selected: %v\n", i+1, w.identifier(), chimera, w.chanceAfterCached(ws.staticBucketIndex), ldtChance, ldtChanceShifted, rdtChance, ldtChanceShifted*rdtChance, timeSinceRebuilt, w.cost(), w.pieces(), selected)
+		chM1 := w.chanceAfterCached(ws.staticBucketIndex - 1)
+		ch := w.chanceAfterCached(ws.staticBucketIndex)
+		chP1 := w.chanceAfterCached(ws.staticBucketIndex + 1)
+
+		output += fmt.Sprintf("%v) worker: %v chimera: %v chance: %v | %v | %v (%v, %v, %v, %v, %v) cost: %v pieces: %v selected: %v\n", i+1, w.identifier(), chimera, chM1, ch, chP1, ldtChance, ldtChanceShifted, rdtChance, ldtChanceShifted*rdtChance, timeSinceRebuilt, w.cost(), w.pieces(), selected)
 	}
 	return output
 }
