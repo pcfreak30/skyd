@@ -171,7 +171,7 @@ func TestRenterStream(t *testing.T) {
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
-		Hosts:   5,
+		Hosts:   3,
 		Renters: 1,
 		Miners:  1,
 	}
@@ -278,6 +278,7 @@ func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Failed to replace hosts", err)
 	}
+
 	// Make sure that the renter's contracts have been properly updated
 	m := tg.Miners()[0]
 	tries := 0
