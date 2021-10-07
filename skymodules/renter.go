@@ -1337,7 +1337,7 @@ type Renter interface {
 
 	// HostsForRegistryUpdate returns a list of hosts that the renter would be using
 	// for updating the registry.
-	HostsForRegistryUpdate() ([]types.SiaPublicKey, error)
+	HostsForRegistryUpdate() ([]HostForRegistryUpdate, error)
 
 	// InitialScanComplete returns a boolean indicating if the initial scan of the
 	// hostdb is completed.
@@ -1396,7 +1396,11 @@ type Renter interface {
 
 	// UpdateRegistry updates the registries on all workers with the given
 	// registry value.
-	UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegistryValue, timeout time.Duration) error
+	UpdateRegistry(ctx context.Context, spk types.SiaPublicKey, srv modules.SignedRegistryValue) error
+
+	// UpdateRegistryMulti updates the registries on the given workers with the
+	// corresponding registry values.
+	UpdateRegistryMulti(ctx context.Context, srvs map[string]RegistryEntry) error
 
 	// PauseRepairsAndUploads pauses the renter's repairs and uploads for a time
 	// duration
