@@ -140,15 +140,12 @@ func NewFromLegacyData(fd FileData, siaFilePath string, wal *writeaheadlog.WAL) 
 
 // metadataCompatCheck handles the compatibility checks for the metadata based
 // on the version
+//
+// NOTE: there is no need to use the backup and restore method of the metadata
+// here because this is called on load. If there is an error if means we are
+// unable to load the siafile, and therefore cannot use it which makes restoring
+// the metadata pointless.
 func (sf *SiaFile) metadataCompatCheck() (err error) {
-	// backup the changed metadata before changing it. Revert the change on
-	// error.
-	defer func(backup Metadata) {
-		if err != nil {
-			sf.staticMetadata.restore(backup)
-		}
-	}(sf.staticMetadata.backup())
-
 	// Check uninitialized case
 	if sf.staticMetadata.StaticVersion == nilMetadataVesion {
 		// COMPATv137 legacy files might not have a unique id.
@@ -167,7 +164,7 @@ func (sf *SiaFile) metadataCompatCheck() (err error) {
 			sf.staticMetadata.CachedUploadProgress = 100
 		}
 
-		// Update the version now that we have complete the compat updates
+		// Update the version now that we have completed the compat updates
 		sf.staticMetadata.StaticVersion = metadataVersion
 
 		// Save Metadata to persist updates

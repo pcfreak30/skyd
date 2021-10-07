@@ -279,20 +279,6 @@ func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Failed to replace hosts", err)
 	}
 
-	// Make sure that the renter's contracts have been properly updated
-	m := tg.Miners()[0]
-	tries := 0
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		tries++
-		if tries%10 == 0 {
-			// Ignore errors from mining
-			m.MineBlock()
-		}
-		return siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, len(tg.Hosts()), 0, 0)
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	// Read the contents of the file from disk.
 	b, err := ioutil.ReadFile(localFile.Path())
 	if err != nil {
