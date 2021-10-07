@@ -18,6 +18,7 @@ func TestDistributionTracker(t *testing.T) {
 
 	t.Run("Bucketing", testDistributionBucketing)
 	t.Run("ChanceAfter", testDistributionChanceAfter)
+	t.Run("ChancesAfter", testDistributionChancesAfter)
 	t.Run("ChanceAfterShift", testDistributionChanceAfterShift)
 	t.Run("Clone", testDistributionClone)
 	t.Run("Decay", testDistributionDecay)
@@ -307,6 +308,26 @@ func testDistributionChanceAfter(t *testing.T) {
 	for i := 0; i < DistributionTrackerTotalBuckets; i++ {
 		if d.ChanceAfter(DistributionDurationForBucketIndex(i)) != float64(i)/d.DataPoints() {
 			t.Fatal("bad", i)
+		}
+	}
+}
+
+// testDistributionChancesAfter will test the `ChancesAfter` method on the
+// distribution tracker.
+func testDistributionChancesAfter(t *testing.T) {
+	t.Parallel()
+
+	// add a datapoint to every bucket
+	d := NewDistribution(time.Minute * 100)
+	for i := 0; i < DistributionTrackerTotalBuckets; i++ {
+		d.AddDataPoint(DistributionDurationForBucketIndex(i))
+	}
+
+	// verify chances after equals chance after duration and corresponding index
+	chances := d.ChancesAfter()
+	for i := 0; i < 400; i++ {
+		if d.ChanceAfter(DistributionDurationForBucketIndex(i)) != chances[i] {
+			t.Fatal("bad")
 		}
 	}
 }

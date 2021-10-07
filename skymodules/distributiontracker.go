@@ -284,8 +284,8 @@ func (d *Distribution) ChancesAfter() Chances {
 	// Loop over every bucket once and calculate the chance at that bucket
 	count := float64(0)
 	for i := 0; i < DistributionTrackerTotalBuckets; i++ {
-		count += d.timings[i]
 		chances[i] = count / total
+		count += d.timings[i]
 	}
 
 	return chances
