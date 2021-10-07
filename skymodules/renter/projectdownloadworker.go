@@ -629,6 +629,7 @@ func (ws *workerSet) String() string {
 		cw, chimera := w.(*chimeraWorker)
 
 		var ldtChanceShifted float64
+		var ldtChanceShifted2 float64
 		var rdtChance float64
 		var timeSinceRebuilt time.Duration
 
@@ -643,6 +644,9 @@ func (ws *workerSet) String() string {
 			ldtChanceShifted = ldtc.ChanceAfter(dur)
 			rdtChance = rdt.ChanceAfter(dur)
 
+			chances := ldtc.ChancesAfter()
+			ldtChanceShifted2 = chances[ws.staticBucketIndex]
+
 			timeSinceRebuilt = time.Since(cw.cachedRebuiltAt)
 		} else {
 			selected = int(w.getPieceForDownload())
@@ -652,7 +656,7 @@ func (ws *workerSet) String() string {
 		ch := w.chanceAfterCached(ws.staticBucketIndex)
 		chP1 := w.chanceAfterCached(ws.staticBucketIndex + 1)
 
-		output += fmt.Sprintf("%v) worker: %v chimera: %v chance: %v | %v | %v (%v, %v, %v, %v) cost: %v pieces: %v selected: %v\n", i+1, w.identifier(), chimera, chM1, ch, chP1, ldtChanceShifted, rdtChance, ldtChanceShifted*rdtChance, timeSinceRebuilt, w.cost(), w.pieces(), selected)
+		output += fmt.Sprintf("%v) worker: %v chimera: %v chance: %v | %v | %v (%v, %v, %v, %v, %v) cost: %v pieces: %v selected: %v\n", i+1, w.identifier(), chimera, chM1, ch, chP1, ldtChanceShifted, ldtChanceShifted2, rdtChance, ldtChanceShifted*rdtChance, timeSinceRebuilt, w.cost(), w.pieces(), selected)
 	}
 	return output
 }
