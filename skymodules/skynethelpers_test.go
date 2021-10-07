@@ -56,8 +56,8 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 			maxSize:  crypto.HashSize,
 			result: []ChunkSpan{
 				{
-					minChunkIndex: 0,
-					maxChunkIndex: 0,
+					MinIndex: 0,
+					MaxIndex: 0,
 				},
 			},
 			translatedOffset: 0,
@@ -70,8 +70,8 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 			maxSize:  2 * crypto.HashSize,
 			result: []ChunkSpan{
 				{
-					minChunkIndex: 0,
-					maxChunkIndex: 1,
+					MinIndex: 0,
+					MaxIndex: 1,
 				},
 			},
 			translatedOffset: 0,
@@ -84,8 +84,8 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 			maxSize:  2 * crypto.HashSize,
 			result: []ChunkSpan{
 				{
-					minChunkIndex: 0,
-					maxChunkIndex: 0,
+					MinIndex: 0,
+					MaxIndex: 0,
 				},
 			},
 			translatedOffset: 0,
@@ -98,8 +98,8 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 			maxSize:  2 * crypto.HashSize,
 			result: []ChunkSpan{
 				{
-					minChunkIndex: 1,
-					maxChunkIndex: 1,
+					MinIndex: 1,
+					MaxIndex: 1,
 				},
 			},
 			translatedOffset: 0,
@@ -112,12 +112,12 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 			maxSize:  crypto.HashSize,
 			result: []ChunkSpan{
 				{
-					minChunkIndex: 0,
-					maxChunkIndex: 0,
+					MinIndex: 0,
+					MaxIndex: 0,
 				},
 				{
-					minChunkIndex: 0,
-					maxChunkIndex: hashesPerSector - 1,
+					MinIndex: 0,
+					MaxIndex: hashesPerSector - 1,
 				},
 			},
 			translatedOffset: 0,
@@ -130,12 +130,12 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 			maxSize:  2 * crypto.HashSize,
 			result: []ChunkSpan{
 				{
-					minChunkIndex: 0,
-					maxChunkIndex: 0,
+					MinIndex: 0,
+					MaxIndex: 0,
 				},
 				{
-					minChunkIndex: 0,
-					maxChunkIndex: hashesPerSector - 1,
+					MinIndex: 0,
+					MaxIndex: hashesPerSector - 1,
 				},
 			},
 			translatedOffset: 0,
@@ -148,12 +148,12 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 			maxSize:  crypto.HashSize,
 			result: []ChunkSpan{
 				{
-					minChunkIndex: 0,
-					maxChunkIndex: 0,
+					MinIndex: 0,
+					MaxIndex: 0,
 				},
 				{
-					minChunkIndex: 0,
-					maxChunkIndex: hashesPerSector/2 - 1,
+					MinIndex: 0,
+					MaxIndex: hashesPerSector/2 - 1,
 				},
 			},
 			translatedOffset: 0,
@@ -166,12 +166,12 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 			maxSize:  crypto.HashSize,
 			result: []ChunkSpan{
 				{
-					minChunkIndex: 0,
-					maxChunkIndex: 0,
+					MinIndex: 0,
+					MaxIndex: 0,
 				},
 				{
-					minChunkIndex: hashesPerSector / 2,
-					maxChunkIndex: hashesPerSector - 1,
+					MinIndex: hashesPerSector / 2,
+					MaxIndex: hashesPerSector - 1,
 				},
 			},
 			translatedOffset: 0,
@@ -184,12 +184,12 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 			maxSize:  crypto.HashSize,
 			result: []ChunkSpan{
 				{
-					minChunkIndex: 0,
-					maxChunkIndex: 0,
+					MinIndex: 0,
+					MaxIndex: 0,
 				},
 				{
-					minChunkIndex: hashesPerSector - 1,
-					maxChunkIndex: hashesPerSector - 1,
+					MinIndex: hashesPerSector - 1,
+					MaxIndex: hashesPerSector - 1,
 				},
 			},
 			translatedOffset: modules.SectorSize - 1,
@@ -202,16 +202,16 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 			maxSize:  crypto.HashSize,
 			result: []ChunkSpan{
 				{
-					minChunkIndex: 0,
-					maxChunkIndex: 0,
+					MinIndex: 0,
+					MaxIndex: 0,
 				},
 				{
-					minChunkIndex: hashesPerSector - 1,
-					maxChunkIndex: hashesPerSector - 1,
+					MinIndex: hashesPerSector - 1,
+					MaxIndex: hashesPerSector - 1,
 				},
 				{
-					minChunkIndex: hashesPerSector - 1,
-					maxChunkIndex: hashesPerSector - 1,
+					MinIndex: hashesPerSector - 1,
+					MaxIndex: hashesPerSector - 1,
 				},
 			},
 			translatedOffset: modules.SectorSize - 1,
@@ -224,16 +224,16 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 			maxSize:  crypto.HashSize,
 			result: []ChunkSpan{
 				{
-					minChunkIndex: 0,
-					maxChunkIndex: 0,
+					MinIndex: 0,
+					MaxIndex: 0,
 				},
 				{
-					minChunkIndex: hashesPerSector / 2,
-					maxChunkIndex: hashesPerSector / 2,
+					MinIndex: hashesPerSector / 2,
+					MaxIndex: hashesPerSector / 2,
 				},
 				{
-					minChunkIndex: 0,
-					maxChunkIndex: 0,
+					MinIndex: 0,
+					MaxIndex: 0,
 				},
 			},
 			translatedOffset: 0,
@@ -388,7 +388,7 @@ func testCompressDataToFanout(t *testing.T) {
 					t.Fatalf("%v: invalid fanout size: %v != %v", i, len(fanout), test.fanoutSizes[i])
 				}
 			}
-			expectedUsedHashes, expectedDepth := compressedFanoutSize(uint64(test.dataSize), test.size)
+			expectedUsedHashes, expectedDepth := CompressedFanoutSize(uint64(test.dataSize), test.size)
 			if expectedDepth != uint64(len(fanouts)) {
 				t.Fatalf("depth %v != %v", len(fanouts), expectedDepth)
 			}

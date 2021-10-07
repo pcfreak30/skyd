@@ -85,17 +85,25 @@ func testSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 	// Define common params
 	smallSize := 100
 	smallData := fastrand.Bytes(smallSize)
-	largeSize := 2*int(modules.SectorSize) + siatest.Fuzz()
+	largeSize := 200*int(modules.SectorSize) + siatest.Fuzz()
 	largeData := fastrand.Bytes(largeSize)
 
 	// Small Skyfile
-	singleFileTest("singleSmallFile", "", smallData)
+	t.Run("SingleSmallFile", func(t *testing.T) {
+		singleFileTest("singleSmallFile", "", smallData)
+	})
 	// Small Encrypted Skyfile
-	singleFileTest("singleSmallFile_encrypted", sk.Name, smallData)
+	t.Run("SingleSmallFile_encrypted", func(t *testing.T) {
+		singleFileTest("singleSmallFile_encrypted", sk.Name, smallData)
+	})
 	// Large Skyfile
-	singleFileTest("singleLargeFile", "", largeData)
+	t.Run("SingleLargeFile", func(t *testing.T) {
+		singleFileTest("singleLargeFile", "", largeData)
+	})
 	// Large Encrypted Skyfile
-	singleFileTest("singleLargeFile_encrypted", sk.Name, largeData)
+	t.Run("SingleLargeFile_encrypted", func(t *testing.T) {
+		singleFileTest("singleLargeFile_encrypted", sk.Name, largeData)
+	})
 }
 
 // testSingleFileMultiPart verifies that a single skyfile uploaded using the

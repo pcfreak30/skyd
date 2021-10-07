@@ -75,11 +75,13 @@ func ChunkIndexByOffset(offset, chunkSize uint64) (chunkIndex, off uint64) {
 
 // ChunkSpan hold a span of chunks [minIndex, maxIndex].
 type ChunkSpan struct {
-	minChunkIndex uint64
-	maxChunkIndex uint64
+	MinIndex uint64
+	MaxIndex uint64
 }
 
-func compressedFanoutSize(dataSize, maxSize uint64) (usedHashes, depth uint64) {
+// CompressedFanoutSize computes how many root hashes a fanout compression will
+// result in and what the depth of the recursion is going to be.
+func CompressedFanoutSize(dataSize, maxSize uint64) (usedHashes, depth uint64) {
 	if dataSize <= maxSize {
 		return 0, 0
 	}
@@ -99,10 +101,12 @@ func compressedFanoutSize(dataSize, maxSize uint64) (usedHashes, depth uint64) {
 }
 
 // TranslateOffset will translate the given offset and length within a
-// compressed fanout.  It returns a chain of spans that need to be downloaded
+// compressed fanout. It returns a chain of spans that need to be downloaded
+// recursively as well as the offset to use when downloading the actual fanout
+// data.
 func TranslateOffset(offset, length uint64, dataSize, maxSize uint64) (uint64, []ChunkSpan) {
 	// compute the max depth of the fanout.
-	usedHashes, maxDepth := compressedFanoutSize(dataSize, maxSize)
+	usedHashes, maxDepth := CompressedFanoutSize(dataSize, maxSize)
 
 	// compute how many chunks we need for the data and what the size of the
 	// padded data is.
@@ -127,8 +131,8 @@ func TranslateOffset(offset, length uint64, dataSize, maxSize uint64) (uint64, [
 		maxChunk -= shift
 		shift = newShift
 		offsets = append(offsets, ChunkSpan{
-			minChunkIndex: minChunk,
-			maxChunkIndex: maxChunk,
+			MinIndex: minChunk,
+			MaxIndex: maxChunk,
 		})
 	}
 	return offset % chunkSize, offsets
@@ -201,11 +205,15 @@ func BuildBaseSector(layoutBytes, fanoutBytes, metadataBytes, fileBytes []byte) 
 		// The last part of fanouts is the one that goes into the base
 		// sector. The remaining ones have to be uploaded to the
 		// network.
-		compressedFanout, extendedFanout := fanouts[len(fanouts)-1], fanouts[:len(fanouts)-1]
+		compressedFanout, baseSectorExtension := fanouts[len(fanouts)-1], fanouts[:len(fanouts)-1]
+
+		// The payload is also returned as part of the base sector
+		// extension for upload.
+		baseSectorExtension = append(baseSectorExtension, payload)
 
 		copy(baseSector[offset:], compressedFanout)
 		offset += len(compressedFanout)
-		return baseSector, uint64(offset), extendedFanout
+		return baseSector, uint64(offset), baseSectorExtension
 	}
 
 	// Otherwise we finish the base sector.

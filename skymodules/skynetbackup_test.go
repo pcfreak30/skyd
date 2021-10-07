@@ -42,8 +42,9 @@ func TestBackupAndRestoreSkylink(t *testing.T) {
 
 	// Large file test
 	//
-	// Create fanout to mock 2 chunks with 3 pieces each
-	numChunks := 2
+	// Create fanout to mock 500 chunks with 3 pieces each. That way the
+	// file will have an extended base sector.
+	numChunks := 500
 	numPieces := 3
 	fanoutBytes := make([]byte, 0, numChunks*numPieces*crypto.HashSize)
 	for ci := 0; ci < numChunks; ci++ {

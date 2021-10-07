@@ -309,7 +309,7 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, skylink skymodule
 	// e.g. if we don't start resolving the recursive fanout right away we
 	// lose the benefit of the workerset, because we will add some latency
 	// later once we actually know what the user wants to download.
-	layout, fanoutBytes, metadata, rawMetadata, baseSectorPayload, err := r.ParseSkyfileMetadata(baseSector)
+	layout, fanoutBytes, metadata, rawMetadata, baseSectorPayload, _, err := r.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to parse skyfile metadata")
 	}

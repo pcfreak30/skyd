@@ -283,30 +283,25 @@ func (r *Renter) managedCreateSkylinkRawMD(ctx context.Context, sup skymodules.S
 	if !encryptionEnabled(&sup) {
 		copy(sl.KeyData[:], masterKey.Key())
 	}
-
 	// Create the base sector.
-	baseSector, fetchSize, extendedFanout := skymodules.BuildBaseSector(sl.Encode(), fanoutBytes, metadataBytes, nil)
-	if len(extendedFanout) > 0 {
-		panic("handle extended fanout")
-	}
+	baseSector, fetchSize, baseSectorExtension := skymodules.BuildBaseSector(sl.Encode(), fanoutBytes, metadataBytes, nil)
 
 	// We need to pin the extended fanout as well so we just add it to the
 	// base sector.
-	extendedBaseSector := baseSector
-	for _, ext := range extendedFanout {
-		extendedBaseSector = append(extendedBaseSector, ext...)
+	for _, ext := range baseSectorExtension {
+		baseSector = append(baseSector, ext...)
 	}
 
 	// Encrypt the base sector if necessary.
 	if encryptionEnabled(&sup) {
-		err := encryptBaseSectorWithSkykey(baseSector, sl, sup.FileSpecificSkykey)
+		err := encryptBaseSectorWithSkykey(baseSector[:modules.SectorSize], sl, sup.FileSpecificSkykey)
 		if err != nil {
 			return skymodules.Skylink{}, errors.AddContext(err, "Failed to encrypt base sector for upload")
 		}
 	}
 
 	// Create the skylink.
-	baseSectorRoot := crypto.MerkleRoot(baseSector)
+	baseSectorRoot := crypto.MerkleRoot(baseSector[:modules.SectorSize])
 	skylink, err := skymodules.NewSkylinkV1(baseSectorRoot, 0, fetchSize)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to build skylink")
@@ -332,7 +327,7 @@ func (r *Renter) managedCreateSkylinkRawMD(ctx context.Context, sup skymodules.S
 	}
 
 	// Upload the base sector.
-	err = r.managedUploadBaseSector(ctx, sup, extendedBaseSector, skylink)
+	err = r.managedUploadBaseSector(ctx, sup, baseSector, skylink)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "Unable to upload base sector for file node. ")
 	}
@@ -946,13 +941,14 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 	}
 
 	// Parse out the metadata of the skyfile.
-	layout, _, _, _, _, _ := r.ParseSkyfileMetadata(baseSector)
+	layout, _, _, _, _, baseSectorExtension, err := r.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		return errors.AddContext(err, "error parsing skyfile metadata")
 	}
-	if true {
-		panic("implemented extended fanout here")
-	}
+
+	// We need to pin the extended fanout as well so we just add it to the
+	// base sector.
+	baseSector = append(baseSector, baseSectorExtension...)
 
 	// Set sane defaults for unspecified values.
 	skyfileEstablishDefaults(&lup)
@@ -966,7 +962,7 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 
 	// Re-encrypt the baseSector for upload and add the fanout key to the fup.
 	if encrypted {
-		err = encryptBaseSectorWithSkykey(baseSector, layout, fileSpecificSkykey)
+		err = encryptBaseSectorWithSkykey(baseSector[:modules.SectorSize], layout, fileSpecificSkykey)
 		if err != nil {
 			return errors.AddContext(err, "Error re-encrypting base sector")
 		}
@@ -1066,7 +1062,7 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 	}
 
 	// Parse the baseSector.
-	sl, _, sm, _, _, err := r.ParseSkyfileMetadata(baseSector)
+	sl, _, sm, _, _, _, err := r.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "error parsing the baseSector")
 	}
@@ -1449,7 +1445,7 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 	}
 
 	// Parse out the metadata of the skyfile.
-	layout, fanoutBytes, _, _, _, err := r.ParseSkyfileMetadata(baseSector)
+	layout, fanoutBytes, _, _, _, _, err := r.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		return skymodules.SkylinkHealth{}, errors.AddContext(err, "error parsing skyfile metadata")
 	}
@@ -1620,6 +1616,88 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 // ParseSkyfileMetadata parses all the information from a base sector similar to
 // skymodules.ParseSkyfileMetadata. The difference is that it can also parse a
 // recursive base sector.
-func (r *Renter) ParseSkyfileMetadata(baseSector []byte) (sl skymodules.SkyfileLayout, fanoutBytes []byte, sm skymodules.SkyfileMetadata, rawSM, baseSectorPayload []byte, err error) {
-	panic("not implemented yet")
+func (r *Renter) ParseSkyfileMetadata(baseSector []byte) (sl skymodules.SkyfileLayout, fanoutBytes []byte, sm skymodules.SkyfileMetadata, rawSM, baseSectorPayload, baseSectorExtension []byte, err error) {
+	if err = r.tg.Add(); err != nil {
+		return
+	}
+	defer r.tg.Done()
+
+	// Try parsing the metadata the regular way.
+	sl, fanoutBytes, sm, rawSM, baseSectorPayload, err = skymodules.ParseSkyfileMetadata(baseSector)
+	if err == nil || (err != nil && !errors.Contains(err, skymodules.ErrRecursiveBaseSector)) {
+		return
+	}
+
+	// TODO: Should we request memory here?
+
+	// Fanout is recursive. Parse only the layout for now.
+	sl = skymodules.ParseSkyfileLayout(baseSector)
+
+	// Get the size of the compressed payload.
+	payloadSize := sl.FanoutSize + sl.MetadataSize
+
+	// Figure out how many bytes of the base sector can be used. Should be
+	// all bytes except for the layout at the beginning.
+	maxSize := uint64(len(baseSector)) - skymodules.SkyfileLayoutSize
+
+	// To parse the metadata and fanout, we need to download the full
+	// payload.
+	translatedOffset, chunkSpans := skymodules.TranslateOffset(0, payloadSize, payloadSize, maxSize)
+
+	// Figure out how many hashes were stored in the base sector and grab
+	// them.
+	usedHashes, _ := skymodules.CompressedFanoutSize(payloadSize, maxSize)
+	hashes := baseSector[skymodules.SkyfileLayoutSize : skymodules.SkyfileLayoutSize+usedHashes*crypto.HashSize]
+
+	for i, span := range chunkSpans {
+		// Download each chunk in parallel.
+		sectors := make([][]byte, span.MaxIndex-span.MinIndex+1)
+		errs := make([]error, len(sectors))
+		resultIndex := 0
+		var wg sync.WaitGroup
+		for chunkIndex := span.MinIndex; chunkIndex <= span.MaxIndex; chunkIndex++ {
+			wg.Add(1)
+			go func(chunkIndex uint64, resultIndex int) {
+				defer wg.Done()
+				var root crypto.Hash
+				copy(root[:], hashes[chunkIndex*crypto.HashSize:][:crypto.HashSize])
+				sectors[resultIndex], _, errs[resultIndex] = r.managedDownloadByRoot(r.tg.StopCtx(), root, 0, modules.SectorSize, types.SiacoinPrecision.MulFloat(1e-7)) // TODO: move DefaultSkynetPriceMS
+			}(chunkIndex, resultIndex)
+			resultIndex++
+		}
+		wg.Wait()
+
+		// Check errors.
+		for _, err := range errs {
+			if err != nil {
+				return skymodules.SkyfileLayout{}, nil, skymodules.SkyfileMetadata{}, nil, nil, nil, err
+			}
+		}
+
+		// The downloaded sectors become the new hashes.
+		hashes = bytes.Join(sectors, nil)
+
+		// Append the intermediary hashes to the extension.
+		if i < len(chunkSpans)-1 {
+			baseSectorExtension = append(baseSectorExtension, hashes...)
+		}
+	}
+
+	// In the last iteration 'hashes' is the actual payload. That's why we
+	// trim it and only then add it to the extension.
+	hashes = hashes[translatedOffset:][:payloadSize]
+	baseSectorExtension = append(baseSectorExtension, hashes...)
+
+	// Sanity check length.
+	if uint64(len(hashes)) != payloadSize {
+		err = fmt.Errorf("expected len(hashes) %v but got %v", payloadSize, len(hashes))
+		build.Critical(err)
+		return
+	}
+
+	// Return parsed data.
+	fanoutBytes = hashes[:sl.FanoutSize]
+	rawSM = hashes[sl.FanoutSize:]
+	err = json.Unmarshal(rawSM, &sm)
+	return sl, fanoutBytes, sm, rawSM, nil, baseSectorExtension, err
 }

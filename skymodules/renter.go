@@ -1249,7 +1249,10 @@ type Renter interface {
 	// MountInfo returns the list of currently mounted FUSE filesystems.
 	MountInfo() []MountInfo
 
-	ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []byte, sm SkyfileMetadata, rawSM, baseSectorPayload []byte, err error)
+	// ParseSkyfileMetadata parses all the information from a base sector
+	// similar to skymodules.ParseSkyfileMetadata. The difference is that it
+	// can also parse a recursive base sector.
+	ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []byte, sm SkyfileMetadata, rawSM, baseSectorPayload, baseSectorExtension []byte, err error)
 
 	// Unmount unmounts the FUSE filesystem currently mounted at mountPoint.
 	Unmount(mountPoint string) error

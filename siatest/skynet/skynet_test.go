@@ -5713,6 +5713,13 @@ func testRecursiveBaseSector(t *testing.T, tg *siatest.TestGroup) {
 	largeName := hex.EncodeToString(fastrand.Bytes(int(modules.SectorSize) + 1))
 	sp := skymodules.RandomSkynetFilePath()
 
+	// Add a skykey. That way we also confirm that the encryption is
+	// working.
+	sk, err := r.SkykeyCreateKeyPost(t.Name(), skykey.TypePrivateID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	sup := skymodules.SkyfileUploadParameters{
 		SiaPath:             sp,
 		BaseChunkRedundancy: 2,
@@ -5720,8 +5727,8 @@ func testRecursiveBaseSector(t *testing.T, tg *siatest.TestGroup) {
 		Mode:                skymodules.DefaultFilePerm,
 		Reader:              bytes.NewReader(data),
 		Force:               false,
-		Root:                false,
-		SkykeyName:          "",
+		Root:                true,
+		SkykeyName:          t.Name(),
 	}
 
 	// upload a skyfile
@@ -5729,8 +5736,6 @@ func testRecursiveBaseSector(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// TODO: download the base sector file and check that it's consistent.
 
 	// Download the full file.
 	downloadedData, err := r.SkynetSkylinkGet(skylink)
@@ -5741,5 +5746,55 @@ func testRecursiveBaseSector(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("data mismatch")
 	}
 
-	// TODO: fetch the metadata.
+	// Fetch the metadata.
+	_, md, err := r.SkynetMetadataGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if int(md.Length) != len(data) {
+		t.Fatal("md.Length is wrong", md.Length)
+	}
+	if md.Filename != largeName {
+		t.Fatal("name is wrong")
+	}
+
+	// Add another renter.
+	nodes, err := tg.AddNodes(node.RenterTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2 := nodes[0]
+	defer func() {
+		if err := tg.RemoveNode(r2); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Renter 2 also needs the key.
+	if err := r2.SkykeyAddKeyPost(sk); err != nil {
+		t.Fatal(err)
+	}
+
+	// Try pinning the file with the new renter.
+	err = r2.SkynetSkylinkPinPost(skylink, skymodules.SkyfilePinParameters{
+		SiaPath: sp,
+		Root:    true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Both base sector .sia files should have the same size. This verifies
+	// that we added the baseSectorExtension when we pinned the file.
+	f1, err := r.RenterFileRootGet(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f2, err := r2.RenterFileRootGet(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f1.File.Size() != f2.File.Size() {
+		t.Fatal("size mismatch", f1.File.Size(), f2.File.Size())
+	}
 }
