@@ -71,8 +71,9 @@ type (
 	// worker exactly the same as a resolved worker in the download algorithm
 	// that constructs the best worker set.
 	chimeraWorker struct {
-		cachedRebuiltAt   time.Time
-		cachedLatestShift time.Duration
+		cachedRebuiltAt      time.Time
+		cachedLatestShift    time.Duration
+		cachedLatestLookupDT *skymodules.Distribution
 
 		// cachedChancesAfter maps a duration to the chance this worker can
 		// download a piece in the timespan defined by that duration, we have to
@@ -321,15 +322,16 @@ func (cw *chimeraWorker) pieces() []uint64 {
 // rebuildChanceAfterCache recalculates the chances reads complete after every
 // duration from the distribution tracker.
 func (cw *chimeraWorker) rebuildChanceAfterCache(launchTime time.Time) {
-	cw.cachedRebuiltAt = time.Now()
-	cw.cachedLatestShift = time.Since(launchTime)
-
+	dur := time.Since(launchTime)
 	clonedLookupDistribution := cw.staticLookupDistribution.Clone()
-	clonedLookupDistribution.Shift(time.Since(launchTime))
+	clonedLookupDistribution.Shift(dur)
+
+	cw.cachedRebuiltAt = time.Now()
+	cw.cachedLatestShift = dur
+	cw.cachedLatestLookupDT = clonedLookupDistribution
 
 	lookupChances := clonedLookupDistribution.ChancesAfter()
 	readChances := cw.staticReadDistribution.ChancesAfter()
-
 	for i := 0; i < skymodules.DistributionTrackerTotalBuckets; i++ {
 		cw.cachedChancesAfter[i] = lookupChances[i] * readChances[i]
 	}
@@ -636,16 +638,12 @@ func (ws *workerSet) String() string {
 		selected := -1
 		if chimera {
 			dur := ws.staticBucketDuration
-			ldt := cw.staticLookupDistribution
+			ldt := cw.cachedLatestLookupDT
 			rdt := cw.staticReadDistribution
 
-			ldtc := ldt.Clone()
-			ldtc.Shift(cw.cachedLatestShift)
-			ldtChanceShifted = ldtc.ChanceAfter(dur)
+			ldtChanceShifted = ldt.ChanceAfter(dur)
+			ldtChanceShifted2 = ldt.ChancesAfter()[ws.staticBucketIndex]
 			rdtChance = rdt.ChanceAfter(dur)
-
-			chances := ldtc.ChancesAfter()
-			ldtChanceShifted2 = chances[ws.staticBucketIndex]
 
 			timeSinceRebuilt = time.Since(cw.cachedRebuiltAt)
 		} else {
