@@ -856,22 +856,21 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, allWorkers []dow
 			workerLaunched = true
 
 			// Log the event.
-			chimeras := ""
-			for _, dw := range allWorkers {
-				if cw, ok := dw.(*chimeraWorker); ok {
-					chimeras += fmt.Sprintf("%v (%v) chance: %v chanceAtMaxIndex: %v\n", cw.identifier(), len(cw.workers), cw.chanceAfterCached(ws.staticBucketIndex), cw.chanceAfterCached(skymodules.DistributionTrackerTotalBuckets-1))
-				}
-			}
+			// chimeras := ""
+			// for _, dw := range allWorkers {
+			// 	if cw, ok := dw.(*chimeraWorker); ok {
+			// 		chimeras += fmt.Sprintf("%v (%v) chance: %v chanceAtMaxIndex: %v\n", cw.identifier(), len(cw.workers), cw.chanceAfterCached(ws.staticBucketIndex), cw.chanceAfterCached(skymodules.DistributionTrackerTotalBuckets-1))
+			// 	}
+			// }
 			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
 				span.LogKV(
 					"aWorkerLaunched", w.identifier(),
+					"piece", piece,
 					"overdriveWorker", isOverdrive,
 					"expectedDuration", time.Until(expectedCompleteTime),
 					"chanceAfterDur", w.chanceAfterCached(ws.staticBucketIndex),
 					"wsDuration", ws.staticExpectedDuration,
 					"wsIndex", ws.staticBucketIndex,
-					"chimeras", chimeras,
-					"success", launched,
 				)
 			}
 
@@ -913,14 +912,13 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	workerUpdateChan := ws.managedRegisterForWorkerUpdate()
 
 	// TODO: remove (debug purposes)
-	buildDownloadWorkersCnt := 1
 	var currWorkerSet *workerSet
 	prevLog := time.Now()
 
 	// keep track of when we last rebuilt the workers
 	prevRebuild := time.Now()
 	for {
-		if span := opentracing.SpanFromContext(pdc.ctx); span != nil && time.Since(prevLog) > 50*time.Millisecond {
+		if span := opentracing.SpanFromContext(pdc.ctx); span != nil && time.Since(prevLog) > 200*time.Millisecond {
 			span.LogKV(
 				"downloadLoopIter", time.Since(pdc.staticLaunchTime),
 				"currWorkerSet", currWorkerSet,
@@ -944,7 +942,6 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			// fmt.Println("rebuild download workers")
 			downloadWorkers = pdc.buildDownloadWorkers(workers)
 			prevRebuild = time.Now()
-			buildDownloadWorkersCnt++
 		}
 
 		// create a worker set and launch it
@@ -983,12 +980,6 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		// check whether the download is completed
 		completed, err := pdc.finished()
 		if completed {
-			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-				span.LogKV(
-					"finished", 1,
-					"buildDownloadWorkersCnt", buildDownloadWorkersCnt,
-				)
-			}
 			pdc.finalize()
 			return
 		}
@@ -1086,22 +1077,22 @@ OUTER:
 	}
 
 	// TODO: remove me, debugging
-	if span := opentracing.SpanFromContext(pdc.ctx); bestSet == nil && span != nil && len(downloadWorkers) > 0 {
-		workersNeeded := minPieces + maxOverdriveWorkers
-		mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(downloadWorkers, skymodules.DistributionTrackerTotalBuckets-1, workersNeeded, maxOverdriveWorkers)
+	// if span := opentracing.SpanFromContext(pdc.ctx); bestSet == nil && span != nil && len(downloadWorkers) > 0 {
+	// 	workersNeeded := minPieces + maxOverdriveWorkers
+	// 	mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(downloadWorkers, skymodules.DistributionTrackerTotalBuckets-1, workersNeeded, maxOverdriveWorkers)
 
-		msg := ""
-		for _, dw := range downloadWorkers {
-			msg += fmt.Sprintf("worker: %v chance: %v pieces: %v\n", dw.identifier(), dw.chanceAfterCached(skymodules.DistributionTrackerTotalBuckets-1), dw.pieces())
-		}
-		span.LogKV(
-			"bestSetNil", msg,
-			"maxOverdriveWorkers", maxOverdriveWorkers,
-			"workersNeeded", minPieces+maxOverdriveWorkers,
-			"mostLikely", len(mostLikely),
-			"lessLikely", len(lessLikely),
-		)
-	}
+	// 	msg := ""
+	// 	for _, dw := range downloadWorkers {
+	// 		msg += fmt.Sprintf("worker: %v chance: %v pieces: %v\n", dw.identifier(), dw.chanceAfterCached(skymodules.DistributionTrackerTotalBuckets-1), dw.pieces())
+	// 	}
+	// 	span.LogKV(
+	// 		"bestSetNil", msg,
+	// 		"maxOverdriveWorkers", maxOverdriveWorkers,
+	// 		"workersNeeded", minPieces+maxOverdriveWorkers,
+	// 		"mostLikely", len(mostLikely),
+	// 		"lessLikely", len(lessLikely),
+	// 	)
+	// }
 
 	// fmt.Println("best set", bestSet)
 	return bestSet, nil
