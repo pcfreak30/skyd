@@ -628,33 +628,14 @@ func (ws *workerSet) chanceGreaterThanHalf() bool {
 func (ws *workerSet) String() string {
 	output := fmt.Sprintf("WORKERSET bucket: %v bucket dur %v expected dur: %v num overdrive: %v \nworkers:\n", ws.staticBucketIndex, skymodules.DistributionDurationForBucketIndex(ws.staticBucketIndex), ws.staticBucketDuration, ws.staticNumOverdrive)
 	for i, w := range ws.workers {
-		cw, chimera := w.(*chimeraWorker)
-
-		var ldtChanceShifted float64
-		var ldtChanceShifted2 float64
-		var rdtChance float64
-		var timeSinceRebuilt time.Duration
-
+		_, chimera := w.(*chimeraWorker)
 		selected := -1
-		if chimera {
-			dur := ws.staticBucketDuration
-			ldt := cw.cachedLatestLookupDT
-			rdt := cw.staticReadDistribution
-
-			ldtChanceShifted = ldt.ChanceAfter(dur)
-			ldtChanceShifted2 = ldt.ChancesAfter()[ws.staticBucketIndex]
-			rdtChance = rdt.ChanceAfter(dur)
-
-			timeSinceRebuilt = time.Since(cw.cachedRebuiltAt)
-		} else {
+		if !chimera {
 			selected = int(w.getPieceForDownload())
 		}
 
-		chM1 := w.chanceAfterCached(ws.staticBucketIndex - 1)
-		ch := w.chanceAfterCached(ws.staticBucketIndex)
-		chP1 := w.chanceAfterCached(ws.staticBucketIndex + 1)
-
-		output += fmt.Sprintf("%v) worker: %v chimera: %v chance: %v | %v | %v (%v, %v, %v, %v, %v) cost: %v pieces: %v selected: %v\n", i+1, w.identifier(), chimera, chM1, ch, chP1, ldtChanceShifted, ldtChanceShifted2, rdtChance, ldtChanceShifted*rdtChance, timeSinceRebuilt, w.cost(), w.pieces(), selected)
+		chance := w.chanceAfterCached(ws.staticBucketIndex)
+		output += fmt.Sprintf("%v) worker: %v chimera: %v chance: %v cost: %v pieces: %v selected: %v\n", i+1, w.identifier(), chimera, chance, w.cost(), w.pieces(), selected)
 	}
 	return output
 }
