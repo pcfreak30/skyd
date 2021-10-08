@@ -5720,6 +5720,21 @@ func testRecursiveBaseSector(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
+	// Add another renter.
+	nodes, err := tg.AddNodes(node.RenterTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2 := nodes[0]
+	defer func() {
+		if err := tg.RemoveNode(r2); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	if err := r2.SkykeyAddKeyPost(sk); err != nil {
+		t.Fatal(err)
+	}
+
 	sup := skymodules.SkyfileUploadParameters{
 		SiaPath:             sp,
 		BaseChunkRedundancy: 2,
@@ -5737,13 +5752,12 @@ func testRecursiveBaseSector(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
-	// Download the full file.
 	downloadedData, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(data, downloadedData) {
-		t.Fatal("data mismatch")
+		t.Fatalf("data mismatch %v %v", len(data), len(downloadedData))
 	}
 
 	// Fetch the metadata.
@@ -5756,23 +5770,6 @@ func testRecursiveBaseSector(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if md.Filename != largeName {
 		t.Fatal("name is wrong")
-	}
-
-	// Add another renter.
-	nodes, err := tg.AddNodes(node.RenterTemplate)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r2 := nodes[0]
-	defer func() {
-		if err := tg.RemoveNode(r2); err != nil {
-			t.Fatal(err)
-		}
-	}()
-
-	// Renter 2 also needs the key.
-	if err := r2.SkykeyAddKeyPost(sk); err != nil {
-		t.Fatal(err)
 	}
 
 	// Try pinning the file with the new renter.
@@ -5796,5 +5793,14 @@ func testRecursiveBaseSector(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if f1.File.Size() != f2.File.Size() {
 		t.Fatal("size mismatch", f1.File.Size(), f2.File.Size())
+	}
+
+	// Check the actual size. With the settings of this test, raw metadata
+	// and fanout should have a length of 8392 bytes. Uploading that results
+	// in 3 merkle roots which all fit into the original base sector. So the
+	// resulting size is one sector plus 8392 bytes.
+	extensionSize := int64(8392)
+	if f1.File.Size() != int64(modules.SectorSize)+extensionSize {
+		t.Fatal("wrong size", f1.File.Size())
 	}
 }

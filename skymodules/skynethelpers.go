@@ -175,6 +175,20 @@ func compressDataToFanout(data []byte, size uint64) [][]byte {
 		// The fanout becomes the new data.
 		data = fanout
 	}
+
+	// Make sure the last fanout (if any) is smaller than size.
+	if len(fanouts) > 0 && len(fanouts[len(fanouts)-1]) > int(size) {
+		build.Critical("fanout wasn't compressed enough")
+	}
+
+	// All fanouts (except the last one which goes into the base sector)
+	// need to be padded.
+	for i := 0; i < len(fanouts)-1; i++ {
+		if mod := len(fanouts[i]) % int(chunkSize); mod != 0 {
+			fanouts[i] = append(fanouts[i], make([]byte, chunkSize-uint64(mod))...)
+		}
+	}
+
 	return fanouts
 }
 

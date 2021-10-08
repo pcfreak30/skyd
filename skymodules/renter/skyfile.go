@@ -1062,13 +1062,11 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 	}
 
 	// Parse the baseSector.
-	sl, _, sm, _, _, _, err := r.ParseSkyfileMetadata(baseSector)
+	sl, _, sm, _, _, baseSectorExtension, err := r.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "error parsing the baseSector")
 	}
-	if true {
-		panic("handle extended fanout here")
-	}
+	baseSector = append(baseSector, baseSectorExtension...)
 
 	// Create the upload parameters
 	siaPath, err := skymodules.SkynetFolder.Join(skylinkStr)
@@ -1095,7 +1093,7 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 	// Re-encrypt the baseSector for upload and set the Skykey fields of the
 	// sup.
 	if encrypted {
-		err = encryptBaseSectorWithSkykey(baseSector, sl, fileSpecificSkykey)
+		err = encryptBaseSectorWithSkykey(baseSector[:modules.SectorSize], sl, fileSpecificSkykey)
 		if err != nil {
 			return skymodules.Skylink{}, errors.AddContext(err, "error re-encrypting base sector")
 		}
@@ -1649,6 +1647,7 @@ func (r *Renter) ParseSkyfileMetadata(baseSector []byte) (sl skymodules.SkyfileL
 	usedHashes, _ := skymodules.CompressedFanoutSize(payloadSize, maxSize)
 	hashes := baseSector[skymodules.SkyfileLayoutSize : skymodules.SkyfileLayoutSize+usedHashes*crypto.HashSize]
 
+	var emptyRoot crypto.Hash
 	for i, span := range chunkSpans {
 		// Download each chunk in parallel.
 		sectors := make([][]byte, span.MaxIndex-span.MinIndex+1)
@@ -1656,13 +1655,21 @@ func (r *Renter) ParseSkyfileMetadata(baseSector []byte) (sl skymodules.SkyfileL
 		resultIndex := 0
 		var wg sync.WaitGroup
 		for chunkIndex := span.MinIndex; chunkIndex <= span.MaxIndex; chunkIndex++ {
+			// Extract root.
+			var root crypto.Hash
+			copy(root[:], hashes[chunkIndex*crypto.HashSize:][:crypto.HashSize])
+
+			// If the root is empty we are done.
+			if root == emptyRoot {
+				break
+			}
+
 			wg.Add(1)
-			go func(chunkIndex uint64, resultIndex int) {
+			go func(root crypto.Hash, resultIndex int) {
 				defer wg.Done()
-				var root crypto.Hash
-				copy(root[:], hashes[chunkIndex*crypto.HashSize:][:crypto.HashSize])
+				//fmt.Println(chunkIndex, "root", root)
 				sectors[resultIndex], _, errs[resultIndex] = r.managedDownloadByRoot(r.tg.StopCtx(), root, 0, modules.SectorSize, types.SiacoinPrecision.MulFloat(1e-7)) // TODO: move DefaultSkynetPriceMS
-			}(chunkIndex, resultIndex)
+			}(root, resultIndex)
 			resultIndex++
 		}
 		wg.Wait()

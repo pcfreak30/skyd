@@ -2,6 +2,7 @@ package skynet
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"reflect"
 	"strings"
@@ -68,11 +69,12 @@ func testSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Define test function
-	singleFileTest := func(filename, skykeyName string, data []byte) {
+	singleFileTest := func(t *testing.T, nameSuffix, skykeyName string, data []byte) {
 		// Portal 1 uploads the skyfile
+		filename := t.Name() + nameSuffix
 		skylink, sup, _, err := portal1.UploadNewEncryptedSkyfileBlocking(filename, data, skykeyName, false)
 		if err != nil {
-			t.Fatalf("Test %v failed to upload: %v", filename, err)
+			t.Fatalf("Test %v failed to upload: %v", t.Name(), err)
 		}
 
 		// Verify the backup and restoration of the skylink
@@ -85,24 +87,25 @@ func testSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 	// Define common params
 	smallSize := 100
 	smallData := fastrand.Bytes(smallSize)
-	largeSize := 200*int(modules.SectorSize) + siatest.Fuzz()
+	largeSize := 3*int(modules.SectorSize) + siatest.Fuzz()
 	largeData := fastrand.Bytes(largeSize)
+	largeNameSuffix := hex.EncodeToString(fastrand.Bytes(int(modules.SectorSize)))
 
 	// Small Skyfile
 	t.Run("SingleSmallFile", func(t *testing.T) {
-		singleFileTest("singleSmallFile", "", smallData)
+		singleFileTest(t, "", "", smallData)
 	})
 	// Small Encrypted Skyfile
 	t.Run("SingleSmallFile_encrypted", func(t *testing.T) {
-		singleFileTest("singleSmallFile_encrypted", sk.Name, smallData)
+		singleFileTest(t, "", sk.Name, smallData)
 	})
 	// Large Skyfile
 	t.Run("SingleLargeFile", func(t *testing.T) {
-		singleFileTest("singleLargeFile", "", largeData)
+		singleFileTest(t, largeNameSuffix, "", largeData)
 	})
 	// Large Encrypted Skyfile
 	t.Run("SingleLargeFile_encrypted", func(t *testing.T) {
-		singleFileTest("singleLargeFile_encrypted", sk.Name, largeData)
+		singleFileTest(t, largeNameSuffix, sk.Name, largeData)
 	})
 }
 
