@@ -171,7 +171,7 @@ func TestRenterStream(t *testing.T) {
 
 	// Create a group for the subtests
 	groupParams := siatest.GroupParams{
-		Hosts:   5,
+		Hosts:   3,
 		Renters: 1,
 		Miners:  1,
 	}
@@ -278,6 +278,7 @@ func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Failed to replace hosts", err)
 	}
+
 	// Read the contents of the file from disk.
 	b, err := ioutil.ReadFile(localFile.Path())
 	if err != nil {
