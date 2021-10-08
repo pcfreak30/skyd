@@ -79,9 +79,10 @@ type ChunkSpan struct {
 	MaxIndex uint64
 }
 
-// CompressedFanoutSize computes how many root hashes a fanout compression will
-// result in and what the depth of the recursion is going to be.
-func CompressedFanoutSize(dataSize, maxSize uint64) (usedHashes, depth uint64) {
+// BaseSectorExtensionSize computes how many root hashes a base sector extension
+// will result in (within the base sector) and what the depth of the recursion
+// is going to be.
+func BaseSectorExtensionSize(dataSize, maxSize uint64) (usedHashes, depth uint64) {
 	if dataSize <= maxSize {
 		return 0, 0
 	}
@@ -100,13 +101,13 @@ func CompressedFanoutSize(dataSize, maxSize uint64) (usedHashes, depth uint64) {
 	}
 }
 
-// TranslateOffset will translate the given offset and length within a
-// compressed fanout. It returns a chain of spans that need to be downloaded
-// recursively as well as the offset to use when downloading the actual fanout
-// data.
-func TranslateOffset(offset, length uint64, dataSize, maxSize uint64) (uint64, []ChunkSpan) {
+// TranslateBaseSectorExtensionOffset will translate the given offset and length
+// within a base sector extension. It returns a chain of spans that need to be
+// downloaded recursively as well as the offset to use when downloading the
+// actual fanout data.
+func TranslateBaseSectorExtensionOffset(offset, length uint64, dataSize, maxSize uint64) (uint64, []ChunkSpan) {
 	// compute the max depth of the fanout.
-	usedHashes, maxDepth := CompressedFanoutSize(dataSize, maxSize)
+	usedHashes, maxDepth := BaseSectorExtensionSize(dataSize, maxSize)
 
 	// compute how many chunks we need for the data and what the size of the
 	// padded data is.
@@ -138,23 +139,30 @@ func TranslateOffset(offset, length uint64, dataSize, maxSize uint64) (uint64, [
 	return offset % chunkSize, offsets
 }
 
-func compressDataToFanout(data []byte, size uint64) [][]byte {
+// buildBaseSectorExtensions builds the base sector extension given some input
+// data and a size restriction. The function returns the two parts of the
+// extension. The first one is the part that goes into the base sector. The
+// second one is concatenated to the base sector and uploaded with it.
+func buildBaseSectorExtension(payload []byte, size uint64) ([]byte, [][]byte) {
 	if size < crypto.HashSize {
 		build.Critical("can't compress to a size smaller than a single hash")
-		return nil
+		return nil, nil
 	}
 	chunkSize := ChunkSize(crypto.TypePlain, 1)
 
+	// Compress the data into fanouts until we have one with a size <= the
+	// size restriction. One fanout pointing to the next recursively. We
+	// start at the bottom.
 	var fanouts [][]byte
-	for uint64(len(data)) > size {
+	for uint64(len(payload)) > size {
 		// Figure out how many chunks this data needs to be split into.
-		numChunks := NumChunks(crypto.TypePlain, uint64(len(data)), 1)
+		numChunks := NumChunks(crypto.TypePlain, uint64(len(payload)), 1)
 
 		// Allocate the fanout.
 		fanout := make([]byte, 0, numChunks*crypto.HashSize)
 
 		// Create the fanout for the data.
-		buf := bytes.NewBuffer(data)
+		buf := bytes.NewBuffer(payload)
 		for buf.Len() > 0 {
 			// Pull off one chunk after another.
 			chunk := buf.Next(int(chunkSize))
@@ -173,23 +181,27 @@ func compressDataToFanout(data []byte, size uint64) [][]byte {
 		fanouts = append(fanouts, fanout)
 
 		// The fanout becomes the new data.
-		data = fanout
+		payload = fanout
 	}
 
-	// Make sure the last fanout (if any) is smaller than size.
-	if len(fanouts) > 0 && len(fanouts[len(fanouts)-1]) > int(size) {
+	// If nothing was built we are done. The payload remains unaltered.
+	if len(fanouts) == 0 {
+		return nil, nil
+	}
+	fmt.Println("len", len(fanouts))
+
+	// Split the fanouts up into the base sector part and the upload part.
+	baseSectorPart := fanouts[len(fanouts)-1]
+	var uploadPart [][]byte
+	if len(fanouts) > 1 {
+		uploadPart = fanouts[:len(fanouts)-1]
+	}
+
+	// Make sure the first part is smaller than size.
+	if len(baseSectorPart) > int(size) {
 		build.Critical("fanout wasn't compressed enough")
 	}
-
-	// All fanouts (except the last one which goes into the base sector)
-	// need to be padded.
-	for i := 0; i < len(fanouts)-1; i++ {
-		if mod := len(fanouts[i]) % int(chunkSize); mod != 0 {
-			fanouts[i] = append(fanouts[i], make([]byte, chunkSize-uint64(mod))...)
-		}
-	}
-
-	return fanouts
+	return baseSectorPart, uploadPart
 }
 
 // BuildBaseSector will take all of the elements of the base sector and copy
@@ -214,20 +226,24 @@ func BuildBaseSector(layoutBytes, fanoutBytes, metadataBytes, fileBytes []byte) 
 	// basesector, we compress the payload.
 	if uint64(totalSize) > modules.SectorSize {
 		payload := append(fanoutBytes, metadataBytes...)
-		fanouts := compressDataToFanout(payload, modules.SectorSize-uint64(offset))
+		baseSectorPart, uploadPart := buildBaseSectorExtension(payload, modules.SectorSize-uint64(offset))
 
-		// The last part of fanouts is the one that goes into the base
-		// sector. The remaining ones have to be uploaded to the
-		// network.
-		compressedFanout, baseSectorExtension := fanouts[len(fanouts)-1], fanouts[:len(fanouts)-1]
+		// The fanouts in the upload part need to be padded.
+		chunkSize := ChunkSize(crypto.TypePlain, 1)
+		for i := 0; i < len(uploadPart); i++ {
+			if mod := len(uploadPart[i]) % int(chunkSize); mod != 0 {
+				uploadPart[i] = append(uploadPart[i], make([]byte, chunkSize-uint64(mod))...)
+			}
+		}
 
 		// The payload is also returned as part of the base sector
 		// extension for upload.
-		baseSectorExtension = append(baseSectorExtension, payload)
+		uploadPart = append(uploadPart, payload)
 
-		copy(baseSector[offset:], compressedFanout)
-		offset += len(compressedFanout)
-		return baseSector, uint64(offset), baseSectorExtension
+		// Copy the baseSectorPart into the base sector.
+		copy(baseSector[offset:], baseSectorPart)
+		offset += len(uploadPart)
+		return baseSector, uint64(offset), uploadPart
 	}
 
 	// Otherwise we finish the base sector.

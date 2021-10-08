@@ -1640,11 +1640,11 @@ func (r *Renter) ParseSkyfileMetadata(baseSector []byte) (sl skymodules.SkyfileL
 
 	// To parse the metadata and fanout, we need to download the full
 	// payload.
-	translatedOffset, chunkSpans := skymodules.TranslateOffset(0, payloadSize, payloadSize, maxSize)
+	translatedOffset, chunkSpans := skymodules.TranslateBaseSectorExtensionOffset(0, payloadSize, payloadSize, maxSize)
 
 	// Figure out how many hashes were stored in the base sector and grab
 	// them.
-	usedHashes, _ := skymodules.CompressedFanoutSize(payloadSize, maxSize)
+	usedHashes, _ := skymodules.BaseSectorExtensionSize(payloadSize, maxSize)
 	hashes := baseSector[skymodules.SkyfileLayoutSize : skymodules.SkyfileLayoutSize+usedHashes*crypto.HashSize]
 
 	var emptyRoot crypto.Hash

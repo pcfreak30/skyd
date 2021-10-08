@@ -21,12 +21,13 @@ func TestSkynetHelpers(t *testing.T) {
 	t.Run("ValidateSkyfileMetadata", testValidateSkyfileMetadata)
 	t.Run("EnsurePrefix", testEnsurePrefix)
 	t.Run("EnsureSuffix", testEnsureSuffix)
-	t.Run("CompressDataToFanout", testCompressDataToFanout)
-	t.Run("ResolveCompressedDataOffsetLength", testResolveCompressedDataOffsetLength)
+	t.Run("BuildBaseSectorExtension", testBuildBaseSectorExtension)
+	t.Run("ResolveCompressedDataOffsetLength", testTranslateBaseSectorExtensionOffset)
 }
 
-// testCompressDataToFanout is a unit test for compressDataToFanout.
-func testResolveCompressedDataOffsetLength(t *testing.T) {
+// testTranslateBaseSectorExtensionOffset is a unit test for
+// TranslateBaseSectorExtensionOffset.
+func testTranslateBaseSectorExtensionOffset(t *testing.T) {
 	hashesPerSector := modules.SectorSize / crypto.HashSize
 
 	tests := []struct {
@@ -242,7 +243,7 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 	// Run tests.
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			offset, offsets := TranslateOffset(test.offset, test.length, test.dataSize, test.maxSize)
+			offset, offsets := TranslateBaseSectorExtensionOffset(test.offset, test.length, test.dataSize, test.maxSize)
 			if !reflect.DeepEqual(test.result, offsets) {
 				t.Log("wanted:", test.result)
 				t.Log("got:", offsets)
@@ -255,8 +256,8 @@ func testResolveCompressedDataOffsetLength(t *testing.T) {
 	}
 }
 
-// testCompressDataToFanout is a unit test for compressDataToFanout.
-func testCompressDataToFanout(t *testing.T) {
+// testBuildBaseSectorExtension is a unit test for buildBaseSectorExtension.
+func testBuildBaseSectorExtension(t *testing.T) {
 	hashesPerSector := modules.SectorSize / crypto.HashSize
 
 	tests := []struct {
@@ -379,7 +380,11 @@ func testCompressDataToFanout(t *testing.T) {
 	// Run tests.
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			fanouts := compressDataToFanout(fastrand.Bytes(test.dataSize), test.size)
+			baseSectorPart, uploadPart := buildBaseSectorExtension(fastrand.Bytes(test.dataSize), test.size)
+			var fanouts [][]byte
+			if baseSectorPart != nil {
+				fanouts = append(uploadPart, baseSectorPart)
+			}
 			if len(fanouts) != len(test.fanoutSizes) {
 				t.Fatalf("invalid fanouts length: %v != %v", len(fanouts), len(test.fanoutSizes))
 			}
@@ -388,7 +393,7 @@ func testCompressDataToFanout(t *testing.T) {
 					t.Fatalf("%v: invalid fanout size: %v != %v", i, len(fanout), test.fanoutSizes[i])
 				}
 			}
-			expectedUsedHashes, expectedDepth := CompressedFanoutSize(uint64(test.dataSize), test.size)
+			expectedUsedHashes, expectedDepth := BaseSectorExtensionSize(uint64(test.dataSize), test.size)
 			if expectedDepth != uint64(len(fanouts)) {
 				t.Fatalf("depth %v != %v", len(fanouts), expectedDepth)
 			}
@@ -408,7 +413,7 @@ func testCompressDataToFanout(t *testing.T) {
 				t.Fatal("unexpected", r)
 			}
 		}()
-		compressDataToFanout(fastrand.Bytes(10), crypto.HashSize-1)
+		buildBaseSectorExtension(fastrand.Bytes(10), crypto.HashSize-1)
 	})
 }
 
