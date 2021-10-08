@@ -1340,7 +1340,7 @@ type Renter interface {
 
 	// HostsForRegistryUpdate returns a list of hosts that the renter would be using
 	// for updating the registry.
-	HostsForRegistryUpdate() ([]types.SiaPublicKey, error)
+	HostsForRegistryUpdate() ([]HostForRegistryUpdate, error)
 
 	// InitialScanComplete returns a boolean indicating if the initial scan of the
 	// hostdb is completed.

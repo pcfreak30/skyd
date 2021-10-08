@@ -1,0 +1,1 @@
+- change response type of /skynet/registry/hosts

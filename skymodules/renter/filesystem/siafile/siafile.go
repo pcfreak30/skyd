@@ -233,6 +233,7 @@ func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode skymodu
 			StaticErasureCodeParams: ecParams,
 			StaticPagesPerChunk:     numChunkPagesRequired(erasureCode.NumPieces()),
 			StaticPieceSize:         modules.SectorSize - masterKey.Type().Overhead(),
+			StaticVersion:           metadataVersion,
 			UniqueID:                uniqueID(),
 		},
 		deps:        modules.ProdDependencies,
@@ -318,11 +319,8 @@ func (sf *SiaFile) SetFileSize(fileSize uint64) (err error) {
 	}
 	// Update filesize.
 	sf.staticMetadata.FileSize = int64(fileSize)
-	updates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
-	}
-	return sf.createAndApplyTransaction(updates...)
+	// Save changes to metadata to disk.
+	return sf.saveMetadata()
 }
 
 // AddPiece adds an uploaded piece to the file. It also updates the host table
@@ -533,7 +531,7 @@ func (sf *SiaFile) SaveHeader() (err error) {
 	return sf.createAndApplyTransaction(updates...)
 }
 
-// SaveMetadata saves the file's metadata to disk.
+// SaveMetadata saves the file's metadata to disk in a fault tolerant way.
 func (sf *SiaFile) SaveMetadata() (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
@@ -547,7 +545,14 @@ func (sf *SiaFile) SaveMetadata() (err error) {
 			sf.staticMetadata.restore(backup)
 		}
 	}(sf.staticMetadata.backup())
+	return sf.saveMetadata()
+}
 
+// saveMetadata saves the file's metadata to disk by creating the metadata
+// updates and applying them.
+//
+// NOTE: This method does not backup the metadata
+func (sf *SiaFile) saveMetadata() error {
 	updates, err := sf.saveMetadataUpdates()
 	if err != nil {
 		return err

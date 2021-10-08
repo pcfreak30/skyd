@@ -76,7 +76,7 @@ type (
 	// HostsForRegistryUpdateGET is the response that the api returns after
 	// a request to /skynet/registry/hosts.
 	HostsForRegistryUpdateGET struct {
-		Hosts []types.SiaPublicKey `json:"hosts"`
+		Hosts []skymodules.HostForRegistryUpdate `json:"hosts"`
 	}
 
 	// SkynetSkyfileHandlerPOST is the response that the api returns after the
