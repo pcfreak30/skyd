@@ -909,6 +909,17 @@ func (sf *SiaFile) setAllStuck(stuck bool) (err error) {
 			sf.staticMetadata.restore(backup)
 		}
 	}(sf.staticMetadata.backup())
+	// Update metadata.
+	if stuck {
+		sf.staticMetadata.NumStuckChunks = uint64(sf.numChunks)
+	} else {
+		sf.staticMetadata.NumStuckChunks = 0
+	}
+	// Create metadata updates and apply updates on disk
+	updates, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
 	// Figure out which chunks to update.
 	var setStuck []chunk
 	errIter := sf.iterateChunksReadonly(func(chunk chunk) error {
@@ -923,18 +934,9 @@ func (sf *SiaFile) setAllStuck(stuck bool) (err error) {
 	}
 	// Check if work needs to be done.
 	if len(setStuck) == 0 {
-		return nil
-	}
-	// Update metadata.
-	if stuck {
-		sf.staticMetadata.NumStuckChunks = uint64(sf.numChunks)
-	} else {
-		sf.staticMetadata.NumStuckChunks = 0
-	}
-	// Create metadata updates and apply updates on disk
-	updates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
+		// We don't have any chunks to mark as stuck but make sure that
+		// the metadata updates are applied
+		return sf.createAndApplyTransaction(updates...)
 	}
 	// Create chunk updates.
 	chunkUpdates, errIter := sf.iterateChunks(func(chunk *chunk) (bool, error) {
@@ -1023,20 +1025,13 @@ func (sf *SiaFile) updateMetadata(offlineMap, goodForRenew map[string]bool, cont
 		return errors.AddContext(err, "unable to update cached redundancy")
 	}
 
-	// Compatibility check.
-	// If a file is unfinished it should not be stuck. This is the case for
-	// files prior to creating the Finished field in the metadata.
-	if !sf.finished() && sf.staticMetadata.NumStuckChunks != 0 {
-		err = sf.setAllStuck(false)
-		if err != nil {
-			return errors.AddContext(err, "unable to mark unfinished file as unstuck")
-		}
-	}
-
 	// Update cached health values by calling the health method.
 	health, _, _, _, _, _, _ := sf.health(offlineMap, goodForRenew)
 
-	// Set the finished state of the file.
+	// Set the finished state of the file based on the health. Ideally we
+	// would look at the unique uploaded bytes, like we did in the compat
+	// code. However that requires disk reads to interate over all the
+	// chunks.
 	sf.setFinished(health)
 
 	// Set the LastHealthCheckTime

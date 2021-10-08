@@ -132,6 +132,9 @@ func customTestFileAndWAL(siaFilePath, source string, rc skymodules.ErasureCoder
 	if err != nil {
 		panic(err)
 	}
+	if sf.staticMetadata.StaticVersion != metadataVersion {
+		panic("incorrect metadata version for new file")
+	}
 	// Check that the number of chunks in the file is correct.
 	if numChunks >= 0 && sf.numChunks != numChunks {
 		panic(fmt.Sprintf("newTestFile didn't create the expected number of chunks: %v %v %v", sf.numChunks, numChunks, fileSize))
