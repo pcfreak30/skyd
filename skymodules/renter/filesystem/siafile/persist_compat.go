@@ -152,6 +152,11 @@ func NewFromLegacyData(fd FileData, siaFilePath string, wal *writeaheadlog.WAL) 
 // unable to load the siafile, and therefore cannot use it which makes restoring
 // the metadata pointless.
 func (sf *SiaFile) metadataCompatCheck() error {
+	// Quit early to avoid unnecessary disk write.
+	if sf.staticMetadata.StaticVersion == metadataVersion {
+		return nil
+	}
+
 	// Check uninitialized case
 	if sf.staticMetadata.StaticVersion == nilMetadataVesion {
 		sf.upgradeMetadataFromNilToV1()
