@@ -6132,7 +6132,6 @@ func TestRenterUnfinishedFiles(t *testing.T) {
 			return err
 		}
 		if fi.Finished {
-			fmt.Println(fi.Redundancy, fi.MaxHealth, fi.Health, fi.Stuck, fi.LocalPath)
 			return errors.New("File is marked as finished")
 		}
 		return nil
