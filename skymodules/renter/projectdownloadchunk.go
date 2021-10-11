@@ -228,11 +228,10 @@ func (lwi *launchedWorkerInfo) String() string {
 	return fmt.Sprintf("%v | %v | piece %v | estimated complete %v ms | responded after %vms | read job took %vms | %v", pdcId, wDescr, lwi.staticPieceIndex, estimate, totalDur, jobDur, jDescr)
 }
 
-// updateAvailablePieces updates the pieces info with availability updates from
-// freshly resolved workers. Essentially, this is pulling new information from
-// the overarching PCWS worker state. It returns a boolean indicating whether
-// it processed freshly resolved workers.
-func (pdc *projectDownloadChunk) updateAvailablePieces() bool {
+// updatePieces updates the pieces info with availability updates from freshly
+// resolved workers. Essentially, this is pulling new information from the
+// overarching PCWS worker state.
+func (pdc *projectDownloadChunk) updatePieces() {
 	ws := pdc.workerState
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
@@ -242,7 +241,7 @@ func (pdc *projectDownloadChunk) updateAvailablePieces() bool {
 
 	// check whether an update is needed, if not return early
 	if pdc.workersConsideredIndex == len(ws.resolvedWorkers) {
-		return false
+		return
 	}
 
 	// add any new resolved workers to the pdc's list of available pieces.
@@ -263,7 +262,6 @@ func (pdc *projectDownloadChunk) updateAvailablePieces() bool {
 		}
 	}
 	pdc.workersConsideredIndex = len(ws.resolvedWorkers)
-	return true
 }
 
 // handleJobReadResponse will take a jobReadResponse from a worker job
@@ -446,6 +444,11 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 // download. A bool is returned which indicates whether or not the launch was
 // successful.
 func (pdc *projectDownloadChunk) launchWorker(worker downloadWorker, pieceIndex uint64, isOverdrive bool) (time.Time, bool) {
+	// sanity check the given worker is not a chimera worker
+	iw, ok := worker.(*individualWorker)
+	if !ok {
+		build.Critical("developer error, can not launch chimera")
+	}
 	w := worker.worker()
 
 	// Sanity check that the pieceOffset and pieceLength are segment aligned.
@@ -494,6 +497,7 @@ func (pdc *projectDownloadChunk) launchWorker(worker downloadWorker, pieceIndex 
 		})
 
 		pdc.workerProgress[workerKey].launchedPieces[pieceIndex] = time.Now()
+		iw.currentPieceLaunchedAt = time.Now()
 	}
 
 	return expectedCompleteTime, added
