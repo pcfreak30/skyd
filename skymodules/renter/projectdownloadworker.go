@@ -150,7 +150,7 @@ func NewChimeraWorker(numPieces int, pieceLength uint64, workers []*individualWo
 	for _, w := range workers {
 		totalWeight += w.staticAvailabilityRate
 	}
-	if totalWeight != 1 {
+	if math.Abs(1-totalWeight) > 1e-9 {
 		build.Critical(fmt.Sprintf("developer error, a chimera must consist of workers that together have a total availability rate of 1, instead it was %v", totalWeight))
 		return nil
 	}
