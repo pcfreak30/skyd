@@ -69,10 +69,9 @@ func testSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Define test function
-	singleFileTest := func(t *testing.T, nameSuffix, skykeyName string, data []byte) {
+	singleFileTest := func(t *testing.T, filename, skykeyName string, data []byte) {
 		// Portal 1 uploads the skyfile
-		filename := t.Name() + nameSuffix
-		skylink, sup, _, err := portal1.UploadNewEncryptedSkyfileBlocking(filename, data, skykeyName, false)
+		skylink, sup, _, err := portal1.UploadNewEncryptedSkyfileBlocking(filename, data, skykeyName, true)
 		if err != nil {
 			t.Fatalf("Test %v failed to upload: %v", t.Name(), err)
 		}
@@ -92,20 +91,25 @@ func testSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 	largeNameSuffix := hex.EncodeToString(fastrand.Bytes(int(modules.SectorSize)))
 
 	// Small Skyfile
+	parentTestName := t.Name()
 	t.Run("SingleSmallFile", func(t *testing.T) {
-		singleFileTest(t, "", "", smallData)
+		filename := fmt.Sprintf("%s-%s", parentTestName, t.Name())
+		singleFileTest(t, filename, "", smallData)
 	})
 	// Small Encrypted Skyfile
 	t.Run("SingleSmallFile_encrypted", func(t *testing.T) {
-		singleFileTest(t, "", sk.Name, smallData)
+		filename := fmt.Sprintf("%s-%s", parentTestName, t.Name())
+		singleFileTest(t, filename, sk.Name, smallData)
 	})
 	// Large Skyfile
 	t.Run("SingleLargeFile", func(t *testing.T) {
-		singleFileTest(t, largeNameSuffix, "", largeData)
+		filename := fmt.Sprintf("%s-%s-%s", parentTestName, t.Name(), largeNameSuffix)
+		singleFileTest(t, filename, "", largeData)
 	})
 	// Large Encrypted Skyfile
 	t.Run("SingleLargeFile_encrypted", func(t *testing.T) {
-		singleFileTest(t, largeNameSuffix, sk.Name, largeData)
+		filename := fmt.Sprintf("%s-%s-%s", parentTestName, t.Name(), largeNameSuffix)
+		singleFileTest(t, filename, sk.Name, largeData)
 	})
 }
 
