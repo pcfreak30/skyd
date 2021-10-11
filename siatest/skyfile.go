@@ -95,6 +95,12 @@ func (tn *TestNode) UploadSkyfileCustom(filename string, filedata []byte, skykey
 	// create the siapath
 	skyfilePath := skymodules.RandomSkynetFilePath()
 
+	// rebase to relative path
+	skyfilePath, err = skyfilePath.Rebase(skymodules.SkynetFolder, skymodules.RootSiaPath())
+	if err != nil {
+		return
+	}
+
 	// wrap the data in a reader
 	reader := bytes.NewReader(filedata)
 	sup = skymodules.SkyfileUploadParameters{
@@ -104,7 +110,7 @@ func (tn *TestNode) UploadSkyfileCustom(filename string, filedata []byte, skykey
 		Mode:                skymodules.DefaultFilePerm,
 		Reader:              reader,
 		Force:               force,
-		Root:                true,
+		Root:                false,
 		SkykeyName:          skykeyName,
 	}
 
