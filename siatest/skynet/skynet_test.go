@@ -5061,6 +5061,10 @@ func testSkynetPinUnpin(t *testing.T, p1, p2 *siatest.TestNode, fileSize uint64,
 		t.Fatal(err)
 	}
 	siaPath = sup.SiaPath
+	fullSiaPath, err = skymodules.SkynetFolder.Join(siaPath.String())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Try pinning the link as v2. Shouldn't work.
 	var slV1 skymodules.Skylink
