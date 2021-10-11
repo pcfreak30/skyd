@@ -330,7 +330,19 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sl2, fanout2, _, rawSM, _, _, err := r.ParseSkyfileMetadata(bs2)
+
+	var sl2 skymodules.SkyfileLayout
+	var fanout2, rawSM []byte
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		sl2, fanout2, _, rawSM, _, _, err = r.ParseSkyfileMetadata(bs2)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
