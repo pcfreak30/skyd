@@ -188,7 +188,6 @@ func buildBaseSectorExtension(payload []byte, size uint64) ([]byte, [][]byte) {
 	if len(fanouts) == 0 {
 		return nil, nil
 	}
-	fmt.Println("len", len(fanouts))
 
 	// Split the fanouts up into the base sector part and the upload part.
 	baseSectorPart := fanouts[len(fanouts)-1]

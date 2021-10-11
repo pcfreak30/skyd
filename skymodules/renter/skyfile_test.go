@@ -304,9 +304,6 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 		bs = append(bs, ext...)
 	}
 
-	fmt.Println("extensions", len(extension))
-	println("upload", len(bs))
-
 	// Upload the base sector.
 	err = r.managedUploadBaseSector(context.Background(), skymodules.SkyfileUploadParameters{
 		SiaPath: skymodules.RandomSkynetFilePath(),
@@ -314,19 +311,16 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	println("done upload")
 
 	// Download the base sector using the skylink and parse it.
 	offset, fetchSize, err := skylink.OffsetAndFetchSize()
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Println("offset, fetchsize", offset, fetchSize)
 	bs2, _, err := r.managedDownloadByRoot(context.Background(), skylink.MerkleRoot(), offset, fetchSize, types.SiacoinPrecision.MulFloat(1e-7))
 	if err != nil {
 		t.Fatal(err)
 	}
-	println("got bs")
 	sl2, fanout2, _, rawSM, _, _, err := r.ParseSkyfileMetadata(bs2)
 	if err != nil {
 		t.Fatal(err)

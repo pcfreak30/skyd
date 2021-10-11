@@ -60,7 +60,6 @@ func TestSkynetSuiteOne(t *testing.T) {
 		{Name: "Basic", Test: testSkynetBasic},
 		{Name: "SkylinkV2Download", Test: testSkylinkV2Download},
 		{Name: "ConvertSiaFile", Test: testConvertSiaFile},
-		{Name: "LargeMetadata", Test: testSkynetLargeMetadata},
 		{Name: "MultipartUpload", Test: testSkynetMultipartUpload},
 		{Name: "InvalidFilename", Test: testSkynetInvalidFilename},
 		{Name: "SubDirDownload", Test: testSkynetSubDirDownload},
@@ -3400,34 +3399,6 @@ func testRegressionTimeoutPanic(t *testing.T, tg *siatest.TestGroup) {
 	_, err = r.SkynetSkylinkGetWithTimeout(skylink, 1)
 	if errors.Contains(err, renter.ErrProjectTimedOut) {
 		t.Fatal("Expected download request to time out")
-	}
-}
-
-// testSkynetLargeMetadata makes sure that
-func testSkynetLargeMetadata(t *testing.T, tg *siatest.TestGroup) {
-	r := tg.Renters()[0]
-
-	// Prepare a filename that's greater than a sector. That's the easiest way
-	// to force the metadata to be larger than a sector.
-	filename := hex.EncodeToString(fastrand.Bytes(int(modules.SectorSize + 1)))
-	filedata := fastrand.Bytes(int(100 + siatest.Fuzz()))
-	files := []siatest.TestFile{{Name: filename, Data: filedata}}
-
-	// Quick fuzz on the force value so that sometimes it is set, sometimes it
-	// is not.
-	var force bool
-	if fastrand.Intn(2) == 0 {
-		force = true
-	}
-
-	// Upload the file
-	//
-	// Note that we use a multipart upload to avoid running into `file name too
-	// long`, returned by the file system. By using a multipart upload we really
-	// isolate the error returned after validating the metadata.
-	_, _, _, err := r.UploadNewMultipartSkyfileBlocking(t.Name(), files, "", false, force)
-	if err == nil || !strings.Contains(err.Error(), renter.ErrMetadataTooBig.Error()) {
-		t.Fatal("Should fail due to ErrMetadataTooBig", err)
 	}
 }
 
