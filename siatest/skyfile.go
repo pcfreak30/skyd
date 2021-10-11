@@ -104,7 +104,7 @@ func (tn *TestNode) UploadSkyfileCustom(filename string, filedata []byte, skykey
 		Mode:                skymodules.DefaultFilePerm,
 		Reader:              reader,
 		Force:               force,
-		Root:                false,
+		Root:                true,
 		SkykeyName:          skykeyName,
 	}
 
