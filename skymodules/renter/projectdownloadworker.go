@@ -155,10 +155,8 @@ func NewChimeraWorker(numPieces int, pieceLength uint64, workers []*individualWo
 	totalCompleteChance := float64(0)
 	totalCost := types.ZeroCurrency
 	for _, w := range workers {
-		weight := w.staticAvailabilityRate
-		totalCompleteChance += w.cachedCompleteChance * weight
-		jrq := w.staticWorker.staticJobReadQueue
-		totalCost = totalCost.Add(jrq.callExpectedJobCost(pieceLength))
+		totalCompleteChance += w.cachedCompleteChance * w.staticAvailabilityRate
+		totalCost = totalCost.Add(w.staticExpectedCost)
 	}
 
 	return &chimeraWorker{
