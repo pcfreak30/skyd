@@ -70,12 +70,6 @@ func LoadSiaFileFromReaderWithChunks(r io.ReadSeeker, path string, wal *writeahe
 	return sf, Chunks{chunks}, nil
 }
 
-// LoadSiaFileMetadata is a wrapper for loadSiaFileMetadata that uses the
-// production dependencies.
-func LoadSiaFileMetadata(path string) (Metadata, error) {
-	return loadSiaFileMetadata(path, modules.ProdDependencies)
-}
-
 // SetSiaFilePath sets the path of the siafile on disk.
 func (sf *SiaFile) SetSiaFilePath(path string) {
 	sf.mu.Lock()
@@ -150,25 +144,13 @@ func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL,
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to decode metadata")
 	}
-	// COMPATv137 legacy files might not have a unique id.
-	if sf.staticMetadata.UniqueID == "" {
-		sf.staticMetadata.UniqueID = uniqueID()
-	}
+
 	// Create the erasure coder.
 	sf.staticMetadata.staticErasureCode, err = unmarshalErasureCoder(sf.staticMetadata.StaticErasureCodeType, sf.staticMetadata.StaticErasureCodeParams)
 	if err != nil {
 		return nil, err
 	}
-	// COMPATv140 legacy 0-byte files might not have correct cached fields since we
-	// never update them once they are created.
-	if sf.staticMetadata.FileSize == 0 {
-		ec := sf.staticMetadata.staticErasureCode
-		sf.staticMetadata.CachedHealth = 0
-		sf.staticMetadata.CachedStuckHealth = 0
-		sf.staticMetadata.CachedRedundancy = float64(ec.NumPieces()) / float64(ec.MinPieces())
-		sf.staticMetadata.CachedUserRedundancy = sf.staticMetadata.CachedRedundancy
-		sf.staticMetadata.CachedUploadProgress = 100
-	}
+
 	// Load the pubKeyTable.
 	pubKeyTableLen := sf.staticMetadata.ChunkOffset - sf.staticMetadata.PubKeyTableOffset
 	if pubKeyTableLen < 0 {
@@ -191,45 +173,36 @@ func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL,
 			return nil, errors.AddContext(err, "failed to unmarshal pubKeyTable")
 		}
 	}
+
 	// Seek to the start of the chunks.
 	off, err := r.Seek(sf.staticMetadata.ChunkOffset, io.SeekStart)
 	if err != nil {
 		return nil, err
 	}
+
 	// Sanity check that the offset is page aligned.
 	if off%pageSize != 0 {
 		return nil, errors.New("chunkOff is not page aligned")
 	}
+
 	// Set numChunks field.
 	numChunks := sf.staticMetadata.FileSize / int64(sf.staticChunkSize())
 	if sf.staticMetadata.FileSize%int64(sf.staticChunkSize()) != 0 || numChunks == 0 {
 		numChunks++
 	}
 	sf.numChunks = int(numChunks)
-	return sf, nil
-}
 
-// loadSiaFileMetadata loads only the metadata of a SiaFile from disk.
-func loadSiaFileMetadata(path string, deps modules.Dependencies) (md Metadata, err error) {
-	// Open the file.
-	f, err := deps.Open(path)
+	// Compat check for metadata static version
+	//
+	// NOTE: This needs to be last so that the file is fully loaded and all
+	// information is available for the compat checks and saving of the
+	// metadata.
+	err = sf.metadataCompatCheck()
 	if err != nil {
-		return Metadata{}, err
+		return nil, err
 	}
-	defer func() {
-		err = errors.Compose(err, f.Close())
-	}()
-	// Load the metadata.
-	decoder := json.NewDecoder(f)
-	if err = decoder.Decode(&md); err != nil {
-		return
-	}
-	// Create the erasure coder.
-	md.staticErasureCode, err = unmarshalErasureCoder(md.StaticErasureCodeType, md.StaticErasureCodeParams)
-	if err != nil {
-		return
-	}
-	return
+
+	return sf, nil
 }
 
 // readAndApplyDeleteUpdate reads the delete update and applies it. This helper

@@ -806,21 +806,20 @@ at the original localpath location.
    Repair Loop will work through the heap and upload the chunks
 
 #### Stuck Loop
-File's are marked as `stuck` if the Renter is unable to fully upload the file.
-While there are many reasons a file might not be fully uploaded, failed uploads
-due to the Renter, ie the Renter shut down, will not cause the file to be marked
-as `stuck`. The goal is to mark a chunk as stuck if it is independently unable
-to be uploaded. Meaning, this chunk is unable to be repaired but other chunks
-are able to be repaired. We mark a chunk as stuck so that the repair loop will
-ignore it in the future and instead focus on chunks that are able to be
-repaired.
+File's are marked as `stuck` if the Renter is unable to fully repair a file that
+has previously finished uploading, i.e. attained a health of < 1. The goal is to
+mark a chunk as stuck if it is independently unable to be repaired. Meaning,
+this chunk is unable to be repaired but other chunks are able to be repaired. We
+mark a chunk as stuck so that the repair loop will ignore it in the future and
+instead focus on chunks that are able to be repaired.
 
 The stuck loop is responsible for targeting chunks that didn't get repaired
-properly. There are two methods for adding stuck chunks to the upload heap, the
-first method is random selection and the second is using the `stuckStack`. On
-start up the `stuckStack` is empty so the stuck loop begins using the random
-selection method. Once the `stuckStack` begins to fill, the stuck loop will use
-the `stuckStack` first before using the random method.
+properly, or chunks that are marked as unfinished. There are two methods for
+adding stuck chunks to the upload heap, the first method is random selection and
+the second is using the `stuckStack`. On start up the `stuckStack` is empty so
+the stuck loop begins using the random selection method. Once the `stuckStack`
+begins to fill, the stuck loop will use the `stuckStack` first before using the
+random method.
 
 For the random selection one chunk is selected uniformly at random out of all of
 the stuck chunks in the filesystem. The stuck loop does this by first selecting
@@ -873,11 +872,6 @@ it up by finding a stuck chunk.
    building `unfinishedUploadChunks` to add to the `uploadHeap`. These methods
    rely on the `repairTarget` to know if they should target stuck chunks or
    unstuck chunks 
-
-**TODOs**  
- - once bubbling metadata has been updated to be more I/O efficient this code
-   should be removed and we should call bubble when we clean up the upload chunk
-   after a successful repair.
 
 ### Backup Subsystem
 **Key Files**

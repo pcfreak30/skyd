@@ -28,6 +28,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/contractor"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siadir"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -3083,6 +3084,9 @@ func testZeroByteFile(t *testing.T, tg *siatest.TestGroup) {
 			t.Errorf("Expected UploadProgress to be %v, got %v", expectedRF.UploadProgress, actualRF.UploadProgress)
 		}
 		// Check health information
+		if expectedRF.Finished != actualRF.Finished {
+			t.Errorf("Expected Finished to be %v, got %v", expectedRF.Finished, actualRF.Finished)
+		}
 		if expectedRF.Health != actualRF.Health {
 			t.Errorf("Expected Health to be %v, got %v", expectedRF.Health, actualRF.Health)
 		}
@@ -3126,6 +3130,7 @@ func testZeroByteFile(t *testing.T, tg *siatest.TestGroup) {
 	expectedRF := skymodules.FileInfo{
 		Redundancy:       redundancy,
 		UploadProgress:   100,
+		Finished:         true,
 		Health:           0,
 		MaxHealth:        0,
 		MaxHealthPercent: 100,
@@ -6025,5 +6030,125 @@ func TestRenterBubble(t *testing.T) {
 		if err != nil {
 			t.Errorf("Unexpected Dir Info '%v'\n%v", test.siaPath, err)
 		}
+	}
+}
+
+// TestRenterUnfinishedFiles probes the handling of unfinished files
+func TestRenterUnfinishedFiles(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for testing
+	groupParams := siatest.GroupParams{
+		Hosts:  2,
+		Miners: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Add renter with depenedency
+	renterParams := node.Renter(testDir)
+	renterParams.RenterDeps = &dependencies.DependencyShortUnfinishedFilesPruneDuration{}
+	_, err = tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := tg.Renters()[0]
+	// Upload a file
+	_, rf, err := r.UploadNewFileBlocking(100, 1, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the file info
+	fi, err := r.File(rf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Since the upload was successful the file should be marked as finished
+	if !fi.Finished {
+		t.Fatal("file not marked as finished")
+	}
+	if fi.Redundancy < 1 {
+		t.Fatal("Redundancy is less than 1", fi.Redundancy)
+	}
+
+	// Upload a file that won't reach full health
+	lf, rf, err := r.UploadNewFile(100, 3, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the file info
+	fi, err = r.File(rf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Even though the upload cannot be successful, the file will be
+	// considered finished because there is a localpath.
+	if !fi.Finished {
+		t.Fatal("file not marked as finished")
+	}
+	if fi.Redundancy >= 1 {
+		t.Fatal("Redundancy is greater than 1", fi.Redundancy)
+	}
+
+	// Remove the local file. This would simulate a streaming upload
+	// failing, leaving a file without a localfile to repair from and not
+	// ever reaching 1x redundancy.
+	if err := lf.Delete(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a host so that there are enough hosts for the repair loop to
+	// consider repairing the file
+	_, err = tg.AddNodes(node.HostTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// File should become marked as unfinished because the repair/health
+	// loops should overwrite the localpath once the localfile cannot be
+	// accessed.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Get the file info
+		fi, err = r.File(rf)
+		// Ignore ErrNotExist errors to avoid NDFs as the file is
+		// eventually expected to be deleted.
+		if err != nil && !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+			return err
+		}
+		if fi.Finished {
+			return errors.New("File is marked as finished")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// File should be deleted now that it is marked as unfinished
+	err = build.Retry(15, time.Second, func() error {
+		fi, err = r.File(rf)
+		if err == nil || !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+			return fmt.Errorf("Unexpected error %v", err)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

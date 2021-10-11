@@ -25,15 +25,12 @@ type (
 	// skynetInMemoryUpload represents an upload within the
 	// skynetTUSInMemoryUploadStore.
 	skynetInMemoryUpload struct {
-		complete          bool
-		fanout            []byte
-		fi                handler.FileInfo
-		isSmallFile       bool
-		smallFileData     []byte
-		lastWrite         time.Time
-		staticFilename    string
-		staticForceUpload bool
-		staticSP          skymodules.SiaPath
+		complete       bool
+		fanout         []byte
+		fi             handler.FileInfo
+		lastWrite      time.Time
+		staticFilename string
+		staticSP       skymodules.SiaPath
 
 		// Base chunk related fields.
 		staticBaseChunkRedundancy uint8
@@ -61,17 +58,16 @@ func NewSkynetTUSInMemoryUploadStore() skymodules.SkynetTUSUploadStore {
 func (us *skynetTUSInMemoryUploadStore) Close() error { return nil }
 
 // CreateUpload creates a new upload and adds it to the store.
-func (us *skynetTUSInMemoryUploadStore) CreateUpload(fi handler.FileInfo, sp skymodules.SiaPath, fileName string, baseChunkRedundancy uint8, fanoutDataPieces, fanoutParityPieces int, sm []byte, force bool, ct crypto.CipherType) (skymodules.SkynetTUSUpload, error) {
+func (us *skynetTUSInMemoryUploadStore) CreateUpload(_ context.Context, fi handler.FileInfo, sp skymodules.SiaPath, fileName string, baseChunkRedundancy uint8, fanoutDataPieces, fanoutParityPieces int, sm []byte, ct crypto.CipherType) (skymodules.SkynetTUSUpload, error) {
 	us.mu.Lock()
 	defer us.mu.Unlock()
 	upload := &skynetInMemoryUpload{
-		complete:          false,
-		fanout:            nil,
-		fi:                fi,
-		lastWrite:         time.Now(),
-		staticFilename:    fileName,
-		staticForceUpload: force,
-		staticSP:          sp,
+		complete:       false,
+		fanout:         nil,
+		fi:             fi,
+		lastWrite:      time.Now(),
+		staticFilename: fileName,
+		staticSP:       sp,
 
 		staticBaseChunkRedundancy: baseChunkRedundancy,
 		staticMetadata:            sm,
@@ -103,39 +99,26 @@ func (us *skynetTUSInMemoryUploadStore) NewLock(id string) (handler.Lock, error)
 
 // CommitFinishUpload commits a finished upload to the upload store. This means
 // setting the skylink of the finished upload.
-func (u *skynetInMemoryUpload) CommitFinishUpload(skylink skymodules.Skylink) error {
+func (u *skynetInMemoryUpload) CommitFinishUpload(_ context.Context, skylink skymodules.Skylink) error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
+	if u.complete {
+		return ErrUploadFinished
+	}
+	u.fi.Offset = u.fi.Size
 	u.complete = true
+	u.lastWrite = time.Now()
 	u.fi.MetaData["Skylink"] = skylink.String()
-	return nil
-}
-
-// CommitFinishPartialUpload commits a finished upload to the upload store by
-// setting it to be completed.
-func (u *skynetInMemoryUpload) CommitFinishPartialUpload() error {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	u.complete = true
 	return nil
 }
 
 // CommitWriteChunk commits the changes to the upload after successfully writing
 // a chunk to the store.
-func (u *skynetInMemoryUpload) CommitWriteChunk(newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error {
+func (u *skynetInMemoryUpload) CommitWriteChunk(_ context.Context, newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	u.fanout = append(u.fanout, fanout...)
 	return u.commitWriteChunk(newOffset, newLastWrite, isSmall)
-}
-
-// CommitWriteChunkSmallFile commits the changes to the upload after
-// successfully writing a chunk to the store.
-func (u *skynetInMemoryUpload) CommitWriteChunkSmallFile(newOffset int64, newLastWrite time.Time, smallFileData []byte) error {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	u.smallFileData = smallFileData
-	return u.commitWriteChunk(newOffset, newLastWrite, true)
 }
 
 // GetInfo returns the upload's underlying handler.FileInfo.
@@ -161,14 +144,13 @@ func (u *skynetInMemoryUpload) UploadParams(ctx context.Context) (skymodules.Sky
 	sup := skymodules.SkyfileUploadParameters{
 		BaseChunkRedundancy: u.staticBaseChunkRedundancy,
 		Filename:            u.staticFilename,
-		Force:               u.staticForceUpload,
 		SiaPath:             u.staticSP,
 	}
 	fanoutSiaPath, err := u.staticSP.AddSuffixStr(skymodules.ExtendedSuffix)
 	if err != nil {
 		return skymodules.SkyfileUploadParameters{}, skymodules.FileUploadParams{}, err
 	}
-	up, err := fileUploadParams(fanoutSiaPath, u.staticFanoutDataPieces, u.staticFanoutParityPieces, u.staticForceUpload, u.staticCipherType)
+	up, err := fileUploadParams(fanoutSiaPath, u.staticFanoutDataPieces, u.staticFanoutParityPieces, true, u.staticCipherType)
 	if err != nil {
 		return skymodules.SkyfileUploadParameters{}, skymodules.FileUploadParams{}, err
 	}
@@ -182,14 +164,6 @@ func (u *skynetInMemoryUpload) Fanout(ctx context.Context) ([]byte, error) {
 	return u.fanout, nil
 }
 
-// IsSmallUpload indicates whether an upload is considered a small upload.
-// That's the case when it doesn't consist of a full chunk.
-func (u *skynetInMemoryUpload) IsSmallUpload(ctx context.Context) (bool, error) {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	return u.isSmallFile, nil
-}
-
 // SkyfileMetadata returns the raw SkyfileMetadata of the upload.
 func (u *skynetInMemoryUpload) SkyfileMetadata(ctx context.Context) ([]byte, error) {
 	u.mu.Lock()
@@ -197,17 +171,10 @@ func (u *skynetInMemoryUpload) SkyfileMetadata(ctx context.Context) ([]byte, err
 	return u.staticMetadata, nil
 }
 
-// SmallFileData returns the data for a small upload.
-func (u *skynetInMemoryUpload) SmallFileData(ctx context.Context) ([]byte, error) {
+// Skylink returns the skylink of the upload if it was set already.
+func (u *skynetInMemoryUpload) GetSkylink() (skymodules.Skylink, bool) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
-	return u.smallFileData, nil
-}
-
-// Skylink returns the skylink of the upload if it was set already.
-func (u *skynetInMemoryUpload) Skylink() (skymodules.Skylink, bool) {
-	u.mu.Lock()
-	u.mu.Unlock()
 	sl, exists := u.fi.MetaData["Skylink"]
 	if !exists {
 		return skymodules.Skylink{}, false
@@ -221,7 +188,7 @@ func (u *skynetInMemoryUpload) Skylink() (skymodules.Skylink, bool) {
 }
 
 // Prune removes uploads that have been idle for too long.
-func (us *skynetTUSInMemoryUploadStore) ToPrune() ([]skymodules.SkynetTUSUpload, error) {
+func (us *skynetTUSInMemoryUploadStore) ToPrune(_ context.Context) ([]skymodules.SkynetTUSUpload, error) {
 	us.mu.Lock()
 	defer us.mu.Unlock()
 	var toDelete []skymodules.SkynetTUSUpload
@@ -242,11 +209,19 @@ func (us *skynetTUSInMemoryUploadStore) ToPrune() ([]skymodules.SkynetTUSUpload,
 }
 
 // Prune removes uploads that have been idle for too long.
-func (us *skynetTUSInMemoryUploadStore) Prune(uploadID string) error {
+func (us *skynetTUSInMemoryUploadStore) Prune(_ context.Context, uploadIDs []string) error {
 	us.mu.Lock()
 	defer us.mu.Unlock()
-	delete(us.uploads, uploadID)
+	for _, uploadID := range uploadIDs {
+		delete(us.uploads, uploadID)
+	}
 	return nil
+}
+
+// WithTransaction allows for grouping multiple database operations into a
+// single atomic transaction.
+func (us *skynetTUSInMemoryUploadStore) WithTransaction(ctx context.Context, handler func(context.Context) error) error {
+	return handler(ctx)
 }
 
 // commitWriteChunk commits the changes to the upload after successfully
@@ -254,6 +229,5 @@ func (us *skynetTUSInMemoryUploadStore) Prune(uploadID string) error {
 func (u *skynetInMemoryUpload) commitWriteChunk(newOffset int64, newLastWrite time.Time, smallFile bool) error {
 	u.fi.Offset = newOffset
 	u.lastWrite = newLastWrite
-	u.isSmallFile = smallFile
 	return nil
 }

@@ -146,7 +146,7 @@ func TestShortFanoutPanic(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Upload the fanout.
+	// Init the upload.
 	fileNode, err := r.managedInitUploadStream(skymodules.FileUploadParams{
 		CipherType:  crypto.TypePlain,
 		ErasureCode: ec,
@@ -155,6 +155,8 @@ func TestShortFanoutPanic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Upload the fanout.
 	chunkReader := NewFanoutChunkReader(bytes.NewReader(data), fileNode.ErasureCode(), false, fileNode.MasterKey())
 	_, err = r.callUploadStreamFromReaderWithFileNode(context.Background(), fileNode, chunkReader, 0)
 	if err != nil {

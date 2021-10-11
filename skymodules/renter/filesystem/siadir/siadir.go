@@ -57,6 +57,9 @@ type (
 		//
 		// NumSubDirs is the number of sub-siadirs in a siadir
 		//
+		// NumUnfinishedFiles is the total number of unfinished siafiles in a
+		// siadir
+		//
 		// Size is the total amount of data stored in the siafiles of the siadir
 		//
 		// StuckHealth is the health of the most in need siafile in the siadir,
@@ -73,6 +76,7 @@ type (
 		AggregateNumLostFiles        uint64    `json:"aggregatenumlostfiles"`
 		AggregateNumStuckChunks      uint64    `json:"aggregatenumstuckchunks"`
 		AggregateNumSubDirs          uint64    `json:"aggregatenumsubdirs"`
+		AggregateNumUnfinishedFiles  uint64    `json:"aggregatenumunfinishedfiles"`
 		AggregateRemoteHealth        float64   `json:"aggregateremotehealth"`
 		AggregateRepairSize          uint64    `json:"aggregaterepairsize"`
 		AggregateSize                uint64    `json:"aggregatesize"`
@@ -94,6 +98,7 @@ type (
 		NumLostFiles        uint64      `json:"numlostfiles"`
 		NumStuckChunks      uint64      `json:"numstuckchunks"`
 		NumSubDirs          uint64      `json:"numsubdirs"`
+		NumUnfinishedFiles  uint64      `json:"numunfinishedfiles"`
 		RemoteHealth        float64     `json:"remotehealth"`
 		RepairSize          uint64      `json:"repairsize"`
 		Size                uint64      `json:"size"`
@@ -137,6 +142,9 @@ func EqualMetadatas(md1, md2 Metadata) (err error) {
 	}
 	if md1.AggregateNumSubDirs != md2.AggregateNumSubDirs {
 		err = errors.Compose(err, fmt.Errorf("AggregateNumSubDirs not equal, %v and %v", md1.AggregateNumSubDirs, md2.AggregateNumSubDirs))
+	}
+	if md1.AggregateNumUnfinishedFiles != md2.AggregateNumUnfinishedFiles {
+		err = errors.Compose(err, fmt.Errorf("AggregateNumUnfinishedFiles not equal, %v and %v", md1.AggregateNumUnfinishedFiles, md2.AggregateNumUnfinishedFiles))
 	}
 	if md1.AggregateRemoteHealth != md2.AggregateRemoteHealth {
 		err = errors.Compose(err, fmt.Errorf("AggregateRemoteHealth not equal, %v and %v", md1.AggregateRemoteHealth, md2.AggregateRemoteHealth))
@@ -186,6 +194,9 @@ func EqualMetadatas(md1, md2 Metadata) (err error) {
 	}
 	if md1.NumSubDirs != md2.NumSubDirs {
 		err = errors.Compose(err, fmt.Errorf("NumSubDirs not equal, %v and %v", md1.NumSubDirs, md2.NumSubDirs))
+	}
+	if md1.NumUnfinishedFiles != md2.NumUnfinishedFiles {
+		err = errors.Compose(err, fmt.Errorf("NumUnfinishedFiles not equal, %v and %v", md1.NumUnfinishedFiles, md2.NumUnfinishedFiles))
 	}
 	if md1.RemoteHealth != md2.RemoteHealth {
 		err = errors.Compose(err, fmt.Errorf("RemoteHealth not equal, %v and %v", md1.RemoteHealth, md2.RemoteHealth))

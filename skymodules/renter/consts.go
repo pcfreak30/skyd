@@ -262,6 +262,10 @@ var (
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 
+	// unfinishedFilePruneDuration is the length of time before an
+	// unfinished file is pruned from the filesystem.
+	unfinishedFilePruneDuration = time.Hour * 24 * 30 // 30 Days
+
 	// uploadAndRepairErrorSleepDuration indicates how long a repair process
 	// should sleep before retrying if there is an error fetching the metadata
 	// of the root directory of the renter's filesystem.
