@@ -4723,7 +4723,7 @@ func TestSkynetCleanupOnError(t *testing.T) {
 	if err != nil {
 		t.Fatal("re-uploading a small file should succeed", err)
 	}
-	_, err = r.RenterFileRootGet(smallPath)
+	_, err = r.RenterSkyfileGet(small.SiaPath, false)
 	if err != nil {
 		t.Fatal("unexpected error on getting root for a small file", err)
 	}
@@ -4733,11 +4733,15 @@ func TestSkynetCleanupOnError(t *testing.T) {
 	if err != nil {
 		t.Fatal("re-uploading a large file should succeed", err)
 	}
-	_, err = r.RenterFileRootGet(largePath)
+	_, err = r.RenterSkyfileGet(large.SiaPath, false)
 	if err != nil {
 		t.Fatal("unexpected error on getting root for a large file", err)
 	}
-	_, err = r.RenterFileRootGet(largePathExtended)
+	largePathExtended, err = large.SiaPath.AddSuffixStr(skymodules.ExtendedSuffix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.RenterSkyfileGet(largePathExtended, false)
 	if err != nil {
 		t.Fatal("unexpected error on getting root for a large file extended", err)
 	}
