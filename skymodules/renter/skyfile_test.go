@@ -319,7 +319,14 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bs2, _, err := r.managedDownloadByRoot(context.Background(), skylink.MerkleRoot(), offset, fetchSize, types.SiacoinPrecision.MulFloat(1e-7))
+	var bs2 []byte
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		bs2, _, err = r.managedDownloadByRoot(context.Background(), skylink.MerkleRoot(), offset, fetchSize, types.SiacoinPrecision.MulFloat(1e-7))
+		if err != nil {
+			return err
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
