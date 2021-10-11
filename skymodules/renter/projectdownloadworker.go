@@ -75,21 +75,9 @@ type (
 		// staticIdentifier uniquely identifies the chimera worker
 		staticIdentifier string
 
-		// staticLookupDistribution contains a distribution that is the
-		// combination of all worker lookup distrubtions in this chimera worker,
-		// it is static because it never gets updated after the chimera is
-		// finalized and this field is calculated
-		staticLookupDistribution *skymodules.Distribution
-
 		// staticPieceIndices contains a list of piece indices, for a chimera
 		// worker this will be an array containing every piece index
 		staticPieceIndices []uint64
-
-		// staticReadDistribution contains a distribution that is the weighted
-		// combination of all worker read distrubtions in this chimera worker,
-		// it is static because it never gets updated after the chimera is
-		// finalized and this field is calculated
-		staticReadDistribution *skymodules.Distribution
 	}
 
 	// individualWorker is a struct that represents a single worker object, both
@@ -161,34 +149,23 @@ func NewChimeraWorker(numPieces int, pieceLength uint64, workers []*individualWo
 		pieceIndices[i] = uint64(i)
 	}
 
-	// get the half lives for both distributions
-	lookupDTHalfLife := workers[0].staticLookupDistribution.HalfLife()
-	readDTHalfLife := workers[0].staticReadDistribution.HalfLife()
-
 	// calculate cost, complete chance and both distributions using the given
 	// workers, making sure every worker contributes to the total in relation to
 	// its weight being the availability rate
 	totalCompleteChance := float64(0)
 	totalCost := types.ZeroCurrency
-	lookupDT := skymodules.NewDistribution(lookupDTHalfLife)
-	readDT := skymodules.NewDistribution(readDTHalfLife)
-
 	for _, w := range workers {
 		weight := w.staticAvailabilityRate
-		lookupDT.MergeWith(w.staticLookupDistribution, weight)
-		readDT.MergeWith(w.staticReadDistribution, weight)
 		totalCompleteChance += w.cachedCompleteChance * weight
 		jrq := w.staticWorker.staticJobReadQueue
 		totalCost = totalCost.Add(jrq.callExpectedJobCost(pieceLength))
 	}
 
 	return &chimeraWorker{
-		staticCost:               totalCost.Div64(uint64(len(workers))),
-		staticChanceComplete:     totalCompleteChance / float64(len(workers)),
-		staticIdentifier:         hex.EncodeToString(fastrand.Bytes(16)),
-		staticLookupDistribution: lookupDT,
-		staticPieceIndices:       pieceIndices,
-		staticReadDistribution:   readDT,
+		staticCost:           totalCost.Div64(uint64(len(workers))),
+		staticChanceComplete: totalCompleteChance / float64(len(workers)),
+		staticIdentifier:     hex.EncodeToString(fastrand.Bytes(16)),
+		staticPieceIndices:   pieceIndices,
 	}
 }
 
