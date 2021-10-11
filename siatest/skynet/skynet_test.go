@@ -2386,13 +2386,19 @@ func testSkynetDisableForce(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Upload Skyfile
-	_, _, _, err := r.UploadNewSkyfileBlocking(t.Name(), 100, false)
+	_, sup, _, err := r.UploadNewSkyfileBlocking(t.Name(), 100, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Upload at same path without force, assert this fails
-	_, _, _, err = r.UploadNewSkyfileBlocking(t.Name(), 100, false)
+	sup = skymodules.SkyfileUploadParameters{
+		Filename: t.Name(),
+		Reader:   bytes.NewReader([]byte{1, 2, 3}),
+		SiaPath:  sup.SiaPath,
+		Force:    false,
+	}
+	_, _, err = r.SkynetSkyfilePost(sup)
 	if err == nil {
 		t.Fatal("Expected the upload without force to fail but it didn't.")
 	}
@@ -2402,7 +2408,8 @@ func testSkynetDisableForce(t *testing.T, tg *siatest.TestGroup) {
 
 	// Upload once more, but now use force. It should allow us to
 	// overwrite the file at the existing path
-	_, sup, _, err := r.UploadNewSkyfileBlocking(t.Name(), 100, true)
+	sup.Force = true
+	_, _, err = r.SkynetSkyfilePost(sup)
 	if err != nil {
 		t.Fatal(err)
 	}
