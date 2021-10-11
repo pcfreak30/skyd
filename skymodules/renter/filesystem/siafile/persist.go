@@ -174,16 +174,6 @@ func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL,
 		}
 	}
 
-	// Compat check for metadata static version
-	//
-	// NOTE: This needs to be after the creation of the erasure coder and the pubkeytable since
-	// one of the compat checks uses the erasure coder and the checks call
-	// SaveMetadata which requires the size of the pubkeytable to be known.
-	err = sf.metadataCompatCheck()
-	if err != nil {
-		return nil, err
-	}
-
 	// Seek to the start of the chunks.
 	off, err := r.Seek(sf.staticMetadata.ChunkOffset, io.SeekStart)
 	if err != nil {
@@ -201,6 +191,16 @@ func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL,
 		numChunks++
 	}
 	sf.numChunks = int(numChunks)
+
+	// Compat check for metadata static version
+	//
+	// NOTE: This needs to be last so that the file is fully loaded and all
+	// information is available for the compat checks and saving of the
+	// metadata.
+	err = sf.metadataCompatCheck()
+	if err != nil {
+		return nil, err
+	}
 
 	return sf, nil
 }

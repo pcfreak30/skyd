@@ -181,3 +181,14 @@ func (d *DependencyToggleDisableDeleteBlockedFiles) Disrupt(s string) bool {
 
 	return disabled && (s == "DisableDeleteBlockedFiles")
 }
+
+// DependencyShortUnfinishedFilesPruneDuration will shorten the
+// unfinishedFilesPruneDuration so they are deleted quicker.
+type DependencyShortUnfinishedFilesPruneDuration struct {
+	skymodules.SkynetDependencies
+}
+
+// Disrupt will ignore a failed repair.
+func (d *DependencyShortUnfinishedFilesPruneDuration) Disrupt(s string) bool {
+	return s == "ShortUnfinishedFilesPruneDuration"
+}

@@ -91,6 +91,9 @@ type (
 
 		// Repair loop fields
 		//
+		// Finished indicates if the file ever finished uploading. A file is
+		// considered to have finished uploading if the health was ever < 1.
+		//
 		// Health is the worst health of the file's unstuck chunks and
 		// represents the percent of redundancy missing
 		//
@@ -106,6 +109,7 @@ type (
 		// was checked
 		//
 		// StuckHealth is the worst health of any of the file's stuck chunks
+		Finished            bool      `json:"finished"`
 		Health              float64   `json:"health"`
 		LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
 		NumStuckChunks      uint64    `json:"numstuckchunks"`
@@ -156,6 +160,8 @@ type (
 
 	// BubbledMetadata is the metadata of a siafile that gets bubbled
 	BubbledMetadata struct {
+		CreateTime          time.Time
+		Finished            bool
 		Health              float64
 		LastHealthCheckTime time.Time
 		ModTime             time.Time
@@ -215,6 +221,25 @@ func (sf *SiaFile) ChunkSize() uint64 {
 	return sf.staticChunkSize()
 }
 
+// Finished returns whether or not the file finished uploading
+func (sf *SiaFile) Finished() bool {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+	return sf.finished()
+}
+
+// finished returns whether or not the file finished uploading
+func (sf *SiaFile) finished() bool {
+	// One of the core reasons for the Finished field is to distinguish
+	// between stuck files and files that never finished the initial upload.
+	// If the siafile has a localpath, then it was uploaded in a way that we
+	// expect to upload/repair from that localpath. So if a localpath exists
+	// then a file is always repairable, even if it has <1x redundancy.
+	// This means if there is an issue with upload/repair we should mark it
+	// as stuck and therefore we consider it finished.
+	return sf.staticMetadata.Finished || sf.staticMetadata.LocalPath != ""
+}
+
 // LastHealthCheckTime returns the LastHealthCheckTime timestamp of the file
 func (sf *SiaFile) LastHealthCheckTime() time.Time {
 	sf.mu.RLock()
@@ -241,6 +266,7 @@ func (sf *SiaFile) Metadata() Metadata {
 	defer sf.mu.RUnlock()
 	md := sf.staticMetadata
 	md.NumStuckChunks = sf.numStuckChunks()
+	md.Finished = sf.finished()
 	return md
 }
 
@@ -315,6 +341,7 @@ func (md Metadata) backup() (b Metadata) {
 	b.CachedExpiration = md.CachedExpiration
 	b.CachedUploadedBytes = md.CachedUploadedBytes
 	b.CachedUploadProgress = md.CachedUploadProgress
+	b.Finished = md.Finished
 	b.Health = md.Health
 	b.LastHealthCheckTime = md.LastHealthCheckTime
 	b.NumStuckChunks = md.NumStuckChunks
@@ -364,6 +391,7 @@ func (md *Metadata) restore(b Metadata) {
 	md.CachedExpiration = b.CachedExpiration
 	md.CachedUploadedBytes = b.CachedUploadedBytes
 	md.CachedUploadProgress = b.CachedUploadProgress
+	md.Finished = b.Finished
 	md.Health = b.Health
 	md.LastHealthCheckTime = b.LastHealthCheckTime
 	md.NumStuckChunks = b.NumStuckChunks

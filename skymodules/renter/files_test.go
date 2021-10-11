@@ -61,7 +61,12 @@ func (r *Renter) createRenterTestFileWithParamsAndSize(siaPath skymodules.SiaPat
 func (r *Renter) newRenterTestFile() (*filesystem.FileNode, error) {
 	// Generate name and erasure coding
 	siaPath, rsc := testingFileParams()
-	return r.createRenterTestFileWithParams(siaPath, rsc, crypto.RandomCipherType())
+	f, err := r.createRenterTestFileWithParams(siaPath, rsc, crypto.RandomCipherType())
+	if err != nil {
+		return nil, err
+	}
+	// Mark as finished for compatibility in testing
+	return f, f.SetFinished(0)
 }
 
 // TestRenterFileListLocalPath verifies that FileList() returns the correct

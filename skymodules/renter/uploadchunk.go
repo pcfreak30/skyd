@@ -168,7 +168,7 @@ func (uc *unfinishedUploadChunk) managedSetStuckAndClose(setStuck bool) error {
 
 	// Update chunk stuck status and close file.
 	var errStuck error
-	if setStuck {
+	if setStuck && uc.fileEntry.Finished() {
 		errStuck = uc.fileEntry.SetStuck(uc.staticIndex, uc.stuck)
 	}
 	errClose := uc.Close()
@@ -526,9 +526,11 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 
 		// Mark chunk as stuck because the renter was unable to fetch the
 		// logical data.
-		err = chunk.fileEntry.SetStuck(chunk.staticIndex, true)
-		if err != nil {
-			r.staticRepairLog.Printf("Error marking chunk %v of file %s as stuck: %v", chunk.staticIndex, chunk.staticSiaPath, err)
+		if chunk.fileEntry.Finished() {
+			err = chunk.fileEntry.SetStuck(chunk.staticIndex, true)
+			if err != nil {
+				r.staticRepairLog.Printf("Error marking chunk %v of file %s as stuck: %v", chunk.staticIndex, chunk.staticSiaPath, err)
+			}
 		}
 		return
 	}
@@ -888,8 +890,11 @@ func (r *Renter) managedUpdateUploadChunkStuckStatus(uc *unfinishedUploadChunk) 
 		r.staticLog.Debugln("SUCCESS: repair successful, marking chunk as non-stuck:", uc.id)
 	}
 	// Update chunk stuck status unless the dependency to skip this step is
-	// enabled.
-	if !r.staticDeps.Disrupt("DontUpdateChunkStatus") {
+	// enabled. If the repair was successful we always want to update the
+	// status. If the repair was not successful, we only want to update the
+	// repair status if the file is considered Finished.
+	shouldUpdate := (uc.fileEntry.Finished() && !successfulRepair) || successfulRepair
+	if !r.staticDeps.Disrupt("DontUpdateChunkStatus") && shouldUpdate {
 		if err := uc.fileEntry.SetStuck(index, !successfulRepair); err != nil {
 			r.staticLog.Printf("WARN: could not set chunk %v stuck status for file %v: %v", uc.id, uc.fileEntry.SiaFilePath(), err)
 		}

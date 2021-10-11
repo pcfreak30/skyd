@@ -20,16 +20,20 @@ import (
 )
 
 var (
+	// ErrDeleted is returned when an operation failed due to the siafile being
+	// deleted already.
+	ErrDeleted = errors.New("files was deleted")
 	// ErrPathOverload is an error when a file already exists at that location
 	ErrPathOverload = errors.New("a file already exists at that location")
+	// ErrUnfinished is returned when an operation failed due to the siafile being
+	// unfinished.
+	ErrUnfinished = errors.New("file is unfinished")
 	// ErrUnknownPath is an error when a file cannot be found with the given path
 	ErrUnknownPath = errors.New("no file known with that path")
 	// ErrUnknownThread is an error when a SiaFile is trying to be closed by a
 	// thread that is not in the threadMap
 	ErrUnknownThread = errors.New("thread should not be calling Close(), does not have control of the siafile")
-	// ErrDeleted is returned when an operation failed due to the siafile being
-	// deleted already.
-	ErrDeleted = errors.New("files was deleted")
+
 	// errShrinkWithTooManyChunks is returned if the number of chunks passed
 	// to Shrink is >= the number of current chunks.
 	errShrinkWithTooManyChunks = errors.New("can't grow siafile using Shrink - use GrowNumChunks instead")
@@ -879,20 +883,43 @@ func (sf *SiaFile) redundancy(offlineMap map[string]bool, goodForRenewMap map[st
 }
 
 // SetAllStuck sets the Stuck field of all chunks to stuck.
-func (sf *SiaFile) SetAllStuck(stuck bool) (err error) {
+func (sf *SiaFile) SetAllStuck(stuck bool) error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	return sf.setAllStuck(stuck)
+}
 
+// setAllStuck sets the Stuck field of all chunks to stuck.
+func (sf *SiaFile) setAllStuck(stuck bool) (err error) {
 	// If the file has been deleted we can't mark a chunk as stuck.
 	if sf.deleted {
 		return errors.AddContext(ErrDeleted, "can't call SetStuck on deleted file")
 	}
+
+	// If the file is unfinished then do not set the chunks as stuck
+	if !sf.finished() && stuck {
+		err = errors.AddContext(ErrUnfinished, "cannot set an unfinished file as stuck")
+		build.Critical(err)
+		return err
+	}
+
 	// Backup metadata before doing any kind of persistence.
 	defer func(backup Metadata) {
 		if err != nil {
 			sf.staticMetadata.restore(backup)
 		}
 	}(sf.staticMetadata.backup())
+	// Update metadata.
+	if stuck {
+		sf.staticMetadata.NumStuckChunks = uint64(sf.numChunks)
+	} else {
+		sf.staticMetadata.NumStuckChunks = 0
+	}
+	// Create metadata updates and apply updates on disk
+	updates, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
 	// Figure out which chunks to update.
 	var setStuck []chunk
 	errIter := sf.iterateChunksReadonly(func(chunk chunk) error {
@@ -907,18 +934,9 @@ func (sf *SiaFile) SetAllStuck(stuck bool) (err error) {
 	}
 	// Check if work needs to be done.
 	if len(setStuck) == 0 {
-		return nil
-	}
-	// Update metadata.
-	if stuck {
-		sf.staticMetadata.NumStuckChunks = uint64(sf.numChunks)
-	} else {
-		sf.staticMetadata.NumStuckChunks = 0
-	}
-	// Create metadata updates and apply updates on disk
-	updates, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return err
+		// We don't have any chunks to mark as stuck but make sure that
+		// the metadata updates are applied
+		return sf.createAndApplyTransaction(updates...)
 	}
 	// Create chunk updates.
 	chunkUpdates, errIter := sf.iterateChunks(func(chunk *chunk) (bool, error) {
@@ -1008,7 +1026,13 @@ func (sf *SiaFile) updateMetadata(offlineMap, goodForRenew map[string]bool, cont
 	}
 
 	// Update cached health values by calling the health method.
-	_, _, _, _, _, _, _ = sf.health(offlineMap, goodForRenew)
+	health, _, _, _, _, _, _ := sf.health(offlineMap, goodForRenew)
+
+	// Set the finished state of the file based on the health. Ideally we
+	// would look at the unique uploaded bytes, like we did in the compat
+	// code. However that requires disk reads to interate over all the
+	// chunks.
+	sf.setFinished(health)
 
 	// Set the LastHealthCheckTime
 	sf.staticMetadata.LastHealthCheckTime = time.Now()
@@ -1360,12 +1384,55 @@ func (sf *SiaFile) removeLastChunk() (err error) {
 	return sf.createAndApplyTransaction(update)
 }
 
+// SetFinished sets the file's Finished field in the metadata
+func (sf *SiaFile) SetFinished(health float64) (err error) {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	// Backup metadata before doing any kind of persistence.
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+		}
+	}(sf.staticMetadata.backup())
+
+	// Update the metadata
+	sf.setFinished(health)
+
+	// Save the metadata updates
+	updates, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return err
+	}
+	return sf.createAndApplyTransaction(updates...)
+}
+
+// setFinished sets the file's Finished field in the metadata
+func (sf *SiaFile) setFinished(health float64) {
+	// Once a file is finished if cannot be unfinished.
+	//
+	// NOTE: we only care about the actual field here instead of using the
+	// finished() method because we are looking if we should update the
+	// field.
+	if sf.staticMetadata.Finished {
+		return
+	}
+	// A file is finished if the health is <= 1
+	sf.staticMetadata.Finished = health <= 1
+}
+
 // setStuck sets the Stuck field of the chunk at the given index
 func (sf *SiaFile) setStuck(index uint64, stuck bool) (err error) {
 	// If the file has been deleted we can't mark a chunk as stuck.
 	if sf.deleted {
 		return errors.AddContext(ErrDeleted, "can't call SetStuck on deleted file")
 	}
+	// A file can only be marked as stuck if the file has previously finished
+	if !sf.finished() && stuck {
+		err = errors.AddContext(ErrUnfinished, "cannot set an unfinished file as stuck")
+		build.Critical(err)
+		return err
+	}
+
 	//  Get chunk.
 	chunk, err := sf.chunk(int(index))
 	if err != nil {

@@ -586,7 +586,6 @@ func (r *Renter) managedUploadSkyfileSmallFile(ctx context.Context, sup skymodul
 	// Create the base sector. This is done as late as possible so that any
 	// errors are caught before a large block of memory is allocated.
 	baseSector, fetchSize := skymodules.BuildBaseSector(sl.Encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
-
 	if encryptionEnabled(&sup) {
 		err = encryptBaseSectorWithSkykey(baseSector, sl, sup.FileSpecificSkykey)
 		if err != nil {

@@ -121,8 +121,9 @@ func (n *FileNode) managedMode() os.FileMode {
 // managedFileInfo returns the FileInfo of the file node.
 func (n *FileNode) managedFileInfo(siaPath skymodules.SiaPath, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]skymodules.RenterContract) (skymodules.FileInfo, error) {
 	// Build the FileInfo
+	md := n.Metadata()
 	var onDisk bool
-	localPath := n.LocalPath()
+	localPath := md.LocalPath
 	if localPath != "" {
 		_, err := os.Stat(localPath)
 		onDisk = err == nil
@@ -138,25 +139,26 @@ func (n *FileNode) managedFileInfo(siaPath skymodules.SiaPath, offline map[strin
 	}
 	maxHealth := math.Max(health, stuckHealth)
 	fileInfo := skymodules.FileInfo{
-		AccessTime:       n.AccessTime(),
+		AccessTime:       md.AccessTime,
 		Available:        redundancy >= 1,
-		ChangeTime:       n.ChangeTime(),
+		ChangeTime:       md.ChangeTime,
 		CipherType:       n.MasterKey().Type().String(),
-		CreateTime:       n.CreateTime(),
+		CreateTime:       md.CreateTime,
 		Expiration:       n.Expiration(contracts),
-		Filesize:         n.Size(),
+		Filesize:         uint64(md.FileSize),
+		Finished:         md.Finished,
 		Health:           health,
 		LocalPath:        localPath,
 		MaxHealth:        maxHealth,
 		MaxHealthPercent: skymodules.HealthPercentage(maxHealth),
-		ModificationTime: n.ModTime(),
+		ModificationTime: md.ModTime,
 		NumStuckChunks:   numStuckChunks,
 		OnDisk:           onDisk,
 		Recoverable:      onDisk || redundancy >= 1,
 		Redundancy:       redundancy,
 		Renewing:         true,
 		RepairBytes:      repairBytes,
-		Skylinks:         n.Metadata().Skylinks,
+		Skylinks:         md.Skylinks,
 		SiaPath:          siaPath,
 		Stuck:            numStuckChunks > 0,
 		StuckHealth:      stuckHealth,
@@ -230,6 +232,7 @@ func (n *FileNode) staticCachedInfo(siaPath skymodules.SiaPath) (skymodules.File
 		CreateTime:       md.CreateTime,
 		Expiration:       md.CachedExpiration,
 		Filesize:         uint64(md.FileSize),
+		Finished:         md.Finished,
 		Health:           md.CachedHealth,
 		LocalPath:        localPath,
 		MaxHealth:        maxHealth,
