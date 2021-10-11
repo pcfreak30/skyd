@@ -153,6 +153,13 @@ func (dt *DistributionTracker) Persist() PersistedDistributionTracker {
 	}
 }
 
+// DistributionBucketIndexForDuration converts the given duration to a bucket
+// index
+func DistributionBucketIndexForDuration(dur time.Duration) int {
+	index, _ := indexForDuration(dur)
+	return index
+}
+
 // DistributionDurationForBucketIndex converts the index of a timing bucket into
 // a timing.
 func DistributionDurationForBucketIndex(index int) time.Duration {

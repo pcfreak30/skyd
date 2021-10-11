@@ -90,6 +90,7 @@ type (
 		// the following fields are cached and recalculated at precise times
 		// within the download code algorithm
 		cachedCompleteChance  float64
+		cachedLookupIndex     int
 		cachedLookupDTChances skymodules.Chances
 		cachedReadDTChances   skymodules.Chances
 
@@ -226,6 +227,8 @@ func (iw *individualWorker) calculateDistributionChances() {
 		dur := time.Since(iw.staticDownloadLaunchTime)
 		lookupDT := iw.staticLookupDistribution.Clone()
 		lookupDT.Shift(dur)
+
+		iw.cachedLookupIndex = skymodules.DistributionBucketIndexForDuration(lookupDT.ExpectedDuration())
 		iw.cachedLookupDTChances = lookupDT.ChancesAfter()
 		iw.cachedReadDTChances = iw.staticReadDistribution.ChancesAfter()
 		return
@@ -244,14 +247,17 @@ func (iw *individualWorker) calculateDistributionChances() {
 }
 
 func (iw *individualWorker) calculateCompleteChance(index int) {
-	iw.cachedCompleteChance = 0
 	if iw.isResolved() {
 		iw.cachedCompleteChance = iw.cachedReadDTChances[index]
-	} else {
-		for i := 0; i < index; i++ {
-			iw.cachedCompleteChance += iw.cachedLookupDTChances[i] * iw.cachedReadDTChances[index-i]
-		}
+		return
 	}
+
+	if index <= iw.cachedLookupIndex {
+		iw.cachedCompleteChance = 0
+		return
+	}
+
+	iw.cachedCompleteChance = iw.cachedReadDTChances[iw.cachedLookupIndex-index]
 }
 
 // completeChanceCached returns the chance this worker will complete
