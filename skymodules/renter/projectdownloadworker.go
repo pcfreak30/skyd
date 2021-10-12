@@ -1104,16 +1104,16 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 		w.markPieceForDownload(pieceIndex)
 	}
 
-	// sort the workers by percentage chance they complete after the current
-	// bucket duration, essentially sorting them from most to least likely
-	sort.Slice(workers, func(i, j int) bool {
-		chanceI := workers[i].completeChanceCached()
-		chanceJ := workers[j].completeChanceCached()
-		return chanceI > chanceJ
-	})
-
 	// loop over the workers and try to add them
+	prev := math.MaxFloat64
 	for _, w := range workers {
+		// sanity check the given workers array was sorted
+		completeChance := w.completeChanceCached()
+		if completeChance > prev {
+			build.Critical(fmt.Sprintf("developer error, workers was not sorted curr %v prev %v", completeChance, prev))
+		}
+		prev = completeChance
+
 		// do not reuse the same worker twice
 		_, added := added[w.identifier()]
 		if added {
@@ -1233,5 +1233,16 @@ func splitResolvedUnresolved(workers []*individualWorker) ([]downloadWorker, []*
 			})
 		}
 	}
+
+	// sort the resolved workers by complete chance
+	sort.Slice(resolvedWorkers, func(i, j int) bool {
+		rwi, ok1 := resolvedWorkers[i].(*individualWorker)
+		rwj, ok2 := resolvedWorkers[j].(*individualWorker)
+		if !ok1 || !ok2 {
+			build.Critical("developer error")
+		}
+		return rwi.cachedCompleteChance > rwj.cachedCompleteChance
+	})
+
 	return resolvedWorkers, unresolvedWorkers
 }
