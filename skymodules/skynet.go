@@ -267,9 +267,9 @@ type (
 		handler.ConcaterDataStore
 		handler.Locker
 
-		// Skylink returns the Skylink for an upload with a given ID.  If the
-		// upload can't be found or isn't finished, "false" will be returned
-		// alongside an empty string.
+		// Skylink returns the Skylink for an upload with a given ID.
+		// If the upload can't be found or isn't finished, "false" will
+		// be returned alongside an empty string.
 		Skylink(id string) (Skylink, bool)
 	}
 
@@ -288,16 +288,11 @@ type (
 	// SkynetTUSUpload is the interface for a TUS upload in the
 	// SkynetTUSUploadStore.
 	SkynetTUSUpload interface {
-		// Skylink returns the upload's skylink if available already.
-		Skylink() (Skylink, bool)
+		// GetSkylink returns the upload's skylink if available already.
+		GetSkylink() (Skylink, bool)
 
 		// GetInfo returns the FileInfo of the upload.
 		GetInfo(ctx context.Context) (handler.FileInfo, error)
-
-		// IsSmallUpload indicates whether the upload is considered a
-		// small upload. That means the upload contained less than a
-		// chunksize of data.
-		IsSmallUpload(ctx context.Context) (bool, error)
 
 		// PruneInfo returns the info required to prune uploads.
 		PruneInfo(ctx context.Context) (id string, sp SiaPath, err error)
@@ -306,19 +301,12 @@ type (
 		// upload.
 		UploadParams(ctx context.Context) (SkyfileUploadParameters, FileUploadParams, error)
 
-		// CommitWriteChunkSmallFile commits writing a chunk of a small
-		// file.
-		CommitWriteChunkSmallFile(newOffset int64, newLastWrite time.Time, smallUploadData []byte) error
-
 		// CommitWriteChunk commits writing a chunk of either a small or
 		// large file with fanout.
-		CommitWriteChunk(newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error
+		CommitWriteChunk(ctx context.Context, newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error
 
 		// CommitFinishUpload commits a finalised upload.
-		CommitFinishUpload(skylink Skylink) error
-
-		// CommitFinishPartialUpload commits a finalised partial upload.
-		CommitFinishPartialUpload() error
+		CommitFinishUpload(ctx context.Context, skylink Skylink) error
 
 		// Fanout returns the fanout of the upload. Should only be
 		// called once it's done uploading.
@@ -327,10 +315,6 @@ type (
 		// SkyfileMetadata returns the metadata of the upload. Should
 		// only be called once it's done uploading.
 		SkyfileMetadata(ctx context.Context) ([]byte, error)
-
-		// SmallFileData returns the data to upload for a small file
-		// upload.
-		SmallFileData(ctx context.Context) ([]byte, error)
 	}
 
 	// SkynetTUSUploadStore defines an interface for a storage backend that is
@@ -339,16 +323,20 @@ type (
 	SkynetTUSUploadStore interface {
 		// ToPrune returns the uploads which should be pruned from skyd
 		// and the store.
-		ToPrune() ([]SkynetTUSUpload, error)
+		ToPrune(ctx context.Context) ([]SkynetTUSUpload, error)
 
 		// Prune prunes the upload with the given ID from the store.
-		Prune(string) error
+		Prune(context.Context, []string) error
 
 		// CreateUpload creates a new upload in the store.
-		CreateUpload(fi handler.FileInfo, sp SiaPath, fileName string, baseChunkRedundancy uint8, fanoutDataPieces, fanoutParityPieces int, sm []byte, force bool, ct crypto.CipherType) (SkynetTUSUpload, error)
+		CreateUpload(ctx context.Context, fi handler.FileInfo, sp SiaPath, fileName string, baseChunkRedundancy uint8, fanoutDataPieces, fanoutParityPieces int, sm []byte, ct crypto.CipherType) (SkynetTUSUpload, error)
 
 		// GetUpload fetches an upload from the store.
 		GetUpload(ctx context.Context, id string) (SkynetTUSUpload, error)
+
+		// WithTransaction allows for grouping multiple database operations into a
+		// single atomic transaction.
+		WithTransaction(context.Context, func(context.Context) error) error
 
 		// The store also implements the Locker interface to allow TUS
 		// to automatically lock uploads.

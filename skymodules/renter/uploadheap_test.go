@@ -16,7 +16,6 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/persist"
 )
 
 // TestUploadHeap tests the uploadheap subsystem
@@ -78,11 +77,7 @@ func testManagedBuildUnfinishedChunks(t *testing.T) {
 		SiaPath:     siaPath,
 		ErasureCode: rsc,
 	}
-	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, persist.DefaultDiskPermissionsTest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
+	f, err := rt.newTestSiaFile(up.SiaPath, up.Source, up.ErasureCode, 10e3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,11 +181,13 @@ func testManagedBuildChunkHeap(t *testing.T) {
 		SiaPath:     skymodules.RandomSiaPath(),
 		ErasureCode: rsc,
 	}
-	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 10e3, persist.DefaultDiskPermissionsTest)
+	f1, err := rt.newTestSiaFile(up.SiaPath, up.Source, up.ErasureCode, 10e3)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f1, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
+	// Grab the NumChunks and mark the file as finished
+	numChunks := int(f1.NumChunks())
+	err = f1.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +195,7 @@ func testManagedBuildChunkHeap(t *testing.T) {
 	// Manually add workers to worker pool and create host map
 	hosts := make(map[string]struct{})
 	rt.renter.staticWorkerPool.mu.Lock()
-	for i := 0; i < int(f1.NumChunks()); i++ {
+	for i := 0; i < numChunks; i++ {
 		rt.renter.staticWorkerPool.workers[fmt.Sprint(i)] = &worker{}
 	}
 	rt.renter.staticWorkerPool.mu.Unlock()
@@ -207,8 +204,8 @@ func testManagedBuildChunkHeap(t *testing.T) {
 	// from the file added
 	offline, goodForRenew, _, _ := rt.renter.callRenterContractsAndUtilities()
 	rt.renter.managedBuildChunkHeap(skymodules.RootSiaPath(), hosts, targetUnstuckChunks, offline, goodForRenew)
-	if rt.renter.staticUploadHeap.managedLen() != int(f1.NumChunks()) {
-		t.Fatalf("Expected heap length of %v but got %v", f1.NumChunks(), rt.renter.staticUploadHeap.managedLen())
+	if rt.renter.staticUploadHeap.managedLen() != numChunks {
+		t.Fatalf("Expected heap length of %v but got %v", numChunks, rt.renter.staticUploadHeap.managedLen())
 	}
 }
 
@@ -439,11 +436,7 @@ func testManagedAddChunksToHeap(t *testing.T) {
 		}
 		up.SiaPath = siaPath
 		// File size 100 to help ensure only 1 chunk per file
-		err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, persist.DefaultDiskPermissionsTest)
-		if err != nil {
-			t.Fatal(err)
-		}
-		f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
+		f, err := rt.newTestSiaFile(up.SiaPath, up.Source, up.ErasureCode, 100)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -559,11 +552,7 @@ func testAddRemoteChunksToHeap(t *testing.T) {
 		// to each only have one chunk. This is because there are 4 files and
 		// the uploadHeap size for testing is 5. If there are more than 5 chunks
 		// total the test will fail and not hit the intended test case.
-		err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, persist.DefaultDiskPermissionsTest)
-		if err != nil {
-			t.Fatal(err)
-		}
-		f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
+		f, err := rt.newTestSiaFile(up.SiaPath, up.Source, up.ErasureCode, 100)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -579,6 +568,11 @@ func testAddRemoteChunksToHeap(t *testing.T) {
 			t.Fatal(err)
 		}
 		rt.renter.staticDirUpdateBatcher.callQueueDirUpdate(dirSiaPath)
+		// Close File
+		err = f.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	// Block until the metadata updates are complete.
 	rt.renter.staticDirUpdateBatcher.callFlush()
@@ -652,14 +646,15 @@ func testAddDirectoryBackToHeap(t *testing.T) {
 		SiaPath:     siaPath,
 		ErasureCode: rsc,
 	}
-	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), modules.SectorSize, persist.DefaultDiskPermissionsTest)
+	f, err := rt.newTestSiaFile(up.SiaPath, up.Source, up.ErasureCode, modules.SectorSize)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create maps for method inputs
 	hosts := make(map[string]struct{})
@@ -1212,7 +1207,7 @@ func testManagedPruneIncompleteChunks(t *testing.T) {
 	}()
 
 	// Create a siafile and make sure it has 4 chunks
-	file, err := rt.renter.createRenterTestFile(skymodules.RandomSiaPath())
+	file, err := rt.renter.newRenterTestFile()
 	if err != nil {
 		t.Fatal(err)
 	}

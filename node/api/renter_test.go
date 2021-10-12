@@ -1184,6 +1184,10 @@ func TestRenterRelativePathErrorDownload(t *testing.T) {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
+	// Check for no files returned to avoid panic
+	if len(rf.Files) == 0 {
+		t.Fatal("no files returned")
+	}
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {
 		t.Fatal("the uploading is not succeeding for some reason:", rf.Files[0])
 	}

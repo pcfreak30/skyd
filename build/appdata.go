@@ -42,8 +42,24 @@ func APIPassword() (string, error) {
 }
 
 // MongoDBURI returns the URI that the mongodb client in skyd should connect to.
-func MongoDBURI() string {
-	return os.Getenv(mongoDBURI)
+func MongoDBURI() (string, bool) {
+	return os.LookupEnv(mongoDBURI)
+}
+
+// MongoDBUser returns the user that the mongodb client in skyd should authenticate as.
+func MongoDBUser() (string, bool) {
+	return os.LookupEnv(mongoDBUser)
+}
+
+// MongoDBPassword returns the password that the mongodb client in skyd should authenticate with.
+func MongoDBPassword() (string, bool) {
+	return os.LookupEnv(mongoDBPassword)
+}
+
+// SkynetPortalHostname returns the hostname of the portal and whether it was
+// set.
+func SkynetPortalHostname() (string, bool) {
+	return os.LookupEnv(portalName)
 }
 
 // ProfileDir returns the directory where any profiles for the running siad
