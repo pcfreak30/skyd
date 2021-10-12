@@ -211,7 +211,7 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	//t.Parallel()
+	t.Parallel()
 
 	wt, err := newWorkerTester(t.Name())
 	if err != nil {
