@@ -291,7 +291,7 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	}
 	fanout := chunkReader.Fanout()
 
-	// Prepare a valid.
+	// Prepare a valid layout.
 	sl := skymodules.NewSkyfileLayout(fileSize, uint64(len(metadataBytes)), uint64(len(fanout)), ec, crypto.TypePlain)
 
 	// Prepare a base sector with fanout but also with the file data.
@@ -334,6 +334,11 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Compare base sectors.
+	if !bytes.Equal(bs[:modules.SectorSize], bs2) {
+		t.Fatal("base sectors don't match")
 	}
 
 	var sl2 skymodules.SkyfileLayout
