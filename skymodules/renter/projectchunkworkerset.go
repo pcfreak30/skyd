@@ -509,6 +509,11 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// extra goroutines to be spawned.
 	workerResponseChan := make(chan *jobReadResponse, ec.NumPieces()*5)
 
+	pieceIndices := make([]uint64, ec.NumPieces())
+	for i := 0; i < ec.MinPieces(); i++ {
+		pieceIndices[i] = uint64(i)
+	}
+
 	// Build the full pdc.
 	pdc := &projectDownloadChunk{
 		lengthInChunk: length,
@@ -527,6 +532,8 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 
 		staticIsLowPrio:  lowPrio,
 		staticLaunchTime: time.Now(),
+
+		staticPieceIndices: pieceIndices,
 
 		ctx:                  ctx,
 		workerResponseChan:   workerResponseChan,

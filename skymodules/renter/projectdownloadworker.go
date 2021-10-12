@@ -98,6 +98,9 @@ type (
 		// identifier can be used as a key when mapping the download worker
 		identifier() string
 
+		// isLaunched returns whether the download worker was launched
+		isLaunched() bool
+
 		// markPieceForDownload allows specifying what piece to download for
 		// this worker in the case the worker resolved multiple pieces
 		markPieceForDownload(pieceIndex uint64)
@@ -235,6 +238,10 @@ func NewChimeraWorker(numPieces int, pieceLength uint64, workers []*individualWo
 // on a chimera that is finalized
 func (cw *chimeraWorker) cost() *big.Int {
 	return cw.staticCost
+}
+
+func (cw *chimeraWorker) isLaunched() bool {
+	return false
 }
 
 // completeChanceCached returns the chance this chimera completes
@@ -1175,7 +1182,19 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 	sort.Slice(workers, func(i, j int) bool {
 		chanceI := workers[i].completeChanceCached()
 		chanceJ := workers[j].completeChanceCached()
-		return chanceI > chanceJ
+		if chanceI == 1 && chanceJ == 1 {
+			launchedI := workers[i].isLaunched()
+			launchedJ := workers[j].isLaunched()
+			if launchedI && !launchedJ {
+				return true
+			} else if launchedJ && !launchedI {
+				return false
+			} else {
+				return true
+			}
+		} else {
+			return chanceI > chanceJ
+		}
 	})
 
 	// loop over the workers and try to add them
@@ -1199,7 +1218,11 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 
 		// loop the worker's pieces to see whether it can download a piece for
 		// which we don't have a worker yet or which we haven't downloaded yet
-		for _, pieceIndex := range w.pieces() {
+		workerPieces := pdc.staticPieceIndices
+		if _, ok := w.(*individualWorker); ok {
+			workerPieces = w.pieces()
+		}
+		for _, pieceIndex := range workerPieces {
 			if pdc.piecesInfo[pieceIndex].downloaded {
 				continue
 			}
@@ -1240,7 +1263,11 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 			}
 
 			// loop over the worker's pieces and break to ensure we use it once
-			for _, pieceIndex := range w.pieces() {
+			workerPieces := pdc.staticPieceIndices
+			if _, ok := w.(*individualWorker); ok {
+				workerPieces = w.pieces()
+			}
+			for _, pieceIndex := range workerPieces {
 				addWorker(w, pieceIndex)
 				break
 			}
