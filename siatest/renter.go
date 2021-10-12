@@ -564,8 +564,14 @@ func (tn *TestNode) WaitForUploadHealth(rf *RemoteFile) error {
 		if err != nil {
 			return ErrFileNotTracked
 		}
-		if skymodules.NeedsRepair(file.MaxHealth) {
-			return fmt.Errorf("file is not healthy yet, threshold is %v but health is %v", skymodules.RepairThreshold, file.MaxHealth)
+		// Since this is an upload helper function, just consider Health
+		// instead of MaxHealth to avoid NDFs caused by a stuck chunk
+		// health not updating in time.
+		if skymodules.NeedsRepair(file.Health) {
+			return fmt.Errorf("file is not healthy yet, threshold is %v but health is %v", skymodules.RepairThreshold, file.Health)
+		}
+		if file.Stuck {
+			return errors.New("Newly upload files should not be marked as stuck")
 		}
 		return nil
 	})

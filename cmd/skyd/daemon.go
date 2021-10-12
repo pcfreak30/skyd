@@ -13,10 +13,12 @@ import (
 
 	"github.com/spf13/cobra"
 	"gitlab.com/NebulousLabs/errors"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.sia.tech/siad/modules"
 	"golang.org/x/crypto/ssh/terminal"
 
 	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/node"
 	"gitlab.com/SkynetLabs/skyd/node/api/server"
 	"gitlab.com/SkynetLabs/skyd/profile"
 
@@ -199,6 +201,38 @@ func tryAutoUnlock(srv *server.Server) {
 	}
 }
 
+// parseMongoConfig parses the information required for connecting to a mongodb
+// instance and adds it to the params.
+func parseMongoConfig(params node.NodeParams) (node.NodeParams, error) {
+	// Check if the uri was set. If not, we are done
+	mongouri, ok := build.MongoDBURI()
+	if !ok {
+		fmt.Println("No MongoDB URI set - continuing with in-memory storage")
+		return params, nil
+	}
+	fmt.Println("MongoDB URI found - trying to connect to server at", mongouri)
+	user, ok := build.MongoDBUser()
+	if !ok {
+		return params, errors.New("No MongoDB user set")
+	}
+	password, ok := build.MongoDBPassword()
+	if !ok {
+		return params, errors.New("No MongoDB password set")
+	}
+	portalName, ok := build.SkynetPortalHostname()
+	if !ok {
+		return params, errors.New("No PortalName set")
+	}
+	// Set the parsed params.
+	params.MongoUploadStoreCreds = options.Credential{
+		Username: user,
+		Password: password,
+	}
+	params.MongoUploadStorePortalName = portalName
+	params.MongoUploadStoreURI = mongouri
+	return params, nil
+}
+
 // startDaemon uses the config parameters to initialize Sia modules and start
 // siad.
 func startDaemon(config Config) (err error) {
@@ -217,6 +251,15 @@ func startDaemon(config Config) (err error) {
 	// files.
 	installMmapSignalHandler()
 
+	// Create the node params by parsing the modules specified in the config.
+	nodeParams := parseModules(config)
+
+	// Load mongodb config.
+	nodeParams, err = parseMongoConfig(nodeParams)
+	if err != nil {
+		return errors.AddContext(err, "failed to load mongodb config")
+	}
+
 	// Init tracing.
 	closer, err := initTracer()
 	if err != nil {
@@ -226,9 +269,6 @@ func startDaemon(config Config) (err error) {
 
 	// Print a startup message.
 	fmt.Println("Loading...")
-
-	// Create the node params by parsing the modules specified in the config.
-	nodeParams := parseModules(config)
 
 	// Start and run the server.
 	srv, err := server.New(config.Siad.APIaddr, config.Siad.RequiredUserAgent, config.APIPassword, nodeParams, loadStart)

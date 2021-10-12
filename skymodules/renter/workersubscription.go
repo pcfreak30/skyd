@@ -370,6 +370,9 @@ func (w *worker) managedExtendSubscriptionPeriod(stream siamux.Stream, budget *m
 	// Get a pricetable that is valid until the new deadline.
 	newDeadline := oldDeadline.Add(modules.SubscriptionPeriod)
 	newPT := w.managedPriceTableForSubscription(time.Until(newDeadline))
+	if newPT == nil {
+		return nil, time.Time{}, threadgroup.ErrStopped // shutdown
+	}
 
 	// Try extending the subscription.
 	err := modules.RPCExtendSubscription(stream, newPT)

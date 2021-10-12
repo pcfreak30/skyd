@@ -563,8 +563,10 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 	pieces, err := entry.Pieces(chunkIndex)
 	if err != nil {
 		r.staticLog.Println("failed to get pieces for building incomplete chunks", err)
-		if err := entry.SetStuck(chunkIndex, true); err != nil {
-			r.staticLog.Printf("failed to set chunk %v stuck: %v", chunkIndex, err)
+		if entry.Finished() {
+			if err := entry.SetStuck(chunkIndex, true); err != nil {
+				r.staticLog.Printf("failed to set chunk %v stuck: %v", chunkIndex, err)
+			}
 		}
 		return nil, false, errors.AddContext(err, "error trying to get the pieces for the chunk")
 	}
@@ -622,6 +624,10 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 // they are done and so cannot share a SiaFileSetEntry as the first chunk to
 // finish would then close the Entry and consequentially impact the remaining
 // chunks.
+//
+// NOTE: The caller is responsible for ensuring that the file should be repair,
+// therefore we do not check if a file is Unfinished in this method or lower
+// down. This is to avoid blocking or failing uploads.
 func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool, mm *memoryManager) []*unfinishedUploadChunk {
 	// If we don't have enough workers for the file, don't repair it right now.
 	minPieces := entry.ErasureCode().MinPieces()
@@ -637,9 +643,9 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		// Only perform this check when we are looking for unstuck chunks. This
 		// will prevent log spam from repeatedly logging to the user the issue
 		// with the file after marking the chunks as stuck
-		if allowance.Hosts < uint64(minPieces) && target == targetUnstuckChunks {
+		if allowance.Hosts < uint64(minPieces) && target == targetUnstuckChunks && entry.Finished() {
 			// There are not enough hosts in the allowance for the file to reach
-			// minimum redundancy. Mark all chunks as stuck
+			// minimum redundancy. Mark all chunks as stuck.
 			r.staticLog.Printf("WARN: allownace had insufficient hosts for chunk to reach minimum redundancy, have %v need %v for file %v", allowance.Hosts, minPieces, entry.SiaFilePath())
 			if err := entry.SetAllStuck(true); err != nil {
 				r.staticLog.Println("WARN: unable to mark all chunks as stuck:", err)
@@ -905,6 +911,11 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	}
 	// Loop through all the files and build the temporary heap.
 	for _, file := range files {
+		// Skip any unfinished files
+		if !file.Finished() {
+			continue
+		}
+
 		// If this file has better health than other files that we have ignored,
 		// this file can be skipped. This only counts for unstuck chunks, if we
 		// are adding stuck files, we ignore health as a consideration.
@@ -1148,8 +1159,8 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath skymodules.SiaPath, hosts map[
 			}
 			continue
 		}
-		// For normal repairs, ignore files that don't have any unstuck chunks
-		// or are healthy and not in need of repair.
+		// For normal repairs, ignore files that don't have any unstuck chunks,
+		// are healthy and not in need of repair.
 		//
 		// We can used the cached value of health because it is updated during
 		// bubble. Since the repair loop operates off of the metadata

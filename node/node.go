@@ -7,6 +7,7 @@ package node
 // TODO: Add support for the explorer.
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/siamux"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/modules/explorer"
 
@@ -32,6 +34,10 @@ import (
 	"go.sia.tech/siad/modules/wallet"
 	"go.sia.tech/siad/persist"
 )
+
+// mongoConnectionTimeout is the maximum allowed timeout for establishing a
+// mongodb connection before it is considered failed.
+var mongoConnectionTimeout = 30 * time.Second
 
 // NodeParams contains a bunch of parameters for creating a new test node. As
 // there are many options, templates are provided that you can modify which
@@ -82,7 +88,9 @@ type NodeParams struct {
 	TransactionPool modules.TransactionPool
 	Wallet          modules.Wallet
 
-	TUSUploadStore skymodules.SkynetTUSUploadStore
+	MongoUploadStoreCreds      options.Credential
+	MongoUploadStorePortalName string
+	MongoUploadStoreURI        string
 
 	// Dependencies for each module supporting dependency injection.
 	AccountingDeps   modules.Dependencies
@@ -266,10 +274,16 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 
 	// Create the TUS upload store.
 	var tus skymodules.SkynetTUSUploadStore
-	if params.TUSUploadStore == nil {
+	if params.MongoUploadStoreURI == "" {
 		tus = renter.NewSkynetTUSInMemoryUploadStore()
 	} else {
-		tus = params.TUSUploadStore
+		ctx, cancel := context.WithTimeout(context.Background(), mongoConnectionTimeout)
+		tus, err = renter.NewSkynetTUSMongoUploadStore(ctx, params.MongoUploadStoreURI, params.MongoUploadStorePortalName, params.MongoUploadStoreCreds)
+		cancel()
+	}
+	if err != nil {
+		errChan <- err
+		return nil, errChan
 	}
 
 	// Load all modules

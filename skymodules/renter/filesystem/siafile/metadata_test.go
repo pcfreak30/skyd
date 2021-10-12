@@ -64,6 +64,7 @@ func TestBackupRestoreMetadata(t *testing.T) {
 		sf.staticMetadata.CachedExpiration = types.BlockHeight(fastrand.Intn(10))
 		sf.staticMetadata.CachedUploadedBytes = uint64(fastrand.Intn(1000))
 		sf.staticMetadata.CachedUploadProgress = float64(fastrand.Intn(100))
+		sf.staticMetadata.Finished = fastrand.Intn(2) == 0
 		sf.staticMetadata.Health = float64(fastrand.Intn(100))
 		sf.staticMetadata.LastHealthCheckTime = time.Now()
 		sf.staticMetadata.NumStuckChunks = fastrand.Uint64n(100)
