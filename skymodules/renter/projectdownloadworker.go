@@ -844,7 +844,12 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 
 	// grab the workers from the pdc, every iteration we will update this set of
 	// workers to avoid needless performing gouging checks on every iteration
+	start := time.Now()
 	workers := pdc.workers()
+	elpased := time.Since(start)
+	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+		span.LogKV("pdc.workers()", elpased)
+	}
 
 	// verify we have enough workers to complete the download
 	if len(workers) < ec.MinPieces() {
@@ -862,7 +867,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	prevWorkerUpdate := time.Now()
 
 	for {
-		if span := opentracing.SpanFromContext(pdc.ctx); span != nil && time.Since(prevLog) > 200*time.Millisecond {
+		if span := opentracing.SpanFromContext(pdc.ctx); span != nil && time.Since(prevLog) > 100*time.Millisecond {
 			span.LogKV(
 				"downloadLoopIter", time.Since(pdc.staticLaunchTime),
 				"currWorkerSet", workerSet,
