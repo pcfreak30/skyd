@@ -941,7 +941,7 @@ func (pdc *projectDownloadChunk) createWorkerSet(workers []*individualWorker) (*
 OUTER:
 	for numOverdrive := 0; numOverdrive <= maxOverdriveWorkers; numOverdrive++ {
 		workersNeeded := minPieces + numOverdrive
-		for bI := 0; bI < skymodules.DistributionTrackerTotalBuckets; bI += 4 {
+		for bI := 0; bI < skymodules.DistributionTrackerTotalBuckets; bI++ {
 			// exit early if ppms in combination with the bucket duration
 			// already exceeds the adjusted cost of the current best set,
 			// workers would be too slow by definition
