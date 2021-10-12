@@ -211,7 +211,8 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	//t.Parallel()
+	// NOTE: This test is pretty long already. Don't run in with other tests
+	// in parallel.
 
 	wt, err := newWorkerTester(t.Name())
 	if err != nil {
@@ -268,7 +269,9 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Upload the fanout.
+	// Upload the fanout. We don't really upload it here. Instead we just
+	// use a chunkreader to figure out what the fanout would be for that
+	// file.
 	fileNode, err := r.managedInitUploadStream(skymodules.FileUploadParams{
 		CipherType:  crypto.TypePlain,
 		ErasureCode: ec,
@@ -278,6 +281,9 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 		t.Fatal(err)
 	}
 	chunkReader := NewFanoutChunkReader(bytes.NewReader(data), fileNode.ErasureCode(), false, fileNode.MasterKey())
+	if err := fileNode.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	// Read all chunks.
 	for {
@@ -301,6 +307,9 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	}
 	if len(extension) != 2 {
 		t.Fatal("the depth of the returned extension should be 2", len(extension))
+	}
+	if len(bs) != int(modules.SectorSize) {
+		t.Fatal("basesector should be exactly a sectorsize large at this point", len(bs))
 	}
 
 	skylink, err := skymodules.NewSkylinkV1(crypto.MerkleRoot(bs), 0, fetchSize)

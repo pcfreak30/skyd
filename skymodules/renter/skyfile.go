@@ -1649,6 +1649,7 @@ func (r *Renter) ParseSkyfileMetadata(baseSector []byte) (sl skymodules.SkyfileL
 
 	var emptyRoot crypto.Hash
 	for i, span := range chunkSpans {
+		fmt.Printf("span %v of %v\n", i+1, len(chunkSpans))
 		// Download each chunk in parallel.
 		sectors := make([][]byte, span.MaxIndex-span.MinIndex+1)
 		errs := make([]error, len(sectors))
