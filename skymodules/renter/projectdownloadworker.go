@@ -1021,56 +1021,28 @@ func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*unreso
 		return eRTI > eRTJ
 	})
 
-	// create some loop state and a helper function that resets it
-	var availabilityRemaining float64
-	var current []*unresolvedWorkerInfo
-	reset := func(worker *unresolvedWorkerInfo) {
-		// reset availability and workers array
-		availabilityRemaining = chimeraAvailabilityRateThreshold
-		current = make([]*unresolvedWorkerInfo, 0, len(unresolvedWorkers))
-
-		// if the worker is not nil, add it to the workers array
-		if worker != nil {
-			current = append(current, worker)
-			availabilityRemaining -= worker.staticAvailabilityRate
-		}
-	}
-
 	// create an array that will hold all chimera workers
 	chimeras := make([]downloadWorker, 0, len(unresolvedWorkers))
 
-	// reset the loop state
-	reset(nil)
+	// create some loop state
+	currAvail := float64(0)
+	start := 0
 
-	for _, w := range unresolvedWorkers {
-		// if the current worker's availability rate exceeds what remains, we
-		// have to split the worker into two pieces
-		toAdd := w
-		var remainder *unresolvedWorkerInfo
-		if w.staticAvailabilityRate > availabilityRemaining {
-			toAdd, remainder = w.split(availabilityRemaining)
+	// loop over the unresolved workers
+	for curr := 0; curr < len(unresolvedWorkers); curr++ {
+		currAvail += unresolvedWorkers[curr].staticAvailabilityRate
+		if currAvail >= chimeraAvailabilityRateThreshold {
+			end := curr + 1
+			chimera := NewChimeraWorker(unresolvedWorkers[start:end])
+			chimeras = append(chimeras, chimera)
+
+			// reset
+			start = end
+			currAvail = 0
+
+			// debug
+			pdc.callNewChimeraWorker++
 		}
-
-		// add the worker to the current list of workers and update the
-		// remaining availability
-		current = append(current, toAdd)
-		availabilityRemaining -= toAdd.staticAvailabilityRate
-
-		// if the chimera is not complete yet, continue
-		if availabilityRemaining > 0 {
-			if remainder != nil {
-				build.Critical("developer error, if there's availability remaining, the remainder should always be 0")
-			}
-			continue
-		}
-
-		// build a chimera out of the current set of workers and add it
-		chimera := NewChimeraWorker(current)
-		chimeras = append(chimeras, chimera)
-		pdc.callNewChimeraWorker++
-
-		// reset the loop state, pass the (possible) remainder of the worker
-		reset(remainder)
 	}
 
 	// NOTE: we don't add the current as it's not a complete chimera worker
