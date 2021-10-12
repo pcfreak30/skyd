@@ -211,12 +211,17 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	//t.Parallel()
 
 	wt, err := newWorkerTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Add 2 more hosts.
 	if _, err = wt.rt.addHost(t.Name() + "1"); err != nil {
