@@ -15,11 +15,61 @@ import (
 	"go.sia.tech/siad/types"
 )
 
+// DOWNLOAD CODE IMPROVEMENTS:
+//
+// the current design of the download algorithm has some key places where
+// there's still room for improvement. Below we list some of the ideas that
+// could contribute to a faster and more robust algorithm.
+//
+// 1. add a fixed cost to account for our own bandwidth expenses: because the
+// host network on Sia possibly has a lot of very cheap hosts, we should be
+// offsetting the cost with a fixed cost to account for our own bandwidth
+// expenses. E.g. if we use a fixed cost of 2$/TB, so ~100SC, then a worker that
+// cost 1SC becomes 101SC and a worker that costs 100SC becomes 200SC. That
+// makes it so the difference between those workers is 2x instead of the 100x it
+// was before the fixed cost.
+//
+// 2. add a mechanism to slow down the DTs or switch to different DTs if we have
+// too many jobs launched at once: the distribution tracker does not take into
+// account worker load, that means they're chance values become too optimistic,
+// which might hurt the performance of the algorithm when not taken into
+// account.
+//
+// 3. play with the 50% number, and account for the cost of being unlucky: a
+// worker set's total chance has to be greater than 50% in order for it be
+// accepted as a viable worker set, this 50% number is essentially arbitry, and
+// even at 50% there's still a 50% chance we fall on the other side of the
+// fence. This should/could be taken into account.
+//
+// 4. fix the algorithm that chooses which worker to replace in your set: the
+// algorithm that decides what worker to replace by a cheaper worker in the
+// current working set is a bit naievely implemented. Figuring out what worker
+// to replace can be a very complex algorithm. There's definitely room for
+// improvement here.
+//
+// 5. fix the algorithm that constructs chimeras: chimeras are currently
+// constructed for every bucket duration, however we could also rebuild
+// chimeras, or partially rebuild chimeras, when we are swapping out cheaper
+// workers in the working set. The currently algorithm considers the chimera
+// worker and its cost as fixed, but that does not necessarily have to be the
+// case. We can further improve this by swapping out series of workers for
+// cheaper workers inside of the chimera itself.
+
 var (
 	// maxWaitUnresolvedWorkerUpdate defines the maximum amount of time we want
 	// to wait for unresolved workers to become resolved before trying to
 	// recreate the worker set.
 	maxWaitUnresolvedWorkerUpdate = 25 * time.Millisecond
+
+	// maxWaitUpdateWorkers defines the maximum amount of time we want to wait
+	// for workers to be updated.
+	maxWaitUpdateWorkers = 25 * time.Millisecond
+
+	// chimeraAvailabilityRateThreshold defines the number that much be reached
+	// when composing a chimera from unresolved workers. If the sum of the
+	// availability rate of each worker reaches this number we can build a
+	// chimera out of them.
+	chimeraAvailabilityRateThreshold = float64(2)
 )
 
 // NOTE: all of the following defined types are used by the PDC, which is
@@ -32,7 +82,8 @@ type (
 	downloadWorker interface {
 		// completeChanceCached returns the chance this download worker
 		// completes a read within the duration that corresponds to the given
-		// bucket index.
+		// bucket index. This value is cached and recomputed for every bucket
+		// duration.
 		completeChanceCached() float64
 
 		// cost returns the expected job cost for downloading a piece. If the
@@ -134,13 +185,15 @@ type (
 
 // NewChimeraWorker returns a new chimera worker object.
 func NewChimeraWorker(numPieces int, pieceLength uint64, workers []*individualWorker) *chimeraWorker {
-	// sanity check workers make a total availability rate of 1
+	// sanity check workers make a total availability rate of 2
 	totalWeight := float64(0)
 	for _, w := range workers {
 		totalWeight += w.staticAvailabilityRate
 	}
-	if math.Abs(1-totalWeight) > 1e-9 {
-		build.Critical(fmt.Sprintf("developer error, a chimera must consist of workers that together have a total availability rate of 1, instead it was %v", totalWeight))
+	// note that we apply some error margin here to account for floating
+	// precision errors
+	if math.Abs(chimeraAvailabilityRateThreshold-totalWeight) > 1e-9 {
+		build.Critical(fmt.Sprintf("developer error, a chimera must consist of workers that together have a total availability rate of %v, instead it was %v", chimeraAvailabilityRateThreshold, totalWeight))
 		return nil
 	}
 
@@ -246,18 +299,35 @@ func (iw *individualWorker) calculateDistributionChances() {
 	}
 }
 
+// calculateCompleteChance calculates the chance this worker completes at given
+// index. This chance is a combination of the chance it resolves and the chance
+// it completes the read by the given index. The resolve (or lookup) chance only
+// plays a part for workers that have not resolved yet.
+//
+// This function calculates the complete chance by approximation, meaning if we
+// request the chance at index 100 (or 200ms), for an unresolved worker, we
+// calculate the expected resolve index, let's say it's 20, and offset the read
+// chance by that number, meaning we will return the read chance at index 80.
 func (iw *individualWorker) calculateCompleteChance(index int) {
+	// if the worker is resolved, the complete chance is simply the read chance
+	// at given index
 	if iw.isResolved() {
 		iw.cachedCompleteChance = iw.cachedReadDTChances[index]
 		return
 	}
 
-	if index <= iw.cachedLookupIndex {
+	// if the given index is less than the lookup index, it means the lookup is
+	// expected to not be completed yet, in which case the complete chance is 0
+	if iw.cachedLookupIndex >= index {
 		iw.cachedCompleteChance = 0
 		return
 	}
 
-	iw.cachedCompleteChance = iw.cachedReadDTChances[iw.cachedLookupIndex-index]
+	// if the given index is greater than the lookup index, we return the read
+	// chance offset by the lookup index, this essentially means that if the
+	// lookup is expected to complete by index 10, and the requested index is
+	// 30, we return the chance the read completes at index 20.
+	iw.cachedCompleteChance = iw.cachedReadDTChances[index-iw.cachedLookupIndex]
 }
 
 // completeChanceCached returns the chance this worker will complete
@@ -791,27 +861,31 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	workerUpdateChan := ws.managedRegisterForWorkerUpdate()
 
 	// TODO: remove (debug purposes)
-	var currWorkerSet *workerSet
+	var workerSet *workerSet
+
 	prevLog := time.Now()
+	prevWorkerUpdate := time.Now()
 
 	for {
 		if span := opentracing.SpanFromContext(pdc.ctx); span != nil && time.Since(prevLog) > 200*time.Millisecond {
 			span.LogKV(
 				"downloadLoopIter", time.Since(pdc.staticLaunchTime),
-				"currWorkerSet", currWorkerSet,
+				"currWorkerSet", workerSet,
 			)
 			prevLog = time.Now()
 		}
 
-		// update the workers
-		pdc.updateWorkers(workers)
-
 		// update the pieces
-		pdc.updatePieces()
+		updated := pdc.updatePieces()
+
+		// update the workers
+		if updated || time.Since(prevWorkerUpdate) > maxWaitUpdateWorkers {
+			pdc.updateWorkers(workers)
+			prevWorkerUpdate = time.Now()
+		}
 
 		// create a worker set and launch it
 		workerSet, err := pdc.createWorkerSet(workers)
-		currWorkerSet = workerSet
 		if err != nil {
 			pdc.fail(err)
 			return
@@ -971,6 +1045,7 @@ func addCostPenalty(jobTime time.Duration, jobCost, pricePerMS types.Currency) t
 
 // buildChimeraWorkers turns a list of individual workers into chimera workers.
 func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*individualWorker) []downloadWorker {
+
 	// convenience variables
 	numPieces := pdc.workerSet.staticErasureCoder.NumPieces()
 	pieceLength := pdc.pieceLength
@@ -982,11 +1057,26 @@ func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*indivi
 		return eRTI > eRTJ
 	})
 
-	// build chimera workers out of them
-	availabilityRemaining := float64(1)
+	// create some loop state and a helper function that resets it
+	var availabilityRemaining float64
+	var workers []*individualWorker
+	reset := func(worker *individualWorker) {
+		// reset availability and workers array
+		availabilityRemaining = chimeraAvailabilityRateThreshold
+		workers = make([]*individualWorker, 0, len(unresolvedWorkers))
 
+		// if the worker is not nil, add it to the workers array
+		if worker != nil {
+			workers = append(workers, worker)
+			availabilityRemaining -= worker.staticAvailabilityRate
+		}
+	}
+
+	// create an array that will hold all chimera workers
 	chimeras := make([]downloadWorker, 0, len(unresolvedWorkers))
-	workers := make([]*individualWorker, 0, len(unresolvedWorkers))
+
+	// reset the loop state
+	reset(nil)
 
 	for _, w := range unresolvedWorkers {
 		// sanity check the worker is unresolved
@@ -1009,6 +1099,9 @@ func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*indivi
 
 		// if the chimera is not complete yet, continue
 		if availabilityRemaining > 0 {
+			if remainder != nil {
+				build.Critical("developer error, if there's availability remaining, the remainder should always be 0")
+			}
 			continue
 		}
 
@@ -1016,15 +1109,8 @@ func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*indivi
 		chimera := NewChimeraWorker(numPieces, pieceLength, workers)
 		chimeras = append(chimeras, chimera)
 
-		// reset the current set of workers
-		workers = make([]*individualWorker, 0, len(workers))
-		availabilityRemaining = 1
-
-		// add the remainder if there is one
-		if remainder != nil {
-			workers = append(workers, remainder)
-			availabilityRemaining -= remainder.staticAvailabilityRate
-		}
+		// reset the loop state, pass the (possible) remainder of the worker
+		reset(remainder)
 	}
 
 	// NOTE: we don't add the current as it's not a complete chimera worker

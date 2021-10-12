@@ -230,8 +230,9 @@ func (lwi *launchedWorkerInfo) String() string {
 
 // updatePieces updates the pieces info with availability updates from freshly
 // resolved workers. Essentially, this is pulling new information from the
-// overarching PCWS worker state.
-func (pdc *projectDownloadChunk) updatePieces() {
+// overarching PCWS worker state. This function returns true if there were
+// new resolved workers, and false otherwise.
+func (pdc *projectDownloadChunk) updatePieces() bool {
 	ws := pdc.workerState
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
@@ -241,7 +242,7 @@ func (pdc *projectDownloadChunk) updatePieces() {
 
 	// check whether an update is needed, if not return early
 	if pdc.workersConsideredIndex == len(ws.resolvedWorkers) {
-		return
+		return false
 	}
 
 	// add any new resolved workers to the pdc's list of available pieces.
@@ -262,6 +263,7 @@ func (pdc *projectDownloadChunk) updatePieces() {
 		}
 	}
 	pdc.workersConsideredIndex = len(ws.resolvedWorkers)
+	return true
 }
 
 // handleJobReadResponse will take a jobReadResponse from a worker job
