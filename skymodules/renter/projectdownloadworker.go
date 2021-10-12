@@ -159,10 +159,9 @@ type (
 		staticWorker             *worker
 	}
 
-	// individualWorkerChimeraInfo is a subset of the individualWorker,
-	// containing all necessary pieces of information to build a chimera worker
-	// with
-	individualWorkerChimeraInfo struct {
+	// unresolvedWorkerInfo is a subset of the individualWorker, containing all
+	// necessary pieces of information to build a chimera worker with
+	unresolvedWorkerInfo struct {
 		staticAvailabilityRate float64
 		staticCompleteChance   float64
 		staticCost             float64
@@ -188,7 +187,7 @@ type (
 )
 
 // NewChimeraWorker returns a new chimera worker object.
-func NewChimeraWorker(workers []*individualWorkerChimeraInfo) *chimeraWorker {
+func NewChimeraWorker(workers []*unresolvedWorkerInfo) *chimeraWorker {
 	// calculate cost, complete chance and both distributions using the given
 	// workers, making sure every worker contributes to the total in relation to
 	// its weight being the availability rate
@@ -376,19 +375,19 @@ func (iw *individualWorker) worker() *worker {
 // split will split the download worker into two workers, the first worker will
 // have the given availability, the second worker will have the remainder as its
 // availability rate value.
-func (iwi *individualWorkerChimeraInfo) split(availability float64) (*individualWorkerChimeraInfo, *individualWorkerChimeraInfo) {
+func (iwi *unresolvedWorkerInfo) split(availability float64) (*unresolvedWorkerInfo, *unresolvedWorkerInfo) {
 	if availability >= iwi.staticAvailabilityRate {
 		build.Critical("chance value on which we split should be strictly less than the worker's resolve chance")
 		return nil, nil
 	}
 
-	main := &individualWorkerChimeraInfo{
+	main := &unresolvedWorkerInfo{
 		staticAvailabilityRate: availability,
 		staticCompleteChance:   iwi.staticCompleteChance,
 		staticCost:             iwi.staticCost,
 	}
 
-	remainder := &individualWorkerChimeraInfo{
+	remainder := &unresolvedWorkerInfo{
 		staticAvailabilityRate: iwi.staticAvailabilityRate - availability,
 		staticCompleteChance:   iwi.staticCompleteChance,
 		staticCost:             iwi.staticCost,
@@ -1014,47 +1013,21 @@ func addCostPenalty(jobTime time.Duration, jobCost, pricePerMS types.Currency) t
 }
 
 // buildChimeraWorkers turns a list of individual workers into chimera workers.
-func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*individualWorker) []downloadWorker {
-	// transform the unresolved workers into
-	nullChanceCnt := 0
-	workers := make([]*individualWorkerChimeraInfo, 0, len(unresolvedWorkers))
-	for _, uw := range unresolvedWorkers {
-		// sanity check the worker is unresolved
-		if uw.isResolved() {
-			build.Critical("developer error, chimera workers are built using only unresolved workers")
-		}
-
-		// filter out workers
-		if uw.cachedCompleteChance == 0 {
-			nullChanceCnt++
-			continue
-		}
-
-		workers = append(workers, &individualWorkerChimeraInfo{
-			staticAvailabilityRate: uw.staticAvailabilityRate,
-			staticCompleteChance:   uw.cachedCompleteChance,
-			staticCost:             uw.staticCost,
-		})
-	}
-
-	if nullChanceCnt > 0 {
-		fmt.Println(nullChanceCnt)
-	}
-
+func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*unresolvedWorkerInfo) []downloadWorker {
 	// sort workers by chance they complete
-	sort.Slice(workers, func(i, j int) bool {
-		eRTI := workers[i].staticCompleteChance
-		eRTJ := workers[j].staticCompleteChance
+	sort.Slice(unresolvedWorkers, func(i, j int) bool {
+		eRTI := unresolvedWorkers[i].staticCompleteChance
+		eRTJ := unresolvedWorkers[j].staticCompleteChance
 		return eRTI > eRTJ
 	})
 
 	// create some loop state and a helper function that resets it
 	var availabilityRemaining float64
-	var current []*individualWorkerChimeraInfo
-	reset := func(worker *individualWorkerChimeraInfo) {
+	var current []*unresolvedWorkerInfo
+	reset := func(worker *unresolvedWorkerInfo) {
 		// reset availability and workers array
 		availabilityRemaining = chimeraAvailabilityRateThreshold
-		current = make([]*individualWorkerChimeraInfo, 0, len(workers))
+		current = make([]*unresolvedWorkerInfo, 0, len(unresolvedWorkers))
 
 		// if the worker is not nil, add it to the workers array
 		if worker != nil {
@@ -1064,16 +1037,16 @@ func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*indivi
 	}
 
 	// create an array that will hold all chimera workers
-	chimeras := make([]downloadWorker, 0, len(workers))
+	chimeras := make([]downloadWorker, 0, len(unresolvedWorkers))
 
 	// reset the loop state
 	reset(nil)
 
-	for _, w := range workers {
+	for _, w := range unresolvedWorkers {
 		// if the current worker's availability rate exceeds what remains, we
 		// have to split the worker into two pieces
 		toAdd := w
-		var remainder *individualWorkerChimeraInfo
+		var remainder *unresolvedWorkerInfo
 		if w.staticAvailabilityRate > availabilityRemaining {
 			toAdd, remainder = w.split(availabilityRemaining)
 		}
@@ -1273,15 +1246,19 @@ func isGoodForDownload(w *worker, pieces []uint64) bool {
 
 // splitResolvedUnresolved is a helper function that splits the given workers
 // into resolved and unresolved worker arrays.
-func splitResolvedUnresolved(workers []*individualWorker) ([]downloadWorker, []*individualWorker) {
+func splitResolvedUnresolved(workers []*individualWorker) ([]downloadWorker, []*unresolvedWorkerInfo) {
 	resolvedWorkers := make([]downloadWorker, 0, len(workers))
-	unresolvedWorkers := make([]*individualWorker, 0, len(workers))
+	unresolvedWorkers := make([]*unresolvedWorkerInfo, 0, len(workers))
 
 	for _, w := range workers {
 		if w.isResolved() {
 			resolvedWorkers = append(resolvedWorkers, w)
-		} else {
-			unresolvedWorkers = append(unresolvedWorkers, w)
+		} else if w.cachedCompleteChance > 0 {
+			unresolvedWorkers = append(unresolvedWorkers, &unresolvedWorkerInfo{
+				staticAvailabilityRate: w.staticAvailabilityRate,
+				staticCompleteChance:   w.cachedCompleteChance,
+				staticCost:             w.staticCost,
+			})
 		}
 	}
 	return resolvedWorkers, unresolvedWorkers
