@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
+	"math/big"
 	"sort"
 	"time"
 
@@ -88,7 +89,7 @@ type (
 
 		// cost returns the expected job cost for downloading a piece. If the
 		// worker has already been launched, its cost will be zero.
-		cost() types.Currency
+		cost() *big.Int
 
 		// getPieceForDownload returns the piece to download next
 		getPieceForDownload() uint64
@@ -117,7 +118,7 @@ type (
 		// average cost taken across all workers this chimera worker is
 		// comprised of, it is static because it never gets updated after the
 		// chimera is finalized and this field is calculated
-		staticCost types.Currency
+		staticCost *big.Int
 
 		// staticChanceComplete is the chance this worker completes after the
 		// duration at which this chimera worker was built.
@@ -140,10 +141,9 @@ type (
 	individualWorker struct {
 		// the following fields are cached and recalculated at precise times
 		// within the download code algorithm
-		cachedCompleteChance  float64
-		cachedLookupIndex     int
-		cachedLookupDTChances skymodules.Chances
-		cachedReadDTChances   skymodules.Chances
+		cachedCompleteChance float64
+		cachedLookupIndex    int
+		cachedReadDTChances  skymodules.Chances
 
 		// the following fields are continuously updated on the worker
 		pieceIndices []uint64
@@ -157,7 +157,7 @@ type (
 
 		staticAvailabilityRate   float64
 		staticDownloadLaunchTime time.Time
-		staticExpectedCost       types.Currency
+		staticExpectedCost       *big.Int
 		staticIdentifier         string
 		staticLookupDistribution *skymodules.Distribution
 		staticReadDistribution   *skymodules.Distribution
@@ -207,14 +207,18 @@ func NewChimeraWorker(numPieces int, pieceLength uint64, workers []*individualWo
 	// workers, making sure every worker contributes to the total in relation to
 	// its weight being the availability rate
 	totalCompleteChance := float64(0)
-	totalCost := types.ZeroCurrency
+	var totalCost big.Int
 	for _, w := range workers {
 		totalCompleteChance += w.cachedCompleteChance * w.staticAvailabilityRate
-		totalCost = totalCost.Add(w.staticExpectedCost)
+		totalCost.Add(&totalCost, w.staticExpectedCost)
 	}
 
+	var numWorkers big.Int
+	numWorkers.SetUint64(uint64(len(workers)))
+	totalCost.Div(&totalCost, &numWorkers)
+
 	return &chimeraWorker{
-		staticCost:           totalCost.Div64(uint64(len(workers))),
+		staticCost:           &totalCost,
 		staticChanceComplete: totalCompleteChance / float64(len(workers)),
 		staticIdentifier:     hex.EncodeToString(fastrand.Bytes(16)),
 		staticPieceIndices:   pieceIndices,
@@ -223,7 +227,7 @@ func NewChimeraWorker(numPieces int, pieceLength uint64, workers []*individualWo
 
 // cost returns the cost for this chimera worker, this method can only be called
 // on a chimera that is finalized
-func (cw *chimeraWorker) cost() types.Currency {
+func (cw *chimeraWorker) cost() *big.Int {
 	return cw.staticCost
 }
 
@@ -265,10 +269,11 @@ func (cw *chimeraWorker) worker() *worker {
 }
 
 // cost implements the downloadWorker interface.
-func (iw *individualWorker) cost() types.Currency {
+func (iw *individualWorker) cost() *big.Int {
 	// workers that have already been launched have a zero cost
 	if iw.isLaunched() {
-		return types.ZeroCurrency
+		var zero big.Int
+		return &zero
 	}
 	return iw.staticExpectedCost
 }
@@ -280,9 +285,9 @@ func (iw *individualWorker) calculateDistributionChances() {
 		dur := time.Since(iw.staticDownloadLaunchTime)
 		lookupDT := iw.staticLookupDistribution.Clone()
 		lookupDT.Shift(dur)
+		lookupDTExpectedDur := lookupDT.ExpectedDuration()
 
-		iw.cachedLookupIndex = skymodules.DistributionBucketIndexForDuration(lookupDT.ExpectedDuration())
-		iw.cachedLookupDTChances = lookupDT.ChancesAfter()
+		iw.cachedLookupIndex = skymodules.DistributionBucketIndexForDuration(lookupDTExpectedDur)
 		iw.cachedReadDTChances = iw.staticReadDistribution.ChancesAfter()
 		return
 	}
@@ -395,9 +400,9 @@ func (iw *individualWorker) split(availability float64) (*individualWorker, *ind
 	}
 
 	main := &individualWorker{
-		cachedCompleteChance:  iw.cachedCompleteChance,
-		cachedLookupDTChances: iw.cachedLookupDTChances,
-		cachedReadDTChances:   iw.cachedReadDTChances,
+		cachedCompleteChance: iw.cachedCompleteChance,
+		cachedLookupIndex:    iw.cachedLookupIndex,
+		cachedReadDTChances:  iw.cachedReadDTChances,
 
 		pieceIndices: iw.pieceIndices,
 		resolved:     iw.resolved,
@@ -415,9 +420,9 @@ func (iw *individualWorker) split(availability float64) (*individualWorker, *ind
 	}
 
 	remainder := &individualWorker{
-		cachedCompleteChance:  iw.cachedCompleteChance,
-		cachedLookupDTChances: iw.cachedLookupDTChances,
-		cachedReadDTChances:   iw.cachedReadDTChances,
+		cachedCompleteChance: iw.cachedCompleteChance,
+		cachedLookupIndex:    iw.cachedLookupIndex,
+		cachedReadDTChances:  iw.cachedReadDTChances,
 
 		pieceIndices: iw.pieceIndices,
 		resolved:     iw.resolved,
@@ -534,7 +539,10 @@ func (ws *workerSet) adjustedDuration(ppms types.Currency) time.Duration {
 	// calculate the total cost of the worker set
 	var totalCost types.Currency
 	for _, w := range ws.workers {
-		totalCost = totalCost.Add(w.cost())
+		if w.cost() == nil {
+			panic("nil cost")
+		}
+		totalCost = totalCost.Add(types.NewCurrency(w.cost()))
 	}
 
 	// calculate the cost penalty using the given price per ms and apply it to
@@ -715,7 +723,7 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 			resolved:     true,
 			pieceIndices: rw.pieceIndices,
 
-			staticExpectedCost:       jrq.callExpectedJobCost(length),
+			staticExpectedCost:       jrq.callExpectedJobCost(length).Big(),
 			staticIdentifier:         rw.worker.staticHostPubKey.ShortString(),
 			staticLookupDistribution: ldt.Distribution(0).Clone(),
 			staticReadDistribution:   rdt.Distribution(0).Clone(),
@@ -748,7 +756,7 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 			resolved:     false,
 
 			staticAvailabilityRate:   jhsq.callAvailabilityRate(numPieces),
-			staticExpectedCost:       jrq.callExpectedJobCost(length),
+			staticExpectedCost:       jrq.callExpectedJobCost(length).Big(),
 			staticIdentifier:         w.staticHostPubKey.ShortString(),
 			staticLookupDistribution: ldt.Distribution(0).Clone(),
 			staticReadDistribution:   rdt.Distribution(0).Clone(),
@@ -810,6 +818,7 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) bool {
 
 		// launch the worker
 		isOverdrive := len(pdc.launchedWorkers) >= minPieces
+		cost := w.cost()
 		expectedCompleteTime, launched := pdc.launchWorker(w, piece, isOverdrive)
 
 		// debugging
@@ -819,6 +828,7 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) bool {
 				span.LogKV(
 					"aWorkerLaunched", w.identifier(),
 					"piece", piece,
+					"cost", cost.String(),
 					"overdriveWorker", isOverdrive,
 					"expectedDuration", time.Until(expectedCompleteTime),
 					"chanceAfterDur", w.completeChanceCached(),
