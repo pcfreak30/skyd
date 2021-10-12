@@ -1016,18 +1016,29 @@ func addCostPenalty(jobTime time.Duration, jobCost, pricePerMS types.Currency) t
 // buildChimeraWorkers turns a list of individual workers into chimera workers.
 func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*individualWorker) []downloadWorker {
 	// transform the unresolved workers into
-	workers := make([]*individualWorkerChimeraInfo, len(unresolvedWorkers))
-	for i, uw := range unresolvedWorkers {
+	nullChanceCnt := 0
+	workers := make([]*individualWorkerChimeraInfo, 0, len(unresolvedWorkers))
+	for _, uw := range unresolvedWorkers {
 		// sanity check the worker is unresolved
 		if uw.isResolved() {
 			build.Critical("developer error, chimera workers are built using only unresolved workers")
 		}
 
-		workers[i] = &individualWorkerChimeraInfo{
+		// filter out workers
+		if uw.cachedCompleteChance == 0 {
+			nullChanceCnt++
+			continue
+		}
+
+		workers = append(workers, &individualWorkerChimeraInfo{
 			staticAvailabilityRate: uw.staticAvailabilityRate,
 			staticCompleteChance:   uw.cachedCompleteChance,
 			staticCost:             uw.staticCost,
-		}
+		})
+	}
+
+	if nullChanceCnt > 0 {
+		fmt.Println(nullChanceCnt)
 	}
 
 	// sort workers by chance they complete
@@ -1043,7 +1054,7 @@ func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*indivi
 	reset := func(worker *individualWorkerChimeraInfo) {
 		// reset availability and workers array
 		availabilityRemaining = chimeraAvailabilityRateThreshold
-		current = make([]*individualWorkerChimeraInfo, 0, len(unresolvedWorkers))
+		current = make([]*individualWorkerChimeraInfo, 0, len(workers))
 
 		// if the worker is not nil, add it to the workers array
 		if worker != nil {
@@ -1053,7 +1064,7 @@ func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*indivi
 	}
 
 	// create an array that will hold all chimera workers
-	chimeras := make([]downloadWorker, 0, len(unresolvedWorkers))
+	chimeras := make([]downloadWorker, 0, len(workers))
 
 	// reset the loop state
 	reset(nil)
