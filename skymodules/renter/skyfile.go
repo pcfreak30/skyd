@@ -1649,7 +1649,6 @@ func (r *Renter) ParseSkyfileMetadata(baseSector []byte) (sl skymodules.SkyfileL
 
 	var emptyRoot crypto.Hash
 	for i, span := range chunkSpans {
-		fmt.Printf("span %v of %v\n", i+1, len(chunkSpans))
 		// Download each chunk in parallel.
 		sectors := make([][]byte, span.MaxIndex-span.MinIndex+1)
 		errs := make([]error, len(sectors))
@@ -1672,10 +1671,7 @@ func (r *Renter) ParseSkyfileMetadata(baseSector []byte) (sl skymodules.SkyfileL
 			}(root, resultIndex)
 			resultIndex++
 		}
-		s := time.Now()
-		println("waiting")
 		wg.Wait()
-		println("waiting done", time.Since(s).Milliseconds())
 
 		// Check errors.
 		for _, err := range errs {
@@ -1692,7 +1688,6 @@ func (r *Renter) ParseSkyfileMetadata(baseSector []byte) (sl skymodules.SkyfileL
 			baseSectorExtension = append(baseSectorExtension, hashes...)
 		}
 	}
-	println("done")
 
 	// In the last iteration 'hashes' is the actual payload. That's why we
 	// trim it and only then add it to the extension.

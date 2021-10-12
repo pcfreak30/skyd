@@ -291,7 +291,6 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	// If the response contained an error, add this worker to the set of
 	// resolved workers as supporting no indices.
 	if resp.staticErr != nil {
-		fmt.Println("err", resp.staticErr)
 		ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
 			worker: w,
 			err:    resp.staticErr,

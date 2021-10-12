@@ -223,41 +223,7 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-
-	// Add 2 more hosts.
-	//	h1, err := wt.rt.addHost(t.Name() + "1")
-	//	if err != nil {
-	//		t.Fatal(err)
-	//	}
-	//	h2, err := wt.rt.addHost(t.Name() + "2")
-	//	if err != nil {
-	//		t.Fatal(err)
-	//	}
 	r := wt.rt.renter
-
-	// Shut them down at the end.
-	//	defer func() {
-	//		if err := errors.Compose(h1.Close(), h2.Close()); err != nil {
-	//			t.Fatal(err)
-	//		}
-	//	}()
-
-	// Wait for them to show up as workers.
-	//	err = build.Retry(60, time.Second, func() error {
-	//		_, err := wt.rt.miner.AddBlock()
-	//		if err != nil {
-	//			return err
-	//		}
-	//		r.staticWorkerPool.callUpdate()
-	//		workers := r.staticWorkerPool.callWorkers()
-	//		if len(workers) < 3 {
-	//			return fmt.Errorf("expected %v workers but got %v", 3, len(workers))
-	//		}
-	//		return nil
-	//	})
-	//	if err != nil {
-	//		t.Fatal(err)
-	//	}
 
 	// Prepare a metadata for a basic file.
 	fileSize := 3 * modules.SectorSize * modules.SectorSize
