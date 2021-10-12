@@ -5458,6 +5458,10 @@ func TestRenterClean(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	skyfileDir, err = skyfileDir.Rebase(skymodules.RootSiaPath(), skymodules.SkynetFolder)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Define test function
 	cleanAndVerify := func(numSiaFiles, numSkyFiles int) error {
