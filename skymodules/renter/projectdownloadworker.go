@@ -102,7 +102,7 @@ type (
 		markPieceForDownload(pieceIndex uint64)
 
 		// pieces returns all piece indices this worker can resolve
-		pieces() []uint64
+		pieces(pdc *projectDownloadChunk) []uint64
 
 		// worker returns the underlying worker
 		worker() *worker
@@ -125,10 +125,6 @@ type (
 
 		// staticIdentifier uniquely identifies the chimera worker
 		staticIdentifier string
-
-		// staticPieceIndices contains a list of piece indices, for a chimera
-		// worker this will be an array containing every piece index
-		staticPieceIndices []uint64
 	}
 
 	// individualWorker is a struct that represents a single worker object, both
@@ -192,7 +188,7 @@ type (
 )
 
 // NewChimeraWorker returns a new chimera worker object.
-func NewChimeraWorker(numPieces int, pieceLength uint64, workers []*individualWorkerChimeraInfo) *chimeraWorker {
+func NewChimeraWorker(workers []*individualWorkerChimeraInfo) *chimeraWorker {
 	// sanity check workers make a total availability rate of 2
 	totalWeight := float64(0)
 	for _, w := range workers {
@@ -203,12 +199,6 @@ func NewChimeraWorker(numPieces int, pieceLength uint64, workers []*individualWo
 	if math.Abs(chimeraAvailabilityRateThreshold-totalWeight) > 1e-9 {
 		build.Critical(fmt.Sprintf("developer error, a chimera must consist of workers that together have a total availability rate of %v, instead it was %v", chimeraAvailabilityRateThreshold, totalWeight))
 		return nil
-	}
-
-	// build the piece indices for the chimera, a chimera can resolve all pieces
-	pieceIndices := make([]uint64, numPieces)
-	for i := 0; i < numPieces; i++ {
-		pieceIndices[i] = uint64(i)
 	}
 
 	// calculate cost, complete chance and both distributions using the given
@@ -228,7 +218,6 @@ func NewChimeraWorker(numPieces int, pieceLength uint64, workers []*individualWo
 		staticChanceComplete: chance,
 		staticCost:           cost,
 		staticIdentifier:     hex.EncodeToString(fastrand.Bytes(16)),
-		staticPieceIndices:   pieceIndices,
 	}
 }
 
@@ -265,8 +254,8 @@ func (cw *chimeraWorker) markPieceForDownload(pieceIndex uint64) {
 
 // pieces implements the downloadWorker interface, chimera workers return all
 // pieces as we don't know yet what pieces they can resolve
-func (cw *chimeraWorker) pieces() []uint64 {
-	return cw.staticPieceIndices
+func (cw *chimeraWorker) pieces(pdc *projectDownloadChunk) []uint64 {
+	return pdc.staticPieceIndices
 }
 
 // worker implements the downloadWorker interface, chimera workers return nil
@@ -387,7 +376,7 @@ func (iw *individualWorker) markPieceForDownload(pieceIndex uint64) {
 }
 
 // pieces implements the downloadWorker interface.
-func (iw *individualWorker) pieces() []uint64 {
+func (iw *individualWorker) pieces(_ *projectDownloadChunk) []uint64 {
 	return iw.pieceIndices
 }
 
@@ -485,7 +474,7 @@ LOOP:
 		}
 
 		// range over the candidate's pieces and see whether we can swap
-		for _, piece := range candidate.pieces() {
+		for _, piece := range candidate.pieces(pdc) {
 			// if the candidate can download the same piece as the expensive
 			// worker, swap it out because it's cheaper
 			if piece == expensiveWorkerPiece {
@@ -581,7 +570,7 @@ func (ws *workerSet) String() string {
 		}
 
 		chance := w.completeChanceCached()
-		output += fmt.Sprintf("%v) worker: %v chimera: %v chance: %v cost: %v pieces: %v selected: %v\n", i+1, w.identifier(), chimera, chance, w.cost(), w.pieces(), selected)
+		output += fmt.Sprintf("%v) worker: %v chimera: %v chance: %v cost: %v pieces: %v selected: %v\n", i+1, w.identifier(), chimera, chance, w.cost(), w.pieces(ws.staticPDC), selected)
 	}
 	return output
 }
@@ -1038,10 +1027,6 @@ func addCostPenalty(jobTime time.Duration, jobCost, pricePerMS types.Currency) t
 
 // buildChimeraWorkers turns a list of individual workers into chimera workers.
 func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*individualWorker) []downloadWorker {
-	// convenience variables
-	numPieces := pdc.workerSet.staticErasureCoder.NumPieces()
-	pieceLength := pdc.pieceLength
-
 	// transform the unresolved workers into
 	workers := make([]*individualWorkerChimeraInfo, len(unresolvedWorkers))
 	for i, uw := range unresolvedWorkers {
@@ -1108,7 +1093,7 @@ func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*indivi
 		}
 
 		// build a chimera out of the current set of workers and add it
-		chimera := NewChimeraWorker(numPieces, pieceLength, current)
+		chimera := NewChimeraWorker(current)
 		chimeras = append(chimeras, chimera)
 		pdc.callNewChimeraWorker++
 
@@ -1204,7 +1189,7 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 
 		// loop the worker's pieces to see whether it can download a piece for
 		// which we don't have a worker yet or which we haven't downloaded yet
-		for _, pieceIndex := range w.pieces() {
+		for _, pieceIndex := range w.pieces(pdc) {
 			if pdc.piecesInfo[pieceIndex].downloaded {
 				continue
 			}
@@ -1245,7 +1230,7 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 			}
 
 			// loop over the worker's pieces and break to ensure we use it once
-			for _, pieceIndex := range w.pieces() {
+			for _, pieceIndex := range w.pieces(pdc) {
 				addWorker(w, pieceIndex)
 				break
 			}
