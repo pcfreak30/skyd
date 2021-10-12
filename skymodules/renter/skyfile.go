@@ -1672,9 +1672,10 @@ func (r *Renter) ParseSkyfileMetadata(baseSector []byte) (sl skymodules.SkyfileL
 			}(root, resultIndex)
 			resultIndex++
 		}
+		s := time.Now()
 		println("waiting")
 		wg.Wait()
-		println("waiting done")
+		println("waiting done", time.Since(s).Milliseconds())
 
 		// Check errors.
 		for _, err := range errs {
