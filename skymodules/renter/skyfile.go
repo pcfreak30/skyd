@@ -1672,7 +1672,9 @@ func (r *Renter) ParseSkyfileMetadata(baseSector []byte) (sl skymodules.SkyfileL
 			}(root, resultIndex)
 			resultIndex++
 		}
+		println("waiting")
 		wg.Wait()
+		println("waiting done")
 
 		// Check errors.
 		for _, err := range errs {
@@ -1689,6 +1691,7 @@ func (r *Renter) ParseSkyfileMetadata(baseSector []byte) (sl skymodules.SkyfileL
 			baseSectorExtension = append(baseSectorExtension, hashes...)
 		}
 	}
+	println("done")
 
 	// In the last iteration 'hashes' is the actual payload. That's why we
 	// trim it and only then add it to the extension.
