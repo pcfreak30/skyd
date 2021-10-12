@@ -189,18 +189,6 @@ type (
 
 // NewChimeraWorker returns a new chimera worker object.
 func NewChimeraWorker(workers []*individualWorkerChimeraInfo) *chimeraWorker {
-	// sanity check workers make a total availability rate of 2
-	totalWeight := float64(0)
-	for _, w := range workers {
-		totalWeight += w.staticAvailabilityRate
-	}
-	// note that we apply some error margin here to account for floating
-	// precision errors
-	if math.Abs(chimeraAvailabilityRateThreshold-totalWeight) > 1e-9 {
-		build.Critical(fmt.Sprintf("developer error, a chimera must consist of workers that together have a total availability rate of %v, instead it was %v", chimeraAvailabilityRateThreshold, totalWeight))
-		return nil
-	}
-
 	// calculate cost, complete chance and both distributions using the given
 	// workers, making sure every worker contributes to the total in relation to
 	// its weight being the availability rate
