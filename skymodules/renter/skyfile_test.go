@@ -225,13 +225,22 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	}()
 
 	// Add 2 more hosts.
-	if _, err = wt.rt.addHost(t.Name() + "1"); err != nil {
+	h1, err := wt.rt.addHost(t.Name() + "1")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = wt.rt.addHost(t.Name() + "2"); err != nil {
+	h2, err := wt.rt.addHost(t.Name() + "2")
+	if err != nil {
 		t.Fatal(err)
 	}
 	r := wt.rt.renter
+
+	// Shut them down at the end.
+	defer func() {
+		if err := errors.Compose(h1.Close(), h2.Close()); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Wait for them to show up as workers.
 	err = build.Retry(600, 100*time.Millisecond, func() error {
@@ -335,6 +344,7 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	}
 	var bs2 []byte
 	err = build.Retry(600, 100*time.Millisecond, func() error {
+		r.staticWorkerPool.callUpdate()
 		bs2, _, err = r.managedDownloadByRoot(context.Background(), skylink.MerkleRoot(), offset, fetchSize, types.SiacoinPrecision.MulFloat(1e-7))
 		if err != nil {
 			return err
@@ -353,6 +363,7 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	var sl2 skymodules.SkyfileLayout
 	var fanout2, rawSM []byte
 	err = build.Retry(600, 100*time.Millisecond, func() error {
+		r.staticWorkerPool.callUpdate()
 		sl2, fanout2, _, rawSM, _, _, err = r.ParseSkyfileMetadata(bs2)
 		if err != nil {
 			return err

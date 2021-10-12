@@ -307,7 +307,6 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 			indices = append(indices, uint64(i))
 		}
 	}
-	fmt.Println("indices", indices)
 	// Add this worker to the set of resolved workers (even if there are no
 	// indices that the worker can fetch).
 	ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
