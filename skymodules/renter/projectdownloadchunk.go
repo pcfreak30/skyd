@@ -88,8 +88,6 @@ type (
 		// staticLaunchTime indicates when this PDC was launched.
 		staticLaunchTime time.Time
 
-		staticPieceIndices []uint64
-
 		// The completed data gets sent down the response chan once the full
 		// download is done.
 		ctx                  context.Context
