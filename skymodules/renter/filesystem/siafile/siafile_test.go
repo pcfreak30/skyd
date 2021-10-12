@@ -1717,18 +1717,6 @@ func TestFinished(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// File should be considered finished with local path
-	file.staticMetadata.LocalPath = "notblank"
-	if err := checkFinished(true); err != nil {
-		t.Fatal(err)
-	}
-
-	// Reset
-	file.staticMetadata.LocalPath = ""
-	if err := checkFinished(false); err != nil {
-		t.Fatal(err)
-	}
-
 	// SetFinished shouldn't change status for health > 1
 	file.SetFinished(1.1)
 	if err := checkFinished(false); err != nil {
@@ -1754,6 +1742,27 @@ func TestFinished(t *testing.T) {
 	}
 
 	// Calling SetFinished with a high health again should have no effect.
+	file.SetFinished(10)
+	if err := checkFinished(true); err != nil {
+		t.Fatal(err)
+	}
+
+	// Manually reset
+	file.staticMetadata.Finished = false
+	if err := checkFinished(false); err != nil {
+		t.Fatal(err)
+	}
+
+	// File should be considered finished with local path even if
+	// SetFinished is called with a high health
+	file.staticMetadata.LocalPath = "notblank"
+	file.SetFinished(10)
+	if err := checkFinished(true); err != nil {
+		t.Fatal(err)
+	}
+
+	// Removing the localpath should have no effect
+	file.staticMetadata.LocalPath = ""
 	file.SetFinished(10)
 	if err := checkFinished(true); err != nil {
 		t.Fatal(err)

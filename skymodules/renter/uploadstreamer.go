@@ -347,6 +347,8 @@ func (r *Renter) callUploadStreamFromReader(ctx context.Context, up skymodules.F
 	_, err = r.callUploadStreamFromReaderWithFileNode(ctx, fileNode, chunkReader, 0)
 	if err != nil {
 		// Delete the file if the upload wasn't successful.
+		//
+		// TODO: File is not being deleted??
 		err = errors.Compose(err, fileNode.Close())
 		return nil, err
 	}
