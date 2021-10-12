@@ -243,7 +243,7 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	}()
 
 	// Wait for them to show up as workers.
-	err = build.Retry(600, 100*time.Millisecond, func() error {
+	err = build.Retry(60, time.Second, func() error {
 		_, err := wt.rt.miner.AddBlock()
 		if err != nil {
 			return err
