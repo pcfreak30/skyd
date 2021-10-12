@@ -1105,6 +1105,7 @@ func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*indivi
 		// build a chimera out of the current set of workers and add it
 		chimera := NewChimeraWorker(numPieces, pieceLength, current)
 		chimeras = append(chimeras, chimera)
+		pdc.callNewChimeraWorker++
 
 		// reset the loop state, pass the (possible) remainder of the worker
 		reset(remainder)
