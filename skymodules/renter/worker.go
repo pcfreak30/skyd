@@ -192,9 +192,6 @@ func (queue *uploadChunks) Pop() *unfinishedUploadChunk {
 
 // managedKill will kill the worker.
 func (w *worker) managedKill() {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
 	err := w.staticTG.Stop()
 	if err != nil && !errors.Contains(err, threadgroup.ErrStopped) {
 		w.staticRenter.staticLog.Printf("Worker %v: kill failed: %v", w.staticHostPubKeyStr, err)

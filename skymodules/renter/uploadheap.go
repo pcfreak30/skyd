@@ -631,9 +631,7 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool, mm *memoryManager) []*unfinishedUploadChunk {
 	// If we don't have enough workers for the file, don't repair it right now.
 	minPieces := entry.ErasureCode().MinPieces()
-	r.staticWorkerPool.mu.RLock()
-	workerPoolLen := len(r.staticWorkerPool.workers)
-	r.staticWorkerPool.mu.RUnlock()
+	workerPoolLen := r.staticWorkerPool.callNumWorkers()
 	if workerPoolLen < minPieces {
 		// There are not enough workers for the chunk to reach minimum
 		// redundancy. Check if the allowance has enough hosts for the chunk to
@@ -1387,9 +1385,7 @@ func (r *Renter) managedRepairLoop() error {
 
 		// Make sure we have enough workers for this chunk to reach minimum
 		// redundancy.
-		r.staticWorkerPool.mu.RLock()
-		availableWorkers := len(r.staticWorkerPool.workers)
-		r.staticWorkerPool.mu.RUnlock()
+		availableWorkers := r.staticWorkerPool.callNumWorkers()
 		if availableWorkers < nextChunk.staticMinimumPieces {
 			r.staticRepairLog.Printf("WARN: Not enough workers to repair %s, have %v but need %v", chunkPath, availableWorkers, nextChunk.staticMinimumPieces)
 			// If the chunk is not stuck, check whether there are enough hosts

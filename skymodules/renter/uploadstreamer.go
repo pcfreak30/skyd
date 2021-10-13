@@ -191,9 +191,7 @@ func (r *Renter) callUploadStreamFromReaderWithFileNodeNoBlock(ctx context.Conte
 
 	// Check if we currently have enough workers for the specified redundancy.
 	minWorkers := fileNode.ErasureCode().MinPieces()
-	r.staticWorkerPool.mu.RLock()
-	availableWorkers := len(r.staticWorkerPool.workers)
-	r.staticWorkerPool.mu.RUnlock()
+	availableWorkers := r.staticWorkerPool.callNumWorkers()
 	// Skip this check if testing dependency is used to let the upload fail
 	// during upload instead of proactively.
 	skip := r.staticDeps.Disrupt("AllowLessThanMinWorkers")

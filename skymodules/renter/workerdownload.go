@@ -103,10 +103,10 @@ func checkDownloadGouging(allowance skymodules.Allowance, pt *modules.RPCPriceTa
 // threadedPerformDownloadChunkJob will schedule some download work, wait for
 // it to be done and try to recover the logical data of the chunk if possible.
 func (w *worker) threadedPerformDownloadChunkJob(udc *unfinishedDownloadChunk) {
-	if err := w.staticRenter.tg.Add(); err != nil {
+	if err := w.staticTG.Add(); err != nil {
 		return
 	}
-	defer w.staticRenter.tg.Done()
+	defer w.staticTG.Done()
 	// Process this chunk. If the worker is not fit to do the download, or is
 	// put on standby, 'nil' will be returned. After the chunk has been
 	// processed, the worker will be registered with the chunk.
@@ -134,7 +134,7 @@ func (w *worker) threadedPerformDownloadChunkJob(udc *unfinishedDownloadChunk) {
 	// unregistered with the chunk.
 	fetchOffset, fetchLength := sectorOffsetAndLength(udc.staticFetchOffset, udc.staticFetchLength, udc.erasureCode)
 	root := udc.staticChunkMap[w.staticHostPubKey.String()].root
-	pieceData, err := w.ReadSectorLowPrio(w.staticRenter.tg.StopCtx(), udc.staticSpendingCategory, root, fetchOffset, fetchLength)
+	pieceData, err := w.ReadSectorLowPrio(w.staticTG.StopCtx(), udc.staticSpendingCategory, root, fetchOffset, fetchLength)
 	if err != nil {
 		w.staticRenter.staticLog.Debugf("worker %v failed to download sector: %v", w.staticHostPubKeyStr, err)
 		udc.managedUnregisterWorker(w)
@@ -181,13 +181,13 @@ func (w *worker) threadedPerformDownloadChunkJob(udc *unfinishedDownloadChunk) {
 		addedReceivedData := uint64(udc.erasureCode.MinPieces()) * (udc.staticFetchLength / uint64(udc.erasureCode.MinPieces()))
 		atomic.AddUint64(&udc.staticDownload.atomicDataReceived, udc.staticFetchLength-addedReceivedData)
 		// Recover the logical data.
-		if err := w.staticRenter.tg.Add(); err != nil {
+		if err := w.staticTG.Add(); err != nil {
 			w.staticRenter.staticLog.Debugln("worker failed to decrypt piece:", err)
 			udc.mu.Unlock()
 			return
 		}
 		go func() {
-			defer w.staticRenter.tg.Done()
+			defer w.staticTG.Done()
 			udc.threadedRecoverLogicalData()
 		}()
 	}
