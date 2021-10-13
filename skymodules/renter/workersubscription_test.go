@@ -1536,7 +1536,7 @@ func TestCheckSubscriptionGouging(t *testing.T) {
 	ptHighBandwidthCost := pt
 	ptHighBandwidthCost.DownloadBandwidthCost = types.SiacoinPrecision.Mul64(1e9)
 	if err := checkSubscriptionGouging(ptHighBandwidthCost, a); err == nil {
-		t.Fatal(err)
+		t.Fatal("should fail")
 	}
 }
 

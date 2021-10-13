@@ -5751,7 +5751,13 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 	}
 
 	// Start the subscription.
-	subscription, err := p.BeginRegistrySubscription(notifyFunc)
+	closeHandler := func(_ int, msg string) error {
+		// We are going to close the subscription gracefully so the
+		// close handler shouldn't be called on our end.
+		t.Fatal("Close handler called:", msg)
+		return nil
+	}
+	subscription, err := p.BeginRegistrySubscription(notifyFunc, closeHandler)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5827,15 +5833,16 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 	}
 
 	// Wait for a bit to give the notification some time.
-	time.Sleep(2 * time.Second)
-
-	// There should still be 2 notifications.
-	notificationMu.Lock()
-	nNotifications := len(notifications)
-	notificationMu.Unlock()
-	if nNotifications != 2 {
-		t.Fatalf("notifications: %v != %v", len(notifications), 2)
-	}
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// There should still be 2 notifications.
+		notificationMu.Lock()
+		nNotifications := len(notifications)
+		notificationMu.Unlock()
+		if nNotifications != 2 {
+			return fmt.Errorf("notifications: %v != %v", len(notifications), 2)
+		}
+		return nil
+	})
 
 	// Make sure first notification matches.
 	if !reflect.DeepEqual(srv1, notifications[0].SignedRegistryValue) {

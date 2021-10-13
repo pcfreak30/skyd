@@ -18,10 +18,6 @@ var upgrader = websocket.Upgrader{}
 
 // The various request types a client can use.
 const (
-	// RegistrySubscriptionActionStop stops the subscription and causes the
-	// endpoint to return and close the connection.
-	RegistrySubscriptionActionStop = "stop"
-
 	// RegistrySubscriptionActionSubscribe subscribes to a new entry.
 	RegistrySubscriptionActionSubscribe = "subscribe"
 
@@ -56,10 +52,8 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 	// Upgrade connection to use websocket.
 	c, err := upgrader.Upgrade(w, req, nil)
 	if err != nil {
-		if err != nil {
-			handleSkynetError(w, "failed to upgrade connection to websocket connection", err)
-			return
-		}
+		handleSkynetError(w, "failed to upgrade connection to websocket connection", err)
+		return
 	}
 	defer c.Close()
 
@@ -81,22 +75,33 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 	if err != nil {
 		c.WriteJSON(RegistrySubscriptionResponse{Error: fmt.Sprintf("failed to create subscriber: %v", err)})
 	}
-	defer subscriber.Close()
+
+	// Unsubscribe when the connection is closed.
+	c.SetCloseHandler(func(_ int, _ string) error {
+		return subscriber.Close()
+	})
 
 	// Forward incoming requests to the subscription manager.
 	var r RegistrySubscriptionRequest
 	for {
 		err = c.ReadJSON(&r)
+		if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+			return // client closed connection gracefully
+		}
 		if err != nil {
-			return // connection is broken, nothing we can do
+			msg := fmt.Sprintf("failed to read JSON request: %v", err)
+			_ = c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseAbnormalClosure, msg))
+			return
 		}
 		switch r.Action {
-		case RegistrySubscriptionActionStop:
-			return // done
 		case RegistrySubscriptionActionSubscribe:
 			srv := subscriber.Subscribe(r.PubKey, r.DataKey)
 			if srv != nil {
 				if err := notifier(*srv); err != nil {
+					// This probably won't reach the client
+					// but try a graceful close anyway.
+					msg := fmt.Sprintf("failed to notify client: %v", err)
+					_ = c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseAbnormalClosure, msg))
 					return // connection is broken, nothing we can do
 				}
 			}
