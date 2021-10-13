@@ -117,6 +117,7 @@ func (wp *workerPool) callUpdate() {
 		setChanged = true
 
 		// Create a new worker and add it to the map
+		fmt.Println("creating new worker")
 		w, err := wp.staticRenter.newWorker(contract.HostPublicKey)
 		if err != nil {
 			wp.staticRenter.staticLog.Println((errors.AddContext(err, fmt.Sprintf("could not create a new worker for host %v", contract.HostPublicKey))))
