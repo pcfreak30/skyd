@@ -162,48 +162,28 @@ func DistributionBucketIndexForDuration(dur time.Duration) int {
 	return index
 }
 
-var durationMapMu sync.Mutex
-var durationMap = make(map[int]time.Duration, 400)
-
 // DistributionDurationForBucketIndex converts the index of a timing bucket into
 // a timing.
-func DistributionDurationForBucketIndex(index int) (dur time.Duration) {
+func DistributionDurationForBucketIndex(index int) time.Duration {
 	if index < 0 || index > DistributionTrackerTotalBuckets-1 {
 		build.Critical("distribution duration index out of bounds:", index)
 	}
 
-	// try and return from cache
-	durationMapMu.Lock()
-	cached, exists := durationMap[index]
-	durationMapMu.Unlock()
-	if exists {
-		dur = cached
-		return
-	}
-	defer func() {
-		durationMapMu.Lock()
-		durationMap[index] = dur
-		durationMapMu.Unlock()
-	}()
-
 	stepSize := distributionTrackerInitialStepSize
 	if index <= distributionTrackerInitialBuckets {
-		dur = stepSize * time.Duration(index)
-		return
+		return stepSize * time.Duration(index)
 	}
 	prevMax := stepSize * distributionTrackerInitialBuckets
 	for i := distributionTrackerInitialBuckets; i <= DistributionTrackerTotalBuckets; i += distributionTrackerBucketsPerStepChange {
 		stepSize *= distributionTrackerStepChangeMultiple
 		if index < i+distributionTrackerBucketsPerStepChange {
-			dur = stepSize*time.Duration(index-i) + prevMax
-			return
+			return stepSize*time.Duration(index-i) + prevMax
 		}
 		prevMax *= distributionTrackerStepChangeMultiple
 	}
 
 	// The final bucket value.
-	dur = prevMax
-	return
+	return prevMax
 }
 
 // indexForDuration converts the given duration to a bucket index. Alongside the
