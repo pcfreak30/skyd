@@ -837,9 +837,16 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 
 	for {
 		if span := opentracing.SpanFromContext(pdc.ctx); span != nil && time.Since(prevLog) > 100*time.Millisecond {
+			numAvail := 0
+			for _, pI := range pdc.piecesInfo {
+				if pI.available > 0 {
+					numAvail++
+				}
+			}
 			span.LogKV(
 				"downloadLoopIter", time.Since(pdc.staticLaunchTime),
 				"currWorkerSet", workerSet,
+				"currWorkersAvail", numAvail,
 			)
 			prevLog = time.Now()
 		}
