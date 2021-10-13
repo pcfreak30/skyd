@@ -993,6 +993,10 @@ OUTER:
 				break OUTER
 			}
 
+			if mostLikelySet == nil {
+				continue
+			}
+
 			// perform price per ms comparison
 			if bestSet == nil {
 				bestSet = mostLikelySet
