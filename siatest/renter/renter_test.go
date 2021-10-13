@@ -6155,20 +6155,45 @@ func testRenterUnfinishedFileWithoutLocalPath(t *testing.T, tg *siatest.TestGrou
 	// Grab Renter
 	r := tg.Renters()[0]
 
-	// Create some random data to write.
+	// Upload a file that will finish.
 	data := fastrand.Bytes(100)
 	d := bytes.NewReader(data)
+	finishedSiaPath := skymodules.RandomSiaPath()
+	err := r.RenterUploadStreamPost(d, finishedSiaPath, 1, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	// Upload the data.
-	siaPath := skymodules.RandomSiaPath()
+	// Check if the renter has the file. This is done in a build retry
+	// because the finished field is updated in updateMetadata which is
+	// called in the chunk clean up process.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		rf, err := r.RenterFileGet(finishedSiaPath)
+		if err != nil {
+			return err
+		}
+		// File should be finished
+		if !rf.File.Finished {
+			return errors.New("File should be finished")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload a file that won't finish.
+	data = fastrand.Bytes(100)
+	d = bytes.NewReader(data)
+	unfinishedSiaPath := skymodules.RandomSiaPath()
 	oneMoreThanHosts := uint64(len(tg.Hosts()) + 1)
-	err := r.RenterUploadStreamPost(d, siaPath, oneMoreThanHosts, oneMoreThanHosts, false)
+	err = r.RenterUploadStreamPost(d, unfinishedSiaPath, oneMoreThanHosts, oneMoreThanHosts, false)
 	if err == nil {
 		t.Fatal("Expected Upload Stream to fail for too many dp and pp")
 	}
 
 	// Check if the renter has the file
-	rf, err := r.RenterFileGet(siaPath)
+	rf, err := r.RenterFileGet(unfinishedSiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -6184,12 +6209,18 @@ func testRenterUnfinishedFileWithoutLocalPath(t *testing.T, tg *siatest.TestGrou
 		if err != nil {
 			return err
 		}
-		rf, err = r.RenterFileGet(siaPath)
+		rf, err = r.RenterFileGet(unfinishedSiaPath)
 		if err != nil && strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 			return nil
 		}
 		return errors.New("file still exists")
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The Finished file should still be present
+	rf, err = r.RenterFileGet(finishedSiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
