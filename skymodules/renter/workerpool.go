@@ -79,6 +79,7 @@ func (wp *workerPool) callStatus() skymodules.WorkerPoolStatus {
 // worker pool to match, creating new workers and killing existing workers as
 // necessary.
 func (wp *workerPool) callUpdate() {
+	fmt.Println("callUpdate")
 	contractSlice := wp.staticRenter.staticHostContractor.Contracts()
 	contractMap := make(map[string]skymodules.RenterContract, len(contractSlice))
 	for _, contract := range contractSlice {
@@ -117,7 +118,6 @@ func (wp *workerPool) callUpdate() {
 		setChanged = true
 
 		// Create a new worker and add it to the map
-		fmt.Println("creating new worker")
 		w, err := wp.staticRenter.newWorker(contract.HostPublicKey)
 		if err != nil {
 			wp.staticRenter.staticLog.Println((errors.AddContext(err, fmt.Sprintf("could not create a new worker for host %v", contract.HostPublicKey))))
@@ -131,10 +131,10 @@ func (wp *workerPool) callUpdate() {
 			return
 		}
 		// Start the subscription loop in a separate goroutine.
-		err = wp.staticRenter.tg.Launch(w.threadedSubscriptionLoop)
-		if err != nil {
-			return
-		}
+		// err = wp.staticRenter.tg.Launch(w.threadedSubscriptionLoop)
+		// if err != nil {
+		// 	return
+		// }
 	}
 
 	// Remove a worker for any worker that is not in the set of new contracts.
