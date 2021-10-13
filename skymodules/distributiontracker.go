@@ -162,28 +162,48 @@ func DistributionBucketIndexForDuration(dur time.Duration) int {
 	return index
 }
 
+var durationMapMu sync.Mutex
+var durationMap = make(map[int]time.Duration, 400)
+
 // DistributionDurationForBucketIndex converts the index of a timing bucket into
 // a timing.
-func DistributionDurationForBucketIndex(index int) time.Duration {
+func DistributionDurationForBucketIndex(index int) (dur time.Duration) {
 	if index < 0 || index > DistributionTrackerTotalBuckets-1 {
 		build.Critical("distribution duration index out of bounds:", index)
 	}
 
+	// try and return from cache
+	durationMapMu.Lock()
+	cached, exists := durationMap[index]
+	durationMapMu.Unlock()
+	if exists {
+		dur = cached
+		return
+	}
+	defer func() {
+		durationMapMu.Lock()
+		durationMap[index] = dur
+		durationMapMu.Unlock()
+	}()
+
 	stepSize := distributionTrackerInitialStepSize
 	if index <= distributionTrackerInitialBuckets {
-		return stepSize * time.Duration(index)
+		dur = stepSize * time.Duration(index)
+		return
 	}
 	prevMax := stepSize * distributionTrackerInitialBuckets
 	for i := distributionTrackerInitialBuckets; i <= DistributionTrackerTotalBuckets; i += distributionTrackerBucketsPerStepChange {
 		stepSize *= distributionTrackerStepChangeMultiple
 		if index < i+distributionTrackerBucketsPerStepChange {
-			return stepSize*time.Duration(index-i) + prevMax
+			dur = stepSize*time.Duration(index-i) + prevMax
+			return
 		}
 		prevMax *= distributionTrackerStepChangeMultiple
 	}
 
 	// The final bucket value.
-	return prevMax
+	dur = prevMax
+	return
 }
 
 // indexForDuration converts the given duration to a bucket index. Alongside the
@@ -378,9 +398,11 @@ func (d *Distribution) MergeWith(other *Distribution, weight float64) {
 	}
 
 	// loop all other timings and append them taking into account the given
-	// weight
+	// weight, seeing as we are merging, we have to update the datapoints
+	d.dataPoints = 0
 	for bi, b := range other.timings {
 		d.timings[bi] += b * weight
+		d.dataPoints += d.timings[bi]
 	}
 }
 
@@ -453,6 +475,12 @@ func (d *Distribution) Shift(dur time.Duration) {
 	smear := remainder / float64(index)
 	for i := 0; i < index; i++ {
 		d.timings[i] = smear
+	}
+
+	// Recalculate the datapoints
+	d.dataPoints = 0
+	for i := 0; i < len(d.timings); i++ {
+		d.dataPoints += d.timings[i]
 	}
 }
 

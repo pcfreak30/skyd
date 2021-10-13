@@ -136,9 +136,10 @@ type (
 	individualWorker struct {
 		// the following fields are cached and recalculated at precise times
 		// within the download code algorithm
-		cachedCompleteChance float64
-		cachedLookupIndex    int
-		cachedReadDTChances  skymodules.Chances
+		cachedCompleteChance           float64
+		cachedLookupIndex              int
+		cachedReadDTChances            skymodules.Chances
+		cachedReadDTChancesInitialized bool
 
 		// the following fields are continuously updated on the worker
 		pieceIndices []uint64
@@ -261,28 +262,28 @@ func (iw *individualWorker) cost() float64 {
 }
 
 func (iw *individualWorker) calculateDistributionChances() {
+	// if the read dt chances are not initialized, initialize them first
+	if !iw.cachedReadDTChancesInitialized {
+		iw.cachedReadDTChances = iw.staticReadDistribution.ChancesAfter()
+		iw.cachedReadDTChancesInitialized = true
+	}
+
+	// if the worker is launched, we want to shift the read dt
+	if iw.isLaunched() {
+		readDT := iw.staticReadDistribution.Clone()
+		readDT.Shift(time.Since(iw.currentPieceLaunchedAt))
+		iw.cachedReadDTChances = readDT.ChancesAfter()
+	}
+
+	// if the worker is not resolved yet, we want to always shift the lookup dt
+	// and use that to recalculate the expected duration index
 	if !iw.isResolved() {
-		// if the worker is not resolved yet, we want to always shift the lookup
-		// DT by the time since launch
 		dur := time.Since(iw.staticDownloadLaunchTime)
 		lookupDT := iw.staticLookupDistribution.Clone()
 		lookupDT.Shift(dur)
+
 		lookupDTExpectedDur := lookupDT.ExpectedDuration()
-
 		iw.cachedLookupIndex = skymodules.DistributionBucketIndexForDuration(lookupDTExpectedDur)
-		iw.cachedReadDTChances = iw.staticReadDistribution.ChancesAfter()
-		return
-	}
-
-	// if the worker is resolved, and launched, we want to shift the read DT by
-	// the time since the worker got launched
-	if iw.isLaunched() {
-		dur := time.Since(iw.currentPieceLaunchedAt)
-		readDT := iw.staticReadDistribution.Clone()
-		readDT.Shift(dur)
-		iw.cachedReadDTChances = readDT.ChancesAfter()
-	} else {
-		iw.cachedReadDTChances = iw.staticReadDistribution.ChancesAfter()
 	}
 }
 
