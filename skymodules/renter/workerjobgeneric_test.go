@@ -58,10 +58,10 @@ type jobTestMetadata struct {
 // that we should implement precautions on both ends.
 func (j *jobTest) sendResult(result *jobTestResult) {
 	w := j.staticQueue.staticWorker()
-	err := w.staticRenter.tg.Launch(func() {
+	err := w.staticTG.Launch(func() {
 		select {
 		case j.resultChan <- result:
-		case <-w.staticRenter.tg.StopChan():
+		case <-w.staticTG.StopChan():
 		case <-j.staticCtx.Done():
 		}
 	})

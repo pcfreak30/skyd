@@ -108,14 +108,14 @@ func (j *jobRead) callDiscard(err error) {
 	}
 
 	w := j.staticQueue.staticWorker()
-	errLaunch := w.staticRenter.tg.Launch(func() {
+	errLaunch := w.staticTG.Launch(func() {
 		response := &jobReadResponse{
 			staticErr:      errors.Extend(err, ErrJobDiscarded),
 			staticMetadata: j.staticJobReadMetadata(),
 		}
 		select {
 		case j.staticResponseChan <- response:
-		case <-w.staticRenter.tg.StopChan():
+		case <-w.staticTG.StopChan():
 		case <-j.staticCtx.Done():
 		}
 	})
@@ -149,11 +149,11 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 		staticJobTime:  readJobTime,
 	}
 	w := j.staticQueue.staticWorker()
-	err := w.staticRenter.tg.Launch(func() {
+	err := w.staticTG.Launch(func() {
 		select {
 		case j.staticResponseChan <- response:
 		case <-j.staticCtx.Done():
-		case <-w.staticRenter.tg.StopChan():
+		case <-w.staticTG.StopChan():
 		}
 	})
 	if err != nil {
