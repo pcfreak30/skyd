@@ -245,16 +245,17 @@ func NewContractSet(dir string, rl *ratelimit.RateLimit, deps modules.Dependenci
 	// create new contracts and filter them out.
 	unappliedWalTxns := make(map[types.FileContractID][]*unappliedWalTxn)
 	for _, txn := range walTxns {
-		if len(txn.Updates) != 1 {
-			// Invalid txns are applied.
-			build.Critical("txn has wrong number of updates", len(txn.Updates))
-			if err := txn.SignalUpdatesApplied(); err != nil {
-				return nil, errors.AddContext(err, "failed to apply invalid update")
-			}
-			continue
+		if len(txn.Updates) == 0 {
+			build.Critical("empty txn found")
+			continue // no updates
 		}
 		switch update := txn.Updates[0]; update.Name {
 		case updateNameInsertContract:
+			if len(txn.Updates) != 1 {
+				err = errors.New("insert contract txns should only have 1 update")
+				build.Critical(err)
+				return nil, err
+			}
 			// Apply unfinished insert contract updates.
 			_, err := cs.managedApplyInsertContractUpdate(txn.Updates[0])
 			if err != nil {
