@@ -253,7 +253,7 @@ func (w *worker) newJobHasSectorWithPostExecutionHook(ctx context.Context, respo
 // callDiscard will discard a job, sending the provided error.
 func (j *jobHasSector) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
-	errLaunch := w.staticRenter.tg.Launch(func() {
+	errLaunch := w.staticTG.Launch(func() {
 		response := &jobHasSectorResponse{
 			staticErr: errors.Extend(err, ErrJobDiscarded),
 
@@ -263,7 +263,7 @@ func (j *jobHasSector) callDiscard(err error) {
 		select {
 		case j.staticResponseChan <- response:
 		case <-j.staticCtx.Done():
-		case <-w.staticRenter.tg.StopChan():
+		case <-w.staticTG.StopChan():
 		}
 	})
 	if errLaunch != nil {
@@ -342,12 +342,12 @@ func (j jobHasSectorBatch) callExecute() {
 			response.staticAvailables = availables[i]
 		}
 		// Send the response.
-		err2 := w.staticRenter.tg.Launch(func() {
+		err2 := w.staticTG.Launch(func() {
 			hsj.managedCallPostExecutionHook(response)
 			select {
 			case hsj.staticResponseChan <- response:
 			case <-hsj.staticCtx.Done():
-			case <-w.staticRenter.tg.StopChan():
+			case <-w.staticTG.StopChan():
 			}
 		})
 		// Report success or failure to the queue.

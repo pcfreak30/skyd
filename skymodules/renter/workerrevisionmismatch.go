@@ -41,7 +41,7 @@ func (w *worker) externTryFixRevisionMismatch() {
 
 	// Initiate a session, this performs a handshake with the host and syncs up
 	// the revision if necessary.
-	session, err := w.staticRenter.staticHostContractor.Session(w.staticHostPubKey, w.staticRenter.tg.StopChan())
+	session, err := w.staticRenter.staticHostContractor.Session(w.staticHostPubKey, w.staticTG.StopChan())
 
 	// Track the outcome of the revision mismatch fix - this ensures a proper
 	// working of the maintenance cooldown mechanism.
