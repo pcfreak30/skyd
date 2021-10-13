@@ -898,26 +898,88 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	}
 }
 
+func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorker, minPieces, numOverdrive, bI int, bDur time.Duration) (*workerSet, bool) {
+	workersNeeded := minPieces + numOverdrive
+
+	// recalculate the complete chance at given index
+	for _, w := range workers {
+		w.calculateCompleteChance(bI)
+	}
+
+	// build the download workers
+	downloadWorkers := pdc.buildDownloadWorkers(workers)
+
+	// divide the workers in most likely and less likely
+	mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(downloadWorkers, workersNeeded, numOverdrive)
+
+	// if there aren't even likely workers, escape early
+	if len(mostLikely) == 0 {
+		return nil, true
+	}
+
+	// build the most likely set
+	mostLikelySet := &workerSet{
+		workers: mostLikely,
+
+		staticBucketDuration: bDur,
+		staticBucketIndex:    bI,
+		staticNumOverdrive:   numOverdrive,
+		staticMinPieces:      minPieces,
+
+		staticPDC: pdc,
+	}
+
+	// if the chance of the most likely set does not exceed 50%, it is
+	// not high enough to continue, no need to continue this iteration,
+	// we need to try a slower and thus more likely bucket
+	if !mostLikelySet.chanceGreaterThanHalf() {
+		return nil, false
+	}
+
+	// now loop the less likely workers and try and swap them with the
+	// most expensive workers in the most likely set
+	for _, w := range lessLikely {
+		cheaperSet := mostLikelySet.cheaperSetFromCandidate(w)
+		if cheaperSet == nil {
+			continue
+		}
+
+		// if the cheaper set's chance of completing before the given
+		// duration is not greater than half we can break because the
+		// `lessLikely` workers were sorted by chance
+		if !cheaperSet.chanceGreaterThanHalf() {
+			break
+		}
+		mostLikelySet = cheaperSet
+	}
+
+	return mostLikelySet, false
+}
+
 // createWorkerSet tries to create a worker set from the pdc's resolved and
 // unresolved workers, the maximum amount of overdrive workers in the set is
 // defined by the given 'maxOverdriveWorkers' argument.
 func (pdc *projectDownloadChunk) createWorkerSet(workers []*individualWorker) (*workerSet, error) {
+	// can't create a workerset without download workers
+	if len(workers) == 0 {
+		return nil, nil
+	}
+
 	// convenience variables
 	ppms := pdc.pricePerMS
 	minPieces := pdc.workerSet.staticErasureCoder.MinPieces()
 
 	// loop state
 	var bestSet *workerSet
+	var numOverdrive int
+	var bI int
 
-	// can't create a workerset without download workers
-	if len(workers) == 0 {
-		return nil, nil
-	}
-
+	// run the loops an initial time but use a step of 12, this ensures we find
+	// a reasonable bucket index fast, without spending too many resources on
+	// every index
 OUTER:
-	for numOverdrive := 0; numOverdrive <= maxOverdriveWorkers; numOverdrive++ {
-		workersNeeded := minPieces + numOverdrive
-		for bI := 0; bI < skymodules.DistributionTrackerTotalBuckets; bI += 4 {
+	for numOverdrive = 0; numOverdrive <= maxOverdriveWorkers; numOverdrive++ {
+		for bI = 0; bI < skymodules.DistributionTrackerTotalBuckets; bI += 12 {
 			// exit early if ppms in combination with the bucket duration
 			// already exceeds the adjusted cost of the current best set,
 			// workers would be too slow by definition
@@ -926,56 +988,9 @@ OUTER:
 				break OUTER
 			}
 
-			// recalculate the complete chance at given index
-			for _, w := range workers {
-				w.calculateCompleteChance(bI)
-			}
-
-			// build the download workers
-			downloadWorkers := pdc.buildDownloadWorkers(workers)
-
-			// divide the workers in most likely and less likely
-			mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(downloadWorkers, workersNeeded, numOverdrive)
-
-			// if there aren't even likely workers, escape early
-			if len(mostLikely) == 0 {
+			mostLikelySet, escape := pdc.createWorkerSetInner(workers, minPieces, numOverdrive, bI, bDur)
+			if escape {
 				break OUTER
-			}
-
-			// build the most likely set
-			mostLikelySet := &workerSet{
-				workers: mostLikely,
-
-				staticBucketDuration: bDur,
-				staticBucketIndex:    bI,
-				staticNumOverdrive:   numOverdrive,
-				staticMinPieces:      minPieces,
-
-				staticPDC: pdc,
-			}
-
-			// if the chance of the most likely set does not exceed 50%, it is
-			// not high enough to continue, no need to continue this iteration,
-			// we need to try a slower and thus more likely bucket
-			if !mostLikelySet.chanceGreaterThanHalf() {
-				continue
-			}
-
-			// now loop the less likely workers and try and swap them with the
-			// most expensive workers in the most likely set
-			for _, w := range lessLikely {
-				cheaperSet := mostLikelySet.cheaperSetFromCandidate(w)
-				if cheaperSet == nil {
-					continue
-				}
-
-				// if the cheaper set's chance of completing before the given
-				// duration is not greater than half we can break because the
-				// `lessLikely` workers were sorted by chance
-				if !cheaperSet.chanceGreaterThanHalf() {
-					break
-				}
-				mostLikelySet = cheaperSet
 			}
 
 			// perform price per ms comparison
@@ -984,6 +999,40 @@ OUTER:
 			} else if mostLikelySet.adjustedDuration(ppms) < bestSet.adjustedDuration(ppms) {
 				bestSet = mostLikelySet
 			}
+		}
+	}
+
+	// after we've found one, range over bI-12 -> bI+12 to find the optimal
+	// bucket index
+	var bIMin int
+	if bI-12 >= 0 {
+		bIMin = bI - 12
+	}
+
+	bIMax := skymodules.DistributionTrackerTotalBuckets
+	if bI+12 <= skymodules.DistributionTrackerTotalBuckets {
+		bIMax = bI + 12
+	}
+
+	for bI = bIMin; bI < bIMax; bI++ {
+		// exit early if ppms in combination with the bucket duration
+		// already exceeds the adjusted cost of the current best set,
+		// workers would be too slow by definition
+		bDur := skymodules.DistributionDurationForBucketIndex(bI)
+		if bestSet != nil && bDur > bestSet.adjustedDuration(ppms) {
+			break
+		}
+
+		mostLikelySet, escape := pdc.createWorkerSetInner(workers, minPieces, numOverdrive, bI, bDur)
+		if escape {
+			break
+		}
+
+		// perform price per ms comparison
+		if bestSet == nil {
+			bestSet = mostLikelySet
+		} else if mostLikelySet.adjustedDuration(ppms) < bestSet.adjustedDuration(ppms) {
+			bestSet = mostLikelySet
 		}
 	}
 
