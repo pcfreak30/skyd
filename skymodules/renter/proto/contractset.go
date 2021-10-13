@@ -69,6 +69,7 @@ func (cs *ContractSet) Delete(c *SafeContract) {
 	}
 	delete(cs.contracts, c.header.ID())
 	delete(cs.pubKeys, c.header.HostPublicKey().String())
+	unappliedTxns := c.unappliedTxns
 	cs.mu.Unlock()
 	c.revisionMu.Unlock()
 	// delete contract file
@@ -80,6 +81,12 @@ func (cs *ContractSet) Delete(c *SafeContract) {
 	err = errors.Compose(err, os.Remove(headerPath), os.Remove(rootsPath))
 	if err != nil {
 		build.Critical("Failed to delete SafeContract from disk:", err)
+	}
+	for _, txn := range unappliedTxns {
+		err = txn.SignalUpdatesApplied()
+		if err != nil {
+			build.Critical("Delete: failed to signal applied updates for contract", c.header.ID())
+		}
 	}
 }
 
@@ -310,6 +317,9 @@ func NewContractSet(dir string, rl *ratelimit.RateLimit, deps modules.Dependenci
 		_, exists := cs.contracts[fcid]
 		if exists {
 			continue
+		}
+		if build.Release == "testing" {
+			build.Critical("regular testing should never leave txns to unknown contracts", fcid)
 		}
 		for _, txn := range txns {
 			err = txn.SignalUpdatesApplied()
