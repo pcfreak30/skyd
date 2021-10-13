@@ -194,7 +194,10 @@ func (r *Renter) callUploadStreamFromReaderWithFileNodeNoBlock(ctx context.Conte
 	r.staticWorkerPool.mu.RLock()
 	availableWorkers := len(r.staticWorkerPool.workers)
 	r.staticWorkerPool.mu.RUnlock()
-	if availableWorkers < minWorkers {
+	// Skip this check if testing dependency is used to let the upload fail
+	// during upload instead of proactively.
+	skip := r.staticDeps.Disrupt("AllowLessThanMinWorkers")
+	if availableWorkers < minWorkers && !skip {
 		return nil, 0, fmt.Errorf("Need at least %v workers for upload but got only %v", minWorkers, availableWorkers)
 	}
 

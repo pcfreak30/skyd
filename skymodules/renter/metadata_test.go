@@ -309,7 +309,7 @@ func TestPruneUnfinishedFiles(t *testing.T) {
 	t.Parallel()
 
 	// Create renter
-	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyShortUnfinishedFilesPruneDuration{})
+	rt, err := newRenterTesterWithDependency(t.Name(), dependencies.NewDependencyUnfinishedFiles())
 	if err != nil {
 		t.Fatal(err)
 	}

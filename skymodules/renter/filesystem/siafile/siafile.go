@@ -208,7 +208,6 @@ func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode skymodu
 	numPieces := erasureCode.NumPieces()
 	zeroHealth := float64(1 + minPieces/(numPieces-minPieces))
 	repairSize := fileSize * uint64(numPieces/minPieces)
-	fmt.Println("New siafile source", source)
 	file := &SiaFile{
 		staticMetadata: Metadata{
 			AccessTime:              currentTime,
@@ -242,7 +241,6 @@ func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode skymodu
 		siaFilePath: siaFilePath,
 		wal:         wal,
 	}
-	fmt.Println("New siafile finished", file.staticMetadata.Finished)
 	// Init chunks.
 	numChunks := fileSize / file.staticChunkSize()
 	if fileSize%file.staticChunkSize() != 0 {
@@ -652,14 +650,12 @@ func (sf *SiaFile) health(offline map[string]bool, goodForRenew map[string]bool)
 
 	// Check if siafile is deleted
 	if sf.deleted {
-		fmt.Println("deleted")
 		// Don't return health information of a deleted file to prevent
 		// misrepresenting the health information of a directory
 		return 0, 0, 0, 0, 0, 0, 0
 	}
 	// Check for Zero byte files
 	if sf.staticMetadata.FileSize == 0 {
-		fmt.Println("zero byte")
 		// Return default health information for zero byte files to prevent
 		// misrepresenting the health information of a directory
 		return 0, 0, 0, 0, 0, 0, 0
@@ -1037,7 +1033,6 @@ func (sf *SiaFile) updateMetadata(offlineMap, goodForRenew map[string]bool, cont
 	// would look at the unique uploaded bytes, like we did in the compat
 	// code. However that requires disk reads to interate over all the
 	// chunks.
-	fmt.Println("siafile health values", sf.staticMetadata.CachedHealth, sf.staticMetadata.CachedStuckHealth)
 	sf.setFinished(health)
 
 	// Set the LastHealthCheckTime
@@ -1424,7 +1419,6 @@ func (sf *SiaFile) setFinished(health float64) {
 	// Additionally, a siafile with a localfile is immediately accessbile
 	// because we serve downloads from disk in the case that there is a
 	// localfile present.
-	fmt.Println("Setting finished", health <= 1 || sf.staticMetadata.LocalPath != "", health <= 1, sf.staticMetadata.LocalPath != "")
 	sf.staticMetadata.Finished = health <= 1 || sf.staticMetadata.LocalPath != ""
 }
 

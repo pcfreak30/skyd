@@ -147,7 +147,6 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 
 			// Check if the file is unfinished
 			if !fileMetadata.Finished {
-				fmt.Println("file is unfinished")
 				// Check if the dependency for a shorted prune
 				// duration is enabled. We rely on a dependency
 				// instead of a build variable to reduce NDFs in

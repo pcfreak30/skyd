@@ -6059,7 +6059,7 @@ func TestRenterUnfinishedFiles(t *testing.T) {
 
 	// Add renter with depenedency
 	renterParams := node.Renter(testDir)
-	renterParams.RenterDeps = &dependencies.DependencyShortUnfinishedFilesPruneDuration{}
+	renterParams.RenterDeps = dependencies.NewDependencyUnfinishedFiles()
 	_, err = tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
