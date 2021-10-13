@@ -259,18 +259,13 @@ func (pdc *projectDownloadChunk) updatePieces() bool {
 		}
 
 		// Log the resolved worker and its pieces
-		if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+		if span := opentracing.SpanFromContext(pdc.ctx); span != nil && len(resp.pieceIndices) > 0 {
 			if len(resp.pieceIndices) > 0 {
 				span.LogKV(
 					"aWorkerResolved", resp.worker.staticHostPubKeyStr,
 					"pieces", resp.pieceIndices,
 				)
-			} else {
-				span.LogKV(
-					"aWorkerResolvedNoPieces", resp.worker.staticHostPubKeyStr,
-				)
 			}
-
 		}
 	}
 	pdc.workersConsideredIndex = len(ws.resolvedWorkers)
