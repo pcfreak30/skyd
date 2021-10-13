@@ -678,6 +678,14 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 // for that long, it will change its update time to trigger an update.
 func (w *worker) managedPriceTableForSubscription(duration time.Duration) *modules.RPCPriceTable {
 	for {
+		// Check for shutdown.
+		select {
+		case _ = <-w.staticTG.StopChan():
+			w.staticRenter.staticLog.Print("managedPriceTableForSubscription: abort due to shutdown")
+			return nil // shutdown
+		default:
+		}
+
 		// Get most recent price table.
 		pt := w.staticPriceTable()
 
@@ -714,7 +722,8 @@ func (w *worker) managedPriceTableForSubscription(duration time.Duration) *modul
 
 		// Wait a bit before checking again.
 		select {
-		case _ = <-w.staticRenter.tg.StopChan():
+		case _ = <-w.staticTG.StopChan():
+			w.staticRenter.staticLog.Print("managedPriceTableForSubscription: abort due to shutdown")
 			return nil // shutdown
 		case <-time.After(priceTableRetryInterval):
 		}

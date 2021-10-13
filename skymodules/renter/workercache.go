@@ -103,7 +103,7 @@ func (w *worker) managedUpdateCache() {
 	// immediately, then sees that an update is in progress, then fails to
 	// update its cache.
 	atomic.StoreUint64(&w.atomicCacheUpdating, 0)
-	w.staticRenter.tg.AfterFunc(workerCacheUpdateFrequency, func() {
+	w.staticTG.AfterFunc(workerCacheUpdateFrequency, func() {
 		w.staticWake()
 	})
 }
@@ -131,7 +131,7 @@ func (w *worker) staticTryUpdateCache() {
 	// Get the new cache in a goroutine. This is because the cache update grabs
 	// a lock on the consensus object, which can sometimes take a while if there
 	// are new blocks being processed or a reorg being processed.
-	err := w.staticRenter.tg.Launch(w.managedUpdateCache)
+	err := w.staticTG.Launch(w.managedUpdateCache)
 	if err != nil {
 		w.staticRenter.staticLog.Print("staticTryUpdateCache: failed to launch cache update", err)
 	}

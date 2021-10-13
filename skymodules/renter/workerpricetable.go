@@ -202,7 +202,7 @@ func (w *worker) staticUpdatePriceTable() {
 	// This defer needs to run after the defer which updates the price table.
 	defer func() {
 		updateTime := w.staticPriceTable().staticUpdateTime
-		w.staticRenter.tg.AfterFunc(updateTime.Sub(time.Now()), func() {
+		w.staticTG.AfterFunc(updateTime.Sub(time.Now()), func() {
 			w.staticWake()
 		})
 	}()
