@@ -1416,7 +1416,7 @@ func (sf *SiaFile) setFinished(health float64) {
 	// A file is finished if the health is <= 1 or there is a localPath. A
 	// file is finished if there is a localPath because a file can be
 	// repaired from the localfile even if it looses 100% of its health.
-	// Additionally, a siafile with a localfile is immediately accessbile
+	// Additionally, a siafile with a localfile is immediately accessible
 	// because we serve downloads from disk in the case that there is a
 	// localfile present.
 	sf.staticMetadata.Finished = health <= 1 || sf.staticMetadata.LocalPath != ""
