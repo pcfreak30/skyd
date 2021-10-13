@@ -546,7 +546,7 @@ func (w *worker) externSyncAccountBalanceToHost() {
 			w.staticRenter.staticLog.Critical(fmt.Sprintf("worker has taken more than %v minutes to go idle", accountIdleMaxWait.Minutes()))
 			return
 		}
-		awake := w.staticRenter.tg.Sleep(accountIdleCheckFrequency)
+		awake := w.staticTG.Sleep(accountIdleCheckFrequency)
 		if !awake {
 			return
 		}
@@ -696,7 +696,7 @@ func (w *worker) managedRefillAccount() {
 
 		// Have the threadgroup wake the worker when the account comes off of
 		// cooldown.
-		w.staticRenter.tg.AfterFunc(cd.Sub(time.Now()), func() {
+		w.staticTG.AfterFunc(cd.Sub(time.Now()), func() {
 			w.staticWake()
 		})
 	}()
