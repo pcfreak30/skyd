@@ -287,6 +287,8 @@ type Renter struct {
 	staticUserDownloadMemoryManager *memoryManager
 	staticUserUploadMemoryManager   *memoryManager
 
+	staticBuffer []byte
+
 	// Modules and subsystems
 	staticAccountManager               *accountManager
 	staticAlerter                      *modules.GenericAlerter
@@ -1068,6 +1070,9 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	}
 
 	r := &Renter{
+		// Allocate 10Gb of memory
+		staticBuffer: make([]byte, 10e9),
+
 		// Initiate skynet resources
 		staticSkylinkManager: newSkylinkManager(),
 
