@@ -73,7 +73,7 @@ func ChunkIndexByOffset(offset, chunkSize uint64) (chunkIndex, off uint64) {
 	return
 }
 
-// ChunkSpan hold a span of chunks [minIndex, maxIndex].
+// ChunkSpan defines a span of chunks [minIndex, maxIndex].
 type ChunkSpan struct {
 	MinIndex uint64
 	MaxIndex uint64

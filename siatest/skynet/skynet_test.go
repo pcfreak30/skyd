@@ -5693,6 +5693,10 @@ func TestRegistryReadRepair(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// testRecursiveBaseSector is a integration test for uploading a file which has
+// more metadata + fanout than would fit into the base sector without the
+// recursive extension.
 func testRecursiveBaseSector(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 

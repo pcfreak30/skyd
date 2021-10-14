@@ -1674,7 +1674,7 @@ func (r *Renter) ParseSkyfileMetadata(baseSector []byte) (sl skymodules.SkyfileL
 			wg.Add(1)
 			go func(root crypto.Hash, resultIndex int) {
 				defer wg.Done()
-				sectors[resultIndex], _, errs[resultIndex] = r.managedDownloadByRoot(r.tg.StopCtx(), root, 0, modules.SectorSize, skymodules.DefaultSkynetPricePerMS) // TODO: move DefaultSkynetPriceMS
+				sectors[resultIndex], _, errs[resultIndex] = r.managedDownloadByRoot(r.tg.StopCtx(), root, 0, modules.SectorSize, skymodules.DefaultSkynetPricePerMS)
 			}(root, resultIndex)
 			resultIndex++
 		}

@@ -73,13 +73,13 @@ func testSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 		// Portal 1 uploads the skyfile
 		skylink, sup, _, err := portal1.UploadNewEncryptedSkyfileBlocking(filename, data, skykeyName, true)
 		if err != nil {
-			t.Fatalf("Test %v failed to upload: %v", t.Name(), err)
+			t.Fatalf("Failed to upload: %v", err)
 		}
 
 		// Verify the backup and restoration of the skylink
 		err = verifyBackupAndRestore(tg, portal1, portal2, skylink, sup.SiaPath.String())
 		if err != nil {
-			t.Errorf("Test %v failed to backup and restore: %v", filename, err)
+			t.Errorf("Failed to backup and restore: %v", err)
 		}
 	}
 
