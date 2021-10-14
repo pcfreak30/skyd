@@ -59,6 +59,11 @@ var (
 	// sector encryption
 	BaseSectorNonceDerivation = types.NewSpecifier("BaseSectorNonce")
 
+	// DefaultSkynetPricePerMS is the default price per millisecond the renter
+	// is able to spend on faster workers when downloading a Skyfile. By default
+	// this is a sane default of 100 nS.
+	DefaultSkynetPricePerMS = types.SiacoinPrecision.MulFloat(1e-7) // 100 nS
+
 	// FanoutNonceDerivation is the specifier used to derive a nonce for
 	// fanout encryption.
 	FanoutNonceDerivation = types.NewSpecifier("FanoutNonce")

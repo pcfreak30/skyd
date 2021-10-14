@@ -16,7 +16,6 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/types"
 )
 
 // TestTryResolveSkylinkV2 is a unit test for managedTryResolveSkylinkV2.
@@ -200,7 +199,7 @@ func TestShortFanoutPanic(t *testing.T) {
 	}
 
 	// Download the file. This should fail due to the short fanout.
-	_, _, err = r.DownloadSkylink(skylink, time.Hour, types.SiacoinPrecision.MulFloat(1e-7))
+	_, _, err = r.DownloadSkylink(skylink, time.Hour, skymodules.DefaultSkynetPricePerMS)
 	if err == nil || !strings.Contains(err.Error(), skymodules.ErrMalformedBaseSector.Error()) {
 		t.Fatal(err)
 	}
@@ -311,7 +310,7 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	var bs2 []byte
 	err = build.Retry(600, 100*time.Millisecond, func() error {
 		r.staticWorkerPool.callUpdate()
-		bs2, _, err = r.managedDownloadByRoot(context.Background(), skylink.MerkleRoot(), offset, fetchSize, types.SiacoinPrecision.MulFloat(1e-7))
+		bs2, _, err = r.managedDownloadByRoot(context.Background(), skylink.MerkleRoot(), offset, fetchSize, skymodules.DefaultSkynetPricePerMS)
 		if err != nil {
 			return err
 		}

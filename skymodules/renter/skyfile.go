@@ -1645,7 +1645,14 @@ func (r *Renter) ParseSkyfileMetadata(baseSector []byte) (sl skymodules.SkyfileL
 	// Figure out how many hashes were stored in the base sector and grab
 	// them.
 	usedHashes, _ := skymodules.BaseSectorExtensionSize(payloadSize, maxSize)
-	hashes := baseSector[skymodules.SkyfileLayoutSize : skymodules.SkyfileLayoutSize+usedHashes*crypto.HashSize]
+	hashesStart := uint64(skymodules.SkyfileLayoutSize)
+	hashesEnd := hashesStart + usedHashes*crypto.HashSize
+	if hashesEnd > uint64(len(baseSector)) {
+		err = fmt.Errorf("hashesEnd is out-of-bounds %v > %v", hashesEnd, len(baseSector))
+		build.Critical(err)
+		return
+	}
+	hashes := baseSector[hashesStart:hashesEnd]
 
 	var emptyRoot crypto.Hash
 	for i, span := range chunkSpans {
@@ -1667,7 +1674,7 @@ func (r *Renter) ParseSkyfileMetadata(baseSector []byte) (sl skymodules.SkyfileL
 			wg.Add(1)
 			go func(root crypto.Hash, resultIndex int) {
 				defer wg.Done()
-				sectors[resultIndex], _, errs[resultIndex] = r.managedDownloadByRoot(r.tg.StopCtx(), root, 0, modules.SectorSize, types.SiacoinPrecision.MulFloat(1e-7)) // TODO: move DefaultSkynetPriceMS
+				sectors[resultIndex], _, errs[resultIndex] = r.managedDownloadByRoot(r.tg.StopCtx(), root, 0, modules.SectorSize, skymodules.DefaultSkynetPricePerMS) // TODO: move DefaultSkynetPriceMS
 			}(root, resultIndex)
 			resultIndex++
 		}

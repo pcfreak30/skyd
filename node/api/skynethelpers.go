@@ -325,7 +325,7 @@ func parseDownloadRequestParameters(req *http.Request) (*skyfileDownloadParams, 
 	}
 
 	// Parse pricePerMS.
-	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMS := skymodules.DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
 		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
