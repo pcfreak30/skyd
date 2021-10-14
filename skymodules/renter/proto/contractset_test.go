@@ -291,7 +291,7 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Load the set again. This should ignore the invalid update and succeed.
-	cs, err = NewContractSet(testDir, rl, modules.ProdDependencies)
+	cs, err = NewContractSet(testDir, rl, &dependencyIgnoreInvalidUpdate{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,7 +316,7 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 	}
 	// Load the set again. This should apply the invalid update and fail at
 	// startup.
-	cs, err = NewContractSet(testDir, rl, modules.ProdDependencies)
+	cs, err = NewContractSet(testDir, rl, &dependencyIgnoreInvalidUpdate{})
 	if err != nil {
 		t.Fatal(err)
 	}

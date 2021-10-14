@@ -252,9 +252,14 @@ func NewContractSet(dir string, rl *ratelimit.RateLimit, deps modules.Dependenci
 		switch update := txn.Updates[0]; update.Name {
 		case updateNameInsertContract:
 			if len(txn.Updates) != 1 {
-				err = errors.New("insert contract txns should only have 1 update")
-				build.Critical(err)
-				return nil, err
+				if !deps.Disrupt("IgnoreInvalidUpdate") {
+					build.Critical("insert contract txns should only have 1 update")
+				}
+				err = txn.SignalUpdatesApplied()
+				if err != nil {
+					return nil, errors.AddContext(err, "failed to apply unknown update")
+				}
+				continue
 			}
 			// Apply unfinished insert contract updates.
 			_, err := cs.managedApplyInsertContractUpdate(txn.Updates[0])
@@ -279,7 +284,9 @@ func NewContractSet(dir string, rl *ratelimit.RateLimit, deps modules.Dependenci
 			unappliedWalTxns[usr.ID] = append(unappliedWalTxns[usr.ID], newUnappliedWalTxn(txn))
 		default:
 			// Unknown updates are applied.
-			build.Critical("unknown update", update.Name)
+			if !deps.Disrupt("IgnoreInvalidUpdate") {
+				build.Critical("unknown update", update.Name)
+			}
 			err = txn.SignalUpdatesApplied()
 			if err != nil {
 				return nil, errors.AddContext(err, "failed to apply unknown update")
