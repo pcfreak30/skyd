@@ -1535,11 +1535,9 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 					continue
 				}
 				// Add the result to the totals.
-				for i, available := range resp.staticAvailables {
-					if available {
-						batchOffset := uint64(maxHasSectorBatchSize) * batchIndex
-						rootTotals[batchOffset+uint64(i)]++
-					}
+				for _, index := range resp.staticAvailbleIndices {
+					batchOffset := uint64(maxHasSectorBatchSize) * batchIndex
+					rootTotals[batchOffset+index]++
 				}
 			}
 		}(uint64(batchIndex), responseChan)

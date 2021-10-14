@@ -232,20 +232,11 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 		return
 	}
 
-	// Create the list of pieces that the worker supports and add it to the
-	// worker set.
-	var indices []uint64
-	for i, available := range resp.staticAvailables {
-		if available {
-			indices = append(indices, uint64(i))
-		}
-	}
-
 	// Add this worker to the set of resolved workers (even if there are no
 	// indices that the worker can fetch).
 	ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
 		worker:       w,
-		pieceIndices: indices,
+		pieceIndices: resp.staticAvailbleIndices,
 	})
 }
 
