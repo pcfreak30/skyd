@@ -79,7 +79,9 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	limit = stream.Limit()
 
 	// prepare a buffer so we can optimize our writes
-	buffer := bytes.NewBuffer(nil)
+	buffer := w.staticBufferPool.Get().(*bytes.Buffer)
+	defer w.staticBufferPool.Put(buffer)
+	buffer.Reset()
 
 	// write the specifier
 	err = modules.RPCWrite(buffer, modules.RPCExecuteProgram)
