@@ -450,16 +450,17 @@ func (d *Distribution) Shift(dur time.Duration) {
 	}
 
 	// Otherwise we calculate the remainder and smear it over all buckets
-	// up until we reach index
+	// up until we reach index. We have to recalculate the datapoints since
+	// shift alters the timings.
 	remainder := fraction * value
 	smear := remainder / float64(index)
+	d.dataPoints = 0
 	for i := 0; i < index; i++ {
 		d.timings[i] = smear
+		d.dataPoints += d.timings[i]
 	}
-
-	// Recalculate the datapoints
-	d.dataPoints = 0
-	for i := 0; i < len(d.timings); i++ {
+	// Add the remainder of the datapoints
+	for i := index; i < len(d.timings); i++ {
 		d.dataPoints += d.timings[i]
 	}
 }
