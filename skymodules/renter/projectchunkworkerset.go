@@ -247,7 +247,6 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 		worker:       w,
 		pieceIndices: indices,
 	})
-	// fmt.Printf("worker %v resolved w/pieces %v\n", w.staticHostPubKey.ShortString(), indices)
 }
 
 // managedRegisterForWorkerUpdate will create a channel and append it to the
