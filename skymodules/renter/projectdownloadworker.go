@@ -75,7 +75,7 @@ var (
 	// maxWaitUnresolvedWorkerUpdate defines the maximum amount of time we want
 	// to wait for unresolved workers to become resolved before trying to
 	// recreate the worker set.
-	maxWaitUnresolvedWorkerUpdate = 25 * time.Millisecond
+	maxWaitUnresolvedWorkerUpdate = 50 * time.Millisecond
 
 	// maxWaitUpdateWorkers defines the maximum amount of time we want to wait
 	// for workers to be updated.
@@ -625,7 +625,7 @@ func (cf coinflips) chanceSum() float64 {
 // creating an individualWorker involves some cpu intensive steps, like gouging.
 // By updating them, rather than recreating them, we avoid doing these
 // computations in every iteration of the download algorithm.
-func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker) {
+func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker, all bool) {
 	ws := pdc.workerState
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
@@ -642,10 +642,13 @@ func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker) {
 		if !w.isResolved() && resolved {
 			w.resolved = true
 			w.pieceIndices = pieceIndices
+			w.recalculateDistributionChances()
+		} else if all {
+			w.recalculateDistributionChances()
+
 		}
 
 		// recalculate the distributions
-		w.recalculateDistributionChances()
 	}
 }
 
@@ -858,8 +861,8 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		updated := pdc.updatePieces()
 
 		// update the workers
-		if updated || time.Since(prevWorkerUpdate) > maxWaitUpdateWorkers {
-			pdc.updateWorkers(workers)
+		if updated {
+			pdc.updateWorkers(workers, time.Since(prevWorkerUpdate) > maxWaitUnresolvedWorkerUpdate)
 			prevWorkerUpdate = time.Now()
 		}
 
