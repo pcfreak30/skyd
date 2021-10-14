@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -347,6 +348,11 @@ func (c *SafeContract) UpdateUtility(utility skymodules.ContractUtility) error {
 
 // updateUtility updates the utility field of a contract.
 func (c *SafeContract) updateUtility(utility skymodules.ContractUtility) error {
+	// If the utility didn't change, this is a no-op.
+	if reflect.DeepEqual(c.header.Utility, utility) {
+		return nil
+	}
+
 	// Construct new header
 	newHeader := c.header
 	newHeader.Utility = utility
