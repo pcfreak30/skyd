@@ -35,8 +35,6 @@ type (
 	// which orchestrates the download, which means that it does not need to be
 	// thread safe.
 	projectDownloadChunk struct {
-		callNewChimeraWorker uint64
-
 		// Parameters for downloading a subset of the data within the chunk.
 		lengthInChunk uint64
 		offsetInChunk uint64
@@ -370,11 +368,7 @@ func (pdc *projectDownloadChunk) finalize() {
 
 	// Log info and finish span.
 	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-		span.LogKV(
-			"duration", time.Since(pdc.staticLaunchTime),
-			"callNewChimeraWorker", pdc.callNewChimeraWorker,
-			"callNewChimeraWorkerPers", float64(pdc.callNewChimeraWorker)/time.Since(pdc.staticLaunchTime).Seconds(),
-		)
+		span.LogKV("duration", time.Since(pdc.staticLaunchTime))
 		span.SetTag("success", true)
 		span.Finish()
 	}

@@ -21,7 +21,17 @@ import (
 // there's still room for improvement. Below we list some of the ideas that
 // could contribute to a faster and more robust algorithm.
 //
-// 1. add a fixed cost to account for our own bandwidth expenses: because the
+// 1. optimize the amount of memory allocations by using a sync.Pool: while
+// benchmarking and profiling the current download algorithm we found that the
+// downloads are usually bottlencecked by cpu, mostly coming from
+// runtime.scanobject which indicates the GC is triggered too often. By looking
+// at the memory profile, both using -inuse_objects and -alloc_objects, we can
+// see that `managedHandleResponse`, `managedExecuteProgram`,
+// `managedHasSector`,... all allocate a bunch of memory. In a lot of these
+// areas we can use a sync.Pool with preallocated memory that gets recycled,
+// avoiding needless reallocation of new memory.
+
+// 2. add a fixed cost to account for our own bandwidth expenses: because the
 // host network on Sia possibly has a lot of very cheap hosts, we should be
 // offsetting the cost with a fixed cost to account for our own bandwidth
 // expenses. E.g. if we use a fixed cost of 2$/TB, so ~100SC, then a worker that
@@ -29,25 +39,25 @@ import (
 // makes it so the difference between those workers is 2x instead of the 100x it
 // was before the fixed cost.
 //
-// 2. add a mechanism to slow down the DTs or switch to different DTs if we have
+// 3. add a mechanism to slow down the DTs or switch to different DTs if we have
 // too many jobs launched at once: the distribution tracker does not take into
 // account worker load, that means they're chance values become too optimistic,
 // which might hurt the performance of the algorithm when not taken into
 // account.
 //
-// 3. play with the 50% number, and account for the cost of being unlucky: a
+// 4. play with the 50% number, and account for the cost of being unlucky: a
 // worker set's total chance has to be greater than 50% in order for it be
 // accepted as a viable worker set, this 50% number is essentially arbitry, and
 // even at 50% there's still a 50% chance we fall on the other side of the
 // fence. This should/could be taken into account.
 //
-// 4. fix the algorithm that chooses which worker to replace in your set: the
+// 5. fix the algorithm that chooses which worker to replace in your set: the
 // algorithm that decides what worker to replace by a cheaper worker in the
 // current working set is a bit naievely implemented. Figuring out what worker
 // to replace can be a very complex algorithm. There's definitely room for
 // improvement here.
 //
-// 5. fix the algorithm that constructs chimeras: chimeras are currently
+// 6. fix the algorithm that constructs chimeras: chimeras are currently
 // constructed for every bucket duration, however we could also rebuild
 // chimeras, or partially rebuild chimeras, when we are swapping out cheaper
 // workers in the working set. The currently algorithm considers the chimera
@@ -56,6 +66,12 @@ import (
 // cheaper workers inside of the chimera itself.
 
 var (
+	// chimeraAvailabilityRateThreshold defines the number that much be reached
+	// when composing a chimera from unresolved workers. If the sum of the
+	// availability rate of each worker reaches this threshold we build a
+	// chimera out of them.
+	chimeraAvailabilityRateThreshold = float64(2)
+
 	// maxWaitUnresolvedWorkerUpdate defines the maximum amount of time we want
 	// to wait for unresolved workers to become resolved before trying to
 	// recreate the worker set.
@@ -64,12 +80,6 @@ var (
 	// maxWaitUpdateWorkers defines the maximum amount of time we want to wait
 	// for workers to be updated.
 	maxWaitUpdateWorkers = 25 * time.Millisecond
-
-	// chimeraAvailabilityRateThreshold defines the number that much be reached
-	// when composing a chimera from unresolved workers. If the sum of the
-	// availability rate of each worker reaches this number we can build a
-	// chimera out of them.
-	chimeraAvailabilityRateThreshold = float64(2)
 )
 
 // NOTE: all of the following defined types are used by the PDC, which is
@@ -109,9 +119,9 @@ type (
 	}
 
 	// chimeraWorker is a worker that's built from unresolved workers until the
-	// chance it has a piece is exactly 1. At that point we can treat a chimera
-	// worker exactly the same as a resolved worker in the download algorithm
-	// that constructs the best worker set.
+	// chance it has a piece is at least 'chimeraAvailabilityRateThreshold'. At
+	// that point we can treat the chimera worker the same as a resolved worker
+	// in the download algorithm that constructs the best worker set.
 	chimeraWorker struct {
 		// staticChanceComplete is the chance this worker completes after the
 		// duration at which this chimera worker was built.
@@ -127,21 +137,35 @@ type (
 		staticIdentifier string
 	}
 
-	// individualWorker is a struct that represents a single worker object, both
-	// resolved and unresolved workers in the pdc can be represented by an
-	// individual worker. An individual worker can be used to build a chimera
-	// worker with.
-	//
-	// NOTE: extending this struct requires an update to the `split` method.
+	// individualWorker represents a single worker object, both resolved and
+	// unresolved workers in the pdc can be represented by an individual worker.
+	// An individual worker can be used to build a chimera worker with. For
+	// every useful worker in the workerpool, an individual worker is created,
+	// this worker is update as the download progresses with information from
+	// the PCWS (resolved status and pieces).
 	individualWorker struct {
-		// the following fields are cached and recalculated at precise times
+		// the following fields are cached and recalculated at exact times
 		// within the download code algorithm
+		//
+		// cachedCompleteChance is the chance the worker completes after the
+		// current duration with which this value was recalculated
+		//
+		// cachedLookupIndex is the index corresponding to the estimated
+		// duration of the lookup DT.
+		//
+		// cachedReadDTChances is the cached chances value of the read DT
+		//
+		// cachedReadDTChancesInitialized is used to prevent needless
+		// recalculating the read DT chances, if a worker is resolved but not
+		// launched, its read DT chances do not change as they don't shift.
 		cachedCompleteChance           float64
 		cachedLookupIndex              int
 		cachedReadDTChances            skymodules.Chances
 		cachedReadDTChancesInitialized bool
 
-		// the following fields are continuously updated on the worker
+		// the following fields are continuously updated on the worker, all
+		// individual workers are not resolved initially, when a worker resolves
+		// the piece indices are updated and the resolved status is adjusted
 		pieceIndices []uint64
 		resolved     bool
 
@@ -151,6 +175,7 @@ type (
 		currentPiece           uint64
 		currentPieceLaunchedAt time.Time
 
+		// static fields on the individual worker
 		staticAvailabilityRate   float64
 		staticCost               float64
 		staticDownloadLaunchTime time.Time
@@ -158,14 +183,6 @@ type (
 		staticLookupDistribution *skymodules.Distribution
 		staticReadDistribution   *skymodules.Distribution
 		staticWorker             *worker
-	}
-
-	// unresolvedWorkerInfo is a subset of the individualWorker, containing all
-	// necessary pieces of information to build a chimera worker with
-	unresolvedWorkerInfo struct {
-		staticAvailabilityRate float64
-		staticCompleteChance   float64
-		staticCost             float64
 	}
 
 	// workerSet is a collection of workers that may or may not have been
@@ -188,36 +205,40 @@ type (
 )
 
 // NewChimeraWorker returns a new chimera worker object.
-func NewChimeraWorker(workers []*unresolvedWorkerInfo) *chimeraWorker {
-	// calculate cost, complete chance and both distributions using the given
-	// workers, making sure every worker contributes to the total in relation to
-	// its weight being the availability rate
+func NewChimeraWorker(workers []*individualWorker) *chimeraWorker {
+	// calculate the average cost and average (weighted) complete chance
 	var totalCompleteChance float64
 	var totalCost float64
 	for _, w := range workers {
-		totalCompleteChance += w.staticCompleteChance * w.staticAvailabilityRate
+		// sanity check the worker is unresolved
+		if w.isResolved() {
+			build.Critical("developer error, a chimera is built using unresolved workers only")
+		}
+
+		totalCompleteChance += w.cachedCompleteChance * w.staticAvailabilityRate
 		totalCost += w.staticCost
 	}
 
-	chance := totalCompleteChance / float64(len(workers))
-	cost := totalCost / float64(len(workers))
+	totalWorkers := float64(len(workers))
+	avgChance := totalCompleteChance / totalWorkers
+	avgCost := totalCost / totalWorkers
 
 	return &chimeraWorker{
-		staticChanceComplete: chance,
-		staticCost:           cost,
+		staticChanceComplete: avgChance,
+		staticCost:           avgCost,
 		staticIdentifier:     hex.EncodeToString(fastrand.Bytes(16)),
 	}
+}
+
+// completeChanceCached returns the chance this chimera completes
+func (cw *chimeraWorker) completeChanceCached() float64 {
+	return cw.staticChanceComplete
 }
 
 // cost returns the cost for this chimera worker, this method can only be called
 // on a chimera that is finalized
 func (cw *chimeraWorker) cost() float64 {
 	return cw.staticCost
-}
-
-// completeChanceCached returns the chance this chimera completes
-func (cw *chimeraWorker) completeChanceCached() float64 {
-	return cw.staticChanceComplete
 }
 
 // getPieceForDownload returns the piece to download next, for a chimera worker
@@ -261,7 +282,11 @@ func (iw *individualWorker) cost() float64 {
 	return iw.staticCost
 }
 
-func (iw *individualWorker) calculateDistributionChances() {
+// recalculateDistributionChances gets called when the download algorithm
+// decides it has to recalculate the chances that are based on the worker's
+// distributions. This function will apply the necessary shifts and recalculate
+// the cached fields.
+func (iw *individualWorker) recalculateDistributionChances() {
 	// if the read dt chances are not initialized, initialize them first
 	if !iw.cachedReadDTChancesInitialized {
 		iw.cachedReadDTChances = iw.staticReadDistribution.ChancesAfter()
@@ -287,34 +312,33 @@ func (iw *individualWorker) calculateDistributionChances() {
 	}
 }
 
-// calculateCompleteChance calculates the chance this worker completes at given
-// index. This chance is a combination of the chance it resolves and the chance
-// it completes the read by the given index. The resolve (or lookup) chance only
-// plays a part for workers that have not resolved yet.
+// recalculateCompleteChance calculates the chance this worker completes at
+// given index. This chance is a combination of the chance it resolves and the
+// chance it completes the read by the given index. The resolve (or lookup)
+// chance only plays a part for workers that have not resolved yet.
 //
 // This function calculates the complete chance by approximation, meaning if we
-// request the chance at index 100 (or 200ms), for an unresolved worker, we
-// calculate the expected resolve index, let's say it's 20, and offset the read
-// chance by that number, meaning we will return the read chance at index 80.
-func (iw *individualWorker) calculateCompleteChance(index int) {
-	// if the worker is resolved, the complete chance is simply the read chance
-	// at given index
+// request the complete chance at 200ms, for an unresolved worker, we will
+// offset the read chance with the expected duration of the lookup DT. E.g. if
+// the lookup DT's expected duration is 40ms, we return the complete chance at
+// 160ms. Instead of durations though, we use the indices that correspond to the
+// durations.
+func (iw *individualWorker) recalculateCompleteChance(index int) {
+	// if the worker is resolved, simply return the read chance at given index
 	if iw.isResolved() {
 		iw.cachedCompleteChance = iw.cachedReadDTChances[index]
 		return
 	}
 
-	// if the given index is less than the lookup index, it means the lookup is
-	// expected to not be completed yet, in which case the complete chance is 0
-	if iw.cachedLookupIndex >= index {
+	// if it's not resolved, and the index is smaller than our cached lookup
+	// index, we return a complete chance of zero because it has no chance of
+	// completing since it's not expected to have been resolved yet
+	if index < iw.cachedLookupIndex {
 		iw.cachedCompleteChance = 0
 		return
 	}
 
-	// if the given index is greater than the lookup index, we return the read
-	// chance offset by the lookup index, this essentially means that if the
-	// lookup is expected to complete by index 10, and the requested index is
-	// 30, we return the chance the read completes at index 20.
+	// otherwise return the read chance offset by the lookup index
 	iw.cachedCompleteChance = iw.cachedReadDTChances[index-iw.cachedLookupIndex]
 }
 
@@ -371,30 +395,6 @@ func (iw *individualWorker) pieces(_ *projectDownloadChunk) []uint64 {
 // worker implements the downloadWorker interface.
 func (iw *individualWorker) worker() *worker {
 	return iw.staticWorker
-}
-
-// split will split the download worker into two workers, the first worker will
-// have the given availability, the second worker will have the remainder as its
-// availability rate value.
-func (iwi *unresolvedWorkerInfo) split(availability float64) (*unresolvedWorkerInfo, *unresolvedWorkerInfo) {
-	if availability >= iwi.staticAvailabilityRate {
-		build.Critical("chance value on which we split should be strictly less than the worker's resolve chance")
-		return nil, nil
-	}
-
-	main := &unresolvedWorkerInfo{
-		staticAvailabilityRate: availability,
-		staticCompleteChance:   iwi.staticCompleteChance,
-		staticCost:             iwi.staticCost,
-	}
-
-	remainder := &unresolvedWorkerInfo{
-		staticAvailabilityRate: iwi.staticAvailabilityRate - availability,
-		staticCompleteChance:   iwi.staticCompleteChance,
-		staticCost:             iwi.staticCost,
-	}
-
-	return main, remainder
 }
 
 // clone returns a shallow copy of the worker set.
@@ -643,7 +643,7 @@ func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker) {
 		}
 
 		// recalculate the distributions
-		w.calculateDistributionChances()
+		w.recalculateDistributionChances()
 	}
 }
 
@@ -906,64 +906,6 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	}
 }
 
-func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorker, minPieces, numOverdrive, bI int, bDur time.Duration) (*workerSet, bool) {
-	workersNeeded := minPieces + numOverdrive
-
-	// recalculate the complete chance at given index
-	for _, w := range workers {
-		w.calculateCompleteChance(bI)
-	}
-
-	// build the download workers
-	downloadWorkers := pdc.buildDownloadWorkers(workers)
-
-	// divide the workers in most likely and less likely
-	mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(downloadWorkers, workersNeeded, numOverdrive)
-
-	// if there aren't even likely workers, escape early
-	if len(mostLikely) == 0 {
-		return nil, true
-	}
-
-	// build the most likely set
-	mostLikelySet := &workerSet{
-		workers: mostLikely,
-
-		staticBucketDuration: bDur,
-		staticBucketIndex:    bI,
-		staticNumOverdrive:   numOverdrive,
-		staticMinPieces:      minPieces,
-
-		staticPDC: pdc,
-	}
-
-	// if the chance of the most likely set does not exceed 50%, it is
-	// not high enough to continue, no need to continue this iteration,
-	// we need to try a slower and thus more likely bucket
-	if !mostLikelySet.chanceGreaterThanHalf() {
-		return nil, false
-	}
-
-	// now loop the less likely workers and try and swap them with the
-	// most expensive workers in the most likely set
-	for _, w := range lessLikely {
-		cheaperSet := mostLikelySet.cheaperSetFromCandidate(w)
-		if cheaperSet == nil {
-			continue
-		}
-
-		// if the cheaper set's chance of completing before the given
-		// duration is not greater than half we can break because the
-		// `lessLikely` workers were sorted by chance
-		if !cheaperSet.chanceGreaterThanHalf() {
-			break
-		}
-		mostLikelySet = cheaperSet
-	}
-
-	return mostLikelySet, false
-}
-
 // createWorkerSet tries to create a worker set from the pdc's resolved and
 // unresolved workers, the maximum amount of overdrive workers in the set is
 // defined by the given 'maxOverdriveWorkers' argument.
@@ -982,12 +924,12 @@ func (pdc *projectDownloadChunk) createWorkerSet(workers []*individualWorker) (*
 	var numOverdrive int
 	var bI int
 
-	// run the loops an initial time but use a step of 12, this ensures we find
+	// run the loops an initial time but use a step of 24, this ensures we find
 	// a reasonable bucket index fast, without spending too many resources on
 	// every index
 OUTER:
 	for numOverdrive = 0; numOverdrive <= maxOverdriveWorkers; numOverdrive++ {
-		for bI = 0; bI < skymodules.DistributionTrackerTotalBuckets; bI += 12 {
+		for bI = 0; bI < skymodules.DistributionTrackerTotalBuckets; bI += 24 {
 			// exit early if ppms in combination with the bucket duration
 			// already exceeds the adjusted cost of the current best set,
 			// workers would be too slow by definition
@@ -1055,6 +997,73 @@ OUTER:
 	return bestSet, nil
 }
 
+// createWorkerSetInner is the inner loop that is called by createWorkerSet,
+// please refer to the documentation there to see what this function performs.
+// It returns a workerset, and a boolean that indicates whether we want to break
+// out of the (outer) loop that surrounds this function call.
+func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorker, minPieces, numOverdrive, bI int, bDur time.Duration) (*workerSet, bool) {
+	workersNeeded := minPieces + numOverdrive
+
+	// recalculate the complete chance at given index
+	for _, w := range workers {
+		w.recalculateCompleteChance(bI)
+	}
+
+	// build the download workers
+	downloadWorkers := pdc.buildDownloadWorkers(workers)
+
+	// divide the workers in most likely and less likely
+	mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(downloadWorkers, workersNeeded, numOverdrive)
+
+	// if there aren't even likely workers, escape early
+	if len(mostLikely) == 0 {
+		return nil, true
+	}
+
+	// build the most likely set
+	mostLikelySet := &workerSet{
+		workers: mostLikely,
+
+		staticBucketDuration: bDur,
+		staticBucketIndex:    bI,
+		staticNumOverdrive:   numOverdrive,
+		staticMinPieces:      minPieces,
+
+		staticPDC: pdc,
+	}
+
+	// if the chance of the most likely set does not exceed 50%, it is
+	// not high enough to continue, no need to continue this iteration,
+	// we need to try a slower and thus more likely bucket
+	//
+	// NOTE: this 50% value is arbitrary, it actually even means that in 50% of
+	// all cases we fall at the other side of the fence... tweaking this value
+	// and calculating how often we run a bad worker set is part of the download
+	// improvements listed at the top of this file.
+	if !mostLikelySet.chanceGreaterThanHalf() {
+		return nil, false
+	}
+
+	// now loop the less likely workers and try and swap them with the
+	// most expensive workers in the most likely set
+	for _, w := range lessLikely {
+		cheaperSet := mostLikelySet.cheaperSetFromCandidate(w)
+		if cheaperSet == nil {
+			continue
+		}
+
+		// if the cheaper set's chance of completing before the given
+		// duration is not greater than half we can break because the
+		// `lessLikely` workers were sorted by chance
+		if !cheaperSet.chanceGreaterThanHalf() {
+			break
+		}
+		mostLikelySet = cheaperSet
+	}
+
+	return mostLikelySet, false
+}
+
 // addCostPenalty takes a certain job time and adds a penalty to it depending on
 // the jobcost and the pdc's price per MS.
 func addCostPenalty(jobTime time.Duration, jobCost, pricePerMS types.Currency) time.Duration {
@@ -1078,11 +1087,11 @@ func addCostPenalty(jobTime time.Duration, jobCost, pricePerMS types.Currency) t
 }
 
 // buildChimeraWorkers turns a list of individual workers into chimera workers.
-func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*unresolvedWorkerInfo) []downloadWorker {
+func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*individualWorker) []downloadWorker {
 	// sort workers by chance they complete
 	sort.Slice(unresolvedWorkers, func(i, j int) bool {
-		eRTI := unresolvedWorkers[i].staticCompleteChance
-		eRTJ := unresolvedWorkers[j].staticCompleteChance
+		eRTI := unresolvedWorkers[i].cachedCompleteChance
+		eRTJ := unresolvedWorkers[j].cachedCompleteChance
 		return eRTI > eRTJ
 	})
 
@@ -1101,17 +1110,11 @@ func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*unreso
 			chimera := NewChimeraWorker(unresolvedWorkers[start:end])
 			chimeras = append(chimeras, chimera)
 
-			// reset
+			// reset loop state
 			start = end
 			currAvail = 0
-
-			// debug
-			pdc.callNewChimeraWorker++
 		}
 	}
-
-	// NOTE: we don't add the current as it's not a complete chimera worker
-
 	return chimeras
 }
 
@@ -1282,20 +1285,18 @@ func isGoodForDownload(w *worker, pieces []uint64) bool {
 }
 
 // splitResolvedUnresolved is a helper function that splits the given workers
-// into resolved and unresolved worker arrays.
-func splitResolvedUnresolved(workers []*individualWorker) ([]downloadWorker, []*unresolvedWorkerInfo) {
+// into resolved and unresolved worker arrays. Note that if the complete chance
+// of the unresolved worker is zero, it gets filtered as its theoretically never
+// going to resolve.
+func splitResolvedUnresolved(workers []*individualWorker) ([]downloadWorker, []*individualWorker) {
 	resolvedWorkers := make([]downloadWorker, 0, len(workers))
-	unresolvedWorkers := make([]*unresolvedWorkerInfo, 0, len(workers))
+	unresolvedWorkers := make([]*individualWorker, 0, len(workers))
 
 	for _, w := range workers {
 		if w.isResolved() {
 			resolvedWorkers = append(resolvedWorkers, w)
 		} else if w.cachedCompleteChance > 0 {
-			unresolvedWorkers = append(unresolvedWorkers, &unresolvedWorkerInfo{
-				staticAvailabilityRate: w.staticAvailabilityRate,
-				staticCompleteChance:   w.cachedCompleteChance,
-				staticCost:             w.staticCost,
-			})
+			unresolvedWorkers = append(unresolvedWorkers, w)
 		}
 	}
 
