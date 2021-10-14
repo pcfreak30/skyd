@@ -365,9 +365,9 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	// Check if we are subscribed to the entry first.
 	subscribedRV, ok := r.staticSubscriptionManager.Get(rid)
 	span.SetTag("cached", ok)
-	if ok {
+	if ok && subscribedRV != nil {
 		// We are, no need to look it up.
-		return subscribedRV, nil
+		return *subscribedRV, nil
 	}
 
 	// Measure the time it takes to fetch the entry.
