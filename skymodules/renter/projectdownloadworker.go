@@ -295,19 +295,21 @@ func (iw *individualWorker) recalculateDistributionChances() {
 
 	// if the worker is launched, we want to shift the read dt
 	if iw.isLaunched() {
-		readDT := iw.staticReadDistribution.Clone()
-		readDT.Shift(time.Since(iw.currentPieceLaunchedAt))
-		iw.cachedReadDTChances = readDT.ChancesAfter()
+		// TODO: re-enable (just trying it out)
+		// readDT := iw.staticReadDistribution.Clone()
+		iw.staticReadDistribution.Shift(time.Since(iw.currentPieceLaunchedAt))
+		iw.cachedReadDTChances = iw.staticReadDistribution.ChancesAfter()
 	}
 
 	// if the worker is not resolved yet, we want to always shift the lookup dt
 	// and use that to recalculate the expected duration index
 	if !iw.isResolved() {
-		dur := time.Since(iw.staticDownloadLaunchTime)
-		lookupDT := iw.staticLookupDistribution.Clone()
-		lookupDT.Shift(dur)
+		// TODO: re-enable (just trying it out)
+		// dur := time.Since(iw.staticDownloadLaunchTime)
+		// lookupDT := iw.staticLookupDistribution.Clone()
+		iw.staticLookupDistribution.Shift(time.Since(iw.staticDownloadLaunchTime))
 
-		lookupDTExpectedDur := lookupDT.ExpectedDuration()
+		lookupDTExpectedDur := iw.staticLookupDistribution.ExpectedDuration()
 		iw.cachedLookupIndex = skymodules.DistributionBucketIndexForDuration(lookupDTExpectedDur)
 	}
 }
