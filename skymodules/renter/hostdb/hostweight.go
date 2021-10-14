@@ -3,7 +3,6 @@ package hostdb
 import (
 	"fmt"
 	"math"
-	"runtime/debug"
 	"strings"
 	"time"
 
@@ -651,7 +650,6 @@ func (hdb *HostDB) managedEstimatedScoreBreakdown(entry skymodules.HostDBEntry, 
 // managedScoreBreakdown computes the score breakdown of a host. Certain
 // adjustments can be ignored.
 func (hdb *HostDB) managedScoreBreakdown(entry skymodules.HostDBEntry, ignoreAge, ignoreDuration, ignoreUptime bool) (skymodules.HostScoreBreakdown, error) {
-	debug.PrintStack()
 	hosts, err := hdb.ActiveHosts()
 	if err != nil {
 		return skymodules.HostScoreBreakdown{}, errors.AddContext(err, "error getting Active hosts:")

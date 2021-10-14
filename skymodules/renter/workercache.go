@@ -1,8 +1,6 @@
 package renter
 
 import (
-	"fmt"
-	"runtime/debug"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -48,9 +46,6 @@ type (
 // annoying. You can't just use 'defer atmoic.StoreUint64()` because you need to
 // update the value before calling tg.AfterFunc at the end of the function.
 func (w *worker) managedUpdateCache() {
-	fmt.Println("updating cache")
-	debug.PrintStack()
-
 	// Check if there is already a cache update in progress. If not, atomically
 	// signal that a cache update is in progress.
 	if !atomic.CompareAndSwapUint64(&w.atomicCacheUpdating, 0, 1) {

@@ -259,7 +259,7 @@ func (j *jobHasSector) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
 	errLaunch := w.staticTG.Launch(func() {
 		response := &jobHasSectorResponse{
-			staticErr: errors.Extend(err, ErrJobDiscarded),
+			staticErr: err,
 
 			staticWorker: w,
 		}

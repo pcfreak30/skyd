@@ -64,8 +64,21 @@ var (
 		Standard: uint64(100 * 1024), // 100 * 1kib txn
 		Testing:  uint64(1),          // threshold == fee estimate
 	}).(uint64)
-)
 
+	// heapBallastSize defines the size of the heap ballast. The ballast is a
+	// large amount of allocated memory that will prevent the GC from triggering
+	// too soon and too often. The GC triggers when the heap doubles in size, by
+	// setting the ballast to 10GiB this event will occur when it reaches a size
+	// of 20GiB. This provides stability to the heap.
+	//
+	// For more details on this trick see:
+	// https://blog.twitch.tv/en/2019/04/10/go-memory-ballast-how-i-learnt-to-stop-worrying-and-love-the-heap-26c2462549a2/
+	heapBallastSize = build.Select(build.Var{
+		Dev:      0,
+		Standard: 10 << 30, // 10GiB
+		Testing:  0,
+	}).(int)
+)
 var (
 	errNilContractor = errors.New("cannot create renter with nil contractor")
 	errNilCS         = errors.New("cannot create renter with nil consensus set")
@@ -287,7 +300,14 @@ type Renter struct {
 	staticUserDownloadMemoryManager *memoryManager
 	staticUserUploadMemoryManager   *memoryManager
 
-	staticBuffer []byte
+	// staticBallast is a large memory allocation that provides stability to the
+	// heap. The GC triggers when the heap doubles in size, by providing this
+	// ballast we prevent that from occuring until our heap grows to double the
+	// size of the ballast. We allocate it with 10GiB.
+	//
+	// For more details see:
+	// https://blog.twitch.tv/en/2019/04/10/go-memory-ballast-how-i-learnt-to-stop-worrying-and-love-the-heap-26c2462549a2/
+	staticBallast []byte
 
 	// Modules and subsystems
 	staticAccountManager               *accountManager
@@ -1070,9 +1090,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	}
 
 	r := &Renter{
-		// Allocate 10Gb of memory
-		staticBuffer: make([]byte, 10e9),
-
 		// Initiate skynet resources
 		staticSkylinkManager: newSkylinkManager(),
 
@@ -1103,6 +1120,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		staticDirectoryHeap: directoryHeap{
 			heapDirectories: make(map[skymodules.SiaPath]*directory),
 		},
+
+		staticBallast: make([]byte, heapBallastSize),
 
 		staticDownloadHistory: newDownloadHistory(),
 

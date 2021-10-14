@@ -138,7 +138,7 @@ func (j *jobRead) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
 	errLaunch := w.staticTG.Launch(func() {
 		response := &jobReadResponse{
-			staticErr:      errors.Extend(err, ErrJobDiscarded),
+			staticErr:      err,
 			staticMetadata: j.staticJobReadMetadata(),
 		}
 		select {

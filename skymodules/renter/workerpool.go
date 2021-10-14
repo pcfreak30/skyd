@@ -79,7 +79,6 @@ func (wp *workerPool) callStatus() skymodules.WorkerPoolStatus {
 // worker pool to match, creating new workers and killing existing workers as
 // necessary.
 func (wp *workerPool) callUpdate() {
-	fmt.Println("callUpdate")
 	contractSlice := wp.staticRenter.staticHostContractor.Contracts()
 	contractMap := make(map[string]skymodules.RenterContract, len(contractSlice))
 	for _, contract := range contractSlice {
@@ -116,7 +115,6 @@ func (wp *workerPool) callUpdate() {
 			continue
 		}
 		setChanged = true
-		fmt.Printf("could not find worker %v\n", id)
 
 		// Create a new worker and add it to the map
 		w, err := wp.staticRenter.newWorker(contract.HostPublicKey)
