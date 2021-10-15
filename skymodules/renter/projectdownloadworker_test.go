@@ -794,6 +794,7 @@ func TestBuildDownloadWorkers(t *testing.T) {
 		newIndividualWorker(0.3, false),
 		newIndividualWorker(0.1, false),
 		newIndividualWorker(0.5, false),
+		// 0.9 avail rate
 	}
 
 	// assert we still don't have a chimera
@@ -807,12 +808,12 @@ func TestBuildDownloadWorkers(t *testing.T) {
 		workers,
 		newIndividualWorker(0.6, false),
 		newIndividualWorker(0.6, false),
-		// chimera 1 complete
-		newIndividualWorker(0.8, false),
+		// chimera 1 complete (.1 extra)
+		newIndividualWorker(0.9, false),
 		newIndividualWorker(0.3, false),
 		newIndividualWorker(0.6, false),
 		newIndividualWorker(0.3, false),
-		// chimera 2 complete, .1 remainder
+		// chimera 2 complete (.1 extra)
 	)
 
 	// assert we have two download workers, both chimera workers
@@ -833,7 +834,7 @@ func TestBuildDownloadWorkers(t *testing.T) {
 		newIndividualWorker(0.3, true),
 		newIndividualWorker(0.9, false),
 		newIndividualWorker(0.5, false),
-		newIndividualWorker(0.5, false),
+		newIndividualWorker(0.6, false),
 	)
 
 	downloadWorkers = pdc.buildDownloadWorkers(workers)
@@ -862,6 +863,7 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 	// create pdc
 	pcws := newTestProjectChunkWorkerSet()
 	pdc := newTestProjectDownloadChunk(pcws, nil)
+	pdc.staticPieceIndices = []uint64{0, 1}
 
 	// mock the worker
 	_, pk := crypto.GenerateKeyPair()
@@ -894,7 +896,7 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 
 	// expect the most likely to consist of the 2 chimeras
 	if len(mostLikely) != workersNeeded {
-		t.Fatal("bad")
+		t.Fatal("bad", len(mostLikely))
 	}
 	mostLikelyKey1 := mostLikely[0].identifier()
 	mostLikelyKey2 := mostLikely[1].identifier()
@@ -920,7 +922,9 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 		t.Fatal("bad")
 	}
 
-	// rebuild cw1 and cw2 with only one piece
+	// reconfigure the pdc to only have 1 static piece (this is used by the
+	// chimeras)
+	pdc.staticPieceIndices = []uint64{0}
 	workers = []downloadWorker{cw1, cw2}
 
 	// assert that we allow overdriving on the same piece if we don't have
