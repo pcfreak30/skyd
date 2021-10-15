@@ -15,6 +15,7 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/threadgroup"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 )
@@ -22,6 +23,14 @@ import (
 // TODO: (f/u) cooldown testing
 
 var (
+	// errHighSubscriptionMemoryCost is returned if the subscription gouging
+	// check fails due to a high memory cost.
+	errHighSubscriptionMemoryCost = errors.New("high SubscriptionMemoryCost")
+
+	// errHighSubscriptionNotificationCost is returned if the subscription
+	// gouging check fails due to a high notification cost.
+	errHighSubscriptionNotificationCost = errors.New("high SubscriptionNotificationCost")
+
 	// initialSubscriptionBudget is the initial budget withdrawn for a
 	// subscription. After using up 50% of it, the worker refills the budget
 	// again to match the initial budget.
@@ -678,8 +687,29 @@ func (w *worker) managedSubscriptionLoop(stream siamux.Stream, pt *modules.RPCPr
 // for that long, it will change its update time to trigger an update.
 func (w *worker) managedPriceTableForSubscription(duration time.Duration) *modules.RPCPriceTable {
 	for {
+		// Check for shutdown.
+		select {
+		case _ = <-w.staticTG.StopChan():
+			w.staticRenter.staticLog.Print("managedPriceTableForSubscription: abort due to shutdown")
+			return nil // shutdown
+		default:
+		}
+
 		// Get most recent price table.
 		pt := w.staticPriceTable()
+
+		// Check for gouging.
+		allowance := w.staticRenter.staticHostContractor.Allowance()
+		if err := checkSubscriptionGouging(pt.staticPriceTable, allowance); err != nil {
+			w.staticRenter.staticLog.Printf("WARN: worker %v failed subscription gouging: %v", w.staticHostPubKeyStr, err)
+			// Wait a bit before checking again.
+			select {
+			case _ = <-w.staticRenter.tg.StopChan():
+				return nil // shutdown
+			case <-time.After(time.Until(pt.staticUpdateTime)):
+				continue // check next price table
+			}
+		}
 
 		// If the price table is valid, return it.
 		if pt.staticValidFor(duration) {
@@ -714,7 +744,8 @@ func (w *worker) managedPriceTableForSubscription(duration time.Duration) *modul
 
 		// Wait a bit before checking again.
 		select {
-		case _ = <-w.staticRenter.tg.StopChan():
+		case _ = <-w.staticTG.StopChan():
+			w.staticRenter.staticLog.Print("managedPriceTableForSubscription: abort due to shutdown")
 			return nil // shutdown
 		case <-time.After(priceTableRetryInterval):
 		}
@@ -785,6 +816,13 @@ func (w *worker) threadedSubscriptionLoop() {
 				// Wait for work
 			case <-w.staticTG.StopChan():
 				return // shutdown
+			}
+			// Check if we got work after waking up.
+			subInfo.mu.Lock()
+			nSubs = len(subInfo.subscriptions)
+			subInfo.mu.Unlock()
+			if nSubs == 0 {
+				continue
 			}
 		}
 
@@ -898,4 +936,21 @@ func (w *worker) UpdateSubscriptions(requests ...modules.RPCRegistrySubscription
 	case subInfo.staticWakeChan <- struct{}{}:
 	default:
 	}
+}
+
+// checkSubscriptionGouging checks that the host has reasonable prices set for
+// subscribing to entries.
+func checkSubscriptionGouging(pt modules.RPCPriceTable, a skymodules.Allowance) error {
+	// Check the subscription related costs. These are hardcoded to 1 in the
+	// host right now so we can just assume that they will always be 1. Once
+	// they are configurable in the host, we can update this.
+	if !pt.SubscriptionMemoryCost.Equals(types.NewCurrency64(1)) {
+		return errors.AddContext(errHighSubscriptionMemoryCost, fmt.Sprintf("%v != 1", pt.SubscriptionMemoryCost))
+	}
+	if !pt.SubscriptionNotificationCost.Equals(types.NewCurrency64(1)) {
+		return errors.AddContext(errHighSubscriptionNotificationCost, fmt.Sprintf("%v != 1", pt.SubscriptionMemoryCost))
+	}
+	// Use the download gouging check to make sure the bandwidth cost is
+	// reasonable.
+	return checkProjectDownloadGouging(pt, a)
 }

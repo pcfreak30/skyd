@@ -155,14 +155,13 @@ func (r *Renter) managedBlockUntilOnline() bool {
 func (r *Renter) managedDistributeDownloadChunkToWorkers(udc *unfinishedDownloadChunk) {
 	// Distribute the chunk to workers, marking the number of workers
 	// that have received the work.
-	r.staticWorkerPool.mu.RLock()
+	workers := r.staticWorkerPool.callWorkers()
 	udc.mu.Lock()
-	udc.workersRemaining = len(r.staticWorkerPool.workers)
+	udc.workersRemaining = len(workers)
 	udc.mu.Unlock()
-	for _, worker := range r.staticWorkerPool.workers {
+	for _, worker := range workers {
 		go worker.threadedPerformDownloadChunkJob(udc)
 	}
-	r.staticWorkerPool.mu.RUnlock()
 
 	// If there are no workers, there will be no workers to attempt to clean up
 	// the chunk, so we must make sure that managedCleanUp is called at least

@@ -5694,6 +5694,160 @@ func TestRegistryReadRepair(t *testing.T) {
 	}
 }
 
+// TestRegistrySubscription runs registry subscription related tests.
+func TestRegistrySubscription(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	testDir := skynetTestDir(t.Name())
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   renter.MinUpdateRegistrySuccesses,
+		Portals: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	p := tg.Portals()[0]
+
+	// Run basic test.
+	t.Run("Basic", func(t *testing.T) {
+		testRegistrySubscriptionBasic(t, p)
+	})
+}
+
+// testRegistrySubscriptionBasic tests the basic case of subscribing to
+// an entry and then updating it.
+func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
+	// Collect notifications in a slice.
+	var notifications []skymodules.RegistryEntry
+	var notificationMu sync.Mutex
+	notifyFunc := func(entry skymodules.RegistryEntry) {
+		if err := entry.Verify(); err != nil {
+			t.Fatal("failed to verify entry", err)
+		}
+		notificationMu.Lock()
+		defer notificationMu.Unlock()
+		notifications = append(notifications, entry)
+	}
+
+	// Start the subscription.
+	closeHandler := func(_ int, msg string) error {
+		// We are going to close the subscription gracefully so the
+		// close handler shouldn't be called on our end.
+		t.Fatal("Close handler called:", msg)
+		return nil
+	}
+	subscription, err := p.BeginRegistrySubscription(notifyFunc, closeHandler)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := subscription.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Set an entry.
+	sk, pk := crypto.GenerateKeyPair()
+	spk := types.Ed25519PublicKey(pk)
+	srv1 := modules.NewRegistryValue(crypto.Hash{}, []byte{}, 0, modules.RegistryTypeWithoutPubkey).Sign(sk)
+	err = p.RegistryUpdateWithEntry(spk, srv1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Subscribe to that entry.
+	err = subscription.Subscribe(spk, srv1.Tweak)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be 1 notification now.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		notificationMu.Lock()
+		defer notificationMu.Unlock()
+		if len(notifications) != 1 {
+			return fmt.Errorf("notifications: %v != %v", len(notifications), 2)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Increase the revision number and set again.
+	srv2 := srv1
+	srv2.Revision++
+	srv2 = srv2.Sign(sk)
+	err = p.RegistryUpdateWithEntry(spk, srv2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be 2 notifications now.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		notificationMu.Lock()
+		defer notificationMu.Unlock()
+		if len(notifications) != 2 {
+			return fmt.Errorf("notifications: %v != %v", len(notifications), 2)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Unsubscribe
+	err = subscription.Unsubscribe(spk, srv2.Tweak)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Increase the revision number and set again.
+	srv3 := srv2
+	srv3.Revision++
+	srv3 = srv3.Sign(sk)
+	err = p.RegistryUpdateWithEntry(spk, srv3)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for a bit to give the notification some time.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// There should still be 2 notifications.
+		notificationMu.Lock()
+		nNotifications := len(notifications)
+		notificationMu.Unlock()
+		if nNotifications != 2 {
+			return fmt.Errorf("notifications: %v != %v", len(notifications), 2)
+		}
+		return nil
+	})
+
+	// Make sure first notification matches.
+	if !reflect.DeepEqual(srv1, notifications[0].SignedRegistryValue) {
+		t.Log(srv1)
+		t.Log(notifications[0].SignedRegistryValue)
+		t.Fatal("notification mismatch")
+	}
+	// Make sure second notification matches.
+	if !reflect.DeepEqual(srv2, *&notifications[1].SignedRegistryValue) {
+		t.Log(srv2)
+		t.Log(notifications[1].SignedRegistryValue)
+		t.Fatal("notification mismatch")
+	}
+}
+
 // testRecursiveBaseSector is a integration test for uploading a file which has
 // more metadata + fanout than would fit into the base sector without the
 // recursive extension.
