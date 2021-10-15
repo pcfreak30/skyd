@@ -1,13 +1,13 @@
-# Contributing to Sia
+# Contributing to skyd
 
 #### Table of Contents
 * [Get started with Go](#get-started-with-go)
   * [Install Go](#install-go)
   * [Learn Go](#learn-go)
-* [Build Sia](#build-sia)
+* [Build skyd](#build-skyd)
 * [Contribute to the codebase](#contribute-to-the-codebase)
   * [Set up git](#set-up-git)
-  * [Fork the Sia repository](#fork-the-sia-repository)
+  * [Fork the skyd repository](#fork-the-skyd-repository)
   * [Write some code](#write-some-code)
   * [Submit your code for review](#submit-your-code-for-review)
   * [More git resources](#more-git-resources)
@@ -23,7 +23,7 @@ To install Go on your computer, follow the
 
 You should install the latest [official Go binary][binary] for your system (if 
 not available, [install from source][source]).  If you plan to cross compile 
-Sia, see [Cross Compilation with Go 1.5][cross] by Dave Cheney.  
+skyd, see [Cross Compilation with Go 1.5][cross] by Dave Cheney.  
 
 ### Learn Go
 
@@ -32,19 +32,19 @@ Sia, see [Cross Compilation with Go 1.5][cross] by Dave Cheney.
 and use the go tool.
 * Finish with the [Effective Go][effective] guide.
 
-## Build Sia
+## Build skyd
 
-To build Sia on your machine, enter the following on the command line:
+To build skyd on your machine, enter the following on the command line:
 
 ```bash
-# Download Sia and its dependencies
+# Download Skyd and its dependencies
 # Binaries will be installed in $GOPATH/bin
-$ go get -u gitlab.com/NebulousLabs/Sia/...
+$ go get -u gitlab.com/SkynetLabs/skyd/...
 
-# Switch to directory containing Sia source code
-$ cd $GOPATH/src/gitlab.com/NebulousLabs/Sia
+# Switch to directory containing skyd source code
+$ cd $GOPATH/src/gitlab.com/SkynetLabs/skyd
 
-# You have three Sia builds to choose from.
+# You have three skyd builds to choose from.
 # To build the standard release binary:
 $ make release
 # Or to build the release binary with race detection and an array debugging 
@@ -81,37 +81,37 @@ $ git config --global credential.helper "cache --timeout=[seconds]"
 
 ```
 
-### Fork the Sia repository
+### Fork the skyd repository
 
-While logged into your GitLab account, navigate to the [Sia repository][sia] 
+While logged into your GitLab account, navigate to the [skyd repository][skyd] 
 and click the 'Fork' button in the upper righthand corner.  Your account now 
 has a 'forked' copy of the original repo at 
-`https://gitlab.com/<your GitLab username>/Sia`.
+`https://gitlab.com/<your GitLab username>/skyd`.
 
-When you installed Sia using `go get`, the go tool put the Sia source code in 
-$GOPATH/src/gitlab.com/NebulousLabs/Sia. Change to that directory and set up
+When you installed skyd using `go get`, the go tool put the skyd source code in 
+$GOPATH/src/gitlab.com/SkynetLabs/skyd. Change to that directory and set up
 your fork as a git [remote][remote]:
 
 ```bash
-$ cd $GOPATH/src/gitlab.com/NebulousLabs/Sia
+$ cd $GOPATH/src/gitlab.com/SkynetLabs/skyd
 # Add your fork as a remote.  Name it whatever is convenient,
 # e.g your GitLab username
-$ git remote add <remote name> https://gitlab.com/<username>/Sia.git
+$ git remote add <remote name> https://gitlab.com/<username>/skyd.git
 # Or if you use an SSH key, create the remote with the following
-$ git remote add <remote name> git@gitlab.com:<username>/Sia.git
+$ git remote add <remote name> git@gitlab.com:<username>/skyd.git
 ```
 
 ### Write some code
 
 Right now your git local repository only has one branch (called 'master' by 
 default). If you want to make changes, add a new branch and make your changes 
-there. You should maintain master as an up-to-date copy of the NebulousLabs/Sia 
+there. You should maintain master as an up-to-date copy of the SkynetLabs/skyd 
 repository's master branch.
 
 To create and checkout a new branch:
 ```bash
 # If you're not already in the right directory:
-$ cd $GOPATH/src/gitlab.com/NebulousLabs/Sia
+$ cd $GOPATH/src/gitlab.com/SkynetLabs/skyd
 # Make sure you're on branch master
 $ git checkout master
 # Create and checkout a new branch
@@ -178,7 +178,7 @@ $ git push <fork remote> <branch>
 ### Submit your code for review
 
 Once you've tested your new code and pushed changes to your fork, navigate to 
-your fork at `https://gitlab.com/<username>/Sia` in your browser.  
+your fork at `https://gitlab.com/<username>/skyd` in your browser.  
 Switch to the branch you've made changes on by selecting it from the list on the
 upper left.  Then click 'New merge request' on the upper right.
 
@@ -216,8 +216,8 @@ $ git push <fork remote> master
 
 ## Where to start
 
-If you'd like to contribute to Sia but don't have any specific ideas, writing 
-tests is a good way to get your feet wet.  See [Running and Writing Tests for Sia](doc/Running%20and%20Writing%20Tests%20for%20Sia.md) to get started.
+If you'd like to contribute to skyd but don't have any specific ideas, writing 
+tests is a good way to get your feet wet.  See [Running and Writing Tests for skyd](doc/Running%20and%20Writing%20Tests%20for%20skyd.md) to get started.
 
 To learn more about how various parts of the code base work, head over to our [Resources](resources.md) page in our [doc](docs) folder.
 
@@ -229,9 +229,9 @@ Feel free to ask for help on the #core-dev channel on [discord][discord].
 [branch]: http://blog.scottlowe.org/2015/01/27/using-fork-branch-git-workflow/
 [cheney]: http://dave.cheney.net/2013/06/09/writing-table-driven-tests-in-go
 [cross]: http://dave.cheney.net/2015/08/22/cross-compilation-with-go-1-5
-[developers.md]: https://gitlab.com/NebulousLabs/Sia/blob/master/doc/Developers.md
+[developers.md]: https://gitlab.com/SkynetLabs/skyd/blob/master/doc/Developers.md
 [discord]: https://discord.gg/sia
-[docs]: https://gitlab.com/NebulousLabs/Sia/tree/master/doc
+[docs]: https://gitlab.com/SkynetLabs/skyd/tree/master/doc
 [effective]: https://golang.org/doc/effective_go.html
 [git]: https://git-scm.com/doc
 [gofmt]: https://golang.org/cmd/gofmt/
@@ -240,11 +240,11 @@ Feel free to ask for help on the #core-dev channel on [discord][discord].
 [install-go]: https://golang.org/doc/install
 [luke]: https://gist.github.com/lukechampine/6418449
 [nutshell]: https://git-scm.com/book/en/v2/Git-Branching-Branches-in-a-Nutshell
-[resources.md]: https://gitlab.com/NebulousLabs/Sia/blob/master/doc/Resources.md
+[resources.md]: https://gitlab.com/SkynetLabs/skyd/blob/master/doc/Resources.md
 [remote]: https://git-scm.com/book/en/v2/Git-Basics-Working-with-Remotes
-[sia]: https://gitlab.com/NebulousLabs/Sia
+[skyd]: https://gitlab.com/SkynetLabs/skyd
 [signup]: https://github.com/join?source=header-home
 [source]: https://golang.org/doc/install/source
 [stashing]: https://git-scm.com/book/en/v2/Git-Tools-Stashing-and-Cleaning
-[test-doc]: https://gitlab.com/NebulousLabs/Sia/blob/master/doc/Testing.md
+[test-doc]: https://gitlab.com/SkynetLabs/skyd/blob/master/doc/Testing.md
 [tour]: https://tour.golang.org/welcome/1
