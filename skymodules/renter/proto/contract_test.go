@@ -19,6 +19,16 @@ import (
 	"go.sia.tech/siad/types"
 )
 
+// dependencyIgnoreInvalidUpdate will prevent a critical in NewContractSet during testing when an invalid update is encountered.
+type dependencyIgnoreInvalidUpdate struct {
+	modules.ProductionDependencies
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *dependencyIgnoreInvalidUpdate) Disrupt(s string) bool {
+	return s == "IgnoreInvalidUpdate"
+}
+
 // dependencyInterruptContractInsertion will interrupt inserting a contract
 // after writing the header but before writing the roots.
 type dependencyInterruptContractInsertion struct {
