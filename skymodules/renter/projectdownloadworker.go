@@ -65,7 +65,14 @@ import (
 // case. We can further improve this by swapping out series of workers for
 // cheaper workers inside of the chimera itself.
 
-var (
+const (
+	// bucketIndexScanStep defines the step size with which we increment the
+	// bucket index when we try and find the best set the first time around.
+	// This works more or less in a binary search fashion where we try and
+	// quickly approximate the bucket index, and then scan -12|+12 buckets
+	// before and after the index we found.
+	bucketIndexScanStep = 12
+
 	// chimeraAvailabilityRateThreshold defines the number that much be reached
 	// when composing a chimera from unresolved workers. If the sum of the
 	// availability rate of each worker reaches this threshold we build a
@@ -295,22 +302,18 @@ func (iw *individualWorker) recalculateDistributionChances() {
 
 	// if the worker is launched, we want to shift the read dt
 	if iw.isLaunched() {
-		// TODO: re-enable (just trying it out)
-		// readDT := iw.staticReadDistribution.Clone()
-		iw.staticReadDistribution.Shift(time.Since(iw.currentPieceLaunchedAt))
-		iw.cachedReadDTChances = iw.staticReadDistribution.ChancesAfter()
+		readDT := iw.staticReadDistribution.Clone()
+		readDT.Shift(time.Since(iw.currentPieceLaunchedAt))
+		iw.cachedReadDTChances = readDT.ChancesAfter()
 	}
 
 	// if the worker is not resolved yet, we want to always shift the lookup dt
 	// and use that to recalculate the expected duration index
 	if !iw.isResolved() {
-		// TODO: re-enable (just trying it out)
-		// dur := time.Since(iw.staticDownloadLaunchTime)
-		// lookupDT := iw.staticLookupDistribution.Clone()
-		iw.staticLookupDistribution.Shift(time.Since(iw.staticDownloadLaunchTime))
-
-		lookupDTExpectedDur := iw.staticLookupDistribution.ExpectedDuration()
-		iw.cachedLookupIndex = skymodules.DistributionBucketIndexForDuration(lookupDTExpectedDur)
+		lookupDT := iw.staticLookupDistribution.Clone()
+		lookupDT.Shift(time.Since(iw.staticDownloadLaunchTime))
+		lookupDTExpectedDurIndex := skymodules.DistributionBucketIndexForDuration(lookupDT.ExpectedDuration())
+		iw.cachedLookupIndex = lookupDTExpectedDurIndex
 	}
 }
 
@@ -625,7 +628,7 @@ func (cf coinflips) chanceSum() float64 {
 // creating an individualWorker involves some cpu intensive steps, like gouging.
 // By updating them, rather than recreating them, we avoid doing these
 // computations in every iteration of the download algorithm.
-func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker, all bool) {
+func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker) {
 	ws := pdc.workerState
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
@@ -642,13 +645,10 @@ func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker, all 
 		if !w.isResolved() && resolved {
 			w.resolved = true
 			w.pieceIndices = pieceIndices
-			w.recalculateDistributionChances()
-		} else if all {
-			w.recalculateDistributionChances()
-
 		}
 
 		// recalculate the distributions
+		w.recalculateDistributionChances()
 	}
 }
 
@@ -668,16 +668,16 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 
 	// add all resolved workers that are deemed good for downloading
 	for _, rw := range ws.resolvedWorkers {
-		jrq := rw.worker.staticJobReadQueue
-		rdt := jrq.staticStats.distributionTrackerForLength(length)
-		jhsq := rw.worker.staticJobHasSectorQueue
-		ldt := jhsq.staticDT
-
 		if !isGoodForDownload(rw.worker, rw.pieceIndices) {
 			continue
 		}
 
+		jrq := rw.worker.staticJobReadQueue
+		rdt := jrq.staticStats.distributionTrackerForLength(length)
 		cost, _ := jrq.callExpectedJobCost(length).Float64()
+		jhsq := rw.worker.staticJobHasSectorQueue
+		ldt := jhsq.staticDT
+
 		workers = append(workers, &individualWorker{
 			resolved:     true,
 			pieceIndices: rw.pieceIndices,
@@ -688,32 +688,25 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 			staticReadDistribution:   rdt.Distribution(0).Clone(),
 			staticWorker:             rw.worker,
 		})
-
 	}
 
 	// add all unresolved workers that are deemed good for downloading
 	for _, uw := range ws.unresolvedWorkers {
+		// exclude workers that are not useful
 		w := uw.staticWorker
+		if !isGoodForDownload(w, pdc.staticPieceIndices) {
+			continue
+		}
+
 		jrq := w.staticJobReadQueue
 		rdt := jrq.staticStats.distributionTrackerForLength(length)
 		jhsq := w.staticJobHasSectorQueue
 		ldt := jhsq.staticDT
 
-		// unresolved workers can still have all pieces
-		pieceIndices := make([]uint64, ec.MinPieces())
-		for i := 0; i < len(pieceIndices); i++ {
-			pieceIndices[i] = uint64(i)
-		}
-
-		// exclude workers that are not useful
-		if !isGoodForDownload(w, pieceIndices) {
-			continue
-		}
-
 		cost, _ := jrq.callExpectedJobCost(length).Float64()
 		workers = append(workers, &individualWorker{
-			pieceIndices: pieceIndices,
 			resolved:     false,
+			pieceIndices: pdc.staticPieceIndices,
 
 			staticAvailabilityRate:   jhsq.callAvailabilityRate(numPieces),
 			staticCost:               cost,
@@ -722,7 +715,6 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 			staticReadDistribution:   rdt.Distribution(0).Clone(),
 			staticWorker:             w,
 		})
-
 	}
 
 	return workers
@@ -861,8 +853,8 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		updated := pdc.updatePieces()
 
 		// update the workers
-		if updated {
-			pdc.updateWorkers(workers, time.Since(prevWorkerUpdate) > maxWaitUnresolvedWorkerUpdate)
+		if updated || time.Since(prevWorkerUpdate) > maxWaitUpdateWorkers {
+			pdc.updateWorkers(workers)
 			prevWorkerUpdate = time.Now()
 		}
 
@@ -929,25 +921,18 @@ func (pdc *projectDownloadChunk) createWorkerSet(workers []*individualWorker) (*
 	var numOverdrive int
 	var bI int
 
-	// run the loops an initial time but use a step of 24, this ensures we find
-	// a reasonable bucket index fast, without spending too many resources on
-	// every index
+	// approximate the bucket index by iterating over all bucket indices using a
+	// step size greater than 1, once we've found the best set, we range over
+	// bI-stepsize|bi+stepSize to find the best bucket index
 OUTER:
 	for numOverdrive = 0; numOverdrive <= maxOverdriveWorkers; numOverdrive++ {
-		for bI = 0; bI < skymodules.DistributionTrackerTotalBuckets; bI += 24 {
-			// exit early if ppms in combination with the bucket duration
-			// already exceeds the adjusted cost of the current best set,
-			// workers would be too slow by definition
+		for bI = 0; bI < skymodules.DistributionTrackerTotalBuckets; bI += bucketIndexScanStep {
+			// create the worker set
 			bDur := skymodules.DistributionDurationForBucketIndex(bI)
-			if bestSet != nil && bDur > bestSet.adjustedDuration(ppms) {
-				break OUTER
-			}
-
 			mostLikelySet, escape := pdc.createWorkerSetInner(workers, minPieces, numOverdrive, bI, bDur)
 			if escape {
 				break OUTER
 			}
-
 			if mostLikelySet == nil {
 				continue
 			}
@@ -958,35 +943,31 @@ OUTER:
 			} else if mostLikelySet.adjustedDuration(ppms) < bestSet.adjustedDuration(ppms) {
 				bestSet = mostLikelySet
 			}
+
+			// exit early if ppms in combination with the bucket duration
+			// already exceeds the adjusted cost of the current best set,
+			// workers would be too slow by definition
+			if bestSet != nil && bDur > bestSet.adjustedDuration(ppms) {
+				break OUTER
+			}
 		}
+	}
+
+	// if we haven't found a set, no need to try and find the optimal index
+	if bestSet == nil {
+		return nil, nil
 	}
 
 	// after we've found one, range over bI-12 -> bI+12 to find the optimal
 	// bucket index
-	var bIMin int
-	if bI-12 >= 0 {
-		bIMin = bI - 12
-	}
-
-	bIMax := skymodules.DistributionTrackerTotalBuckets
-	if bI+12 <= skymodules.DistributionTrackerTotalBuckets {
-		bIMax = bI + 12
-	}
-
+	bIMin, bIMax := bucketIndexRange(bI)
 	for bI = bIMin; bI < bIMax; bI++ {
-		// exit early if ppms in combination with the bucket duration
-		// already exceeds the adjusted cost of the current best set,
-		// workers would be too slow by definition
+		// create the worker set
 		bDur := skymodules.DistributionDurationForBucketIndex(bI)
-		if bestSet != nil && bDur > bestSet.adjustedDuration(ppms) {
-			break
-		}
-
 		mostLikelySet, escape := pdc.createWorkerSetInner(workers, minPieces, numOverdrive, bI, bDur)
 		if escape {
 			break
 		}
-
 		if mostLikelySet == nil {
 			continue
 		}
@@ -996,6 +977,13 @@ OUTER:
 			bestSet = mostLikelySet
 		} else if mostLikelySet.adjustedDuration(ppms) < bestSet.adjustedDuration(ppms) {
 			bestSet = mostLikelySet
+		}
+
+		// exit early if ppms in combination with the bucket duration
+		// already exceeds the adjusted cost of the current best set,
+		// workers would be too slow by definition
+		if bestSet != nil && bDur > bestSet.adjustedDuration(ppms) {
+			break
 		}
 	}
 
@@ -1255,6 +1243,22 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 	}
 
 	return mostLikely, lessLikely
+}
+
+// bucketIndexRange is a small helper function that returns the bucket index
+// range we want to loop over after finding the first bucket index approximation
+func bucketIndexRange(bI int) (int, int) {
+	var bIMin int
+	if bI-bucketIndexScanStep >= 0 {
+		bIMin = bI - bucketIndexScanStep
+	}
+
+	bIMax := skymodules.DistributionTrackerTotalBuckets
+	if bI+bucketIndexScanStep <= skymodules.DistributionTrackerTotalBuckets {
+		bIMax = bI + bucketIndexScanStep
+	}
+
+	return bIMin, bIMax
 }
 
 // isGoodForDownload is a helper function that returns true if and only if the

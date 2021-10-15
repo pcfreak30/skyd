@@ -306,7 +306,7 @@ func TestAvailabilityMetrics(t *testing.T) {
 	}
 
 	// update metrics and assert the correct bucket got updated
-	metrics.updateMetrics(10, []bool{true, true, false})
+	metrics.updateMetrics(10, 3, 2)
 	bucket = metrics.bucket(10)
 	if bucket.totalAvailable != 2 || bucket.totalLookups != 3 {
 		t.Fatal("bad")

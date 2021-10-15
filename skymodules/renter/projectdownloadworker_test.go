@@ -12,147 +12,65 @@ import (
 	"go.sia.tech/siad/types"
 )
 
-// TestChimeraWorker is a unit test that verifies the functionality of a chimera
-// worker.
+// TestChimeraWorker verifies the NewChimeraWorker constructor.
 func TestChimeraWorker(t *testing.T) {
 	t.Parallel()
 
-	pieceLength := uint64(1 << 16) // 64kb
-
-	// consideredEqual is a helper function that compares floats using an
-	// equality threshold of 1e-9
-	consideredEqual := func(a, b float64) bool {
-		return math.Abs(a-b) <= 1e-9
+	// newIndividualWorker is a helper function that creates a test worker
+	newIndividualWorker := func(complete, avail, cost float64) *individualWorker {
+		return &individualWorker{
+			resolved:               false,
+			cachedCompleteChance:   complete,
+			staticAvailabilityRate: avail,
+			staticCost:             cost,
+		}
 	}
 
-	// create a chimera and assert its initial state
-	cw := NewChimeraWorker(1, pieceLength)
-	if cw.worker() != nil {
-		t.Fatal("bad")
+	// assert the complete chances and cost are averaged and the identifier is
+	// initialized
+	workers := []*individualWorker{
+		newIndividualWorker(.1, .5, .5),
+		newIndividualWorker(.2, .5, .6),
+		newIndividualWorker(.3, .5, .7),
+		newIndividualWorker(.4, .5, .8),
 	}
-	if len(cw.pieces()) != 1 {
-		t.Fatal("bad")
+	cw := NewChimeraWorker(workers)
+	if cw.staticChanceComplete != .125 {
+		t.Fatal("bad", cw.staticChanceComplete)
 	}
-	if cw.remaining != 1 {
-		t.Fatal("bad")
+	if cw.staticCost != .65 {
+		t.Fatal("bad", cw.staticCost)
 	}
-
-	// add a first individual worker w/distribution that has data points <100ms
-	d1 := skymodules.NewDistribution(time.Minute * 100)
-	for i := 0; i < 1000; i++ {
-		d1.AddDataPoint(time.Duration(fastrand.Uint64n(100)) * time.Millisecond)
+	if cw.staticIdentifier == "" {
+		t.Fatal("bad", cw.staticIdentifier)
 	}
-	iw1 := &individualWorker{
-		pieceIndices:             []uint64{1, 2},
-		resolveChance:            .2,
-		staticReadDistribution:   d1,
-		staticLookupDistribution: skymodules.NewDistribution(time.Minute * 100),
-		staticWorker:             mockWorker(0),
-	}
-
-	// add the worker and check there's no remainder (the chimera is not
-	// complete yet)
-	remainder := cw.addWorker(iw1)
-	if remainder != nil {
-		t.Fatal("bad")
-	}
-	if !consideredEqual(cw.remaining, 0.8) {
-		t.Fatal("bad")
-	}
-
-	// add a second individual worker w/distribution that has data points <100ms
-	d2 := skymodules.NewDistribution(time.Minute * 100)
-	for i := 0; i < 1000; i++ {
-		d2.AddDataPoint(time.Duration(fastrand.Uint64n(100)) * time.Millisecond)
-	}
-	iw2 := &individualWorker{
-		pieceIndices:             []uint64{1, 2},
-		resolveChance:            .2,
-		staticReadDistribution:   d2,
-		staticLookupDistribution: skymodules.NewDistribution(time.Minute * 100),
-		staticWorker:             mockWorker(0),
-	}
-
-	// add the worker and check there's no remainder (the chimera is not
-	// complete yet)
-	remainder = cw.addWorker(iw2)
-	if remainder != nil {
-		t.Fatal("bad")
-	}
-	if !consideredEqual(cw.remaining, 0.6) {
-		t.Fatal("bad", cw.remaining)
-	}
-
-	// add a third individual worker w/distribution that has data points >1s
-	d3 := skymodules.NewDistribution(time.Minute * 100)
-	for i := 0; i < 1000; i++ {
-		d3.AddDataPoint(time.Duration(fastrand.Uint64n(100)+1000) * time.Millisecond)
-	}
-	iw3 := &individualWorker{
-		pieceIndices:             []uint64{1, 2},
-		resolveChance:            .85,
-		staticReadDistribution:   d3,
-		staticLookupDistribution: skymodules.NewDistribution(time.Minute * 100),
-		staticWorker:             mockWorker(0),
-	}
-
-	// add the worker and check there's now a remainder, the chimera is complete
-	// and we should have a remainder with a chance of .25
-	remainder = cw.addWorker(iw3)
-	if remainder == nil {
-		t.Fatal("bad")
-	}
-	if !consideredEqual(remainder.resolveChance, 0.25) {
-		t.Fatal("bad")
-	}
-	if cw.remaining != 0 {
-		t.Fatal("bad")
-	}
-	if cw.cost().IsZero() {
-		t.Fatal("bad")
-	}
-
-	// check the distribution's chance of resolving after 100ms, due to the
-	// large weight of the 3rd worker that has a distribution with datapoints
-	// over a second, this should be over than 50%
-	if cw.staticReadDistribution.ChanceAfter(100*time.Millisecond) > .5 {
-		t.Fatal("bad")
-	}
-
-	// check that the chimera worker implements the download worker interface
-	var _ downloadWorker = (*individualWorker)(nil)
 }
 
-// TestIndividualWorker runs a series of unit tests that probe the methods on
-// the individual worker object.
+// TestIndividualWorker runs a series of small unit tests that probe the methods
+// on the individual worker object.
 func TestIndividualWorker(t *testing.T) {
 	t.Parallel()
 	t.Run("cost", testIndividualWorker_cost)
 	t.Run("pieces", testIndividualWorker_pieces)
 	t.Run("isLaunched", testIndividualWorker_isLaunched)
+	t.Run("isResolved", testIndividualWorker_isResolved)
 	t.Run("worker", testIndividualWorker_worker)
-	t.Run("split", testIndividualWorker_split)
 }
 
 // testIndividualWorker_cost is a unit test for the cost method
 func testIndividualWorker_cost(t *testing.T) {
 	t.Parallel()
 
-	iw := &individualWorker{
-		staticWorker:       mockWorker(0),
-		staticExpectedCost: types.NewCurrency64(fastrand.Uint64n(10) + 1),
-	}
+	iw := &individualWorker{staticCost: float64(fastrand.Uint64n(10) + 1)}
 
-	// cost should equal expected cost for workers that are not launched
-	cost := iw.cost()
-	if !cost.Equals(iw.staticExpectedCost) {
+	// cost should return the static cost if the worker is not launched
+	if iw.cost() != iw.staticCost {
 		t.Fatal("bad")
 	}
 
-	// cost should equal zero for workers that are launched
-	iw.launchedAt = time.Now()
-	cost = iw.cost()
-	if !cost.IsZero() {
+	// cost should return zero if the worker is launched
+	iw.currentPieceLaunchedAt = time.Now()
+	if iw.cost() != 0 {
 		t.Fatal("bad")
 	}
 }
@@ -162,17 +80,16 @@ func testIndividualWorker_pieces(t *testing.T) {
 	t.Parallel()
 
 	iw := &individualWorker{}
-	if iw.pieces() != nil {
+	if iw.pieces(nil) != nil {
 		t.Fatal("bad")
 	}
 
-	pieceIndices := []uint64{0, 1, 2}
-	iw.pieceIndices = pieceIndices
-	if len(iw.pieces()) != len(pieceIndices) {
+	iw.pieceIndices = []uint64{0, 1, 2}
+	if len(iw.pieces(nil)) != 3 {
 		t.Fatal("bad")
 	}
-	for i, piece := range pieceIndices {
-		if iw.pieces()[i] != piece {
+	for i, piece := range []uint64{0, 1, 2} {
+		if iw.pieces(nil)[i] != piece {
 			t.Fatal("bad")
 		}
 	}
@@ -187,8 +104,23 @@ func testIndividualWorker_isLaunched(t *testing.T) {
 		t.Fatal("bad")
 	}
 
-	iw.launchedAt = time.Now()
+	iw.currentPieceLaunchedAt = time.Now()
 	if !iw.isLaunched() {
+		t.Fatal("bad")
+	}
+}
+
+// testIndividualWorker_isResolved is a unit test for the isResolved method
+func testIndividualWorker_isResolved(t *testing.T) {
+	t.Parallel()
+
+	iw := &individualWorker{}
+	if iw.isResolved() {
+		t.Fatal("bad")
+	}
+
+	iw.resolved = true
+	if !iw.isResolved() {
 		t.Fatal("bad")
 	}
 }
@@ -205,43 +137,6 @@ func testIndividualWorker_worker(t *testing.T) {
 	w := new(worker)
 	iw.staticWorker = w
 	if iw.worker() != w {
-		t.Fatal("bad")
-	}
-}
-
-// testIndividualWorker_split is a unit test for the split method
-func testIndividualWorker_split(t *testing.T) {
-	t.Parallel()
-
-	iw := &individualWorker{
-		launchedAt:             time.Now(),
-		pieceIndices:           []uint64{0},
-		resolveChance:          0.055,
-		staticReadDistribution: skymodules.NewDistribution(time.Minute * 100),
-		staticWorker:           mockWorker(time.Duration(fastrand.Uint64n(99))),
-	}
-
-	// verify the resolve chance was split between main and remainder
-	chance := 0.0234
-	main, remainder := iw.split(chance)
-	if main.resolveChance != chance {
-		t.Fatal("bad")
-	}
-	if remainder.resolveChance != iw.resolveChance-chance {
-		t.Fatal("bad")
-	}
-
-	// verify that all other properties of the individual worker are identical
-	if main.launchedAt != remainder.launchedAt {
-		t.Fatal("bad")
-	}
-	if main.staticWorker != remainder.staticWorker {
-		t.Fatal("bad")
-	}
-	if len(main.pieceIndices) != len(remainder.pieceIndices) {
-		t.Fatal("bad")
-	}
-	if !reflect.DeepEqual(main.staticReadDistribution, remainder.staticReadDistribution) {
 		t.Fatal("bad")
 	}
 }
@@ -276,11 +171,12 @@ func testWorkerSetAdjustedDuration(t *testing.T) {
 	}
 
 	// create a worker and ensure its job cost is not zero
+	cost, _ := types.SiacoinPrecision.Float64()
 	iw1 := &individualWorker{
-		staticWorker:       mockWorker(10 * time.Millisecond),
-		staticExpectedCost: types.SiacoinPrecision,
+		staticWorker: mockWorker(10 * time.Millisecond),
+		staticCost:   cost,
 	}
-	if iw1.cost().IsZero() {
+	if iw1.cost() == 0 {
 		t.Fatal("bad")
 	}
 
@@ -298,12 +194,12 @@ func testWorkerSetAdjustedDuration(t *testing.T) {
 func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 	t.Parallel()
 
-	sc := types.SiacoinPrecision
+	sc, _ := types.SiacoinPrecision.Float64()
 
 	// updateReadCostWithFactor is a helper function that enables altering a
 	// worker's cost by multiplying initial cost with the given factor
 	updateReadCostWithFactor := func(w *individualWorker, factor uint64) {
-		w.staticExpectedCost = sc.Mul64(factor)
+		w.staticCost = sc * float64(factor)
 	}
 
 	// workerAt is a small helper function that returns the worker's identifier
@@ -325,7 +221,7 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 	updateReadCostWithFactor(iw2, 20) // 20SC
 
 	// assert the workers are increasingly more expensive
-	if !(iw1.cost().Cmp(iw2.cost()) < 0) {
+	if iw1.cost() >= iw2.cost() {
 		t.Fatal("bad")
 	}
 
@@ -428,7 +324,7 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 	}
 
 	// set a launch time for w1
-	ws.workers[0].(*individualWorker).launchedAt = time.Now()
+	ws.workers[0].(*individualWorker).currentPieceLaunchedAt = time.Now()
 
 	// assert we did not swap out w1 for w5 because the cost is now 0
 	cheaperSet = ws.cheaperSetFromCandidate(iw5)
@@ -479,21 +375,25 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 
 	// populate their distributions in a way that the output of the distribution
 	// becomes predictable by adding a single datapoint to every bucket
-	for _, w := range []downloadWorker{iw1, iw2, iw3, iw4, iw5} {
-		distribution := w.(*individualWorker).staticReadDistribution
+	for _, w := range []*individualWorker{iw1, iw2, iw3, iw4, iw5} {
+		// mimic resolved workers, that ensures we only take the read DTs into
+		// account, which is sufficient for the goal of this unit test
+		w.resolved = true
 		for i := 0; i < distributionTotalBuckets; i++ {
 			point := DistributionDurationForBucketIndex(i)
-			distribution.AddDataPoint(point)
+			w.staticReadDistribution.AddDataPoint(point)
 		}
-		w.rebuildChanceAfterCache(time.Now())
+		w.recalculateDistributionChances()
 	}
 
-	// indexForPct is a helper function that returns the index at which the
-	// chance is exactly the requested percentage, this helper function will
-	// also ensure that it is the case and fail otherwise
-	indexForPct := func(pct float64) int {
-		index := (distributionTotalBuckets - 1) * int(pct*100) / 100
-		return index
+	// recalculateCompleteChance is a helper function that mimics the download
+	// algorithm recalculating complete chances at a certain bucket index, we
+	// use percentages here because we're reasoning about complete chances
+	recalculateCompleteChance := func(pct float64) {
+		index := distributionTotalBuckets * int(pct*100) / 100
+		for _, w := range []*individualWorker{iw1, iw2, iw3, iw4, iw5} {
+			w.recalculateCompleteChance(index)
+		}
 	}
 
 	// build a worker set with 0 overdrive workers
@@ -503,20 +403,21 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 		staticMinPieces:      2,
 	}
 
-	// assert chance is not greater than .5 (it's exactly half)
-	ws.staticBucketIndex = indexForPct(.5)
+	// assert chance is not greater than .5
+	recalculateCompleteChance(.5)
 	if ws.chanceGreaterThanHalf() {
 		t.Fatal("bad")
 	}
 
 	// push it right over the 50% mark
-	ws.staticBucketIndex = indexForPct(.51)
+	recalculateCompleteChance(.51)
 	if !ws.chanceGreaterThanHalf() {
 		t.Fatal("bad")
 	}
 
 	// add another worker, seeing as the chances are multiplied and both workers
 	// have a chance ~= 50% the total chance should not be greater than half
+	recalculateCompleteChance(.5)
 	ws.workers = append(ws.workers, iw2)
 	if ws.chanceGreaterThanHalf() {
 		t.Fatal("bad")
@@ -524,7 +425,7 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 
 	// at 75% chance per worker the total chance should be ~56% which is greater
 	// than half
-	ws.staticBucketIndex = indexForPct(.75)
+	recalculateCompleteChance(.75)
 	if !ws.chanceGreaterThanHalf() {
 		t.Fatal("bad")
 	}
@@ -541,14 +442,14 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 	// 0.5*0.5*0.5 = 0.125 is the chance they're all able to complete after dur
 	// 0.125/0.5*0.5 = 0.125 is the chance one is tails and the others are heads
 	// 0.125+(0.125*3) = 0.5 because every worker can be the one that's tails
-	ws.staticBucketIndex = indexForPct(.5)
+	recalculateCompleteChance(.5)
 	if ws.chanceGreaterThanHalf() {
 		t.Fatal("bad")
 	}
 
 	// now redo the calculation with a duration that's just over half of the
 	// distributand assert the chance is now greater than half
-	ws.staticBucketIndex = indexForPct(.51)
+	recalculateCompleteChance(.51)
 	if !ws.chanceGreaterThanHalf() {
 		t.Fatal("bad")
 	}
@@ -580,7 +481,7 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 	// which is n choose k and equal to n!/k(n-k)! or in our case 4!/2*2! = 6
 	//
 	// the toal chance is thus ~= 0.4 which is not greater than half
-	ws.staticBucketIndex = indexForPct(.33)
+	recalculateCompleteChance(.33)
 	if ws.chanceGreaterThanHalf() {
 		t.Fatal("bad")
 	}
@@ -591,7 +492,7 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 	// (0,6^2*0,4^2)*6 ~= 0,35
 	//
 	// the toal chance is thus ~= 0.525 which is not greater than half
-	ws.staticBucketIndex = indexForPct(.4)
+	recalculateCompleteChance(.4)
 	if !ws.chanceGreaterThanHalf() {
 		t.Fatal("bad")
 	}
@@ -604,11 +505,10 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 	// we have two minpieces and 5 workers so we have to exceed 40% per worker
 	ws.workers = append(ws.workers, iw5)
 	ws.staticNumOverdrive = 3
-	ws.staticBucketIndex = indexForPct(.4)
 	if ws.chanceGreaterThanHalf() {
 		t.Fatal("bad")
 	}
-	ws.staticBucketIndex = indexForPct(.41)
+	recalculateCompleteChance(.41)
 	if !ws.chanceGreaterThanHalf() {
 		t.Fatal("bad")
 	}
@@ -817,8 +717,9 @@ func TestBuildChimeraWorkers(t *testing.T) {
 	t.Parallel()
 
 	// newIndividualWorker wraps newTestIndivualWorker
-	newIndividualWorker := func(resolveChance float64) *individualWorker {
-		iw := newTestIndivualWorker("w", resolveChance, 0, []uint64{0})
+	newIndividualWorker := func(availabilityRate float64) *individualWorker {
+		iw := newTestIndivualWorker("w", availabilityRate, 0, []uint64{0})
+		iw.resolved = false
 		return iw
 	}
 
@@ -827,19 +728,17 @@ func TestBuildChimeraWorkers(t *testing.T) {
 	pdc := newTestProjectDownloadChunk(pcws, nil)
 
 	// empty case
-	var workers []*individualWorker
-	chimeras := pdc.buildChimeraWorkers(workers)
+	chimeras := pdc.buildChimeraWorkers([]*individualWorker{})
 	if len(chimeras) != 0 {
 		t.Fatal("bad")
 	}
 
-	// add couple of workers with resolve chance not adding up to 1
-	workers = append(
-		workers,
+	// add some workers that do not add up to the availability rate threshold
+	workers := []*individualWorker{
 		newIndividualWorker(0.3),
 		newIndividualWorker(0.1),
 		newIndividualWorker(0.5),
-	)
+	}
 
 	// check we still don't have a full chimera
 	chimeras = pdc.buildChimeraWorkers(workers)
@@ -850,10 +749,12 @@ func TestBuildChimeraWorkers(t *testing.T) {
 	// add more workers we should end up with 2 chimeras
 	workers = append(
 		workers,
-		newIndividualWorker(0.4),
+		newIndividualWorker(0.6),
+		newIndividualWorker(0.6),
 		// chimera 1 complete
-		newIndividualWorker(0.2),
+		newIndividualWorker(0.8),
 		newIndividualWorker(0.3),
+		newIndividualWorker(0.6),
 		newIndividualWorker(0.3),
 		// chimera 2 complete, .1 remainder
 	)
@@ -861,34 +762,7 @@ func TestBuildChimeraWorkers(t *testing.T) {
 	// assert we have two chimeras
 	chimeras = pdc.buildChimeraWorkers(workers)
 	if len(chimeras) != 2 {
-		t.Fatal("bad")
-	}
-
-	// assert the properties of every chimera worker
-	for _, dw := range chimeras {
-		cw, ok := dw.(*chimeraWorker)
-		if !ok {
-			t.Fatal("bad")
-		}
-		if len(cw.workers) != 4 {
-			t.Fatal("bad")
-		}
-		numPieces := pdc.workerSet.staticErasureCoder.NumPieces()
-		if len(cw.staticPieceIndices) != numPieces {
-			t.Fatal("bad")
-		}
-	}
-
-	// add workers with resolve chances of 1
-	workers = []*individualWorker{
-		newIndividualWorker(1),
-		newIndividualWorker(1),
-	}
-
-	// check we build 2 chimeras out of them
-	chimeras = pdc.buildChimeraWorkers(workers)
-	if len(chimeras) != 2 {
-		t.Fatal("bad")
+		t.Fatal("bad", len(chimeras))
 	}
 }
 
@@ -898,9 +772,10 @@ func TestBuildDownloadWorkers(t *testing.T) {
 	t.Parallel()
 
 	// newIndividualWorker wraps newTestIndivualWorker
-	newIndividualWorker := func(resolveChance float64) *individualWorker {
-		iw := newTestIndivualWorker("w", resolveChance, 0, []uint64{0})
-		iw.hasResolved = resolveChance == 1
+	newIndividualWorker := func(availabilityRate float64, resolved bool) *individualWorker {
+		iw := newTestIndivualWorker("w", availabilityRate, 0, []uint64{0})
+		iw.cachedCompleteChance = .1
+		iw.resolved = resolved
 		return iw
 	}
 
@@ -909,19 +784,17 @@ func TestBuildDownloadWorkers(t *testing.T) {
 	pdc := newTestProjectDownloadChunk(pcws, nil)
 
 	// empty case
-	var workers []*individualWorker
-	downloadWorkers := pdc.buildDownloadWorkers(workers)
+	downloadWorkers := pdc.buildDownloadWorkers([]*individualWorker{})
 	if len(downloadWorkers) != 0 {
 		t.Fatal("bad")
 	}
 
-	// add couple of workers with resolve chance not adding up to 1
-	workers = append(
-		workers,
-		newIndividualWorker(0.3),
-		newIndividualWorker(0.1),
-		newIndividualWorker(0.5),
-	)
+	// add couple of workers with resolve chance not adding up to to the
+	workers := []*individualWorker{
+		newIndividualWorker(0.3, false),
+		newIndividualWorker(0.1, false),
+		newIndividualWorker(0.5, false),
+	}
 
 	// assert we still don't have a chimera
 	downloadWorkers = pdc.buildDownloadWorkers(workers)
@@ -932,11 +805,13 @@ func TestBuildDownloadWorkers(t *testing.T) {
 	// add more workers we should end up with 2 chimeras
 	workers = append(
 		workers,
-		newIndividualWorker(0.4),
+		newIndividualWorker(0.6, false),
+		newIndividualWorker(0.6, false),
 		// chimera 1 complete
-		newIndividualWorker(0.2),
-		newIndividualWorker(0.3),
-		newIndividualWorker(0.3),
+		newIndividualWorker(0.8, false),
+		newIndividualWorker(0.3, false),
+		newIndividualWorker(0.6, false),
+		newIndividualWorker(0.3, false),
 		// chimera 2 complete, .1 remainder
 	)
 
@@ -954,16 +829,16 @@ func TestBuildDownloadWorkers(t *testing.T) {
 	// add two resolved workers + enough unresolved to complete another chimera
 	workers = append(
 		workers,
-		newIndividualWorker(0.4),
-		newIndividualWorker(1),
-		newIndividualWorker(0.6),
-		// chimera 3 complete
-		newIndividualWorker(1),
+		newIndividualWorker(0.4, true),
+		newIndividualWorker(0.3, true),
+		newIndividualWorker(0.9, false),
+		newIndividualWorker(0.5, false),
+		newIndividualWorker(0.5, false),
 	)
 
 	downloadWorkers = pdc.buildDownloadWorkers(workers)
 	if len(downloadWorkers) != 5 {
-		t.Fatal("bad")
+		t.Fatal("bad", len(downloadWorkers))
 	}
 	_, w1IsIndividual := downloadWorkers[0].(*individualWorker)
 	_, w2IsIndividual := downloadWorkers[1].(*individualWorker)
@@ -981,7 +856,6 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 	t.Parallel()
 
 	// define some variables
-	bucketIndex := 0
 	workersNeeded := 2
 	overdriveWorkers := 0
 
@@ -999,20 +873,15 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 	worker.staticHostPubKey = spk
 
 	// we will have 3 workers, one resolved one and two chimeras
-	iw1 := &individualWorker{
-		resolveChance: 1,
-		hasResolved:   true,
-		pieceIndices:  []uint64{0, 1},
-		staticWorker:  worker,
-	}
-	cw1 := NewChimeraWorker(2, 1<<16)
-	cw2 := NewChimeraWorker(2, 1<<16)
+	iw1 := &individualWorker{staticIdentifier: "iw1"}
+	cw1 := NewChimeraWorker(nil)
+	cw2 := NewChimeraWorker(nil)
 
 	// mock the chance afters, make sure the chimeras have a higher chance,
 	// meaning they are more likely to end up in the most likely set
-	iw1.cachedChancesAfter[0] = .1
-	cw1.cachedChancesAfter[0] = .2
-	cw2.cachedChancesAfter[0] = .3
+	iw1.cachedCompleteChance = .1
+	cw1.staticChanceComplete = .2
+	cw2.staticChanceComplete = .3
 
 	// helper variables
 	iw1Key := iw1.identifier()
@@ -1021,7 +890,7 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 
 	// split the workers in most likely and less likely
 	workers := []downloadWorker{iw1, cw1, cw2}
-	mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(workers, bucketIndex, workersNeeded, overdriveWorkers)
+	mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(workers, workersNeeded, overdriveWorkers)
 
 	// expect the most likely to consist of the 2 chimeras
 	if len(mostLikely) != workersNeeded {
@@ -1042,7 +911,7 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 	iw1.pieceIndices = append(iw1.pieceIndices, 2)
 
 	// assert it's now in the less likely set
-	_, lessLikely = pdc.splitMostlikelyLessLikely(workers, bucketIndex, workersNeeded, 1)
+	_, lessLikely = pdc.splitMostlikelyLessLikely(workers, workersNeeded, 1)
 	if len(lessLikely) != 1 {
 		t.Fatal("bad")
 	}
@@ -1052,15 +921,11 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 	}
 
 	// rebuild cw1 and cw2 with only one piece
-	cw1 = NewChimeraWorker(1, 1<<16)
-	cw2 = NewChimeraWorker(1, 1<<16)
-	cw1.cachedChancesAfter[0] = .2
-	cw2.cachedChancesAfter[0] = .3
 	workers = []downloadWorker{cw1, cw2}
 
 	// assert that we allow overdriving on the same piece if we don't have
 	// enough workers to meet the workersNeeded quota
-	mostLikely, lessLikely = pdc.splitMostlikelyLessLikely(workers, bucketIndex, workersNeeded, 0)
+	mostLikely, lessLikely = pdc.splitMostlikelyLessLikely(workers, workersNeeded, 0)
 	if len(mostLikely) != 1 {
 		t.Fatal("bad")
 	}
@@ -1068,7 +933,7 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 		t.Fatal("bad")
 	}
 
-	mostLikely, lessLikely = pdc.splitMostlikelyLessLikely(workers, bucketIndex, workersNeeded, 1)
+	mostLikely, lessLikely = pdc.splitMostlikelyLessLikely(workers, workersNeeded, 1)
 	if len(mostLikely) != 2 {
 		t.Fatal("bad")
 	}
@@ -1079,19 +944,20 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 
 // newTestIndivualWorker is a helper function that returns an individualWorker
 // for testing purposes.
-func newTestIndivualWorker(hostPubKeyStr string, resolveChance float64, readDuration time.Duration, pieceIndices []uint64) *individualWorker {
+func newTestIndivualWorker(hostPubKeyStr string, availabilityRate float64, readDuration time.Duration, pieceIndices []uint64) *individualWorker {
 	w := mockWorker(readDuration)
 	w.staticHostPubKeyStr = hostPubKeyStr
 
+	sc, _ := types.SiacoinPrecision.Float64()
 	iw := &individualWorker{
-		resolveChance: resolveChance,
-		pieceIndices:  pieceIndices,
-
-		staticExpectedCost:       types.SiacoinPrecision,
+		pieceIndices:             pieceIndices,
+		staticAvailabilityRate:   availabilityRate,
+		staticCost:               sc,
+		staticDownloadLaunchTime: time.Now(),
+		staticIdentifier:         hostPubKeyStr,
 		staticLookupDistribution: skymodules.NewDistribution(15 * time.Minute),
 		staticReadDistribution:   skymodules.NewDistribution(15 * time.Minute),
 		staticWorker:             w,
-		staticIdentifier:         hostPubKeyStr,
 	}
 	return iw
 }
