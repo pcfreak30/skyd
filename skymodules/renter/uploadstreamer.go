@@ -347,9 +347,10 @@ func (r *Renter) callUploadStreamFromReader(ctx context.Context, up skymodules.F
 	chunkReader := NewChunkReader(reader, fileNode.ErasureCode(), fileNode.MasterKey())
 	_, err = r.callUploadStreamFromReaderWithFileNode(ctx, fileNode, chunkReader, 0)
 	if err != nil {
-		// Delete the file if the upload wasn't successful.
-		//
-		// TODO: File is not being deleted??
+		// Close the file if the upload wasn't successful. We don't
+		// delete the file on error here because the file could be
+		// resumed if it was a TUS upload. If it isn't resumes, the
+		// unfinished files code will prune the unfinished file.
 		err = errors.Compose(err, fileNode.Close())
 		return nil, err
 	}
