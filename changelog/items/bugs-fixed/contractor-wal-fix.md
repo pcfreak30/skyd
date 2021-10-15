@@ -1,0 +1,1 @@
+- Update the contractset to properly remove unapplied wal transactions from deleted contracts.
