@@ -60,4 +60,4 @@
 [guide]: https://gitlab.com/SkynetLabs/skyd/blob/master/CONTRIBUTING.md
 [developers]: https://gitlab.com/SkynetLabs/skyd/blob/master/doc/Developers.md
 [doc]: https://gitlab.com/SkynetLabs/skyd/tree/master/doc
-[discord]: https://discord.gg/sia
+[discord]: https://discord.gg/skynetlabs

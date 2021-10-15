@@ -272,6 +272,6 @@ Odds are, someone else is wondering the same thing.
 [boltdb_test.go]: https://gitlab.com/NebulousLabs/Sia/blob/master/persist/boltdb_test.go
 [cheney-benchmarks]: http://dave.cheney.net/2013/06/30/how-to-write-benchmarks-in-go
 [pkg/testing]: https://golang.org/pkg/testing/
-[discord]: https://discord.gg/sia
+[discord]: https://discord.gg/skynetlabs
 [parse_test]: https://gitlab.com/SkynetLabs/skyd/blob/master/siac/parse_test.go
 [global]: http://c2.com/cgi/wiki?GlobalVariablesAreBad

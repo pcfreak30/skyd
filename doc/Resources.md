@@ -72,4 +72,4 @@ Below is a list of examples of third party apps that are integrated or built on 
 ## Contact Us 
 Feel free to ask for help in the Sia [discord][discord].
 
-[discord]: https://discord.gg/sia
+[discord]: https://discord.gg/skynetlabs

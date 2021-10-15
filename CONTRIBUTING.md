@@ -230,7 +230,7 @@ Feel free to ask for help on the #core-dev channel on [discord][discord].
 [cheney]: http://dave.cheney.net/2013/06/09/writing-table-driven-tests-in-go
 [cross]: http://dave.cheney.net/2015/08/22/cross-compilation-with-go-1-5
 [developers.md]: https://gitlab.com/SkynetLabs/skyd/blob/master/doc/Developers.md
-[discord]: https://discord.gg/sia
+[discord]: https://discord.gg/skynetlabs
 [docs]: https://gitlab.com/SkynetLabs/skyd/tree/master/doc
 [effective]: https://golang.org/doc/effective_go.html
 [git]: https://git-scm.com/doc
