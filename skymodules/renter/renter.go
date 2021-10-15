@@ -302,7 +302,7 @@ type Renter struct {
 
 	// staticBallast is a large memory allocation that provides stability to the
 	// heap. The GC triggers when the heap doubles in size, by providing this
-	// ballast we prevent that from occuring until our heap grows to double the
+	// ballast we prevent that from occurring until our heap grows to double the
 	// size of the ballast. We allocate it with 10GiB.
 	//
 	// For more details see:
