@@ -192,7 +192,10 @@ func (r *Renter) callUploadStreamFromReaderWithFileNodeNoBlock(ctx context.Conte
 	// Check if we currently have enough workers for the specified redundancy.
 	minWorkers := fileNode.ErasureCode().MinPieces()
 	availableWorkers := r.staticWorkerPool.callNumWorkers()
-	if availableWorkers < minWorkers {
+	// Skip this check if testing dependency is used to let the upload fail
+	// during upload instead of proactively.
+	skip := r.staticDeps.Disrupt("AllowLessThanMinWorkers")
+	if availableWorkers < minWorkers && !skip {
 		return nil, 0, fmt.Errorf("Need at least %v workers for upload but got only %v", minWorkers, availableWorkers)
 	}
 
@@ -345,6 +348,8 @@ func (r *Renter) callUploadStreamFromReader(ctx context.Context, up skymodules.F
 	_, err = r.callUploadStreamFromReaderWithFileNode(ctx, fileNode, chunkReader, 0)
 	if err != nil {
 		// Delete the file if the upload wasn't successful.
+		//
+		// TODO: File is not being deleted??
 		err = errors.Compose(err, fileNode.Close())
 		return nil, err
 	}

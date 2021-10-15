@@ -230,14 +230,7 @@ func (sf *SiaFile) Finished() bool {
 
 // finished returns whether or not the file finished uploading
 func (sf *SiaFile) finished() bool {
-	// One of the core reasons for the Finished field is to distinguish
-	// between stuck files and files that never finished the initial upload.
-	// If the siafile has a localpath, then it was uploaded in a way that we
-	// expect to upload/repair from that localpath. So if a localpath exists
-	// then a file is always repairable, even if it has <1x redundancy.
-	// This means if there is an issue with upload/repair we should mark it
-	// as stuck and therefore we consider it finished.
-	return sf.staticMetadata.Finished || sf.staticMetadata.LocalPath != ""
+	return sf.staticMetadata.Finished
 }
 
 // LastHealthCheckTime returns the LastHealthCheckTime timestamp of the file
