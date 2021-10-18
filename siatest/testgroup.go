@@ -61,6 +61,8 @@ var (
 		ExpectedDownload:   modules.SectorSize * 500,
 		ExpectedRedundancy: 5.0,
 		MaxPeriodChurn:     modules.SectorSize * 500,
+
+		DownloadBaseCost: types.SiacoinPrecision.Mul64(100).Div(types.NewCurrency64(1e12)), // 100SC / TB
 	}
 
 	// DefaultPaymentContractInitialFunding is the value used for turning renter

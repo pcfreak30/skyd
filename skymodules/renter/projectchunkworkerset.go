@@ -453,14 +453,9 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	}
 
 	// Refresh the pcws. This will only cause a refresh if one is necessary.
-	start := time.Now()
 	err := pcws.managedTryUpdateWorkerState()
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to initiate download")
-	}
-	if span := opentracing.SpanFromContext(ctx); span != nil && time.Since(start) > 50*time.Millisecond {
-		span.LogKV("managedTryUpdateWorkerState", time.Since(start))
-		span.SetTag("slow", true)
 	}
 
 	// After refresh, grab the worker state.
@@ -499,7 +494,8 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// extra goroutines to be spawned.
 	workerResponseChan := make(chan *jobReadResponse, ec.NumPieces()*5)
 
-	// build static piece indices
+	// Build static piece indices, chimera workers use this static piece indices
+	// list to avoid creating it for every chimera worker over and over again.
 	pieceIndices := make([]uint64, ec.NumPieces())
 	for i := 0; i < len(pieceIndices); i++ {
 		pieceIndices[i] = uint64(i)

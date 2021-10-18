@@ -2484,16 +2484,6 @@ func TestSkynetDownloadStats(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Download both skylinks
-	_, err = r.SkynetSkylinkGet(skylinkSmall)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = r.SkynetSkylinkGet(skylinkLarge)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// Check all download stats are not 0
 	ss, err = r.SkynetStatsGet()
 	if ss.BaseSectorOverdriveAvg == 0 {

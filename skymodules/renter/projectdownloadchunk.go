@@ -86,6 +86,9 @@ type (
 		// staticLaunchTime indicates when this PDC was launched.
 		staticLaunchTime time.Time
 
+		// staticPieceIndices contains a list of all possible piece indices,
+		// this list is shared by all chimera workers which are essentially
+		// capable of resolving all pieces, to avoid needlessly allocating mem.
 		staticPieceIndices []uint64
 
 		// The completed data gets sent down the response chan once the full

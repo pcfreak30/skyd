@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -56,6 +57,9 @@ type (
 	jobReadQueue struct {
 		staticStats *jobReadStats
 		*jobGenericQueue
+
+		// staticBaseCost is applied to download costs, defined in SC/TB
+		staticBaseCost types.Currency
 	}
 
 	// jobReadStats contains statistics about read jobs. This object is
@@ -312,6 +316,9 @@ func (jq *jobReadQueue) callExpectedJobCost(length uint64) types.Currency {
 	// Add the bandwidth cost.
 	ulBandwidth, dlBandwidth := new(jobReadSector).callExpectedBandwidth()
 	cost = cost.Add(modules.MDMBandwidthCost(*pt, ulBandwidth, dlBandwidth))
+
+	// Add the base cost.
+	cost = cost.Add(jq.staticBaseCost.Mul64(dlBandwidth))
 	return cost
 }
 
@@ -350,12 +357,22 @@ func (jrs *jobReadStats) distributionTrackerForLength(length uint64) *skymodules
 func (w *worker) initJobReadQueue(jrs *jobReadStats) {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobReadQueue != nil {
-		w.staticRenter.staticLog.Critical("incorret call on initJobReadQueue")
+		w.staticRenter.staticLog.Critical("incorrect call on initJobReadQueue")
 	}
+
+	// fetch renter settings
+	settings, err := w.staticRenter.Settings()
+	if err != nil {
+		build.Critical("could not fetch renter settings", err)
+		return
+	}
+
+	fmt.Println("new read queue", settings.Allowance.DownloadBaseCost)
 	w.staticJobReadQueue = &jobReadQueue{
 		jobGenericQueue: newJobGenericQueue(w),
 
-		staticStats: jrs,
+		staticBaseCost: settings.Allowance.DownloadBaseCost,
+		staticStats:    jrs,
 	}
 }
 
@@ -366,8 +383,18 @@ func (w *worker) initJobLowPrioReadQueue(jrs *jobReadStats) {
 	if w.staticJobLowPrioReadQueue != nil {
 		w.staticRenter.staticLog.Critical("incorret call on initJobReadQueue")
 	}
+
+	// fetch renter settings
+	settings, err := w.staticRenter.Settings()
+	if err != nil {
+		build.Critical("could not fetch renter settings", err)
+		return
+	}
+
 	w.staticJobLowPrioReadQueue = &jobReadQueue{
 		jobGenericQueue: newJobGenericQueue(w),
-		staticStats:     jrs,
+
+		staticBaseCost: settings.Allowance.DownloadBaseCost,
+		staticStats:    jrs,
 	}
 }
