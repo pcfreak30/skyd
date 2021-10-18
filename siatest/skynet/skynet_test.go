@@ -1224,22 +1224,6 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	if stats.StreamBufferRead15mDataPoints <= 1 {
 		t.Error("throughput is being recorded at or below baseline:", stats.StreamBufferRead15mDataPoints)
 	}
-
-	// Upload a siafile with N-M scheme and convert it to a skyfile, this should
-	// ensure that when we download that file, the fanout sector download stats
-	// are updated.
-	filesize := 2 * int(modules.SectorSize)
-	_, remoteFile, err := r.UploadNewFileBlocking(filesize, 2, 1, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sup = skymodules.SkyfileUploadParameters{
-		SiaPath: skymodules.RandomSiaPath(),
-	}
-	_, err = r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
-	if err != nil {
-		t.Fatal("Expected conversion from Siafile to Skyfile Post to succeed.")
-	}
 }
 
 // TestSkynetInvalidFilename verifies that posting a Skyfile with invalid
@@ -2414,6 +2398,115 @@ func testSkynetDisableForce(t *testing.T, tg *siatest.TestGroup) {
 	if !strings.Contains(err.Error(), "'force' has been disabled") {
 		t.Log(err)
 		t.Fatalf("Unexpected response, expected error to contain a mention of the force flag but instaed received: %v", err.Error())
+	}
+}
+
+// TestSkynetDownloadStats is a test that verifies whether overdrive downloads
+// base sectors and fanout sectors are properly reflected in the stats. This is
+// separate test using a custom dependency because this was causing an NDF in
+// the TestSkynetStats test.
+func TestSkynetDownloadStats(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  3,
+		Miners: 1,
+	}
+	groupDir := skynetTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Define a portal with a dependency that forces overdrive on downloads
+	renterParams := node.Renter(filepath.Join(groupDir, t.Name()))
+	renterParams.CreatePortal = true
+	deps := dependencies.NewDependencyOverdriveDownload()
+	renterParams.RenterDeps = deps
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Check all stats are 0 still
+	ss, err := r.SkynetStatsGet()
+	if ss.BaseSectorOverdriveAvg != 0 {
+		t.Fatal(err, ss.BaseSectorOverdriveAvg)
+	}
+	if ss.BaseSectorOverdrivePct != 0 {
+		t.Fatal(err, ss.BaseSectorOverdrivePct)
+	}
+	if ss.FanoutSectorOverdriveAvg != 0 {
+		t.Fatal(err, ss.FanoutSectorOverdriveAvg)
+	}
+	if ss.FanoutSectorOverdrivePct != 0 {
+		t.Fatal(err, ss.FanoutSectorOverdrivePct)
+	}
+
+	// Upload a small and large file with N-M redundancy
+	skylinkSmall, _, _, err := r.UploadNewSkyfileBlocking("small", modules.SectorSize/2, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, remoteFile, err := r.UploadNewFileBlocking(int(modules.SectorSize)*2, 2, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sup := skymodules.SkyfileUploadParameters{
+		SiaPath: skymodules.RandomSiaPath(),
+	}
+	rhsp, err := r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
+	if err != nil {
+		t.Fatal("Expected conversion from Siafile to Skyfile Post to succeed.")
+	}
+	skylinkLarge := rhsp.Skylink
+
+	// Enable the dependency
+	deps.Enable()
+
+	// Download both skylinks
+	_, err = r.SkynetSkylinkGet(skylinkSmall)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.SkynetSkylinkGet(skylinkLarge)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download both skylinks
+	_, err = r.SkynetSkylinkGet(skylinkSmall)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.SkynetSkylinkGet(skylinkLarge)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check all download stats are not 0
+	ss, err = r.SkynetStatsGet()
+	if ss.BaseSectorOverdriveAvg == 0 {
+		t.Fatal(err, ss.BaseSectorOverdriveAvg)
+	}
+	if ss.BaseSectorOverdrivePct == 0 {
+		t.Fatal(err, ss.BaseSectorOverdrivePct)
+	}
+	if ss.FanoutSectorOverdriveAvg == 0 {
+		t.Fatal(err, ss.FanoutSectorOverdriveAvg)
+	}
+	if ss.FanoutSectorOverdrivePct == 0 {
+		t.Fatal(err, ss.FanoutSectorOverdrivePct)
 	}
 }
 

@@ -64,8 +64,8 @@ func (d *DependencyAddUnrepairableChunks) Disrupt(s string) bool {
 	return s == "DisableRepairAndHealthLoops" || s == "AddUnrepairableChunks"
 }
 
-// DependencyFailUploadStreamFromReader prevents SiaFileEntries in the upload code
-// from being closed.
+// DependencyFailUploadStreamFromReader prevents SiaFileEntries in the upload
+// code from being closed.
 type DependencyFailUploadStreamFromReader struct {
 	skymodules.SkynetDependencies
 }

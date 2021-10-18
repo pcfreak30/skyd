@@ -683,6 +683,24 @@ func TestAddCostPenalty(t *testing.T) {
 		t.Error("unexpected")
 	}
 
+	// verify penalty equal to MaxInt64 and job time of 0
+	jt = time.Duration(1)
+	jc = types.NewCurrency64(math.MaxInt64)
+	pricePerMS = types.NewCurrency64(1)
+	jt = addCostPenalty(jt, jc, pricePerMS)
+	if jt != time.Duration(math.MaxInt64) {
+		t.Error("unexpected")
+	}
+
+	// verify penalty equal to MaxInt64 and job time of 0
+	jt = time.Duration(0)
+	jc = types.NewCurrency64(math.MaxInt64)
+	pricePerMS = types.NewCurrency64(1)
+	jt = addCostPenalty(jt, jc, pricePerMS)
+	if jt != time.Duration(math.MaxInt64) {
+		t.Error("unexpected")
+	}
+
 	// verify overflow
 	jt = time.Duration(1)
 	jc = types.NewCurrency64(math.MaxUint64).Mul64(10)

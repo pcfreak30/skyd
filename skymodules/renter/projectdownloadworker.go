@@ -268,21 +268,23 @@ func (cw *chimeraWorker) markPieceForDownload(pieceIndex uint64) {
 	// this is a no-op
 }
 
-// pieces implements the downloadWorker interface, chimera workers return all
-// pieces as we don't know yet what pieces they can resolve
+// pieces returns the piece indices this worker can dowload, chimera workers
+// return all pieces as we don't know yet what pieces they can resolve, note
+// that all possible piece indices are defined on the pdc to avoid unnecessary
+// slice allocations for every chimera
 func (cw *chimeraWorker) pieces(pdc *projectDownloadChunk) []uint64 {
 	return pdc.staticPieceIndices
 }
 
-// worker implements the downloadWorker interface, chimera workers return nil
-// since it's comprised of multiple workers
+// worker returns the worker, for chimeras this is always nil since it's a
+// combination of multiple workers
 func (cw *chimeraWorker) worker() *worker {
 	return nil
 }
 
-// cost implements the downloadWorker interface.
+// cost returns the cost for this worker, depending on whether it is launched or
+// not it will return either 0, or the static cost variable.
 func (iw *individualWorker) cost() float64 {
-	// workers that have already been launched have a zero cost
 	if iw.isLaunched() {
 		return 0
 	}
@@ -392,12 +394,12 @@ func (iw *individualWorker) markPieceForDownload(pieceIndex uint64) {
 	iw.currentPiece = pieceIndex
 }
 
-// pieces implements the downloadWorker interface.
+// pieces returns the piece indices this worker can download.
 func (iw *individualWorker) pieces(_ *projectDownloadChunk) []uint64 {
 	return iw.pieceIndices
 }
 
-// worker implements the downloadWorker interface.
+// worker returns the worker.
 func (iw *individualWorker) worker() *worker {
 	return iw.staticWorker
 }
@@ -921,11 +923,16 @@ func (pdc *projectDownloadChunk) createWorkerSet(workers []*individualWorker) (*
 	var numOverdrive int
 	var bI int
 
+	// start numOverdrive at 1 if the dependency is set
+	if pdc.workerState.staticRenter.staticDeps.Disrupt("OverdriveDownload") {
+		numOverdrive = 1
+	}
+
 	// approximate the bucket index by iterating over all bucket indices using a
 	// step size greater than 1, once we've found the best set, we range over
 	// bI-stepsize|bi+stepSize to find the best bucket index
 OUTER:
-	for numOverdrive = 0; numOverdrive <= maxOverdriveWorkers; numOverdrive++ {
+	for ; numOverdrive <= maxOverdriveWorkers; numOverdrive++ {
 		for bI = 0; bI < skymodules.DistributionTrackerTotalBuckets; bI += bucketIndexScanStep {
 			// create the worker set
 			bDur := skymodules.DistributionDurationForBucketIndex(bI)
@@ -1069,9 +1076,15 @@ func addCostPenalty(jobTime time.Duration, jobCost, pricePerMS types.Currency) t
 	// Otherwise, add a penalty
 	var adjusted time.Duration
 	penalty, err := jobCost.Div(pricePerMS).Uint64()
+
+	// because we multiply the penalty with milliseconds and add the jobtime we
+	// have to check for overflows quite extensively, define a max penalty which
+	// we'll then compare with the job time to see whether we can safely
+	// calculate the adjusted duration
+	penaltyMaxCheck := math.MaxInt64 / int64(time.Millisecond)
 	if err != nil || penalty > math.MaxInt64 {
 		adjusted = time.Duration(math.MaxInt64)
-	} else if reduced := math.MaxInt64 - int64(penalty); int64(jobTime) > reduced {
+	} else if reduced := penaltyMaxCheck - int64(penalty); int64(jobTime) > reduced {
 		adjusted = time.Duration(math.MaxInt64)
 	} else {
 		adjusted = jobTime + (time.Duration(penalty) * time.Millisecond)
