@@ -435,9 +435,10 @@ func TestCreateGetUpload(t *testing.T) {
 		BaseChunkRedundancy: 1,
 		Metadata:            []byte{3, 2, 1},
 
-		FanoutDataPieces:   2,
-		FanoutParityPieces: 3,
-		CipherType:         crypto.TypePlain,
+		FanoutSequenceCounter: 1,
+		FanoutDataPieces:      2,
+		FanoutParityPieces:    3,
+		CipherType:            crypto.TypePlain,
 	}
 	createdUpload, err := us.CreateUpload(context.Background(), fi, expectedUpload.SiaPath, expectedUpload.FileName, expectedUpload.BaseChunkRedundancy, expectedUpload.FanoutDataPieces, expectedUpload.FanoutParityPieces, expectedUpload.Metadata, expectedUpload.CipherType)
 	if err != nil {
