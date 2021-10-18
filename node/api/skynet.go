@@ -70,6 +70,9 @@ var (
 	// is able to spend on faster workers when downloading a Skyfile. By default
 	// this is a sane default of 100 nS.
 	DefaultSkynetPricePerMS = types.SiacoinPrecision.MulFloat(1e-7) // 100 nS
+
+	// DefaultSkynetBaseCost is the default base cost applied to all downloads.
+	DefaultSkynetBaseCost = types.SiacoinPrecision.Mul64(100).Div(types.NewCurrency64(1e12)) // 100SC / TB
 )
 
 type (

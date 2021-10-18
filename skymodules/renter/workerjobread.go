@@ -7,6 +7,7 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/node/api"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -360,19 +361,14 @@ func (w *worker) initJobReadQueue(jrs *jobReadStats) {
 		w.staticRenter.staticLog.Critical("incorrect call on initJobReadQueue")
 	}
 
-	// fetch renter settings
-	settings, err := w.staticRenter.Settings()
-	if err != nil {
-		build.Critical("could not fetch renter settings", err)
-		return
-	}
+	// TODO: fetch base cost from allowance
+	baseCost := api.DefaultSkynetBaseCost
 
-	// TODO: remove me
-	fmt.Println("new read queue", settings.Allowance.DownloadBaseCost)
+	fmt.Println("new read queue", baseCost)
 	w.staticJobReadQueue = &jobReadQueue{
 		jobGenericQueue: newJobGenericQueue(w),
 
-		staticBaseCost: settings.Allowance.DownloadBaseCost,
+		staticBaseCost: baseCost,
 		staticStats:    jrs,
 	}
 }
@@ -385,17 +381,14 @@ func (w *worker) initJobLowPrioReadQueue(jrs *jobReadStats) {
 		w.staticRenter.staticLog.Critical("incorret call on initJobReadQueue")
 	}
 
-	// fetch renter settings
-	settings, err := w.staticRenter.Settings()
-	if err != nil {
-		build.Critical("could not fetch renter settings", err)
-		return
-	}
+	// TODO: fetch base cost from allowance
+	baseCost := api.DefaultSkynetBaseCost
 
+	fmt.Println("new read queue", baseCost)
 	w.staticJobLowPrioReadQueue = &jobReadQueue{
 		jobGenericQueue: newJobGenericQueue(w),
 
-		staticBaseCost: settings.Allowance.DownloadBaseCost,
+		staticBaseCost: baseCost,
 		staticStats:    jrs,
 	}
 }

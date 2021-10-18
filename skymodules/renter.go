@@ -59,8 +59,6 @@ var (
 		ExpectedDownload:   uint64(100e9) / uint64(types.BlocksPerMonth), // 100 GB per month
 		ExpectedRedundancy: 3.0,                                          // default is 10/30 erasure coding
 		MaxPeriodChurn:     uint64(250e9),                                // 250 GB
-
-		DownloadBaseCost: types.SiacoinPrecision.Mul64(100).Div(types.NewCurrency64(1e12)), // 100SC / TB
 	}
 	// ErrHostFault indicates if an error is the host's fault.
 	ErrHostFault = errors.New("host has returned an error")
