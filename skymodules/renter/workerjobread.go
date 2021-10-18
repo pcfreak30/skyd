@@ -1,7 +1,6 @@
 package renter
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
@@ -363,7 +362,6 @@ func (w *worker) initJobReadQueue(jrs *jobReadStats) {
 	// TODO: fetch base cost from allowance
 	baseCost := skymodules.DefaultSkynetBaseCost
 
-	fmt.Println("new read queue", baseCost)
 	w.staticJobReadQueue = &jobReadQueue{
 		jobGenericQueue: newJobGenericQueue(w),
 
@@ -383,7 +381,6 @@ func (w *worker) initJobLowPrioReadQueue(jrs *jobReadStats) {
 	// TODO: fetch base cost from allowance
 	baseCost := skymodules.DefaultSkynetBaseCost
 
-	fmt.Println("new read queue", baseCost)
 	w.staticJobLowPrioReadQueue = &jobReadQueue{
 		jobGenericQueue: newJobGenericQueue(w),
 
