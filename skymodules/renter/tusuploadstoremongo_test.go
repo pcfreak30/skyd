@@ -676,6 +676,22 @@ func TestCommitFinishUpload(t *testing.T) {
 		t.Fatal("skylink shouldn't be set")
 	}
 
+	// Commit a chunk.
+	err = u.CommitWriteChunk(context.Background(), 1, time.Now(), false, []byte{1, 2, 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be a fanout chunk.
+	fanouts := us.staticFanoutCollection()
+	result, err := fanouts.Find(context.Background(), bson.M{"uploadid": "regular"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.RemainingBatchLength() != 1 {
+		t.Fatal("there should be 1 chunk")
+	}
+
 	// Finish it.
 	var h crypto.Hash
 	fastrand.Read(h[:])
@@ -705,5 +721,14 @@ func TestCommitFinishUpload(t *testing.T) {
 	}
 	if sl, set := upload.FileInfo.MetaData["Skylink"]; !set || !reflect.DeepEqual(sl, skylink.String()) {
 		t.Fatal("wrong skylink")
+	}
+
+	// Fanout chunks should be gone.
+	result, err = fanouts.Find(context.Background(), bson.M{"uploadid": "regular"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.RemainingBatchLength() > 0 {
+		t.Fatal("there shouldn't be any chunks left")
 	}
 }
