@@ -7,7 +7,6 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
-	"gitlab.com/SkynetLabs/skyd/node/api"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -362,7 +361,7 @@ func (w *worker) initJobReadQueue(jrs *jobReadStats) {
 	}
 
 	// TODO: fetch base cost from allowance
-	baseCost := api.DefaultSkynetBaseCost
+	baseCost := skymodules.DefaultSkynetBaseCost
 
 	fmt.Println("new read queue", baseCost)
 	w.staticJobReadQueue = &jobReadQueue{
@@ -382,7 +381,7 @@ func (w *worker) initJobLowPrioReadQueue(jrs *jobReadStats) {
 	}
 
 	// TODO: fetch base cost from allowance
-	baseCost := api.DefaultSkynetBaseCost
+	baseCost := skymodules.DefaultSkynetBaseCost
 
 	fmt.Println("new read queue", baseCost)
 	w.staticJobLowPrioReadQueue = &jobReadQueue{
