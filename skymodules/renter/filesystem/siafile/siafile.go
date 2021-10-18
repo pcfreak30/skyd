@@ -206,7 +206,10 @@ func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode skymodu
 	ecType, ecParams := marshalErasureCoder(erasureCode)
 	minPieces := erasureCode.MinPieces()
 	numPieces := erasureCode.NumPieces()
-	zeroHealth := float64(1 + minPieces/(numPieces-minPieces))
+	zeroHealth := 1.0
+	if numPieces != minPieces {
+		zeroHealth = float64(1 + minPieces/(numPieces-minPieces))
+	}
 	repairSize := fileSize * uint64(numPieces/minPieces)
 	file := &SiaFile{
 		staticMetadata: Metadata{

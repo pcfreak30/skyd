@@ -9,7 +9,6 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/modules"
-	"go.sia.tech/siad/types"
 )
 
 // TestChimeraWorker is a unit test that verifies the functionality of a chimera
@@ -296,7 +295,7 @@ func testWorkerSetAdjustedDuration(t *testing.T) {
 	}
 
 	// default ppms
-	ppms := types.SiacoinPrecision.MulFloat(1e-7)
+	ppms := skymodules.DefaultSkynetPricePerMS
 
 	// expect no penalty if the ppms exceeds the job cost
 	if ws.adjustedDuration(ppms) != ws.staticExpectedDuration {

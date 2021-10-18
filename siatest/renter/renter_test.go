@@ -5444,7 +5444,7 @@ func TestRenterClean(t *testing.T) {
 	// Since it doesn't have a local file it will appear as unrecoverable if the
 	// hosts are taken down.
 	data := fastrand.Bytes(100)
-	_, _, _, rf3, err := r.UploadSkyfileCustom("skyfile", data, "", renter.SkyfileDefaultBaseChunkRedundancy, false)
+	_, sup, _, rf3, err := r.UploadSkyfileCustom("skyfile", data, "", renter.SkyfileDefaultBaseChunkRedundancy, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5453,6 +5453,14 @@ func TestRenterClean(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err = r.WaitForUploadHealth(rf3); err != nil {
+		t.Fatal(err)
+	}
+	skyfileDir, err := sup.SiaPath.Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	skyfileDir, err = skyfileDir.Rebase(skymodules.RootSiaPath(), skymodules.SkynetFolder)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -5483,7 +5491,7 @@ func TestRenterClean(t *testing.T) {
 		}
 
 		// Check for the expected SkyFiles
-		rds, err = r.RenterDirRootGet(skymodules.SkynetFolder)
+		rds, err = r.RenterDirRootGet(skyfileDir)
 		if err != nil {
 			return err
 		}

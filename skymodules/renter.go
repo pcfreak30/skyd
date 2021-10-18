@@ -1264,6 +1264,11 @@ type Renter interface {
 	// MountInfo returns the list of currently mounted FUSE filesystems.
 	MountInfo() []MountInfo
 
+	// ParseSkyfileMetadata parses all the information from a base sector
+	// similar to skymodules.ParseSkyfileMetadata. The difference is that it
+	// can also parse a recursive base sector.
+	ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []byte, sm SkyfileMetadata, rawSM, baseSectorPayload, baseSectorExtension []byte, err error)
+
 	// NewRegistrySubscriber creates a new registry subscriber which can be
 	// used to subscribe to registry entries for updates.
 	NewRegistrySubscriber(notifyFunc func(entry RegistryEntry) error) (RegistrySubscriber, error)

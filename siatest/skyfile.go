@@ -93,9 +93,11 @@ func (tn *TestNode) UploadNewEncryptedSkyfileBlocking(filename string, filedata 
 // parameters used for the upload and potentially an error.
 func (tn *TestNode) UploadSkyfileCustom(filename string, filedata []byte, skykeyName string, baseChunkRedundancy uint8, force bool) (skylink string, sup skymodules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, rf *RemoteFile, err error) {
 	// create the siapath
-	skyfilePath, err := skymodules.NewSiaPath(filename)
+	skyfilePath := skymodules.RandomSkynetFilePath()
+
+	// rebase to relative path
+	skyfilePath, err = skyfilePath.Rebase(skymodules.SkynetFolder, skymodules.RootSiaPath())
 	if err != nil {
-		err = errors.AddContext(err, "Failed to create siapath")
 		return
 	}
 
