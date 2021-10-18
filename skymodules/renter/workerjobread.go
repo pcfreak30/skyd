@@ -367,6 +367,7 @@ func (w *worker) initJobReadQueue(jrs *jobReadStats) {
 		return
 	}
 
+	// TODO: remove me
 	fmt.Println("new read queue", settings.Allowance.DownloadBaseCost)
 	w.staticJobReadQueue = &jobReadQueue{
 		jobGenericQueue: newJobGenericQueue(w),
