@@ -65,16 +65,154 @@ func AddMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename st
 	return metadata, nil
 }
 
+// ChunkIndexByOffset returns the chunk offset and relative offset within that
+// chunk given an offset within some data and chunksize.
+func ChunkIndexByOffset(offset, chunkSize uint64) (chunkIndex, off uint64) {
+	chunkIndex = offset / chunkSize
+	off = offset % chunkSize
+	return
+}
+
+// ChunkSpan defines a span of chunks [minIndex, maxIndex].
+type ChunkSpan struct {
+	MinIndex uint64
+	MaxIndex uint64
+}
+
+// BaseSectorExtensionSize computes how many root hashes a base sector extension
+// will result in (within the base sector) and what the depth of the recursion
+// is going to be.
+func BaseSectorExtensionSize(dataSize, maxSize uint64) (usedHashes, depth uint64) {
+	if dataSize <= maxSize {
+		return 0, 0
+	}
+
+	maxHashesInBaseSector := maxSize / crypto.HashSize
+	hashesPerSector := modules.SectorSize / crypto.HashSize
+
+	numHashes := uint64(1)
+	for depth = 1; ; depth++ {
+		for usedHashes := uint64(1); usedHashes <= maxHashesInBaseSector; usedHashes++ {
+			if usedHashes*numHashes*modules.SectorSize >= dataSize {
+				return usedHashes, depth
+			}
+		}
+		numHashes *= hashesPerSector // numHashes equals hashesPerSector**depth
+	}
+}
+
+// TranslateBaseSectorExtensionOffset will translate the given offset and length
+// within a base sector extension. It returns a chain of spans that need to be
+// downloaded recursively as well as the offset to use when downloading the
+// actual fanout data.
+func TranslateBaseSectorExtensionOffset(offset, length uint64, dataSize, maxSize uint64) (uint64, []ChunkSpan) {
+	// compute the max depth of the fanout.
+	usedHashes, maxDepth := BaseSectorExtensionSize(dataSize, maxSize)
+
+	// compute how many chunks we need for the data and what the size of the
+	// padded data is.
+	numChunks := NumChunks(crypto.TypePlain, dataSize, 1)
+	chunkSize := ChunkSize(crypto.TypePlain, 1)
+	paddedDataSize := numChunks * chunkSize
+	hashesPerSector := modules.SectorSize / crypto.HashSize
+
+	offsets := make([]ChunkSpan, 0, maxDepth)
+	numHashes := usedHashes
+	shift := uint64(0)
+	for depth := 0; depth < int(maxDepth); depth++ {
+		minChunk, _ := ChunkIndexByOffset(offset, paddedDataSize/numHashes)
+		maxChunk, maxChunkOffset := ChunkIndexByOffset(offset+length, paddedDataSize/numHashes)
+		if maxChunk > 0 && maxChunkOffset == 0 {
+			maxChunk--
+		}
+		numHashes *= hashesPerSector
+
+		newShift := minChunk * hashesPerSector
+		minChunk -= shift
+		maxChunk -= shift
+		shift = newShift
+		offsets = append(offsets, ChunkSpan{
+			MinIndex: minChunk,
+			MaxIndex: maxChunk,
+		})
+	}
+	return offset % chunkSize, offsets
+}
+
+// buildBaseSectorExtensions builds the base sector extension given some input
+// data and a size restriction. The function returns the two parts of the
+// extension. The first one is the part that goes into the base sector. The
+// second one is concatenated to the base sector and uploaded with it.
+func buildBaseSectorExtension(payload []byte, size uint64) ([]byte, [][]byte) {
+	if size < crypto.HashSize {
+		build.Critical("can't compress to a size smaller than a single hash")
+		return nil, nil
+	}
+	chunkSize := ChunkSize(crypto.TypePlain, 1)
+
+	// Compress the data into fanouts until we have one with a size <= the
+	// size restriction. One fanout pointing to the next recursively. We
+	// start at the bottom.
+	var fanouts [][]byte
+	for uint64(len(payload)) > size {
+		// Figure out how many chunks this data needs to be split into.
+		numChunks := NumChunks(crypto.TypePlain, uint64(len(payload)), 1)
+
+		// Allocate the fanout.
+		fanout := make([]byte, 0, numChunks*crypto.HashSize)
+
+		// Create the fanout for the data.
+		buf := bytes.NewBuffer(payload)
+		for buf.Len() > 0 {
+			// Pull off one chunk after another.
+			chunk := buf.Next(int(chunkSize))
+
+			// If the chunk is smaller than a chunkSize, add padding.
+			if uint64(len(chunk)) < chunkSize {
+				chunk = append(chunk, make([]byte, chunkSize-uint64(len(chunk)))...)
+			}
+
+			// Add the merkleroot to the fanout.
+			mr := crypto.MerkleRoot(chunk)
+			fanout = append(fanout, mr[:]...)
+		}
+
+		// Append the fanout to the array of fanouts.
+		fanouts = append(fanouts, fanout)
+
+		// The fanout becomes the new data.
+		payload = fanout
+	}
+
+	// If nothing was built we are done. The payload remains unaltered.
+	if len(fanouts) == 0 {
+		return nil, nil
+	}
+
+	// Split the fanouts up into the base sector part and the upload part.
+	baseSectorPart := fanouts[len(fanouts)-1]
+	var uploadPart [][]byte
+	if len(fanouts) > 1 {
+		uploadPart = fanouts[:len(fanouts)-1]
+	}
+
+	// Make sure the first part is smaller than size.
+	if len(baseSectorPart) > int(size) {
+		build.Critical("fanout wasn't compressed enough")
+	}
+	return baseSectorPart, uploadPart
+}
+
 // BuildBaseSector will take all of the elements of the base sector and copy
 // them into a freshly created base sector.
-func BuildBaseSector(layoutBytes, fanoutBytes, metadataBytes, fileBytes []byte) ([]byte, uint64) {
-	// Sanity Check
+func BuildBaseSector(layoutBytes, fanoutBytes, metadataBytes, fileBytes []byte) ([]byte, uint64, [][]byte) {
+	// Sanity Check - small file uploads need to fit in the base sector.
 	totalSize := len(layoutBytes) + len(fanoutBytes) + len(metadataBytes) + len(fileBytes)
-	if uint64(totalSize) > modules.SectorSize {
+	if uint64(totalSize) > modules.SectorSize && fileBytes != nil {
 		err := fmt.Errorf("inputs too large for baseSector: totalSize %v, layoutBytes %v, fanoutBytes %v, metadataBytes %v, fileBytes %v",
 			totalSize, len(layoutBytes), len(fanoutBytes), len(metadataBytes), len(fileBytes))
 		build.Critical(err)
-		return nil, 0
+		return nil, 0, nil
 	}
 
 	// Build baseSector
@@ -82,13 +220,39 @@ func BuildBaseSector(layoutBytes, fanoutBytes, metadataBytes, fileBytes []byte) 
 	offset := 0
 	copy(baseSector[offset:], layoutBytes)
 	offset += len(layoutBytes)
+
+	// If the upload is not a small upload, but it doesn't fit in the
+	// basesector, we compress the payload.
+	if uint64(totalSize) > modules.SectorSize {
+		payload := append(fanoutBytes, metadataBytes...)
+		baseSectorPart, uploadPart := buildBaseSectorExtension(payload, modules.SectorSize-uint64(offset))
+
+		// The fanouts in the upload part need to be padded.
+		chunkSize := ChunkSize(crypto.TypePlain, 1)
+		for i := 0; i < len(uploadPart); i++ {
+			if mod := len(uploadPart[i]) % int(chunkSize); mod != 0 {
+				uploadPart[i] = append(uploadPart[i], make([]byte, chunkSize-uint64(mod))...)
+			}
+		}
+
+		// The payload is also returned as part of the base sector
+		// extension for upload.
+		uploadPart = append(uploadPart, payload)
+
+		// Copy the baseSectorPart into the base sector.
+		copy(baseSector[offset:], baseSectorPart)
+		offset += len(uploadPart)
+		return baseSector, uint64(offset), uploadPart
+	}
+
+	// Otherwise we finish the base sector.
 	copy(baseSector[offset:], fanoutBytes)
 	offset += len(fanoutBytes)
 	copy(baseSector[offset:], metadataBytes)
 	offset += len(metadataBytes)
 	copy(baseSector[offset:], fileBytes)
 	offset += len(fileBytes)
-	return baseSector, uint64(offset)
+	return baseSector, uint64(offset), nil
 }
 
 // DecodeFanout will take the fanout bytes from a baseSector and decode them.
@@ -232,19 +396,28 @@ func IsEncryptedLayout(sl SkyfileLayout) bool {
 	return sl.Version == 1 && sl.CipherType == crypto.TypeXChaCha20
 }
 
-// ParseSkyfileMetadata will pull the metadata (including layout and fanout) out
-// of a skyfile.
-func ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []byte, sm SkyfileMetadata, rawSM, baseSectorPayload []byte, err error) {
+// ParseSkyfileLayout parses a layout from a base sector.
+func ParseSkyfileLayout(baseSector []byte) (sl SkyfileLayout) {
 	// Sanity check - baseSector should not be more than modules.SectorSize.
-	// Note that the base sector may be smaller in the event of a packed
-	// skyfile.
 	if uint64(len(baseSector)) > modules.SectorSize {
-		build.Critical("parseSkyfileMetadata given a baseSector that is too large")
+		build.Critical("ParseSkyfileLayout given a baseSector that is too large")
 	}
 
 	// Parse the layout.
-	var offset uint64
 	sl.Decode(baseSector)
+	return
+}
+
+// ErrRecursiveBaseSector is returned if a base sector couldn't be parsed due to
+// being recursive.
+var ErrRecursiveBaseSector = errors.New("can't use skymodules.ParseSkyfileMetadata to parse recursive base sector - use renter.ParseSkyfileMetadata instead")
+
+// ParseSkyfileMetadata will pull the metadata (including layout and fanout) out
+// of a skyfile.
+func ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []byte, sm SkyfileMetadata, rawSM, baseSectorPayload []byte, err error) {
+	// Parse the layout.
+	var offset uint64
+	sl = ParseSkyfileLayout(baseSector)
 	offset += SkyfileLayoutSize
 
 	// Check the version.
@@ -255,7 +428,7 @@ func ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []by
 	// Currently there is no support for skyfiles with fanout + metadata that
 	// exceeds the base sector.
 	if offset+sl.FanoutSize+sl.MetadataSize > uint64(len(baseSector)) || sl.FanoutSize > modules.SectorSize || sl.MetadataSize > modules.SectorSize {
-		return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, nil, errors.New("this version of siad does not support skyfiles with large fanouts and metadata")
+		return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, nil, ErrRecursiveBaseSector
 	}
 
 	// Parse the fanout.

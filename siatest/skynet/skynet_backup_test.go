@@ -2,6 +2,7 @@ package skynet
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"reflect"
 	"strings"
@@ -68,34 +69,48 @@ func testSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Define test function
-	singleFileTest := func(filename, skykeyName string, data []byte) {
+	singleFileTest := func(t *testing.T, filename, skykeyName string, data []byte) {
 		// Portal 1 uploads the skyfile
-		skylink, sup, _, err := portal1.UploadNewEncryptedSkyfileBlocking(filename, data, skykeyName, false)
+		skylink, sup, _, err := portal1.UploadNewEncryptedSkyfileBlocking(filename, data, skykeyName, true)
 		if err != nil {
-			t.Fatalf("Test %v failed to upload: %v", filename, err)
+			t.Fatalf("Failed to upload: %v", err)
 		}
 
 		// Verify the backup and restoration of the skylink
 		err = verifyBackupAndRestore(tg, portal1, portal2, skylink, sup.SiaPath.String())
 		if err != nil {
-			t.Errorf("Test %v failed to backup and restore: %v", filename, err)
+			t.Errorf("Failed to backup and restore: %v", err)
 		}
 	}
 
 	// Define common params
 	smallSize := 100
 	smallData := fastrand.Bytes(smallSize)
-	largeSize := 2*int(modules.SectorSize) + siatest.Fuzz()
+	largeSize := 3*int(modules.SectorSize) + siatest.Fuzz()
 	largeData := fastrand.Bytes(largeSize)
+	largeNameSuffix := hex.EncodeToString(fastrand.Bytes(int(modules.SectorSize)))
 
 	// Small Skyfile
-	singleFileTest("singleSmallFile", "", smallData)
+	parentTestName := t.Name()
+	t.Run("SingleSmallFile", func(t *testing.T) {
+		filename := fmt.Sprintf("%s-%s", parentTestName, t.Name())
+		singleFileTest(t, filename, "", smallData)
+	})
 	// Small Encrypted Skyfile
-	singleFileTest("singleSmallFile_encrypted", sk.Name, smallData)
+	t.Run("SingleSmallFile_encrypted", func(t *testing.T) {
+		filename := fmt.Sprintf("%s-%s", parentTestName, t.Name())
+		singleFileTest(t, filename, sk.Name, smallData)
+	})
 	// Large Skyfile
-	singleFileTest("singleLargeFile", "", largeData)
+	t.Run("SingleLargeFile", func(t *testing.T) {
+		filename := fmt.Sprintf("%s-%s-%s", parentTestName, t.Name(), largeNameSuffix)
+		singleFileTest(t, filename, "", largeData)
+	})
 	// Large Encrypted Skyfile
-	singleFileTest("singleLargeFile_encrypted", sk.Name, largeData)
+	t.Run("SingleLargeFile_encrypted", func(t *testing.T) {
+		filename := fmt.Sprintf("%s-%s-%s", parentTestName, t.Name(), largeNameSuffix)
+		singleFileTest(t, filename, sk.Name, largeData)
+	})
 }
 
 // testSingleFileMultiPart verifies that a single skyfile uploaded using the

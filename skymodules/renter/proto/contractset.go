@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -68,6 +69,7 @@ func (cs *ContractSet) Delete(c *SafeContract) {
 	}
 	delete(cs.contracts, c.header.ID())
 	delete(cs.pubKeys, c.header.HostPublicKey().String())
+	unappliedTxns := c.unappliedTxns
 	cs.mu.Unlock()
 	c.revisionMu.Unlock()
 	// delete contract file
@@ -79,6 +81,12 @@ func (cs *ContractSet) Delete(c *SafeContract) {
 	err = errors.Compose(err, os.Remove(headerPath), os.Remove(rootsPath))
 	if err != nil {
 		build.Critical("Failed to delete SafeContract from disk:", err)
+	}
+	for _, txn := range unappliedTxns {
+		err = txn.SignalUpdatesApplied()
+		if err != nil {
+			build.Critical("Delete: failed to signal applied updates for contract", c.header.ID())
+		}
 	}
 }
 
@@ -228,27 +236,63 @@ func NewContractSet(dir string, rl *ratelimit.RateLimit, deps modules.Dependenci
 	// Set the initial rate limit to 'unlimited' bandwidth with 4kib packets.
 	cs.staticRL = ratelimit.NewRateLimit(0, 0, 0)
 
+	// Some vars for unmarshaling. These are pulled out of the loop to
+	// prevent rapid allocations.
+	var ush updateSetHeader
+	var usr updateSetRoot
+
 	// Before loading the contract files apply the updates which were meant to
 	// create new contracts and filter them out.
-	var remainingTxns []*writeaheadlog.Transaction
+	unappliedWalTxns := make(map[types.FileContractID][]*unappliedWalTxn)
 	for _, txn := range walTxns {
-		// txn with insertion updates contain exactly one update and are named
-		// 'updateNameInsertContract'. If that is not the case, we ignore the
-		// txn for now.
-		if len(txn.Updates) != 1 || txn.Updates[0].Name != updateNameInsertContract {
-			remainingTxns = append(remainingTxns, txn)
-			continue
+		if len(txn.Updates) == 0 {
+			build.Critical("empty txn found")
+			continue // no updates
 		}
-		_, err := cs.managedApplyInsertContractUpdate(txn.Updates[0])
-		if err != nil {
-			return nil, errors.AddContext(err, "failed to apply insertContractUpdate on startup")
-		}
-		err = txn.SignalUpdatesApplied()
-		if err != nil {
-			return nil, errors.AddContext(err, "failed to apply insertContractUpdate on startup")
+		switch update := txn.Updates[0]; update.Name {
+		case updateNameInsertContract:
+			if len(txn.Updates) != 1 {
+				if !deps.Disrupt("IgnoreInvalidUpdate") {
+					build.Critical("insert contract txns should only have 1 update")
+				}
+				err = txn.SignalUpdatesApplied()
+				if err != nil {
+					return nil, errors.AddContext(err, "failed to apply unknown update")
+				}
+				continue
+			}
+			// Apply unfinished insert contract updates.
+			_, err := cs.managedApplyInsertContractUpdate(txn.Updates[0])
+			if err != nil {
+				return nil, errors.AddContext(err, "failed to apply insertContractUpdate on startup")
+			}
+			err = txn.SignalUpdatesApplied()
+			if err != nil {
+				return nil, errors.AddContext(err, "failed to apply insertContractUpdate on startup")
+			}
+		case updateNameSetHeader:
+			// Unfinished set header updates are collected.
+			if err := unmarshalHeader(update.Instructions, &ush); err != nil {
+				return nil, errors.AddContext(err, "unable to unmarshal the contract header during wal txn recovery")
+			}
+			unappliedWalTxns[ush.ID] = append(unappliedWalTxns[ush.ID], newUnappliedWalTxn(txn))
+		case updateNameSetRoot:
+			// Unfinished set root updates are collected.
+			if err := encoding.Unmarshal(update.Instructions, &usr); err != nil {
+				return nil, errors.AddContext(err, "unable to unmarshal the update root set during wal txn recovery")
+			}
+			unappliedWalTxns[usr.ID] = append(unappliedWalTxns[usr.ID], newUnappliedWalTxn(txn))
+		default:
+			// Unknown updates are applied.
+			if !deps.Disrupt("IgnoreInvalidUpdate") {
+				build.Critical("unknown update", update.Name)
+			}
+			err = txn.SignalUpdatesApplied()
+			if err != nil {
+				return nil, errors.AddContext(err, "failed to apply unknown update")
+			}
 		}
 	}
-	walTxns = remainingTxns
 
 	// Check for legacy contracts and split them up.
 	if err := cs.managedV146SplitContractHeaderAndRoots(dir); err != nil {
@@ -270,12 +314,28 @@ func NewContractSet(dir string, rl *ratelimit.RateLimit, deps modules.Dependenci
 		rootsPath := filepath.Join(dir, nameNoExt+contractRootsExtension)
 		refCounterPath := filepath.Join(dir, nameNoExt+refCounterExtension)
 
-		if err := cs.loadSafeContract(headerPath, rootsPath, refCounterPath, walTxns); err != nil {
+		if err := cs.loadSafeContract(headerPath, rootsPath, refCounterPath, unappliedWalTxns); err != nil {
 			extErr := fmt.Errorf("failed to load safecontract for header %v", headerPath)
 			return nil, errors.Compose(extErr, err)
 		}
 	}
 
+	// Apply all the txns we don't have contracts for.
+	for fcid, txns := range unappliedWalTxns {
+		_, exists := cs.contracts[fcid]
+		if exists {
+			continue
+		}
+		if build.Release == "testing" {
+			build.Critical("regular testing should never leave txns to unknown contracts", fcid)
+		}
+		for _, txn := range txns {
+			err = txn.SignalUpdatesApplied()
+			if err != nil {
+				return nil, errors.AddContext(err, "failed to apply unused wal txn")
+			}
+		}
+	}
 	return cs, nil
 }
 

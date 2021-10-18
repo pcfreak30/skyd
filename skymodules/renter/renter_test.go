@@ -106,7 +106,7 @@ func (rt *renterTester) addCustomHost(testdir string, deps modules.Dependencies)
 	if err != nil {
 		return nil, err
 	}
-	err = h.AddStorageFolder(storageFolder, modules.SectorSize*64)
+	err = h.AddStorageFolder(storageFolder, 1<<20) // 1 MiB
 	if err != nil {
 		return nil, err
 	}

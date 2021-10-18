@@ -33,7 +33,7 @@ func TestBackupAndRestoreSkylink(t *testing.T) {
 	//
 	// Create baseSector
 	fileData := []byte("Super interesting skyfile data")
-	baseSector, _ := BuildBaseSector(layoutBytes, nil, smBytes, fileData)
+	baseSector, _, _ := BuildBaseSector(layoutBytes, nil, smBytes, fileData)
 	// Backup and Restore test with no reader supplied
 	testBackupAndRestore(t, baseSector, fileData, nil)
 	// Backup and Restore test with reader supplied
@@ -42,8 +42,9 @@ func TestBackupAndRestoreSkylink(t *testing.T) {
 
 	// Large file test
 	//
-	// Create fanout to mock 2 chunks with 3 pieces each
-	numChunks := 2
+	// Create fanout to mock 500 chunks with 3 pieces each. That way the
+	// file will have an extended base sector.
+	numChunks := 500
 	numPieces := 3
 	fanoutBytes := make([]byte, 0, numChunks*numPieces*crypto.HashSize)
 	for ci := 0; ci < numChunks; ci++ {
@@ -53,7 +54,7 @@ func TestBackupAndRestoreSkylink(t *testing.T) {
 		}
 	}
 	// Create baseSector
-	baseSector, _ = BuildBaseSector(layoutBytes, fanoutBytes, smBytes, nil)
+	baseSector, _, _ = BuildBaseSector(layoutBytes, fanoutBytes, smBytes, nil)
 	// Backup and Restore test
 	size := 2 * int(modules.SectorSize)
 	fileData = fastrand.Bytes(size)

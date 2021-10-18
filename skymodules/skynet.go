@@ -59,6 +59,11 @@ var (
 	// sector encryption
 	BaseSectorNonceDerivation = types.NewSpecifier("BaseSectorNonce")
 
+	// DefaultSkynetPricePerMS is the default price per millisecond the renter
+	// is able to spend on faster workers when downloading a Skyfile. By default
+	// this is a sane default of 100 nS.
+	DefaultSkynetPricePerMS = types.SiacoinPrecision.MulFloat(1e-7) // 100 nS
+
 	// FanoutNonceDerivation is the specifier used to derive a nonce for
 	// fanout encryption.
 	FanoutNonceDerivation = types.NewSpecifier("FanoutNonce")
@@ -537,6 +542,25 @@ type SkyfileLayout struct {
 	FanoutParityPieces uint8
 	CipherType         crypto.CipherType
 	KeyData            [layoutKeyDataSize]byte // keyData is incompatible with ciphers that need keys larger than 64 bytes
+}
+
+// NewSkyfileLayout creates a new version 1 layout with fanout.
+func NewSkyfileLayout(fileSize, metadataSize, fanoutSize uint64, fanoutEC ErasureCoder, ct crypto.CipherType) SkyfileLayout {
+	sl := NewSkyfileLayoutNoFanout(fileSize, metadataSize, ct)
+	sl.FanoutSize = fanoutSize
+	sl.FanoutDataPieces = uint8(fanoutEC.MinPieces())
+	sl.FanoutParityPieces = uint8(fanoutEC.NumPieces() - fanoutEC.MinPieces())
+	return sl
+}
+
+// NewSkyfileLayoutNoFanout creates a new version 1 layout without fanout.
+func NewSkyfileLayoutNoFanout(fileSize, metadataSize uint64, ct crypto.CipherType) SkyfileLayout {
+	return SkyfileLayout{
+		Version:      SkyfileVersion,
+		Filesize:     fileSize,
+		MetadataSize: metadataSize,
+		CipherType:   ct,
+	}
 }
 
 // Decode will take a []byte and load the layout from that []byte.

@@ -65,13 +65,6 @@ const (
 	SkynetRequestedSkylinkHeader = "Skynet-Requested-Skylink"
 )
 
-var (
-	// DefaultSkynetPricePerMS is the default price per millisecond the renter
-	// is able to spend on faster workers when downloading a Skyfile. By default
-	// this is a sane default of 100 nS.
-	DefaultSkynetPricePerMS = types.SiacoinPrecision.MulFloat(1e-7) // 100 nS
-)
-
 type (
 	// HostsForRegistryUpdateGET is the response that the api returns after
 	// a request to /skynet/registry/hosts.
@@ -274,7 +267,7 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 	}
 
 	// Parse pricePerMS.
-	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMS := skymodules.DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
 		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
@@ -463,7 +456,7 @@ func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, _
 	}
 
 	// Parse pricePerMS.
-	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMS := skymodules.DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
 		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
@@ -689,7 +682,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	}
 
 	// Parse pricePerMS.
-	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMS := skymodules.DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
 		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
@@ -1561,7 +1554,7 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 	}
 
 	// Parse pricePerMS.
-	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMS := skymodules.DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
 		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
@@ -1615,7 +1608,7 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 	}
 
 	// Parse it.
-	_, _, _, rawMD, _, err := skymodules.ParseSkyfileMetadata(baseSector)
+	_, _, _, rawMD, _, _, err := api.renter.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
@@ -1652,7 +1645,7 @@ func (api *API) skynetSkylinkHealthGET(w http.ResponseWriter, req *http.Request,
 	defer cancel()
 
 	// Get health.
-	sh, err := api.renter.SkylinkHealth(ctx, skylink, DefaultSkynetPricePerMS)
+	sh, err := api.renter.SkylinkHealth(ctx, skylink, skymodules.DefaultSkynetPricePerMS)
 	if err != nil {
 		handleSkynetError(w, "failed to get skylink health", err)
 		return
