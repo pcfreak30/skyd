@@ -755,6 +755,8 @@ func (pdc *projectDownloadChunk) currentDownload(w downloadWorker) (uint64, bool
 // try to launch every worker that has not yet been launched and is ready to
 // launch.
 func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) bool {
+	workerSetCost := ws.adjustedDuration(pdc.pricePerMS)
+
 	// convenience variables
 	minPieces := pdc.workerSet.staticErasureCoder.MinPieces()
 
@@ -799,7 +801,10 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) bool {
 	// debugging
 	if workerLaunched {
 		if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-			span.LogKV("launchedWorkerSet", ws)
+			span.LogKV(
+				"launchedWorkerSet", ws,
+				"launchedWorkerSetCost", workerSetCost,
+			)
 		}
 	}
 	return workerLaunched
