@@ -754,7 +754,7 @@ func (pdc *projectDownloadChunk) currentDownload(w downloadWorker) (uint64, bool
 // launchWorkerSet will range over the workers in the given worker set and will
 // try to launch every worker that has not yet been launched and is ready to
 // launch.
-func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) bool {
+func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, workers []*individualWorker) bool {
 	workerSetCost := ws.adjustedDuration(pdc.pricePerMS)
 
 	// convenience variables
@@ -801,9 +801,15 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) bool {
 	// debugging
 	if workerLaunched {
 		if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+			out := ""
+			for _, w := range workers {
+				out += fmt.Sprintf("worker %v chance %v ", w.identifier(), w.cachedReadDTChances[ws.staticBucketIndex])
+			}
+
 			span.LogKV(
 				"launchedWorkerSet", ws,
 				"launchedWorkerSetCost", workerSetCost,
+				"launchedWorkersInfo", out,
 			)
 		}
 	}
@@ -876,7 +882,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			return
 		}
 		if workerSet != nil {
-			pdc.launchWorkerSet(workerSet)
+			pdc.launchWorkerSet(workerSet, workers)
 		}
 
 		// iterate
