@@ -558,14 +558,22 @@ func (ws *workerSet) chanceGreaterThanHalf() bool {
 func (ws *workerSet) String() string {
 	output := fmt.Sprintf("WORKERSET bucket: %v bucket dur %v expected dur: %v num overdrive: %v \nworkers:\n", ws.staticBucketIndex, skymodules.DistributionDurationForBucketIndex(ws.staticBucketIndex), ws.staticBucketDuration, ws.staticNumOverdrive)
 	for i, w := range ws.workers {
-		_, chimera := w.(*chimeraWorker)
+		iw, isIw := w.(*individualWorker)
+		ch, isCh := w.(*chimeraWorker)
+
 		selected := -1
-		if !chimera {
+		if isIw {
 			selected = int(w.getPieceForDownload())
 		}
 
-		chance := w.completeChanceCached()
-		output += fmt.Sprintf("%v) worker: %v chimera: %v chance: %v cost: %v pieces: %v selected: %v\n", i+1, w.identifier(), chimera, chance, w.cost(), w.pieces(ws.staticPDC), selected)
+		var chance float64
+		if isCh {
+			chance = ch.staticChanceComplete
+		} else {
+			chance = iw.cachedReadDTChances[ws.staticBucketIndex]
+		}
+
+		output += fmt.Sprintf("%v) worker: %v chimera: %v chance: %v cost: %v pieces: %v selected: %v\n", i+1, w.identifier(), isCh, chance, w.cost(), w.pieces(ws.staticPDC), selected)
 	}
 	return output
 }
@@ -804,7 +812,7 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, workers []*indiv
 			out := ""
 			for _, w := range workers {
 				if w.isLaunched() {
-					out += fmt.Sprintf("worker %v chance %v ", w.identifier(), w.cachedReadDTChances[ws.staticBucketIndex])
+					out += fmt.Sprintf("worker %v chance %v\n", w.identifier(), w.cachedReadDTChances[ws.staticBucketIndex])
 				}
 			}
 
