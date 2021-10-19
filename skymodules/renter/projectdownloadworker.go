@@ -307,10 +307,6 @@ func (iw *individualWorker) recalculateDistributionChances() {
 		readDT := iw.staticReadDistribution.Clone()
 		readDT.Shift(time.Since(iw.currentPieceLaunchedAt))
 		iw.cachedReadDTChances = readDT.ChancesAfter()
-
-		if readDT.DataPoints() == 0 {
-			fmt.Println("read DT had no datapoints after shifting", time.Since(iw.currentPieceLaunchedAt))
-		}
 	}
 
 	// if the worker is not resolved yet, we want to always shift the lookup dt
