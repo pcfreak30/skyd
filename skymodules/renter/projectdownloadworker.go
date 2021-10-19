@@ -316,6 +316,10 @@ func (iw *individualWorker) recalculateDistributionChances() {
 		lookupDT.Shift(time.Since(iw.staticDownloadLaunchTime))
 		lookupDTExpectedDurIndex := skymodules.DistributionBucketIndexForDuration(lookupDT.ExpectedDuration())
 		iw.cachedLookupIndex = lookupDTExpectedDurIndex
+
+		if lookupDTExpectedDurIndex == 399 {
+			fmt.Println("lookupDT datapoints", lookupDT.DataPoints())
+		}
 	}
 }
 
@@ -830,6 +834,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	workerUpdateChan := ws.managedRegisterForWorkerUpdate()
 
 	// TODO: remove (debug purposes)
+	var err error
 	var workerSet *workerSet
 
 	prevLog := time.Now()
@@ -861,13 +866,27 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		}
 
 		// create a worker set and launch it
-		workerSet, err := pdc.createWorkerSet(workers)
+		workerSet, err = pdc.createWorkerSet(workers)
 		if err != nil {
 			pdc.fail(err)
 			return
 		}
 		if workerSet != nil {
 			pdc.launchWorkerSet(workerSet)
+		}
+		if workerSet == nil {
+			downloadWorkers := pdc.buildDownloadWorkers(workers)
+
+			// divide the workers in most likely and less likely
+			workersNeeded := ec.MinPieces() + maxOverdriveWorkers
+			mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(downloadWorkers, workersNeeded, maxOverdriveWorkers)
+			fmt.Println("mostLikely", len(mostLikely))
+			fmt.Println("lessLikely", len(lessLikely))
+			for _, mlw := range mostLikely {
+				_, chimera := mlw.(*chimeraWorker)
+				fmt.Printf("mostlike chance: %v chimera: %v\n", mlw.completeChanceCached(), chimera)
+			}
+			fmt.Println("- - -")
 		}
 
 		// iterate
@@ -1137,6 +1156,18 @@ func (pdc *projectDownloadChunk) buildDownloadWorkers(workers []*individualWorke
 
 	// the unresolved workers are used to build chimeras with
 	chimeraWorkers := pdc.buildChimeraWorkers(unresolvedWorkers)
+	if len(unresolvedWorkers) > 0 && len(chimeraWorkers) == 0 {
+		fmt.Println("no chimeras built, num unresolved", unresolvedWorkers)
+		// sort workers by chance they complete
+		sort.Slice(unresolvedWorkers, func(i, j int) bool {
+			eRTI := unresolvedWorkers[i].cachedCompleteChance
+			eRTJ := unresolvedWorkers[j].cachedCompleteChance
+			return eRTI > eRTJ
+		})
+		for i := 0; i < 10; i++ {
+			fmt.Println("CC", unresolvedWorkers[i].cachedCompleteChance)
+		}
+	}
 	return append(downloadWorkers, chimeraWorkers...)
 }
 
@@ -1167,6 +1198,11 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 	// add worker is a helper function that adds a worker to either the most
 	// likely or less likely worker array and updates our state variables
 	addWorker := func(w downloadWorker, pieceIndex uint64) {
+		_, indiv := w.(*individualWorker)
+		if !indiv {
+			fmt.Println("chimera added for piece", pieceIndex, w.completeChanceCached())
+		}
+
 		if len(mostLikely) < workersNeeded {
 			mostLikely = append(mostLikely, w)
 		} else {

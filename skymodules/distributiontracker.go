@@ -250,6 +250,7 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 	// Add the datapoint
 	d.timings[index]++
 	d.dataPoints++
+	fmt.Println("adding datapoint", dur, d.dataPoints)
 }
 
 // ChanceAfter returns the chance we find a data point after the given duration.
