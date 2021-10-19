@@ -313,10 +313,16 @@ func (iw *individualWorker) recalculateDistributionChances() {
 	// and use that to recalculate the expected duration index
 	if !iw.isResolved() {
 		lookupDT := iw.staticLookupDistribution.Clone()
+		dpBeforeShift := lookupDT.DataPoints()
 		lookupDT.Shift(time.Since(iw.staticDownloadLaunchTime))
+		dpAfterShift := lookupDT.DataPoints()
+
 		lookupDTExpectedDurIndex := skymodules.DistributionBucketIndexForDuration(lookupDT.ExpectedDuration())
 		iw.cachedLookupIndex = lookupDTExpectedDurIndex
 
+		if dpBeforeShift > 0 || dpAfterShift > 0 {
+			fmt.Println("we had datapoints", dpBeforeShift, dpAfterShift, time.Since(iw.staticDownloadLaunchTime))
+		}
 		if lookupDTExpectedDurIndex == 399 {
 			fmt.Println("lookupDT datapoints", lookupDT.DataPoints())
 		}
@@ -683,15 +689,18 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 		cost, _ := jrq.callExpectedJobCost(length).Float64()
 		jhsq := rw.worker.staticJobHasSectorQueue
 		ldt := jhsq.staticDT
+		fmt.Println("resolved worker datapoints: ", ldt.DataPoints())
 
 		workers = append(workers, &individualWorker{
 			resolved:     true,
 			pieceIndices: rw.pieceIndices,
 
+			staticAvailabilityRate:   jhsq.callAvailabilityRate(numPieces),
 			staticCost:               cost,
+			staticDownloadLaunchTime: time.Now(),
 			staticIdentifier:         rw.worker.staticHostPubKey.ShortString(),
-			staticLookupDistribution: ldt.Distribution(0).Clone(),
-			staticReadDistribution:   rdt.Distribution(0).Clone(),
+			staticLookupDistribution: ldt.Distribution(0),
+			staticReadDistribution:   rdt.Distribution(0),
 			staticWorker:             rw.worker,
 		})
 	}
@@ -708,6 +717,7 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 		rdt := jrq.staticStats.distributionTrackerForLength(length)
 		jhsq := w.staticJobHasSectorQueue
 		ldt := jhsq.staticDT
+		fmt.Println("unresolved worker datapoints: ", ldt.DataPoints())
 
 		cost, _ := jrq.callExpectedJobCost(length).Float64()
 		workers = append(workers, &individualWorker{
@@ -716,9 +726,10 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 
 			staticAvailabilityRate:   jhsq.callAvailabilityRate(numPieces),
 			staticCost:               cost,
+			staticDownloadLaunchTime: time.Now(),
 			staticIdentifier:         w.staticHostPubKey.ShortString(),
-			staticLookupDistribution: ldt.Distribution(0).Clone(),
-			staticReadDistribution:   rdt.Distribution(0).Clone(),
+			staticLookupDistribution: ldt.Distribution(0),
+			staticReadDistribution:   rdt.Distribution(0),
 			staticWorker:             w,
 		})
 	}
@@ -1157,15 +1168,18 @@ func (pdc *projectDownloadChunk) buildDownloadWorkers(workers []*individualWorke
 	// the unresolved workers are used to build chimeras with
 	chimeraWorkers := pdc.buildChimeraWorkers(unresolvedWorkers)
 	if len(unresolvedWorkers) > 0 && len(chimeraWorkers) == 0 {
-		fmt.Println("no chimeras built, num unresolved", unresolvedWorkers)
+		fmt.Println("no chimeras built, num unresolved", len(unresolvedWorkers))
 		// sort workers by chance they complete
 		sort.Slice(unresolvedWorkers, func(i, j int) bool {
 			eRTI := unresolvedWorkers[i].cachedCompleteChance
 			eRTJ := unresolvedWorkers[j].cachedCompleteChance
 			return eRTI > eRTJ
 		})
-		for i := 0; i < 10; i++ {
-			fmt.Println("CC", unresolvedWorkers[i].cachedCompleteChance)
+		for i := 0; i < len(unresolvedWorkers); i++ {
+			fmt.Printf("CC %v AR %v\n", unresolvedWorkers[i].cachedCompleteChance, unresolvedWorkers[i].staticAvailabilityRate)
+			if i == 5 {
+				break
+			}
 		}
 	}
 	return append(downloadWorkers, chimeraWorkers...)

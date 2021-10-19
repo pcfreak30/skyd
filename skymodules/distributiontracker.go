@@ -250,7 +250,6 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 	// Add the datapoint
 	d.timings[index]++
 	d.dataPoints++
-	fmt.Println("adding datapoint", dur, d.dataPoints)
 }
 
 // ChanceAfter returns the chance we find a data point after the given duration.
@@ -451,17 +450,16 @@ func (d *Distribution) Shift(dur time.Duration) {
 	}
 
 	// Otherwise we calculate the remainder and smear it over all buckets
-	// up until we reach index. We have to recalculate the datapoints since
-	// shift alters the timings.
+	// up until we reach index.
 	remainder := fraction * value
 	smear := remainder / float64(index)
-	d.dataPoints = 0
 	for i := 0; i < index; i++ {
 		d.timings[i] = smear
-		d.dataPoints += d.timings[i]
 	}
-	// Add the remainder of the datapoints
-	for i := index; i < len(d.timings); i++ {
+
+	// We have to recalculate the datapoints since shift alters the timings.
+	d.dataPoints = 0
+	for i := 0; i < DistributionTrackerTotalBuckets; i++ {
 		d.dataPoints += d.timings[i]
 	}
 }
