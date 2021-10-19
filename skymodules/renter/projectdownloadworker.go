@@ -803,7 +803,9 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, workers []*indiv
 		if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
 			out := ""
 			for _, w := range workers {
-				out += fmt.Sprintf("worker %v chance %v ", w.identifier(), w.cachedReadDTChances[ws.staticBucketIndex])
+				if w.isLaunched() {
+					out += fmt.Sprintf("worker %v chance %v ", w.identifier(), w.cachedReadDTChances[ws.staticBucketIndex])
+				}
 			}
 
 			span.LogKV(
