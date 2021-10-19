@@ -307,24 +307,24 @@ func (iw *individualWorker) recalculateDistributionChances() {
 		readDT := iw.staticReadDistribution.Clone()
 		readDT.Shift(time.Since(iw.currentPieceLaunchedAt))
 		iw.cachedReadDTChances = readDT.ChancesAfter()
+
+		if readDT.DataPoints() == 0 {
+			fmt.Println("read DT had no datapoints after shifting", time.Since(iw.currentPieceLaunchedAt))
+		}
 	}
 
 	// if the worker is not resolved yet, we want to always shift the lookup dt
 	// and use that to recalculate the expected duration index
 	if !iw.isResolved() {
+		timeSinceLaunch := time.Since(iw.staticDownloadLaunchTime)
 		lookupDT := iw.staticLookupDistribution.Clone()
-		dpBeforeShift := lookupDT.DataPoints()
-		lookupDT.Shift(time.Since(iw.staticDownloadLaunchTime))
-		dpAfterShift := lookupDT.DataPoints()
+		lookupDT.Shift(timeSinceLaunch)
 
-		lookupDTExpectedDurIndex := skymodules.DistributionBucketIndexForDuration(lookupDT.ExpectedDuration())
-		iw.cachedLookupIndex = lookupDTExpectedDurIndex
-
-		if dpBeforeShift > 0 || dpAfterShift > 0 {
-			fmt.Println("we had datapoints", dpBeforeShift, dpAfterShift, time.Since(iw.staticDownloadLaunchTime))
-		}
-		if lookupDTExpectedDurIndex == 399 {
-			fmt.Println("lookupDT datapoints", lookupDT.DataPoints())
+		indexForDur := skymodules.DistributionBucketIndexForDuration
+		if lookupDT.DataPoints() > 0 {
+			iw.cachedLookupIndex = indexForDur(lookupDT.ExpectedDuration())
+		} else {
+			iw.cachedLookupIndex = indexForDur(timeSinceLaunch)
 		}
 	}
 }
@@ -689,7 +689,6 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 		cost, _ := jrq.callExpectedJobCost(length).Float64()
 		jhsq := rw.worker.staticJobHasSectorQueue
 		ldt := jhsq.staticDT
-		fmt.Println("resolved worker datapoints: ", ldt.DataPoints())
 
 		workers = append(workers, &individualWorker{
 			resolved:     true,
@@ -717,7 +716,6 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 		rdt := jrq.staticStats.distributionTrackerForLength(length)
 		jhsq := w.staticJobHasSectorQueue
 		ldt := jhsq.staticDT
-		fmt.Println("unresolved worker datapoints: ", ldt.DataPoints())
 
 		cost, _ := jrq.callExpectedJobCost(length).Float64()
 		workers = append(workers, &individualWorker{
@@ -884,20 +882,6 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		}
 		if workerSet != nil {
 			pdc.launchWorkerSet(workerSet)
-		}
-		if workerSet == nil {
-			downloadWorkers := pdc.buildDownloadWorkers(workers)
-
-			// divide the workers in most likely and less likely
-			workersNeeded := ec.MinPieces() + maxOverdriveWorkers
-			mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(downloadWorkers, workersNeeded, maxOverdriveWorkers)
-			fmt.Println("mostLikely", len(mostLikely))
-			fmt.Println("lessLikely", len(lessLikely))
-			for _, mlw := range mostLikely {
-				_, chimera := mlw.(*chimeraWorker)
-				fmt.Printf("mostlike chance: %v chimera: %v\n", mlw.completeChanceCached(), chimera)
-			}
-			fmt.Println("- - -")
 		}
 
 		// iterate
@@ -1167,21 +1151,6 @@ func (pdc *projectDownloadChunk) buildDownloadWorkers(workers []*individualWorke
 
 	// the unresolved workers are used to build chimeras with
 	chimeraWorkers := pdc.buildChimeraWorkers(unresolvedWorkers)
-	if len(unresolvedWorkers) > 0 && len(chimeraWorkers) == 0 {
-		fmt.Println("no chimeras built, num unresolved", len(unresolvedWorkers))
-		// sort workers by chance they complete
-		sort.Slice(unresolvedWorkers, func(i, j int) bool {
-			eRTI := unresolvedWorkers[i].cachedCompleteChance
-			eRTJ := unresolvedWorkers[j].cachedCompleteChance
-			return eRTI > eRTJ
-		})
-		for i := 0; i < len(unresolvedWorkers); i++ {
-			fmt.Printf("CC %v AR %v\n", unresolvedWorkers[i].cachedCompleteChance, unresolvedWorkers[i].staticAvailabilityRate)
-			if i == 5 {
-				break
-			}
-		}
-	}
 	return append(downloadWorkers, chimeraWorkers...)
 }
 
@@ -1212,11 +1181,6 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 	// add worker is a helper function that adds a worker to either the most
 	// likely or less likely worker array and updates our state variables
 	addWorker := func(w downloadWorker, pieceIndex uint64) {
-		_, indiv := w.(*individualWorker)
-		if !indiv {
-			fmt.Println("chimera added for piece", pieceIndex, w.completeChanceCached())
-		}
-
 		if len(mostLikely) < workersNeeded {
 			mostLikely = append(mostLikely, w)
 		} else {
