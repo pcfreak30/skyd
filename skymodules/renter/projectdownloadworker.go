@@ -366,6 +366,9 @@ func (iw *individualWorker) calculateCompleteChance(index int) float64 {
 
 	// if the worker is launched, we want to shift the read dt
 	if iw.isLaunched() {
+		if time.Since(iw.currentPieceLaunchedAt) > 10*time.Second {
+			fmt.Println("shift dur", time.Since(iw.currentPieceLaunchedAt))
+		}
 		readDT := iw.staticReadDistribution.Clone()
 		readDT.Shift(time.Since(iw.currentPieceLaunchedAt))
 		return readDT.ChanceAfter(dur)
@@ -854,8 +857,9 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, workers []*indiv
 					chanceAfter210 := w.calculateCompleteChance(210)
 					chanceAfter280 := w.calculateCompleteChance(280)
 					chanceAfterBucket := w.cachedReadDTChances[ws.staticBucketIndex]
+					datapoints := w.staticReadDistribution.DataPoints()
 
-					out += fmt.Sprintf("worker %v chance %v (%v | %v | %v | %v)\n", w.identifier(), chanceAfterBucket, chanceAfter70, chanceAfter140, chanceAfter210, chanceAfter280)
+					out += fmt.Sprintf("worker %v chance %v (%v | %v | %v | %v)datapoints %v\n", w.identifier(), chanceAfterBucket, chanceAfter70, chanceAfter140, chanceAfter210, chanceAfter280, datapoints)
 				}
 			}
 

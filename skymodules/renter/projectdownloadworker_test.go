@@ -658,6 +658,7 @@ func TestWorkerSetCost(t *testing.T) {
 	ppms := types.SiacoinPrecision.MulFloat(1e-9)
 	baseCost := skymodules.DefaultSkynetBaseCost
 	cost := baseCost.Mul64(1 << 16)
+	t.Log(cost)
 	cost = cost.Div(ppms)
 	t.Log(cost)
 	ms, _ := cost.Float64()
