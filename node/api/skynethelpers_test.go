@@ -311,6 +311,9 @@ func testParseSkylinkURL(t *testing.T) {
 // 'parseUploadHeadersAndRequestParameters'.
 func testParseUploadRequestParameters(t *testing.T) {
 	t.Parallel()
+	if testing.Short() {
+		t.SkipNow()
+	}
 
 	// create a siapath
 	siapath, err := skymodules.NewSiaPath(t.Name())
