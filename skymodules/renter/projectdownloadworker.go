@@ -97,9 +97,6 @@ type (
 	// downloadWorker is an interface implemented by both the individual and
 	// chimera workers that represents a worker that can be used for downloads.
 	downloadWorker interface {
-		// TODO: remove
-		calculateCompleteChance(index int) float64
-
 		// completeChanceCached returns the chance this download worker
 		// completes a read within the duration that corresponds to the given
 		// bucket index. This value is cached and recomputed for every bucket
@@ -247,10 +244,6 @@ func (cw *chimeraWorker) completeChanceCached() float64 {
 	return cw.staticChanceComplete
 }
 
-func (cw *chimeraWorker) calculateCompleteChance(index int) float64 {
-	return cw.staticChanceComplete
-}
-
 // cost returns the cost for this chimera worker, this method can only be called
 // on a chimera that is finalized
 func (cw *chimeraWorker) cost() float64 {
@@ -361,39 +354,6 @@ func (iw *individualWorker) recalculateCompleteChance(index int) {
 // completeChanceCached returns the chance this worker will complete
 func (iw *individualWorker) completeChanceCached() float64 {
 	return iw.cachedCompleteChance
-}
-
-func (iw *individualWorker) calculateCompleteChance(index int) float64 {
-	dur := skymodules.DistributionDurationForBucketIndex(index)
-
-	// if the worker is launched, we want to shift the read dt
-	if iw.isLaunched() {
-		if time.Since(iw.currentPieceLaunchedAt) > 10*time.Second {
-			fmt.Println("shift dur", time.Since(iw.currentPieceLaunchedAt))
-		}
-		readDT := iw.staticReadDistribution.Clone()
-		readDT.Shift(time.Since(iw.currentPieceLaunchedAt))
-		return readDT.ChanceAfter(dur)
-	}
-
-	// if the worker is resolved, return the read dt chance
-	if iw.isResolved() {
-		return iw.staticReadDistribution.ChanceAfter(dur)
-	}
-
-	// if the worker is not resolved yet, we want to always shift the lookup dt
-	// and use that to recalculate the expected duration index
-	lookupDT := iw.staticLookupDistribution.Clone()
-	lookupDT.Shift(time.Since(iw.staticDownloadLaunchTime))
-	indexForDur := skymodules.DistributionBucketIndexForDuration
-	lookupIndex := indexForDur(lookupDT.ExpectedDuration())
-	if index < lookupIndex {
-		return 0
-	}
-
-	// otherwise return the read chance offset by the lookup index
-	chances := iw.staticReadDistribution.ChancesAfter()
-	return chances[index-lookupIndex]
 }
 
 // getPieceForDownload returns the piece to download next
@@ -596,28 +556,6 @@ func (ws *workerSet) chanceGreaterThanHalf() bool {
 	return chance > 0.5
 }
 
-// String returns a string representation of the worker set
-func (ws *workerSet) String() string {
-	output := fmt.Sprintf("WORKERSET bucket: %v bucket dur %v expected dur: %v num overdrive: %v \nworkers:\n", ws.staticBucketIndex, skymodules.DistributionDurationForBucketIndex(ws.staticBucketIndex), ws.staticBucketDuration, ws.staticNumOverdrive)
-	for i, w := range ws.workers {
-		iw, individual := w.(*individualWorker)
-		selected := -1
-		if individual {
-			selected = int(w.getPieceForDownload())
-		}
-
-		chance := w.calculateCompleteChance(ws.staticBucketIndex)
-
-		cost := w.cost()
-		if individual {
-			cost = iw.staticCost
-		}
-
-		output += fmt.Sprintf("%v) worker: %v chimera: %v chance: %v cost: %v pieces: %v selected: %v\n", i+1, w.identifier(), !individual, chance, cost, w.pieces(ws.staticPDC), selected)
-	}
-	return output
-}
-
 // chanceAllHeads returns the chance all coins show heads.
 func (cf coinflips) chanceAllHeads() float64 {
 	if len(cf) == 0 {
@@ -802,14 +740,11 @@ func (pdc *projectDownloadChunk) currentDownload(w downloadWorker) (uint64, bool
 // launchWorkerSet will range over the workers in the given worker set and will
 // try to launch every worker that has not yet been launched and is ready to
 // launch.
-func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, workers []*individualWorker) bool {
-	workerSetCost := ws.adjustedDuration(pdc.pricePerMS)
-
+func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, workers []*individualWorker) {
 	// convenience variables
 	minPieces := pdc.workerSet.staticErasureCoder.MinPieces()
 
 	// range over all workers in the set and launch if possible
-	var workerLaunched bool
 	for _, w := range ws.workers {
 		// continue if the worker is a chimera worker
 		_, ok := w.(*chimeraWorker)
@@ -818,63 +753,28 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, workers []*indiv
 		}
 
 		// continue if the worker is already launched
-		piece, launched, _ := pdc.currentDownload(w)
-		if launched {
+		piece, isLaunched, _ := pdc.currentDownload(w)
+		if isLaunched {
 			continue
 		}
 
 		// launch the worker
 		isOverdrive := len(pdc.launchedWorkers) >= minPieces
-		cost := w.cost()
-		expectedCompleteTime, launched := pdc.launchWorker(w, piece, isOverdrive)
+		_, gotLaunched := pdc.launchWorker(w, piece, isOverdrive)
 
 		// debugging
-		if launched {
-			workerLaunched = true
+		if gotLaunched {
 			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
 				span.LogKV(
 					"aWorkerLaunched", w.identifier(),
 					"piece", piece,
-					"cost", cost,
 					"overdriveWorker", isOverdrive,
-					"expectedDuration", time.Until(expectedCompleteTime),
-					"chanceAfterDur", w.completeChanceCached(),
 					"wsDuration", ws.staticBucketDuration,
 					"wsIndex", ws.staticBucketIndex,
 				)
 			}
 		}
 	}
-
-	// debugging
-	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-		out := ""
-		for _, w := range workers {
-			if w.isLaunched() {
-				chance := w.calculateCompleteChance(ws.staticBucketIndex)
-				chanceAfter20 := w.calculateCompleteChance(20)
-				chanceAfter70 := w.calculateCompleteChance(70)
-				chanceAfter140 := w.calculateCompleteChance(140)
-				chanceAfter210 := w.calculateCompleteChance(210)
-				chanceAfter280 := w.calculateCompleteChance(280)
-
-				readDT := w.staticReadDistribution.Clone()
-				readDT.Shift(time.Since(w.currentPieceLaunchedAt))
-				datapoints := readDT.DataPoints()
-
-				out += fmt.Sprintf("worker %v chance %v (%v | %v | %v | %v | %v) datapoints %v\n", w.identifier(), chance, chanceAfter20, chanceAfter70, chanceAfter140, chanceAfter210, chanceAfter280, datapoints)
-			}
-		}
-
-		span.LogKV(
-			"launchedWorkerSet", ws,
-			"launchedWorkerSetCost", workerSetCost,
-			"launchedWorkersInfo", out,
-			"launchedWorker", workerLaunched,
-		)
-	}
-
-	return workerLaunched
 }
 
 // threadedLaunchProjectDownload performs the main download loop, every
@@ -888,12 +788,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 
 	// grab the workers from the pdc, every iteration we will update this set of
 	// workers to avoid needless performing gouging checks on every iteration
-	start := time.Now()
 	workers := pdc.workers()
-	elpased := time.Since(start)
-	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-		span.LogKV("pdc.workers()", elpased)
-	}
 
 	// verify we have enough workers to complete the download
 	if len(workers) < ec.MinPieces() {
@@ -903,31 +798,9 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 
 	// register for a worker update chan
 	workerUpdateChan := ws.managedRegisterForWorkerUpdate()
-
-	// TODO: remove (debug purposes)
-	var err error
-	var workerSet *workerSet
-	var workerSetComp string
-
-	prevLog := time.Now()
 	prevWorkerUpdate := time.Now()
 
 	for {
-		if span := opentracing.SpanFromContext(pdc.ctx); span != nil && time.Since(prevLog) > 100*time.Millisecond {
-			numAvail := 0
-			for _, pI := range pdc.piecesInfo {
-				if pI.available > 0 {
-					numAvail++
-				}
-			}
-			span.LogKV(
-				"downloadLoopIter", time.Since(pdc.staticLaunchTime),
-				"currWorkerSet", workerSet,
-				"currWorkersAvail", numAvail,
-			)
-			prevLog = time.Now()
-		}
-
 		// update the pieces
 		updated := pdc.updatePieces()
 
@@ -938,26 +811,13 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		}
 
 		// create a worker set and launch it
-		workerSet, workerSetComp, err = pdc.createWorkerSet(workers)
+		workerSet, err := pdc.createWorkerSet(workers)
 		if err != nil {
 			pdc.fail(err)
 			return
 		}
 		if workerSet != nil {
-			lw := pdc.launchWorkerSet(workerSet, workers)
-			if ec.MinPieces() == 1 {
-				for _, w := range workerSet.workers {
-					iw, ok := w.(*individualWorker)
-					if ok {
-						if iw.isLaunched() {
-							workerSetComp += fmt.Sprintf("| worker %v launched %v ago\n", iw.identifier(), time.Since(iw.currentPieceLaunchedAt))
-						}
-					}
-				}
-				workerSetComp += fmt.Sprintf("| workerset launched worker %v\n", lw)
-				// fmt.Println(workerSetComp)
-				pdc.workerSet.staticRenter.staticLog.Println(workerSetComp)
-			}
+			pdc.launchWorkerSet(workerSet, workers)
 		}
 
 		// iterate
@@ -968,15 +828,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			// replace the worker update channel
 			workerUpdateChan = ws.managedRegisterForWorkerUpdate()
 		case jrr := <-pdc.workerResponseChan:
-			start := time.Now()
 			pdc.handleJobReadResponse(jrr)
-			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-				span.LogKV(
-					"handleJobReadResponse", jrr.staticMetadata.staticWorker.staticHostPubKeyStr,
-					"took", time.Since(start),
-					"error", jrr.staticErr,
-				)
-			}
 		case <-pdc.ctx.Done():
 			pdc.fail(errors.New("download timed out"))
 			return
@@ -998,10 +850,10 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 // createWorkerSet tries to create a worker set from the pdc's resolved and
 // unresolved workers, the maximum amount of overdrive workers in the set is
 // defined by the given 'maxOverdriveWorkers' argument.
-func (pdc *projectDownloadChunk) createWorkerSet(workers []*individualWorker) (*workerSet, string, error) {
+func (pdc *projectDownloadChunk) createWorkerSet(workers []*individualWorker) (*workerSet, error) {
 	// can't create a workerset without download workers
 	if len(workers) == 0 {
-		return nil, "", nil
+		return nil, nil
 	}
 
 	// convenience variables
@@ -1018,8 +870,6 @@ func (pdc *projectDownloadChunk) createWorkerSet(workers []*individualWorker) (*
 		numOverdrive = 1
 	}
 
-	computation := "\n| createWorkerSet:\n"
-
 	// approximate the bucket index by iterating over all bucket indices using a
 	// step size greater than 1, once we've found the best set, we range over
 	// bI-stepsize|bi+stepSize to find the best bucket index
@@ -1028,7 +878,7 @@ OUTER:
 		for bI = 0; bI < skymodules.DistributionTrackerTotalBuckets; bI += bucketIndexScanStep {
 			// create the worker set
 			bDur := skymodules.DistributionDurationForBucketIndex(bI)
-			mostLikelySet, escape, out := pdc.createWorkerSetInner(workers, minPieces, numOverdrive, bI, bDur)
+			mostLikelySet, escape := pdc.createWorkerSetInner(workers, minPieces, numOverdrive, bI, bDur)
 			if escape {
 				break OUTER
 			}
@@ -1036,13 +886,10 @@ OUTER:
 				continue
 			}
 
-			computation += out
-
 			// perform price per ms comparison
 			if bestSet == nil {
 				bestSet = mostLikelySet
 			} else if mostLikelySet.adjustedDuration(ppms) < bestSet.adjustedDuration(ppms) {
-				computation += fmt.Sprintf("| better set found at %v %v < %v\n", bI, mostLikelySet.adjustedDuration(ppms), bestSet.adjustedDuration(ppms))
 				bestSet = mostLikelySet
 			}
 
@@ -1050,17 +897,14 @@ OUTER:
 			// already exceeds the adjusted cost of the current best set,
 			// workers would be too slow by definition
 			if bestSet != nil && bDur > bestSet.adjustedDuration(ppms) {
-				computation += fmt.Sprintf("| best set found at %v (%v) (ws cost: %v)\n", bI, bDur, bestSet.adjustedDuration(ppms))
 				break OUTER
 			}
 		}
 	}
 
-	computation += fmt.Sprintf("| approximate bI found at %v\n", bI)
-
 	// if we haven't found a set, no need to try and find the optimal index
 	if bestSet == nil {
-		return nil, "", nil
+		return nil, nil
 	}
 
 	// after we've found one, range over bI-12 -> bI+12 to find the optimal
@@ -1069,7 +913,7 @@ OUTER:
 	for bI = bIMin; bI < bIMax; bI++ {
 		// create the worker set
 		bDur := skymodules.DistributionDurationForBucketIndex(bI)
-		mostLikelySet, escape, out := pdc.createWorkerSetInner(workers, minPieces, numOverdrive, bI, bDur)
+		mostLikelySet, escape := pdc.createWorkerSetInner(workers, minPieces, numOverdrive, bI, bDur)
 		if escape {
 			break
 		}
@@ -1077,14 +921,10 @@ OUTER:
 			continue
 		}
 
-		computation += out
-
 		// perform price per ms comparison
 		if bestSet == nil {
-			computation += fmt.Sprintf("| initial best set found at %v\n", bI)
 			bestSet = mostLikelySet
 		} else if mostLikelySet.adjustedDuration(ppms) < bestSet.adjustedDuration(ppms) {
-			computation += fmt.Sprintf("| better set found at %v %v < %v\n", bI, mostLikelySet.adjustedDuration(ppms), bestSet.adjustedDuration(ppms))
 			bestSet = mostLikelySet
 		}
 
@@ -1092,21 +932,18 @@ OUTER:
 		// already exceeds the adjusted cost of the current best set,
 		// workers would be too slow by definition
 		if bestSet != nil && bDur > bestSet.adjustedDuration(ppms) {
-			computation += fmt.Sprintf("| best set found at %v (%v) (ws cost: %v)\n", bI, bDur, bestSet.adjustedDuration(ppms))
 			break
 		}
 	}
 
-	computation += fmt.Sprintf("| optimal bI found at %v\n", bI)
-
-	return bestSet, computation, nil
+	return bestSet, nil
 }
 
 // createWorkerSetInner is the inner loop that is called by createWorkerSet,
 // please refer to the documentation there to see what this function performs.
 // It returns a workerset, and a boolean that indicates whether we want to break
 // out of the (outer) loop that surrounds this function call.
-func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorker, minPieces, numOverdrive, bI int, bDur time.Duration) (*workerSet, bool, string) {
+func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorker, minPieces, numOverdrive, bI int, bDur time.Duration) (*workerSet, bool) {
 	workersNeeded := minPieces + numOverdrive
 
 	// recalculate the complete chance at given index
@@ -1122,7 +959,7 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 
 	// if there aren't even likely workers, escape early
 	if len(mostLikely) == 0 {
-		return nil, true, "no likely workers"
+		return nil, true
 	}
 
 	// build the most likely set
@@ -1146,31 +983,7 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 	// and calculating how often we run a bad worker set is part of the download
 	// improvements listed at the top of this file.
 	if !mostLikelySet.chanceGreaterThanHalf() {
-		return nil, false, ""
-	}
-
-	out := fmt.Sprintf("| mostLikelySet at %v (%v) contains:\n", bI, bDur)
-	for _, w := range mostLikelySet.workers {
-		_, chimera := w.(*chimeraWorker)
-
-		var launched bool
-		if !chimera {
-			iw := w.(*individualWorker)
-			launched = iw.isLaunched()
-		}
-
-		out += fmt.Sprintf("| - worker %v chimera %v chance %v cost %v launched %v\n", w.identifier(), chimera, w.calculateCompleteChance(mostLikelySet.staticBucketIndex), w.cost(), launched)
-	}
-
-	out2 := ""
-	for _, w := range workers {
-		if w.isLaunched() {
-			out2 += fmt.Sprintf("| - worker %v chance %v \n", w.identifier(), w.calculateCompleteChance(mostLikelySet.staticBucketIndex))
-		}
-	}
-	if out2 != "" {
-		out += "| launchedWorkers at this point:\n"
-		out += out2
+		return nil, false
 	}
 
 	// now loop the less likely workers and try and swap them with the
@@ -1188,25 +1001,10 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 			break
 		}
 
-		iw, ok := w.(*individualWorker)
-		logged := false
-		if ok {
-			if iw.isLaunched() {
-				out += fmt.Sprintf("| cheaper set built with launched worker %v cost %v\n", w.identifier(), w.cost())
-				logged = true
-			}
-		}
-		if !logged {
-			out += fmt.Sprintf("| cheaper set built with worker %v cost %v\n", w.identifier(), w.cost())
-		}
 		mostLikelySet = cheaperSet
-		out := "| mostLikelySet now contains:\n"
-		for _, w := range mostLikelySet.workers {
-			out += fmt.Sprintf("| - worker %v chance %v cost %v\n", w.identifier(), w.calculateCompleteChance(mostLikelySet.staticBucketIndex), w.cost())
-		}
 	}
 
-	return mostLikelySet, false, out
+	return mostLikelySet, false
 }
 
 // addCostPenalty takes a certain job time and adds a penalty to it depending on
@@ -1282,9 +1080,6 @@ func (pdc *projectDownloadChunk) buildDownloadWorkers(workers []*individualWorke
 
 	// the unresolved workers are used to build chimeras with
 	chimeraWorkers := pdc.buildChimeraWorkers(unresolvedWorkers)
-	if len(chimeraWorkers) > 0 {
-		pdc.workerState.staticRenter.staticLog.Println("CHIMERAS", len(chimeraWorkers))
-	}
 	return append(downloadWorkers, chimeraWorkers...)
 }
 
