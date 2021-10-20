@@ -149,6 +149,7 @@ func TestWorkerSet(t *testing.T) {
 	t.Run("AdjustedDuration", testWorkerSetAdjustedDuration)
 	t.Run("CheaperSetFromCandidate", testWorkerSetCheaperSetFromCandidate)
 	t.Run("Clone", testWorkerSetClone)
+	t.Run("Create", testWorkerSetCreate)
 	t.Run("GreaterThanHalf", testWorkerSetGreaterThanHalf)
 }
 
@@ -354,6 +355,98 @@ func testWorkerSetClone(t *testing.T) {
 	clone := ws.clone()
 	if !reflect.DeepEqual(clone, ws) {
 		t.Fatal("bad")
+	}
+}
+
+// testWorkerSetCreate is a unit test that verifies the creation of a worker set
+func testWorkerSetCreate(t *testing.T) {
+	t.Parallel()
+
+	bI := 11
+	bDur := skymodules.DistributionDurationForBucketIndex(bI) // 44ms
+	minPieces := 1
+	numOD := 0
+	workersNeeded := minPieces + numOD
+
+	// create pdc
+	pcws := newTestProjectChunkWorkerSet()
+	pdc := newTestProjectDownloadChunk(pcws, nil)
+
+	// mock a launched worker
+	readDT := skymodules.NewDistribution(time.Minute)
+	readDT.AddDataPoint(30 * time.Millisecond)
+	readDT.AddDataPoint(40 * time.Millisecond)
+	readDT.AddDataPoint(60 * time.Millisecond)
+	lw := &individualWorker{
+		pieceIndices: []uint64{0},
+		resolved:     true,
+
+		currentPiece:           0,
+		currentPieceLaunchedAt: time.Now().Add(-20 * time.Millisecond),
+		staticReadDistribution: readDT,
+		staticIdentifier:       "launched_worker",
+	}
+	t.Log(lw.staticReadDistribution.ChancesAfter())
+
+	// mock a resolved worker
+	readDT = skymodules.NewDistribution(time.Minute)
+	readDT.AddDataPoint(20 * time.Millisecond)
+	readDT.AddDataPoint(30 * time.Millisecond)
+	readDT.AddDataPoint(40 * time.Millisecond)
+	readDT.AddDataPoint(60 * time.Millisecond)
+	rw := &individualWorker{
+		pieceIndices: []uint64{0},
+		resolved:     true,
+
+		staticReadDistribution: readDT,
+		staticIdentifier:       "resolved_worker",
+	}
+
+	// recalculate the distribution chances
+	lw.recalculateDistributionChances()
+	rw.recalculateDistributionChances()
+
+	// cache the complete chance at the bucket index
+	lw.recalculateCompleteChance(bI)
+	rw.recalculateCompleteChance(bI)
+
+	// assert the launched worker's chance is lower than the resolved worker,
+	// but both are higher than 50% so they can sustain a worker set on their
+	// own
+	lwcc := lw.completeChanceCached()
+	rwcc := rw.completeChanceCached()
+	if lwcc >= rwcc || lwcc <= .5 || rwcc <= .5 {
+		t.Fatal("unexpected", lwcc, rwcc)
+	}
+
+	// create a worker set
+	workers := []*individualWorker{lw, rw}
+	ws, _ := pdc.createWorkerSetInner(workers, minPieces, numOD, bI, bDur)
+	if ws == nil || len(ws.workers) != 1 {
+		t.Fatal("unexpected")
+	}
+
+	// assert the launched worker got selected
+	selected := ws.workers[0]
+	if selected.identifier() != "launched_worker" {
+		t.Fatal("unexpected")
+	}
+
+	// assert the resolved worker was selected as most likely, proving that the
+	// launched worker beat it because it's cheaper
+	dlw := pdc.buildDownloadWorkers(workers)
+	mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(dlw, workersNeeded)
+	if len(mostLikely) != 1 || len(lessLikely) != 1 {
+		t.Fatal("unexpected")
+	}
+	if mostLikely[0].identifier() != "resolved_worker" || lessLikely[0].identifier() != "launched_worker" {
+		t.Fatal("unexpected")
+	}
+
+	// now bump the overdrive workers, and assert both workers are in the set
+	ws, _ = pdc.createWorkerSetInner(workers, minPieces, numOD+1, bI, bDur)
+	if ws == nil || len(ws.workers) != 2 {
+		t.Fatal("unexpected", ws)
 	}
 }
 
@@ -652,80 +745,6 @@ func testCoinflipsSum(t *testing.T) {
 	}
 }
 
-func TestWorkerSetCost(t *testing.T) {
-	t.Parallel()
-
-	ppms := types.SiacoinPrecision.MulFloat(1e-9)
-	baseCost := skymodules.DefaultSkynetBaseCost
-	cost := baseCost.Mul64(1 << 16)
-	t.Log(cost)
-	cost = cost.Div(ppms)
-	t.Log(cost)
-	ms, _ := cost.Float64()
-	dur := time.Duration(ms) * time.Millisecond
-	t.Log(dur.Seconds())
-	index := skymodules.DistributionBucketIndexForDuration(dur)
-	t.Log(index)
-
-	dur = skymodules.DistributionDurationForBucketIndex(70)
-	t.Log(dur)
-}
-
-func TestCreateWorkerSetInner(t *testing.T) {
-	t.Parallel()
-
-	bI := 11
-	bDur := skymodules.DistributionDurationForBucketIndex(bI)
-
-	// create pdc
-	pcws := newTestProjectChunkWorkerSet()
-	pdc := newTestProjectDownloadChunk(pcws, nil)
-
-	// mock a launched worker
-	readDT := skymodules.NewDistribution(time.Minute)
-	readDT.AddDataPoint(30 * time.Millisecond)
-	readDT.AddDataPoint(40 * time.Millisecond)
-	readDT.AddDataPoint(60 * time.Millisecond)
-	lw := &individualWorker{
-		pieceIndices: []uint64{0},
-		resolved:     true,
-
-		currentPiece:           0,
-		currentPieceLaunchedAt: time.Now().Add(-20 * time.Millisecond),
-		staticReadDistribution: readDT,
-		staticIdentifier:       "launched_worker",
-	}
-	lw.recalculateDistributionChances()
-	t.Log(lw.cachedReadDTChances[bI])
-
-	// mock a resolved worker
-	readDT = skymodules.NewDistribution(time.Minute)
-	readDT.AddDataPoint(20 * time.Millisecond)
-	readDT.AddDataPoint(30 * time.Millisecond)
-	readDT.AddDataPoint(40 * time.Millisecond)
-	readDT.AddDataPoint(60 * time.Millisecond)
-	rw := &individualWorker{
-		pieceIndices: []uint64{0},
-		resolved:     true,
-
-		staticReadDistribution: readDT,
-		staticIdentifier:       "resolved_worker",
-	}
-	rw.recalculateDistributionChances()
-	t.Log(rw.cachedReadDTChances[bI])
-
-	t.Log(skymodules.DistributionDurationForBucketIndex(10))
-	minPieces := 1
-	numOverdrive := 0
-	ws, _ := pdc.createWorkerSetInner([]*individualWorker{lw, rw}, minPieces, numOverdrive, bI, bDur)
-	if ws == nil {
-		t.Fatal("unexpected")
-	}
-	for _, w := range ws.workers {
-		t.Log(w.identifier())
-	}
-}
-
 // TestAddCostPenalty is a unit test that covers the `addCostPenalty` helper
 // function.
 //
@@ -1013,26 +1032,25 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 		t.Fatal("bad")
 	}
 
-	// reconfigure the pdc to only have 1 static piece (this is used by the
-	// chimeras)
+	// reconfigure the pdc to only have 1 static piece
 	pdc.staticPieceIndices = []uint64{0}
-	workers = []downloadWorker{cw1, cw2}
 
-	// assert that we allow overdriving on the same piece if we don't have
-	// enough workers to meet the workersNeeded quota
-	mostLikely, lessLikely = pdc.splitMostlikelyLessLikely(workers, workersNeeded)
-	if len(mostLikely) != 1 {
-		t.Fatal("bad")
-	}
-	if len(lessLikely) != 0 {
-		t.Fatal("bad")
-	}
-
+	// assert most likely and less likely
 	mostLikely, lessLikely = pdc.splitMostlikelyLessLikely(workers, workersNeeded)
 	if len(mostLikely) != 2 {
 		t.Fatal("bad")
 	}
-	if len(lessLikely) != 0 {
+	if len(lessLikely) != 1 {
+		t.Fatal("bad")
+	}
+
+	// we want to assert that despites its lower chance, the individual worker
+	// now made it in the most likely set as it can resolve a piece the chimeras
+	// can't - and both chimeras are present in the returned slices as well
+	mostLikelyKey1 = mostLikely[0].identifier()
+	mostLikelyKey2 = mostLikely[1].identifier()
+	lessLikelyKey1 = lessLikely[0].identifier()
+	if mostLikelyKey1 != cw2Key || mostLikelyKey2 != iw1Key || lessLikelyKey1 != cw1Key {
 		t.Fatal("bad")
 	}
 }
