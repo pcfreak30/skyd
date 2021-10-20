@@ -1160,6 +1160,12 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 
 		out += fmt.Sprintf("worker %v chimera %v chance %v cost %v launched %v\n", w.identifier(), chimera, w.completeChanceCached(), w.cost(), launched)
 	}
+	out += "launchedWorkers at this point:\n"
+	for _, w := range workers {
+		if w.isLaunched() {
+			out += fmt.Sprintf("worker %v chance %v \n", w.identifier(), w.completeChanceCached())
+		}
+	}
 
 	// now loop the less likely workers and try and swap them with the
 	// most expensive workers in the most likely set
