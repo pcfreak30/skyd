@@ -97,6 +97,9 @@ type (
 	// downloadWorker is an interface implemented by both the individual and
 	// chimera workers that represents a worker that can be used for downloads.
 	downloadWorker interface {
+		// TODO: remove
+		calculateCompleteChance(index int) float64
+
 		// completeChanceCached returns the chance this download worker
 		// completes a read within the duration that corresponds to the given
 		// bucket index. This value is cached and recomputed for every bucket
@@ -242,6 +245,10 @@ func (cw *chimeraWorker) completeChanceCached() float64 {
 	return cw.staticChanceComplete
 }
 
+func (cw *chimeraWorker) calculateCompleteChance(index int) float64 {
+	return cw.staticChanceComplete
+}
+
 // cost returns the cost for this chimera worker, this method can only be called
 // on a chimera that is finalized
 func (cw *chimeraWorker) cost() float64 {
@@ -352,6 +359,36 @@ func (iw *individualWorker) recalculateCompleteChance(index int) {
 // completeChanceCached returns the chance this worker will complete
 func (iw *individualWorker) completeChanceCached() float64 {
 	return iw.cachedCompleteChance
+}
+
+func (iw *individualWorker) calculateCompleteChance(index int) float64 {
+	dur := skymodules.DistributionDurationForBucketIndex(index)
+
+	// if the worker is launched, we want to shift the read dt
+	if iw.isLaunched() {
+		readDT := iw.staticReadDistribution.Clone()
+		readDT.Shift(time.Since(iw.currentPieceLaunchedAt))
+		return readDT.ChanceAfter(dur)
+	}
+
+	// if the worker is resolved, return the read dt chance
+	if iw.isResolved() {
+		return iw.staticReadDistribution.ChanceAfter(dur)
+	}
+
+	// if the worker is not resolved yet, we want to always shift the lookup dt
+	// and use that to recalculate the expected duration index
+	lookupDT := iw.staticLookupDistribution.Clone()
+	lookupDT.Shift(time.Since(iw.staticDownloadLaunchTime))
+	indexForDur := skymodules.DistributionBucketIndexForDuration
+	lookupIndex := indexForDur(lookupDT.ExpectedDuration())
+	if index < lookupIndex {
+		return 0
+	}
+
+	// otherwise return the read chance offset by the lookup index
+	chances := iw.staticReadDistribution.ChancesAfter()
+	return chances[index-lookupIndex]
 }
 
 // getPieceForDownload returns the piece to download next
@@ -812,7 +849,13 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, workers []*indiv
 			out := ""
 			for _, w := range workers {
 				if w.isLaunched() {
-					out += fmt.Sprintf("worker %v chance %v\n", w.identifier(), w.cachedReadDTChances[ws.staticBucketIndex])
+					chanceAfter70 := w.calculateCompleteChance(70)
+					chanceAfter140 := w.calculateCompleteChance(140)
+					chanceAfter210 := w.calculateCompleteChance(210)
+					chanceAfter280 := w.calculateCompleteChance(280)
+					chanceAfterBucket := w.cachedReadDTChances[ws.staticBucketIndex]
+
+					out += fmt.Sprintf("worker %v chance %v (%v | %v | %v | %v)\n", w.identifier(), chanceAfterBucket, chanceAfter70, chanceAfter140, chanceAfter210, chanceAfter280)
 				}
 			}
 
@@ -1342,7 +1385,7 @@ func splitResolvedUnresolved(workers []*individualWorker) ([]downloadWorker, []*
 	for _, w := range workers {
 		if w.isResolved() {
 			resolvedWorkers = append(resolvedWorkers, w)
-		} else if w.cachedCompleteChance > 0 {
+		} else {
 			unresolvedWorkers = append(unresolvedWorkers, w)
 		}
 	}

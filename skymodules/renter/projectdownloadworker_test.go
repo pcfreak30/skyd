@@ -652,6 +652,21 @@ func testCoinflipsSum(t *testing.T) {
 	}
 }
 
+func TestWorkerSetCost(t *testing.T) {
+	t.Parallel()
+
+	ppms := types.SiacoinPrecision.MulFloat(1e-9)
+	baseCost := skymodules.DefaultSkynetBaseCost
+	cost := baseCost.Mul64(1 << 16)
+	cost = cost.Div(ppms)
+	t.Log(cost)
+	ms, _ := cost.Float64()
+	dur := time.Duration(ms) * time.Millisecond
+	t.Log(dur.Seconds())
+	index := skymodules.DistributionBucketIndexForDuration(dur)
+	t.Log(index)
+}
+
 // TestAddCostPenalty is a unit test that covers the `addCostPenalty` helper
 // function.
 //
