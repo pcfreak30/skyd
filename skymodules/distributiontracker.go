@@ -278,6 +278,11 @@ func (d *Distribution) ChanceAfter(dur time.Duration) float64 {
 
 	// Calculate the chance
 	chance := count / total
+
+	if chance > 1 {
+		fmt.Printf("chance %v count %v total %v index %v fraction %v dur %v\n", chance, count, total, index, fraction, dur)
+		return 1
+	}
 	return chance
 }
 
