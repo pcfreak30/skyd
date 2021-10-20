@@ -1160,11 +1160,16 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 
 		out += fmt.Sprintf("worker %v chimera %v chance %v cost %v launched %v\n", w.identifier(), chimera, w.completeChanceCached(), w.cost(), launched)
 	}
-	out += "launchedWorkers at this point:\n"
+
+	out2 := ""
 	for _, w := range workers {
 		if w.isLaunched() {
-			out += fmt.Sprintf("worker %v chance %v \n", w.identifier(), w.completeChanceCached())
+			out2 += fmt.Sprintf("worker %v chance %v \n", w.identifier(), w.completeChanceCached())
 		}
+	}
+	if out2 != "" {
+		out += "launchedWorkers at this point:\n"
+		out += out2
 	}
 
 	// now loop the less likely workers and try and swap them with the
