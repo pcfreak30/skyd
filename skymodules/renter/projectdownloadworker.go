@@ -845,33 +845,33 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, workers []*indiv
 	}
 
 	// debugging
-	if workerLaunched {
-		if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-			out := ""
-			for _, w := range workers {
-				if w.isLaunched() {
-					chance := w.calculateCompleteChance(ws.staticBucketIndex)
-					chanceAfter20 := w.calculateCompleteChance(20)
-					chanceAfter70 := w.calculateCompleteChance(70)
-					chanceAfter140 := w.calculateCompleteChance(140)
-					chanceAfter210 := w.calculateCompleteChance(210)
-					chanceAfter280 := w.calculateCompleteChance(280)
+	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+		out := ""
+		for _, w := range workers {
+			if w.isLaunched() {
+				chance := w.calculateCompleteChance(ws.staticBucketIndex)
+				chanceAfter20 := w.calculateCompleteChance(20)
+				chanceAfter70 := w.calculateCompleteChance(70)
+				chanceAfter140 := w.calculateCompleteChance(140)
+				chanceAfter210 := w.calculateCompleteChance(210)
+				chanceAfter280 := w.calculateCompleteChance(280)
 
-					readDT := w.staticReadDistribution.Clone()
-					readDT.Shift(time.Since(w.currentPieceLaunchedAt))
-					datapoints := readDT.DataPoints()
+				readDT := w.staticReadDistribution.Clone()
+				readDT.Shift(time.Since(w.currentPieceLaunchedAt))
+				datapoints := readDT.DataPoints()
 
-					out += fmt.Sprintf("worker %v chance %v (%v | %v | %v | %v | %v) datapoints %v\n", w.identifier(), chance, chanceAfter20, chanceAfter70, chanceAfter140, chanceAfter210, chanceAfter280, datapoints)
-				}
+				out += fmt.Sprintf("worker %v chance %v (%v | %v | %v | %v | %v) datapoints %v\n", w.identifier(), chance, chanceAfter20, chanceAfter70, chanceAfter140, chanceAfter210, chanceAfter280, datapoints)
 			}
-
-			span.LogKV(
-				"launchedWorkerSet", ws,
-				"launchedWorkerSetCost", workerSetCost,
-				"launchedWorkersInfo", out,
-			)
 		}
+
+		span.LogKV(
+			"launchedWorkerSet", ws,
+			"launchedWorkerSetCost", workerSetCost,
+			"launchedWorkersInfo", out,
+			"launchedWorker", workerLaunched,
+		)
 	}
+
 	return workerLaunched
 }
 
