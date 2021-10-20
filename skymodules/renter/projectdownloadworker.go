@@ -945,7 +945,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		}
 		if workerSet != nil {
 			if launched := pdc.launchWorkerSet(workerSet, workers); launched {
-				fmt.Println(workerSetComp)
+				pdc.workerSet.staticRenter.staticLog.Println(workerSetComp)
 			}
 		}
 
@@ -1140,7 +1140,15 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 
 	out := fmt.Sprintf("mostLikelySet at %v (%v) contains:\n", bI, bDur)
 	for _, w := range mostLikelySet.workers {
-		out += fmt.Sprintf("worker %v chance %v cost %v\n", w.identifier(), w.calculateCompleteChance(mostLikelySet.staticBucketIndex), w.cost())
+		_, chimera := w.(*chimeraWorker)
+
+		var launched bool
+		if !chimera {
+			iw := w.(*individualWorker)
+			launched = iw.isLaunched()
+		}
+
+		out += fmt.Sprintf("worker %v chimera %v chance %v cost %v launched %v\n", w.identifier(), chimera, w.completeChanceCached(), w.cost(), launched)
 	}
 
 	// now loop the less likely workers and try and swap them with the
