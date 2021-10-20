@@ -1174,7 +1174,17 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 			break
 		}
 
-		out += fmt.Sprintf("cheaper set built with worker %v cost %v\n", w.identifier(), w.cost())
+		iw, ok := w.(*individualWorker)
+		logged := false
+		if ok {
+			if iw.isLaunched() {
+				out += fmt.Sprintf("cheaper set built with launched worker %v cost %v\n", w.identifier(), w.cost())
+				logged = true
+			}
+		}
+		if !logged {
+			out += fmt.Sprintf("cheaper set built with worker %v cost %v\n", w.identifier(), w.cost())
+		}
 		mostLikelySet = cheaperSet
 		out := "mostLikelySet now contains:\n"
 		for _, w := range mostLikelySet.workers {
@@ -1258,6 +1268,9 @@ func (pdc *projectDownloadChunk) buildDownloadWorkers(workers []*individualWorke
 
 	// the unresolved workers are used to build chimeras with
 	chimeraWorkers := pdc.buildChimeraWorkers(unresolvedWorkers)
+	if len(chimeraWorkers) > 0 {
+		pdc.workerState.staticRenter.staticLog.Println("CHIMERAS", len(chimeraWorkers))
+	}
 	return append(downloadWorkers, chimeraWorkers...)
 }
 
