@@ -1158,13 +1158,13 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 			launched = iw.isLaunched()
 		}
 
-		out += fmt.Sprintf("- worker %v chimera %v chance %v cost %v launched %v\n", w.identifier(), chimera, w.completeChanceCached(), w.cost(), launched)
+		out += fmt.Sprintf("- worker %v chimera %v chance %v cost %v launched %v\n", w.identifier(), chimera, w.calculateCompleteChance(mostLikelySet.staticBucketIndex), w.cost(), launched)
 	}
 
 	out2 := ""
 	for _, w := range workers {
 		if w.isLaunched() {
-			out2 += fmt.Sprintf("- worker %v chance %v \n", w.identifier(), w.completeChanceCached())
+			out2 += fmt.Sprintf("- worker %v chance %v \n", w.identifier(), w.calculateCompleteChance(mostLikelySet.staticBucketIndex))
 		}
 	}
 	if out2 != "" {
