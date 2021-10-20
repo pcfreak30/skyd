@@ -198,6 +198,8 @@ type (
 	// workerSet is a collection of workers that may or may not have been
 	// launched yet in order to fulfil a download.
 	workerSet struct {
+		computation string
+
 		workers []downloadWorker
 
 		staticBucketDuration time.Duration
@@ -491,7 +493,7 @@ LOOP:
 	for _, w := range byCostDesc {
 		// if the candidate is not cheaper than this worker we can stop looking
 		// to build a cheaper set since the workers are sorted by cost
-		if candidate.cost() > w.cost() {
+		if candidate.cost() >= w.cost() {
 			break
 		}
 
@@ -905,6 +907,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	// TODO: remove (debug purposes)
 	var err error
 	var workerSet *workerSet
+	var workerSetComp string
 
 	prevLog := time.Now()
 	prevWorkerUpdate := time.Now()
@@ -935,13 +938,15 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		}
 
 		// create a worker set and launch it
-		workerSet, err = pdc.createWorkerSet(workers)
+		workerSet, workerSetComp, err = pdc.createWorkerSet(workers)
 		if err != nil {
 			pdc.fail(err)
 			return
 		}
 		if workerSet != nil {
-			pdc.launchWorkerSet(workerSet, workers)
+			if launched := pdc.launchWorkerSet(workerSet, workers); launched {
+				fmt.Println(workerSetComp)
+			}
 		}
 
 		// iterate
@@ -982,10 +987,10 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 // createWorkerSet tries to create a worker set from the pdc's resolved and
 // unresolved workers, the maximum amount of overdrive workers in the set is
 // defined by the given 'maxOverdriveWorkers' argument.
-func (pdc *projectDownloadChunk) createWorkerSet(workers []*individualWorker) (*workerSet, error) {
+func (pdc *projectDownloadChunk) createWorkerSet(workers []*individualWorker) (*workerSet, string, error) {
 	// can't create a workerset without download workers
 	if len(workers) == 0 {
-		return nil, nil
+		return nil, "", nil
 	}
 
 	// convenience variables
@@ -1002,6 +1007,8 @@ func (pdc *projectDownloadChunk) createWorkerSet(workers []*individualWorker) (*
 		numOverdrive = 1
 	}
 
+	computation := "\ncreateWorkerSet:\n"
+
 	// approximate the bucket index by iterating over all bucket indices using a
 	// step size greater than 1, once we've found the best set, we range over
 	// bI-stepsize|bi+stepSize to find the best bucket index
@@ -1010,7 +1017,7 @@ OUTER:
 		for bI = 0; bI < skymodules.DistributionTrackerTotalBuckets; bI += bucketIndexScanStep {
 			// create the worker set
 			bDur := skymodules.DistributionDurationForBucketIndex(bI)
-			mostLikelySet, escape := pdc.createWorkerSetInner(workers, minPieces, numOverdrive, bI, bDur)
+			mostLikelySet, escape, out := pdc.createWorkerSetInner(workers, minPieces, numOverdrive, bI, bDur)
 			if escape {
 				break OUTER
 			}
@@ -1018,10 +1025,13 @@ OUTER:
 				continue
 			}
 
+			computation += out
+
 			// perform price per ms comparison
 			if bestSet == nil {
 				bestSet = mostLikelySet
 			} else if mostLikelySet.adjustedDuration(ppms) < bestSet.adjustedDuration(ppms) {
+				computation += fmt.Sprintf("better set found at %v %v < %v\n", bI, mostLikelySet.adjustedDuration(ppms), bestSet.adjustedDuration(ppms))
 				bestSet = mostLikelySet
 			}
 
@@ -1029,14 +1039,17 @@ OUTER:
 			// already exceeds the adjusted cost of the current best set,
 			// workers would be too slow by definition
 			if bestSet != nil && bDur > bestSet.adjustedDuration(ppms) {
+				computation += fmt.Sprintf("best set found at %v (%v) (ws cost: %v)\n", bI, bDur, bestSet.adjustedDuration(ppms))
 				break OUTER
 			}
 		}
 	}
 
+	computation += fmt.Sprintf("approximate bI found at %v\n", bI)
+
 	// if we haven't found a set, no need to try and find the optimal index
 	if bestSet == nil {
-		return nil, nil
+		return nil, "", nil
 	}
 
 	// after we've found one, range over bI-12 -> bI+12 to find the optimal
@@ -1045,7 +1058,7 @@ OUTER:
 	for bI = bIMin; bI < bIMax; bI++ {
 		// create the worker set
 		bDur := skymodules.DistributionDurationForBucketIndex(bI)
-		mostLikelySet, escape := pdc.createWorkerSetInner(workers, minPieces, numOverdrive, bI, bDur)
+		mostLikelySet, escape, out := pdc.createWorkerSetInner(workers, minPieces, numOverdrive, bI, bDur)
 		if escape {
 			break
 		}
@@ -1053,10 +1066,14 @@ OUTER:
 			continue
 		}
 
+		computation += out
+
 		// perform price per ms comparison
 		if bestSet == nil {
+			computation += fmt.Sprintf("initial best set found at %v\n", bI)
 			bestSet = mostLikelySet
 		} else if mostLikelySet.adjustedDuration(ppms) < bestSet.adjustedDuration(ppms) {
+			computation += fmt.Sprintf("better set found at %v %v < %v\n", bI, mostLikelySet.adjustedDuration(ppms), bestSet.adjustedDuration(ppms))
 			bestSet = mostLikelySet
 		}
 
@@ -1064,18 +1081,21 @@ OUTER:
 		// already exceeds the adjusted cost of the current best set,
 		// workers would be too slow by definition
 		if bestSet != nil && bDur > bestSet.adjustedDuration(ppms) {
+			computation += fmt.Sprintf("best set found at %v (%v) (ws cost: %v)\n", bI, bDur, bestSet.adjustedDuration(ppms))
 			break
 		}
 	}
 
-	return bestSet, nil
+	computation += fmt.Sprintf("optimal bI found at %v\n", bI)
+
+	return bestSet, computation, nil
 }
 
 // createWorkerSetInner is the inner loop that is called by createWorkerSet,
 // please refer to the documentation there to see what this function performs.
 // It returns a workerset, and a boolean that indicates whether we want to break
 // out of the (outer) loop that surrounds this function call.
-func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorker, minPieces, numOverdrive, bI int, bDur time.Duration) (*workerSet, bool) {
+func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorker, minPieces, numOverdrive, bI int, bDur time.Duration) (*workerSet, bool, string) {
 	workersNeeded := minPieces + numOverdrive
 
 	// recalculate the complete chance at given index
@@ -1091,7 +1111,7 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 
 	// if there aren't even likely workers, escape early
 	if len(mostLikely) == 0 {
-		return nil, true
+		return nil, true, "no likely workers"
 	}
 
 	// build the most likely set
@@ -1115,7 +1135,12 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 	// and calculating how often we run a bad worker set is part of the download
 	// improvements listed at the top of this file.
 	if !mostLikelySet.chanceGreaterThanHalf() {
-		return nil, false
+		return nil, false, ""
+	}
+
+	out := fmt.Sprintf("mostLikelySet at %v (%v) contains:\n", bI, bDur)
+	for _, w := range mostLikelySet.workers {
+		out += fmt.Sprintf("worker %v chance %v cost %v\n", w.identifier(), w.calculateCompleteChance(mostLikelySet.staticBucketIndex), w.cost())
 	}
 
 	// now loop the less likely workers and try and swap them with the
@@ -1132,10 +1157,16 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 		if !cheaperSet.chanceGreaterThanHalf() {
 			break
 		}
+
+		out += fmt.Sprintf("cheaper set built with worker %v cost %v\n", w.identifier(), w.cost())
 		mostLikelySet = cheaperSet
+		out := "mostLikelySet now contains:\n"
+		for _, w := range mostLikelySet.workers {
+			out += fmt.Sprintf("worker %v chance %v cost %v\n", w.identifier(), w.calculateCompleteChance(mostLikelySet.staticBucketIndex), w.cost())
+		}
 	}
 
-	return mostLikelySet, false
+	return mostLikelySet, false, out
 }
 
 // addCostPenalty takes a certain job time and adds a penalty to it depending on
