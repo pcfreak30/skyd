@@ -945,6 +945,14 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		}
 		if workerSet != nil {
 			if launched := pdc.launchWorkerSet(workerSet, workers); launched && ec.MinPieces() == 1 {
+				for _, w := range workerSet.workers {
+					iw, ok := w.(*individualWorker)
+					if ok {
+						if iw.isLaunched() {
+							workerSetComp += fmt.Sprintf("worker %v launched\n", iw.identifier())
+						}
+					}
+				}
 				pdc.workerSet.staticRenter.staticLog.Println(workerSetComp)
 			}
 		}
