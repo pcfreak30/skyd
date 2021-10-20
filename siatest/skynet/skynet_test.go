@@ -1111,14 +1111,18 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			return err
 		}
-		var countErr, sizeErr, perfErr error
+		var countErr, sizeErr, healthErr error
 		if uint64(statsBefore.NumFiles)+uploadedFilesCount != uint64(statsAfter.NumFiles) {
 			countErr = fmt.Errorf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.NumFiles)+uploadedFilesCount, statsAfter.NumFiles)
 		}
 		if statsBefore.Storage+uploadedFilesSize != statsAfter.Storage {
 			sizeErr = fmt.Errorf("stats did not report the correct size. expected %d, found %d", statsBefore.Storage+uploadedFilesSize, statsAfter.Storage)
 		}
-		return errors.Compose(countErr, sizeErr, perfErr)
+		// Just make sure that a health is returned
+		if statsAfter.MaxHealthPercentage == 0 {
+			healthErr = errors.New("no MaxHealthPercentage retuned")
+		}
+		return errors.Compose(countErr, sizeErr, healthErr)
 	})
 	if err != nil {
 		t.Error(err)
@@ -1169,14 +1173,18 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var countErr, sizeErr error
+		var countErr, sizeErr, healthErr error
 		if statsAfter.NumFiles != statsBefore.NumFiles {
 			countErr = fmt.Errorf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.NumFiles), statsAfter.NumFiles)
 		}
 		if statsAfter.Storage != statsBefore.Storage {
 			sizeErr = fmt.Errorf("stats did not report the correct size. expected %d, found %d", statsBefore.Storage, statsAfter.Storage)
 		}
-		return errors.Compose(countErr, sizeErr)
+		// Just make sure that a health is returned
+		if statsAfter.MaxHealthPercentage == 0 {
+			healthErr = errors.New("no MaxHealthPercentage retuned")
+		}
+		return errors.Compose(countErr, sizeErr, healthErr)
 	})
 	if err != nil {
 		t.Error(err)

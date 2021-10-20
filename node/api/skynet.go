@@ -165,16 +165,17 @@ type (
 		SystemHealthScanDurationHours float64 `json:"systemhealthscandurationhours"`
 
 		// General Statuses
-		AllowanceStatus string         `json:"allowancestatus"` // 'low', 'good', 'high'
-		ContractStorage uint64         `json:"contractstorage"` // bytes
-		MaxStoragePrice types.Currency `json:"maxstorageprice"` // Hastings per byte per block
-		NumCritAlerts   int            `json:"numcritalerts"`
-		NumFiles        uint64         `json:"numfiles"`
-		PortalMode      bool           `json:"portalmode"`
-		Repair          uint64         `json:"repair"`  // bytes
-		Storage         uint64         `json:"storage"` // bytes
-		StuckChunks     uint64         `json:"stuckchunks"`
-		WalletStatus    string         `json:"walletstatus"` // 'low', 'good', 'high'
+		AllowanceStatus     string         `json:"allowancestatus"` // 'low', 'good', 'high'
+		ContractStorage     uint64         `json:"contractstorage"` // bytes
+		MaxHealthPercentage float64        `json:"maxhealthpercentage"`
+		MaxStoragePrice     types.Currency `json:"maxstorageprice"` // Hastings per byte per block
+		NumCritAlerts       int            `json:"numcritalerts"`
+		NumFiles            uint64         `json:"numfiles"`
+		PortalMode          bool           `json:"portalmode"`
+		Repair              uint64         `json:"repair"`  // bytes
+		Storage             uint64         `json:"storage"` // bytes
+		StuckChunks         uint64         `json:"stuckchunks"`
+		WalletStatus        string         `json:"walletstatus"` // 'low', 'good', 'high'
 
 		// Update and version information.
 		Uptime      int64         `json:"uptime"`
@@ -1048,16 +1049,17 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 
 		SystemHealthScanDurationHours: float64(renterPerf.SystemHealthScanDuration) / float64(time.Hour),
 
-		AllowanceStatus: allowanceStatus,
-		ContractStorage: totalStorage,
-		NumCritAlerts:   numCritAlerts,
-		NumFiles:        rootDir.AggregateSkynetFiles,
-		PortalMode:      allowance.PortalMode(),
-		MaxStoragePrice: allowance.MaxStoragePrice,
-		Repair:          rootDir.AggregateRepairSize,
-		Storage:         rootDir.AggregateSkynetSize,
-		StuckChunks:     rootDir.AggregateNumStuckChunks,
-		WalletStatus:    walletStatus,
+		AllowanceStatus:     allowanceStatus,
+		ContractStorage:     totalStorage,
+		MaxHealthPercentage: rootDir.AggregateMaxHealthPercentage,
+		MaxStoragePrice:     allowance.MaxStoragePrice,
+		NumCritAlerts:       numCritAlerts,
+		NumFiles:            rootDir.AggregateSkynetFiles,
+		PortalMode:          allowance.PortalMode(),
+		Repair:              rootDir.AggregateRepairSize,
+		Storage:             rootDir.AggregateSkynetSize,
+		StuckChunks:         rootDir.AggregateNumStuckChunks,
+		WalletStatus:        walletStatus,
 
 		Uptime: int64(uptime),
 		VersionInfo: SkynetVersion{
