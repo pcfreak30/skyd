@@ -950,11 +950,12 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 					iw, ok := w.(*individualWorker)
 					if ok {
 						if iw.isLaunched() {
-							workerSetComp += fmt.Sprintf("worker %v launched\n", iw.identifier())
+							workerSetComp += fmt.Sprintf("| worker %v launched %v ago\n", iw.identifier(), time.Since(iw.currentPieceLaunchedAt))
 						}
 					}
 				}
-				workerSetComp += fmt.Sprintf("workerset launched worker %v\n", lw)
+				workerSetComp += fmt.Sprintf("| workerset launched worker %v\n", lw)
+				fmt.Println(workerSetComp)
 				pdc.workerSet.staticRenter.staticLog.Println(workerSetComp)
 			}
 		}
@@ -1017,7 +1018,7 @@ func (pdc *projectDownloadChunk) createWorkerSet(workers []*individualWorker) (*
 		numOverdrive = 1
 	}
 
-	computation := "\ncreateWorkerSet:\n"
+	computation := "\n| createWorkerSet:\n"
 
 	// approximate the bucket index by iterating over all bucket indices using a
 	// step size greater than 1, once we've found the best set, we range over
@@ -1041,7 +1042,7 @@ OUTER:
 			if bestSet == nil {
 				bestSet = mostLikelySet
 			} else if mostLikelySet.adjustedDuration(ppms) < bestSet.adjustedDuration(ppms) {
-				computation += fmt.Sprintf("better set found at %v %v < %v\n", bI, mostLikelySet.adjustedDuration(ppms), bestSet.adjustedDuration(ppms))
+				computation += fmt.Sprintf("| better set found at %v %v < %v\n", bI, mostLikelySet.adjustedDuration(ppms), bestSet.adjustedDuration(ppms))
 				bestSet = mostLikelySet
 			}
 
@@ -1049,13 +1050,13 @@ OUTER:
 			// already exceeds the adjusted cost of the current best set,
 			// workers would be too slow by definition
 			if bestSet != nil && bDur > bestSet.adjustedDuration(ppms) {
-				computation += fmt.Sprintf("best set found at %v (%v) (ws cost: %v)\n", bI, bDur, bestSet.adjustedDuration(ppms))
+				computation += fmt.Sprintf("| best set found at %v (%v) (ws cost: %v)\n", bI, bDur, bestSet.adjustedDuration(ppms))
 				break OUTER
 			}
 		}
 	}
 
-	computation += fmt.Sprintf("approximate bI found at %v\n", bI)
+	computation += fmt.Sprintf("| approximate bI found at %v\n", bI)
 
 	// if we haven't found a set, no need to try and find the optimal index
 	if bestSet == nil {
@@ -1080,10 +1081,10 @@ OUTER:
 
 		// perform price per ms comparison
 		if bestSet == nil {
-			computation += fmt.Sprintf("initial best set found at %v\n", bI)
+			computation += fmt.Sprintf("| initial best set found at %v\n", bI)
 			bestSet = mostLikelySet
 		} else if mostLikelySet.adjustedDuration(ppms) < bestSet.adjustedDuration(ppms) {
-			computation += fmt.Sprintf("better set found at %v %v < %v\n", bI, mostLikelySet.adjustedDuration(ppms), bestSet.adjustedDuration(ppms))
+			computation += fmt.Sprintf("| better set found at %v %v < %v\n", bI, mostLikelySet.adjustedDuration(ppms), bestSet.adjustedDuration(ppms))
 			bestSet = mostLikelySet
 		}
 
@@ -1091,12 +1092,12 @@ OUTER:
 		// already exceeds the adjusted cost of the current best set,
 		// workers would be too slow by definition
 		if bestSet != nil && bDur > bestSet.adjustedDuration(ppms) {
-			computation += fmt.Sprintf("best set found at %v (%v) (ws cost: %v)\n", bI, bDur, bestSet.adjustedDuration(ppms))
+			computation += fmt.Sprintf("| best set found at %v (%v) (ws cost: %v)\n", bI, bDur, bestSet.adjustedDuration(ppms))
 			break
 		}
 	}
 
-	computation += fmt.Sprintf("optimal bI found at %v\n", bI)
+	computation += fmt.Sprintf("| optimal bI found at %v\n", bI)
 
 	return bestSet, computation, nil
 }
@@ -1148,7 +1149,7 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 		return nil, false, ""
 	}
 
-	out := fmt.Sprintf("mostLikelySet at %v (%v) contains:\n", bI, bDur)
+	out := fmt.Sprintf("| mostLikelySet at %v (%v) contains:\n", bI, bDur)
 	for _, w := range mostLikelySet.workers {
 		_, chimera := w.(*chimeraWorker)
 
@@ -1158,17 +1159,17 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 			launched = iw.isLaunched()
 		}
 
-		out += fmt.Sprintf("- worker %v chimera %v chance %v cost %v launched %v\n", w.identifier(), chimera, w.calculateCompleteChance(mostLikelySet.staticBucketIndex), w.cost(), launched)
+		out += fmt.Sprintf("| - worker %v chimera %v chance %v cost %v launched %v\n", w.identifier(), chimera, w.calculateCompleteChance(mostLikelySet.staticBucketIndex), w.cost(), launched)
 	}
 
 	out2 := ""
 	for _, w := range workers {
 		if w.isLaunched() {
-			out2 += fmt.Sprintf("- worker %v chance %v \n", w.identifier(), w.calculateCompleteChance(mostLikelySet.staticBucketIndex))
+			out2 += fmt.Sprintf("| - worker %v chance %v \n", w.identifier(), w.calculateCompleteChance(mostLikelySet.staticBucketIndex))
 		}
 	}
 	if out2 != "" {
-		out += "launchedWorkers at this point:\n"
+		out += "| launchedWorkers at this point:\n"
 		out += out2
 	}
 
@@ -1191,17 +1192,17 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 		logged := false
 		if ok {
 			if iw.isLaunched() {
-				out += fmt.Sprintf("cheaper set built with launched worker %v cost %v\n", w.identifier(), w.cost())
+				out += fmt.Sprintf("| cheaper set built with launched worker %v cost %v\n", w.identifier(), w.cost())
 				logged = true
 			}
 		}
 		if !logged {
-			out += fmt.Sprintf("cheaper set built with worker %v cost %v\n", w.identifier(), w.cost())
+			out += fmt.Sprintf("| cheaper set built with worker %v cost %v\n", w.identifier(), w.cost())
 		}
 		mostLikelySet = cheaperSet
-		out := "mostLikelySet now contains:\n"
+		out := "| mostLikelySet now contains:\n"
 		for _, w := range mostLikelySet.workers {
-			out += fmt.Sprintf("- worker %v chance %v cost %v\n", w.identifier(), w.calculateCompleteChance(mostLikelySet.staticBucketIndex), w.cost())
+			out += fmt.Sprintf("| - worker %v chance %v cost %v\n", w.identifier(), w.calculateCompleteChance(mostLikelySet.staticBucketIndex), w.cost())
 		}
 	}
 
