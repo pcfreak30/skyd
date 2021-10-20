@@ -62,7 +62,7 @@ var (
 	}
 
 	// DefaultSkynetBaseCost is the default base cost applied to all downloads.
-	DefaultSkynetBaseCost = types.SiacoinPrecision.Mul64(2500).Div(types.NewCurrency64(1e12)) // 2500SC / TB
+	DefaultSkynetBaseCost = types.SiacoinPrecision.Mul64(100).Div(types.NewCurrency64(1e12)) // 100SC / TB
 
 	// ErrHostFault indicates if an error is the host's fault.
 	ErrHostFault = errors.New("host has returned an error")
