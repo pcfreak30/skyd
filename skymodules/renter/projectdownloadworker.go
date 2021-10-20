@@ -1087,7 +1087,7 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 	downloadWorkers := pdc.buildDownloadWorkers(workers)
 
 	// divide the workers in most likely and less likely
-	mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(downloadWorkers, workersNeeded, numOverdrive)
+	mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(downloadWorkers, workersNeeded)
 
 	// if there aren't even likely workers, escape early
 	if len(mostLikely) == 0 {
@@ -1220,17 +1220,11 @@ func (pdc *projectDownloadChunk) buildDownloadWorkers(workers []*individualWorke
 // workers but also takes into account an amount of overdrive workers). This
 // method will split the given workers array in a list of most likely workers,
 // and a list of less likely workers.
-func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWorker, workersNeeded, numOverdriveWorkers int) ([]downloadWorker, []downloadWorker) {
-	// calculate the less likely cap, taking into account underflow
-	var lessLikelyCap int
-	if len(workers) > workersNeeded {
-		lessLikelyCap = len(workers) - workersNeeded
-	}
-
+func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWorker, workersNeeded int) ([]downloadWorker, []downloadWorker) {
 	// prepare two slices that hold the workers which are most likely and the
 	// ones that are less likely
 	mostLikely := make([]downloadWorker, 0, workersNeeded)
-	lessLikely := make([]downloadWorker, 0, lessLikelyCap)
+	lessLikely := make([]downloadWorker, 0, len(workers))
 
 	// define some state variables to ensure we select workers in a way the
 	// pieces are unique and we are not using a worker twice
@@ -1296,36 +1290,22 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 		}
 	}
 
-	// if we have enough likely workers we can return
-	if len(mostLikely) == workersNeeded {
-		return mostLikely, lessLikely
-	}
+	// loop over the workers again to fill both the most likely and less likely
+	// array with the remainder of the workers, still ensuring a worker is only
+	// used once, but this time we don't assert the piece indices are unique
+	for _, w := range workers {
+		_, added := added[w.identifier()]
+		if added {
+			continue
+		}
 
-	// if we don't have enough likely workers, and we want to overdrive, we can
-	// select 'numOverdriveWorkers' to overdrive on pieces for which we already
-	// have a worker.
-	//
-	// this is mostly important for base setor downloads, if the worker set
-	// consisted only out of unique pieces, we would never overdrive on base
-	// sector downloads
-	if numOverdriveWorkers > 0 {
-		for _, w := range workers {
-			// break if we've reached the amount of workers needed
-			if len(mostLikely) == workersNeeded {
-				break
-			}
-
-			// don't re-use workers
-			_, added := added[w.identifier()]
-			if added {
+		for _, pieceIndex := range w.pieces(pdc) {
+			if pdc.piecesInfo[pieceIndex].downloaded {
 				continue
 			}
 
-			// loop over the worker's pieces and break to ensure we use it once
-			for _, pieceIndex := range w.pieces(pdc) {
-				addWorker(w, pieceIndex)
-				break
-			}
+			addWorker(w, pieceIndex)
+			break // only use a worker once
 		}
 	}
 

@@ -101,8 +101,6 @@ type (
 		// The final bucket is just over an hour, anything over will be put into
 		// that bucket as well.
 		timings [numBuckets]float64
-
-		dataPoints float64
 	}
 
 	// DistributionTracker will track the performance distribution of a series
@@ -226,10 +224,8 @@ func indexForDuration(duration time.Duration) (int, float64) {
 // addDecay will decay the data in the distribution.
 func (d *Distribution) addDecay() {
 	d.Decay(func(decay float64) {
-		d.dataPoints = 0
 		for i := 0; i < len(d.timings); i++ {
 			d.timings[i] *= decay
-			d.dataPoints += d.timings[i]
 		}
 	})
 }
@@ -249,7 +245,6 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 
 	// Add the datapoint
 	d.timings[index]++
-	d.dataPoints++
 }
 
 // ChanceAfter returns the chance we find a data point after the given duration.
@@ -312,7 +307,6 @@ func (d *Distribution) ChancesAfter() Chances {
 func (d *Distribution) Clone() *Distribution {
 	c := &Distribution{
 		GenericDecay: d.GenericDecay.Clone(),
-		dataPoints:   d.dataPoints,
 	}
 	for i, b := range d.timings {
 		c.timings[i] = b
@@ -330,17 +324,16 @@ func (d *Distribution) Clone() *Distribution {
 // DataPoints returns the total number of data points contained within the
 // distribution.
 func (d *Distribution) DataPoints() float64 {
-	return d.dataPoints
-	// // Decay is not applied automatically. If it has been a while since the last
-	// // datapoint was added, decay should be applied so that the rates are
-	// // correct.
-	// d.addDecay()
+	// Decay is not applied automatically. If it has been a while since the last
+	// datapoint was added, decay should be applied so that the rates are
+	// correct.
+	d.addDecay()
 
-	// var total float64
-	// for i := 0; i < len(d.timings); i++ {
-	// 	total += d.timings[i]
-	// }
-	// return total
+	var total float64
+	for i := 0; i < len(d.timings); i++ {
+		total += d.timings[i]
+	}
+	return total
 }
 
 // DurationForIndex converts the index of a bucket into a duration.
@@ -383,11 +376,9 @@ func (d *Distribution) MergeWith(other *Distribution, weight float64) {
 	}
 
 	// loop all other timings and append them taking into account the given
-	// weight, seeing as we are merging, we have to update the datapoints
-	d.dataPoints = 0
+	// weight
 	for bi, b := range other.timings {
 		d.timings[bi] += b * weight
-		d.dataPoints += d.timings[bi]
 	}
 }
 
@@ -460,12 +451,6 @@ func (d *Distribution) Shift(dur time.Duration) {
 	smear := remainder / float64(index)
 	for i := 0; i < index; i++ {
 		d.timings[i] = smear
-	}
-
-	// We have to recalculate the datapoints since shift alters the timings.
-	d.dataPoints = 0
-	for i := 0; i < DistributionTrackerTotalBuckets; i++ {
-		d.dataPoints += d.timings[i]
 	}
 }
 

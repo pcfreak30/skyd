@@ -671,6 +671,61 @@ func TestWorkerSetCost(t *testing.T) {
 	t.Log(dur)
 }
 
+func TestCreateWorkerSetInner(t *testing.T) {
+	t.Parallel()
+
+	bI := 11
+	bDur := skymodules.DistributionDurationForBucketIndex(bI)
+
+	// create pdc
+	pcws := newTestProjectChunkWorkerSet()
+	pdc := newTestProjectDownloadChunk(pcws, nil)
+
+	// mock a launched worker
+	readDT := skymodules.NewDistribution(time.Minute)
+	readDT.AddDataPoint(30 * time.Millisecond)
+	readDT.AddDataPoint(40 * time.Millisecond)
+	readDT.AddDataPoint(60 * time.Millisecond)
+	lw := &individualWorker{
+		pieceIndices: []uint64{0},
+		resolved:     true,
+
+		currentPiece:           0,
+		currentPieceLaunchedAt: time.Now().Add(-20 * time.Millisecond),
+		staticReadDistribution: readDT,
+		staticIdentifier:       "launched_worker",
+	}
+	lw.recalculateDistributionChances()
+	t.Log(lw.cachedReadDTChances[bI])
+
+	// mock a resolved worker
+	readDT = skymodules.NewDistribution(time.Minute)
+	readDT.AddDataPoint(20 * time.Millisecond)
+	readDT.AddDataPoint(30 * time.Millisecond)
+	readDT.AddDataPoint(40 * time.Millisecond)
+	readDT.AddDataPoint(60 * time.Millisecond)
+	rw := &individualWorker{
+		pieceIndices: []uint64{0},
+		resolved:     true,
+
+		staticReadDistribution: readDT,
+		staticIdentifier:       "resolved_worker",
+	}
+	rw.recalculateDistributionChances()
+	t.Log(rw.cachedReadDTChances[bI])
+
+	t.Log(skymodules.DistributionDurationForBucketIndex(10))
+	minPieces := 1
+	numOverdrive := 0
+	ws, _ := pdc.createWorkerSetInner([]*individualWorker{lw, rw}, minPieces, numOverdrive, bI, bDur)
+	if ws == nil {
+		t.Fatal("unexpected")
+	}
+	for _, w := range ws.workers {
+		t.Log(w.identifier())
+	}
+}
+
 // TestAddCostPenalty is a unit test that covers the `addCostPenalty` helper
 // function.
 //
@@ -895,7 +950,6 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 
 	// define some variables
 	workersNeeded := 2
-	overdriveWorkers := 0
 
 	// create pdc
 	pcws := newTestProjectChunkWorkerSet()
@@ -929,7 +983,7 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 
 	// split the workers in most likely and less likely
 	workers := []downloadWorker{iw1, cw1, cw2}
-	mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(workers, workersNeeded, overdriveWorkers)
+	mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(workers, workersNeeded)
 
 	// expect the most likely to consist of the 2 chimeras
 	if len(mostLikely) != workersNeeded {
@@ -950,7 +1004,7 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 	iw1.pieceIndices = append(iw1.pieceIndices, 2)
 
 	// assert it's now in the less likely set
-	_, lessLikely = pdc.splitMostlikelyLessLikely(workers, workersNeeded, 1)
+	_, lessLikely = pdc.splitMostlikelyLessLikely(workers, workersNeeded)
 	if len(lessLikely) != 1 {
 		t.Fatal("bad")
 	}
@@ -966,7 +1020,7 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 
 	// assert that we allow overdriving on the same piece if we don't have
 	// enough workers to meet the workersNeeded quota
-	mostLikely, lessLikely = pdc.splitMostlikelyLessLikely(workers, workersNeeded, 0)
+	mostLikely, lessLikely = pdc.splitMostlikelyLessLikely(workers, workersNeeded)
 	if len(mostLikely) != 1 {
 		t.Fatal("bad")
 	}
@@ -974,7 +1028,7 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 		t.Fatal("bad")
 	}
 
-	mostLikely, lessLikely = pdc.splitMostlikelyLessLikely(workers, workersNeeded, 1)
+	mostLikely, lessLikely = pdc.splitMostlikelyLessLikely(workers, workersNeeded)
 	if len(mostLikely) != 2 {
 		t.Fatal("bad")
 	}
