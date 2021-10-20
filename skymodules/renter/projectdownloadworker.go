@@ -955,7 +955,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 					}
 				}
 				workerSetComp += fmt.Sprintf("| workerset launched worker %v\n", lw)
-				fmt.Println(workerSetComp)
+				// fmt.Println(workerSetComp)
 				pdc.workerSet.staticRenter.staticLog.Println(workerSetComp)
 			}
 		}
