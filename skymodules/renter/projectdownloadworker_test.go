@@ -666,6 +666,9 @@ func TestWorkerSetCost(t *testing.T) {
 	t.Log(dur.Seconds())
 	index := skymodules.DistributionBucketIndexForDuration(dur)
 	t.Log(index)
+
+	dur = skymodules.DistributionDurationForBucketIndex(70)
+	t.Log(dur)
 }
 
 // TestAddCostPenalty is a unit test that covers the `addCostPenalty` helper

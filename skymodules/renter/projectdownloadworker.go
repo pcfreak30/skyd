@@ -598,22 +598,20 @@ func (ws *workerSet) chanceGreaterThanHalf() bool {
 func (ws *workerSet) String() string {
 	output := fmt.Sprintf("WORKERSET bucket: %v bucket dur %v expected dur: %v num overdrive: %v \nworkers:\n", ws.staticBucketIndex, skymodules.DistributionDurationForBucketIndex(ws.staticBucketIndex), ws.staticBucketDuration, ws.staticNumOverdrive)
 	for i, w := range ws.workers {
-		iw, isIw := w.(*individualWorker)
-		ch, isCh := w.(*chimeraWorker)
-
+		iw, individual := w.(*individualWorker)
 		selected := -1
-		if isIw {
+		if individual {
 			selected = int(w.getPieceForDownload())
 		}
 
-		var chance float64
-		if isCh {
-			chance = ch.staticChanceComplete
-		} else {
-			chance = iw.cachedReadDTChances[ws.staticBucketIndex]
+		chance := w.calculateCompleteChance(ws.staticBucketIndex)
+
+		cost := w.cost()
+		if individual {
+			cost = iw.staticCost
 		}
 
-		output += fmt.Sprintf("%v) worker: %v chimera: %v chance: %v cost: %v pieces: %v selected: %v\n", i+1, w.identifier(), isCh, chance, w.cost(), w.pieces(ws.staticPDC), selected)
+		output += fmt.Sprintf("%v) worker: %v chimera: %v chance: %v cost: %v pieces: %v selected: %v\n", i+1, w.identifier(), !individual, chance, cost, w.pieces(ws.staticPDC), selected)
 	}
 	return output
 }
@@ -852,14 +850,18 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, workers []*indiv
 			out := ""
 			for _, w := range workers {
 				if w.isLaunched() {
+					chance := w.calculateCompleteChance(ws.staticBucketIndex)
+					chanceAfter20 := w.calculateCompleteChance(20)
 					chanceAfter70 := w.calculateCompleteChance(70)
 					chanceAfter140 := w.calculateCompleteChance(140)
 					chanceAfter210 := w.calculateCompleteChance(210)
 					chanceAfter280 := w.calculateCompleteChance(280)
-					chanceAfterBucket := w.cachedReadDTChances[ws.staticBucketIndex]
-					datapoints := w.staticReadDistribution.DataPoints()
 
-					out += fmt.Sprintf("worker %v chance %v (%v | %v | %v | %v)datapoints %v\n", w.identifier(), chanceAfterBucket, chanceAfter70, chanceAfter140, chanceAfter210, chanceAfter280, datapoints)
+					readDT := w.staticReadDistribution.Clone()
+					readDT.Shift(time.Since(w.currentPieceLaunchedAt))
+					datapoints := readDT.DataPoints()
+
+					out += fmt.Sprintf("worker %v chance %v (%v | %v | %v | %v | %v) datapoints %v\n", w.identifier(), chance, chanceAfter20, chanceAfter70, chanceAfter140, chanceAfter210, chanceAfter280, datapoints)
 				}
 			}
 

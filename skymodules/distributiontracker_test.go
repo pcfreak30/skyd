@@ -16,18 +16,18 @@ func TestDistributionTracker(t *testing.T) {
 	}
 	t.Parallel()
 
-	t.Run("Bucketing", testDistributionBucketing)
-	t.Run("ChanceAfter", testDistributionChanceAfter)
-	t.Run("ChancesAfter", testDistributionChancesAfter)
+	// t.Run("Bucketing", testDistributionBucketing)
+	// t.Run("ChanceAfter", testDistributionChanceAfter)
+	// t.Run("ChancesAfter", testDistributionChancesAfter)
 	t.Run("ChanceAfterShift", testDistributionChanceAfterShift)
-	t.Run("Clone", testDistributionClone)
-	t.Run("Decay", testDistributionDecay)
-	t.Run("DecayedLifetime", testDistributionDecayedLifetime)
-	t.Run("ExpectedDuration", testDistributionExpectedDuration)
-	t.Run("FullTestLong", testDistributionTrackerFullTestLong)
-	t.Run("Helpers", testDistributionHelpers)
-	t.Run("MergeWith", testDistributionMergeWith)
-	t.Run("Shift", testDistributionShift)
+	// t.Run("Clone", testDistributionClone)
+	// t.Run("Decay", testDistributionDecay)
+	// t.Run("DecayedLifetime", testDistributionDecayedLifetime)
+	// t.Run("ExpectedDuration", testDistributionExpectedDuration)
+	// t.Run("FullTestLong", testDistributionTrackerFullTestLong)
+	// t.Run("Helpers", testDistributionHelpers)
+	// t.Run("MergeWith", testDistributionMergeWith)
+	// t.Run("Shift", testDistributionShift)
 }
 
 // testDistributionBucketing will check that the distribution is placing timings
@@ -357,6 +357,37 @@ func testDistributionChanceAfterShift(t *testing.T) {
 	if chanceAfter != 0 {
 		t.Fatal("bad", chanceAfter)
 	}
+
+	d = NewDistribution(time.Minute * 100)
+	d.AddDataPoint(time.Millisecond * 50)
+	d.AddDataPoint(time.Millisecond * 120)
+	d.AddDataPoint(time.Millisecond * 180)
+	d.AddDataPoint(time.Millisecond * 200)
+	d.AddDataPoint(time.Millisecond * 220)
+	d.AddDataPoint(time.Millisecond * 600)
+
+	clone := d.Clone()
+	clone.Shift(100 * time.Millisecond)
+	t.Log(clone.ChanceAfter(20 * time.Millisecond))
+	t.Log(clone.ChanceAfter(180 * time.Millisecond))
+	t.Log(clone.ChanceAfter(420 * time.Millisecond))
+	t.Log(clone.ChanceAfter(600 * time.Millisecond))
+
+	clone = d.Clone()
+	clone.Shift(200 * time.Millisecond)
+	t.Log(clone.ChanceAfter(20 * time.Millisecond))
+	t.Log(clone.ChanceAfter(180 * time.Millisecond))
+	t.Log(clone.ChanceAfter(420 * time.Millisecond))
+	t.Log(clone.ChanceAfter(600 * time.Millisecond))
+
+	clone = d.Clone()
+	clone.Shift(300 * time.Millisecond)
+	t.Log(clone.ChanceAfter(20 * time.Millisecond))
+	t.Log(clone.ChanceAfter(180 * time.Millisecond))
+	t.Log(clone.ChanceAfter(420 * time.Millisecond))
+	t.Log(clone.ChanceAfter(600 * time.Millisecond))
+	t.Log(clone.ChanceAfter(620 * time.Millisecond))
+	t.Log(clone.DataPoints())
 }
 
 // testDistributionClone will test the `Clone` method on the distribution
