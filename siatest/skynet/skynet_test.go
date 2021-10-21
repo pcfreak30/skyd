@@ -1244,6 +1244,20 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	if stats.FanoutSectorOverdriveAvg == 0 || stats.FanoutSectorOverdrivePct == 0 {
 		t.Fatal("fanout sector download stats all zero", stats.FanoutSectorOverdriveAvg, stats.FanoutSectorOverdrivePct)
 	}
+
+	err = r.SkynetStatsReset()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stats, err = r.SkynetStatsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log(stats.BaseSectorOverdriveAvg)
+	t.Log(stats.BaseSectorOverdrivePct)
+	t.Log(stats.FanoutSectorOverdriveAvg)
+	t.Log(stats.FanoutSectorOverdrivePct)
+	t.Log("YO")
 }
 
 // TestSkynetInvalidFilename verifies that posting a Skyfile with invalid
