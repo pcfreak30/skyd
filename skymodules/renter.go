@@ -1283,6 +1283,8 @@ type Renter interface {
 	// Performance returns performance information about the renter.
 	Performance() (RenterPerformance, error)
 
+	ResetDownloadStats()
+
 	// PeriodSpending returns the amount spent on contracts in the current
 	// billing period.
 	PeriodSpending() (ContractorSpending, error)

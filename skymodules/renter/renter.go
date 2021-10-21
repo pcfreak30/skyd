@@ -823,6 +823,11 @@ func (r *Renter) OldContracts() []skymodules.RenterContract {
 	return r.staticHostContractor.OldContracts()
 }
 
+func (r *Renter) ResetDownloadStats() {
+	r.staticBaseSectorDownloadStats = skymodules.NewSectorDownloadStats()
+	r.staticFanoutSectorDownloadStats = skymodules.NewSectorDownloadStats()
+}
+
 // Performance is a function call that returns all of the performance
 // information about the renter.
 func (r *Renter) Performance() (skymodules.RenterPerformance, error) {
