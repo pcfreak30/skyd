@@ -4129,6 +4129,7 @@ returns statistical information about Skynet, e.g. number of files uploaded
    "systemhealthscandurationhours":1.1795308075927777,
    "allowancestatus":"healthy",                         // 'low', 'high', 'healthy'
    "contractstorage":68897587855360,
+   "maxhealthpercentage":100,
    "maxstorageprice":"34722222222",
    "numcritalerts":0,
    "numfiles":403016,
@@ -4166,6 +4167,9 @@ The amount of time in seconds that siad has been running.
 
 **uploadstats** | object  
 Uploadstats is an object with statistics about the data uploaded to Skynet.
+
+**maxhealthpercentage** | float  
+The maximum, i.e. worst, health of any of the portal's files represented as a percentage.
 
 **numfiles** | int  
 Numfiles is the total number of files uploaded to Skynet.
