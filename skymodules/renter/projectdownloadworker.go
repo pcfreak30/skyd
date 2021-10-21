@@ -553,7 +553,7 @@ func (ws *workerSet) chanceGreaterThanHalf() bool {
 		return coinflips.chanceSum() > float64(ws.staticMinPieces)
 	}
 
-	return chance > 0.5
+	return chance > 0.9
 }
 
 // chanceAllHeads returns the chance all coins show heads.
