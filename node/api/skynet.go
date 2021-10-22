@@ -997,8 +997,10 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 	_, _, unspentUnallocated := financialMetrics.SpendingBreakdown()
 	var allowanceStatus string
 	if unspentUnallocated.Cmp(types.NewCurrency64(10e3)) < 0 {
+		fmt.Println("low for 10e3 check")
 		allowanceStatus = "low"
 	} else if unspentUnallocated.Cmp(allowance.Funds.Div64(5)) < 0 {
+		fmt.Println("low for allowance check")
 		allowanceStatus = "low"
 	} else if unspentUnallocated.Cmp(allowance.Funds.Mul64(3).Div64(4)) > 0 && allowance.Funds.Cmp(types.NewCurrency64(50e3)) > 0 {
 		allowanceStatus = "high"

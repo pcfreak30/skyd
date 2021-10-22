@@ -19,6 +19,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/types"
 
 	"gitlab.com/SkynetLabs/skyd/node/api"
 	"gitlab.com/SkynetLabs/skyd/siatest"
@@ -203,6 +204,7 @@ flag to fetch the skylink without actually uploading the file.`,
 //
 // TODO: Could put some stats or summaries or something here.
 func skynetcmd(cmd *cobra.Command, _ []string) {
+	fmt.Println(types.NewCurrency64(10e3))
 	_ = cmd.UsageFunc()(cmd)
 	os.Exit(exitCodeUsage)
 }
