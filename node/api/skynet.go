@@ -904,10 +904,6 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		Bitfield:   skylink.Bitfield(),
 	})
 }
-func (api *API) skynetStatsResetHandlerPOST(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	api.renter.ResetDownloadStats()
-	WriteSuccess(w)
-}
 
 // skynetStatsHandlerGET responds with a JSON with statistical data about
 // skynet, e.g. number of files uploaded, total size, etc.

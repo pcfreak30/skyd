@@ -130,21 +130,6 @@ func dl() {
 			// Log result
 			fmt.Printf("%v downloads on %v threads finished in %v\n", dir, numThreads, time.Since(start))
 			fmt.Println(getPercentilesString(timings))
-
-			// Log benchmark stats
-			stats, err := c.SkynetStatsGet()
-			if err != nil {
-				fmt.Printf("Unable to fetch download stats, error %v\n", err)
-			}
-			fmt.Println("basesectoroverdrivepct: ", stats.BaseSectorOverdrivePct)
-			fmt.Println("basesectoroverdriveavg: ", stats.BaseSectorOverdriveAvg)
-			fmt.Println("fanoutsectoroverdrivepct: ", stats.FanoutSectorOverdrivePct)
-			fmt.Println("fanoutsectoroverdriveavg: ", stats.FanoutSectorOverdriveAvg)
-
-			err = c.SkynetStatsReset()
-			if err != nil {
-				fmt.Printf("Unable to reset download stats, error %v\n", err)
-			}
 		}
 	}
 }
