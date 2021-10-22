@@ -7,6 +7,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
+	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -187,6 +188,12 @@ func (sf *SiaFile) metadataCompatCheck() error {
 // upgradeMetadataFromNilToV1 upgrades an uninitialized metadata version to
 // version 1 with the corresponding compat code
 func (sf *SiaFile) upgradeMetadataFromNilToV1() {
+	// Sanity Check
+	if sf.staticMetadata.StaticVersion != nilMetadataVesion {
+		build.Critical("upgradeMetadataFromNilToV1 called with non nil metadata")
+		return
+	}
+
 	// COMPATv137 legacy files might not have a unique id.
 	if sf.staticMetadata.UniqueID == "" {
 		sf.staticMetadata.UniqueID = uniqueID()
@@ -210,6 +217,13 @@ func (sf *SiaFile) upgradeMetadataFromNilToV1() {
 // upgradeMetadataFromV1ToV2 upgrades a version 1 metadata to a version 2 with
 // the corresponding compat code
 func (sf *SiaFile) upgradeMetadataFromV1ToV2() error {
+	// Sanity Check
+	if sf.staticMetadata.StaticVersion != metadataVersion1 {
+		err := errors.New("upgradeMetadataFromV1ToV2 called with non version 1 metadata")
+		build.Critical(err)
+		return err
+	}
+
 	// Stuck vs Unfinished files compatibility check.
 	//
 	// Before unfinished files were introduced a file might have been marked

@@ -663,7 +663,7 @@ func testParseDownloadRequestParameters(t *testing.T) {
 	baseParams := func() *skyfileDownloadParams {
 		return &skyfileDownloadParams{
 			path:                 "/",
-			pricePerMS:           DefaultSkynetPricePerMS,
+			pricePerMS:           skymodules.DefaultSkynetPricePerMS,
 			skylink:              skylink,
 			skylinkStringNoQuery: skylinkStr,
 			timeout:              DefaultSkynetRequestTimeout,
@@ -769,7 +769,7 @@ func testParseDownloadRequestParameters(t *testing.T) {
 	}
 
 	// Test pricePerMS
-	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMS := skymodules.DefaultSkynetPricePerMS
 	pricePerMSStr := "1000"
 	_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
 	if err != nil {

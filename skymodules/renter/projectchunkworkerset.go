@@ -494,8 +494,8 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// extra goroutines to be spawned.
 	workerResponseChan := make(chan *jobReadResponse, ec.NumPieces()*5)
 
-	// Build static piece indices, chimera workers use this static piece indices
-	// list to avoid creating it for every chimera worker over and over again.
+	// Build static piece indices, chimera workers use this static piece index
+	// array to avoid creating it for every chimera worker over and over again.
 	pieceIndices := make([]uint64, ec.NumPieces())
 	for i := 0; i < len(pieceIndices); i++ {
 		pieceIndices[i] = uint64(i)

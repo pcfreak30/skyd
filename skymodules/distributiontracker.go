@@ -273,11 +273,6 @@ func (d *Distribution) ChanceAfter(dur time.Duration) float64 {
 
 	// Calculate the chance
 	chance := count / total
-
-	if chance > 1 {
-		fmt.Printf("chance %v count %v total %v index %v fraction %v dur %v\n", chance, count, total, index, fraction, dur)
-		return 1
-	}
 	return chance
 }
 
@@ -305,13 +300,12 @@ func (d *Distribution) ChancesAfter() Chances {
 
 // Clone returns a deep copy of the distribution.
 func (d *Distribution) Clone() *Distribution {
-	c := &Distribution{
-		GenericDecay: d.GenericDecay.Clone(),
-	}
+	c := &Distribution{GenericDecay: d.GenericDecay.Clone()}
 	for i, b := range d.timings {
 		c.timings[i] = b
 	}
 
+	// sanity check using reflect package, only executed in testing
 	if build.Release == "testing" {
 		if !reflect.DeepEqual(d, c) {
 			build.Critical("cloned distribution not equal")

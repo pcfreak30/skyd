@@ -206,7 +206,10 @@ func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode skymodu
 	ecType, ecParams := marshalErasureCoder(erasureCode)
 	minPieces := erasureCode.MinPieces()
 	numPieces := erasureCode.NumPieces()
-	zeroHealth := float64(1 + minPieces/(numPieces-minPieces))
+	zeroHealth := 1.0
+	if numPieces != minPieces {
+		zeroHealth = float64(1 + minPieces/(numPieces-minPieces))
+	}
 	repairSize := fileSize * uint64(numPieces/minPieces)
 	file := &SiaFile{
 		staticMetadata: Metadata{
@@ -223,6 +226,7 @@ func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode skymodu
 			CachedUserRedundancy:    0,
 			CachedUploadProgress:    0,
 			FileSize:                int64(fileSize),
+			Finished:                source != "",
 			LocalPath:               source,
 			StaticMasterKey:         masterKey.Key(),
 			StaticMasterKeyType:     masterKey.Type(),
@@ -1409,15 +1413,16 @@ func (sf *SiaFile) SetFinished(health float64) (err error) {
 // setFinished sets the file's Finished field in the metadata
 func (sf *SiaFile) setFinished(health float64) {
 	// Once a file is finished if cannot be unfinished.
-	//
-	// NOTE: we only care about the actual field here instead of using the
-	// finished() method because we are looking if we should update the
-	// field.
 	if sf.staticMetadata.Finished {
 		return
 	}
-	// A file is finished if the health is <= 1
-	sf.staticMetadata.Finished = health <= 1
+	// A file is finished if the health is <= 1 or there is a localPath. A
+	// file is finished if there is a localPath because a file can be
+	// repaired from the local file even if it loses 100% of its health.
+	// Additionally, a siafile with a local file is immediately accessible
+	// because we serve downloads from disk in the case that there is a
+	// local file present.
+	sf.staticMetadata.Finished = health <= 1 || sf.staticMetadata.LocalPath != ""
 }
 
 // setStuck sets the Stuck field of the chunk at the given index

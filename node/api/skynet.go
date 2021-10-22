@@ -65,13 +65,6 @@ const (
 	SkynetRequestedSkylinkHeader = "Skynet-Requested-Skylink"
 )
 
-var (
-	// DefaultSkynetPricePerMS is the default price per millisecond the renter
-	// is able to spend on faster workers when downloading a Skyfile. By default
-	// this is a sane default of 40 nS.
-	DefaultSkynetPricePerMS = types.SiacoinPrecision.MulFloat(1e-9).Mul64(40)
-)
-
 type (
 	// HostsForRegistryUpdateGET is the response that the api returns after
 	// a request to /skynet/registry/hosts.
@@ -172,16 +165,17 @@ type (
 		SystemHealthScanDurationHours float64 `json:"systemhealthscandurationhours"`
 
 		// General Statuses
-		AllowanceStatus string         `json:"allowancestatus"` // 'low', 'good', 'high'
-		ContractStorage uint64         `json:"contractstorage"` // bytes
-		MaxStoragePrice types.Currency `json:"maxstorageprice"` // Hastings per byte per block
-		NumCritAlerts   int            `json:"numcritalerts"`
-		NumFiles        uint64         `json:"numfiles"`
-		PortalMode      bool           `json:"portalmode"`
-		Repair          uint64         `json:"repair"`  // bytes
-		Storage         uint64         `json:"storage"` // bytes
-		StuckChunks     uint64         `json:"stuckchunks"`
-		WalletStatus    string         `json:"walletstatus"` // 'low', 'good', 'high'
+		AllowanceStatus     string         `json:"allowancestatus"` // 'low', 'good', 'high'
+		ContractStorage     uint64         `json:"contractstorage"` // bytes
+		MaxHealthPercentage float64        `json:"maxhealthpercentage"`
+		MaxStoragePrice     types.Currency `json:"maxstorageprice"` // Hastings per byte per block
+		NumCritAlerts       int            `json:"numcritalerts"`
+		NumFiles            uint64         `json:"numfiles"`
+		PortalMode          bool           `json:"portalmode"`
+		Repair              uint64         `json:"repair"`  // bytes
+		Storage             uint64         `json:"storage"` // bytes
+		StuckChunks         uint64         `json:"stuckchunks"`
+		WalletStatus        string         `json:"walletstatus"` // 'low', 'good', 'high'
 
 		// Update and version information.
 		Uptime      int64         `json:"uptime"`
@@ -274,7 +268,7 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 	}
 
 	// Parse pricePerMS.
-	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMS := skymodules.DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
 		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
@@ -463,7 +457,7 @@ func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, _
 	}
 
 	// Parse pricePerMS.
-	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMS := skymodules.DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
 		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
@@ -689,7 +683,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	}
 
 	// Parse pricePerMS.
-	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMS := skymodules.DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
 		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
@@ -1055,16 +1049,17 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 
 		SystemHealthScanDurationHours: float64(renterPerf.SystemHealthScanDuration) / float64(time.Hour),
 
-		AllowanceStatus: allowanceStatus,
-		ContractStorage: totalStorage,
-		NumCritAlerts:   numCritAlerts,
-		NumFiles:        rootDir.AggregateSkynetFiles,
-		PortalMode:      allowance.PortalMode(),
-		MaxStoragePrice: allowance.MaxStoragePrice,
-		Repair:          rootDir.AggregateRepairSize,
-		Storage:         rootDir.AggregateSkynetSize,
-		StuckChunks:     rootDir.AggregateNumStuckChunks,
-		WalletStatus:    walletStatus,
+		AllowanceStatus:     allowanceStatus,
+		ContractStorage:     totalStorage,
+		MaxHealthPercentage: rootDir.AggregateMaxHealthPercentage,
+		MaxStoragePrice:     allowance.MaxStoragePrice,
+		NumCritAlerts:       numCritAlerts,
+		NumFiles:            rootDir.AggregateSkynetFiles,
+		PortalMode:          allowance.PortalMode(),
+		Repair:              rootDir.AggregateRepairSize,
+		Storage:             rootDir.AggregateSkynetSize,
+		StuckChunks:         rootDir.AggregateNumStuckChunks,
+		WalletStatus:        walletStatus,
 
 		Uptime: int64(uptime),
 		VersionInfo: SkynetVersion{
@@ -1561,7 +1556,7 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 	}
 
 	// Parse pricePerMS.
-	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMS := skymodules.DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
 		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
@@ -1615,7 +1610,7 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 	}
 
 	// Parse it.
-	_, _, _, rawMD, _, err := skymodules.ParseSkyfileMetadata(baseSector)
+	_, _, _, rawMD, _, _, err := api.renter.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
@@ -1652,7 +1647,7 @@ func (api *API) skynetSkylinkHealthGET(w http.ResponseWriter, req *http.Request,
 	defer cancel()
 
 	// Get health.
-	sh, err := api.renter.SkylinkHealth(ctx, skylink, DefaultSkynetPricePerMS)
+	sh, err := api.renter.SkylinkHealth(ctx, skylink, skymodules.DefaultSkynetPricePerMS)
 	if err != nil {
 		handleSkynetError(w, "failed to get skylink health", err)
 		return

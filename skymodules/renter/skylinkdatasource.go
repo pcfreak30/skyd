@@ -304,9 +304,14 @@ func (r *Renter) managedSkylinkDataSource(ctx context.Context, skylink skymodule
 	}
 
 	// Parse out the metadata of the skyfile.
-	layout, fanoutBytes, metadata, rawMetadata, baseSectorPayload, err := skymodules.ParseSkyfileMetadata(baseSector)
+	// TODO: (f/u?) it might be better to resolve the parts of the fanout we
+	// need on demand. But that's quite the undertaking by itself.
+	// e.g. if we don't start resolving the recursive fanout right away we
+	// lose the benefit of the workerset, because we will add some latency
+	// later once we actually know what the user wants to download.
+	layout, fanoutBytes, metadata, rawMetadata, baseSectorPayload, _, err := r.ParseSkyfileMetadata(baseSector)
 	if err != nil {
-		return nil, errors.AddContext(err, "error parsing skyfile metadata")
+		return nil, errors.AddContext(err, "unable to parse skyfile metadata")
 	}
 
 	// Tag the span with its size. We tag it with 64kb, 1mb, 4mb and 10mb as

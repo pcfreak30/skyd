@@ -90,9 +90,7 @@ func (sf *SiaFile) SnapshotReader() (*SnapshotReader, error) {
 // offset of a file and also the relative offset within the chunk. If the
 // offset is out of bounds, chunkIndex will be equal to NumChunk().
 func (s *Snapshot) ChunkIndexByOffset(offset uint64) (chunkIndex uint64, off uint64) {
-	chunkIndex = offset / s.ChunkSize()
-	off = offset % s.ChunkSize()
-	return
+	return skymodules.ChunkIndexByOffset(offset, s.ChunkSize())
 }
 
 // ChunkSize returns the size of a single chunk of the file.

@@ -1,1 +1,0 @@
-- add /skynet/registry/hosts endpoint for fetching recommended hosts for registry update

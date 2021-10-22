@@ -602,7 +602,7 @@ func skynetskylinkcomparecmd(expectedSkylink string, filename string) {
 	fmt.Println("Metadatas Equal")
 
 	// build base sector
-	baseSector, fetchSize := skymodules.BuildBaseSector(layoutFromHeader.Encode(), nil, skyfileMetadataFromFile, skyfileDownloadedData)
+	baseSector, fetchSize, _ := skymodules.BuildBaseSector(layoutFromHeader.Encode(), nil, skyfileMetadataFromFile, skyfileDownloadedData)
 	baseSectorRoot := crypto.MerkleRoot(baseSector)
 	skylink, err := skymodules.NewSkylinkV1(baseSectorRoot, 0, fetchSize)
 	if err != nil {

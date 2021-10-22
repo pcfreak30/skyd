@@ -152,7 +152,7 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 				// instead of a build variable to reduce NDFs in
 				// testing.
 				if r.staticDeps.Disrupt("ShortUnfinishedFilesPruneDuration") {
-					unfinishedFilePruneDuration = time.Second * 10
+					unfinishedFilePruneDuration = UnfinishedFilePruneDurationTestDeps
 				}
 				// Check if it is time to prune the file
 				timeToPrune := time.Since(fileMetadata.CreateTime) > unfinishedFilePruneDuration

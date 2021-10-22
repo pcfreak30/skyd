@@ -394,12 +394,6 @@ type Allowance struct {
 	MaxSectorAccessPrice      types.Currency `json:"maxsectoraccessprice"`
 	MaxStoragePrice           types.Currency `json:"maxstorageprice"`
 	MaxUploadBandwidthPrice   types.Currency `json:"maxuploadbandwidthprice"`
-
-	// DownloadBaseCost is a base cost that is applied to every worker's
-	// download cost. It's a simple mechanism that ensures a very cheap (or
-	// free) worker is not automatically defaulted to when selecting workers for
-	// a download.
-	DownloadBaseCost types.Currency `json:"downloadbasecost"`
 }
 
 // Active returns true if and only if this allowance has been set in the
@@ -1191,6 +1185,18 @@ type FanoutChunkReader interface {
 	Fanout() []byte
 }
 
+// RegistrySubscriber is the interface for an object capable of subscribing to
+// the skynet registry.
+type RegistrySubscriber interface {
+	io.Closer
+
+	// Subscribe subscribes to a new entry.
+	Subscribe(spk types.SiaPublicKey, tweak crypto.Hash) *RegistryEntry
+
+	// Unsubscribe unsubscribes from an entry.
+	Unsubscribe(eid modules.RegistryEntryID)
+}
+
 // A Renter uploads, tracks, repairs, and downloads a set of files for the
 // user.
 type Renter interface {
@@ -1261,6 +1267,15 @@ type Renter interface {
 
 	// MountInfo returns the list of currently mounted FUSE filesystems.
 	MountInfo() []MountInfo
+
+	// ParseSkyfileMetadata parses all the information from a base sector
+	// similar to skymodules.ParseSkyfileMetadata. The difference is that it
+	// can also parse a recursive base sector.
+	ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []byte, sm SkyfileMetadata, rawSM, baseSectorPayload, baseSectorExtension []byte, err error)
+
+	// NewRegistrySubscriber creates a new registry subscriber which can be
+	// used to subscribe to registry entries for updates.
+	NewRegistrySubscriber(notifyFunc func(entry RegistryEntry) error) (RegistrySubscriber, error)
 
 	// Unmount unmounts the FUSE filesystem currently mounted at mountPoint.
 	Unmount(mountPoint string) error

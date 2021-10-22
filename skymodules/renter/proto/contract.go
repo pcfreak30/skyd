@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -347,6 +348,11 @@ func (c *SafeContract) UpdateUtility(utility skymodules.ContractUtility) error {
 
 // updateUtility updates the utility field of a contract.
 func (c *SafeContract) updateUtility(utility skymodules.ContractUtility) error {
+	// If the utility didn't change, this is a no-op.
+	if reflect.DeepEqual(c.header.Utility, utility) {
+		return nil
+	}
+
 	// Construct new header
 	newHeader := c.header
 	newHeader.Utility = utility
@@ -1014,7 +1020,7 @@ func loadSafeContractHeader(f io.ReadSeeker, decodeMaxSize int) (contractHeader,
 
 // loadSafeContract loads a contract from disk and adds it to the contractset
 // if it is valid.
-func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCountFileName string, walTxns []*writeaheadlog.Transaction) (err error) {
+func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCountFileName string, walTxns map[types.FileContractID][]*unappliedWalTxn) (err error) {
 	headerFile, err := os.OpenFile(headerFileName, os.O_RDWR, skymodules.DefaultFilePerm)
 	if err != nil {
 		return err
@@ -1042,33 +1048,6 @@ func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCountF
 	if err != nil {
 		return errors.AddContext(err, "unable to load the merkle roots of the contract")
 	}
-	// add relevant unapplied transactions
-	var unappliedTxns []*unappliedWalTxn
-	for _, t := range walTxns {
-		// NOTE: we assume here that if any of the updates apply to the
-		// contract, the whole transaction applies to the contract.
-		if len(t.Updates) == 0 {
-			continue
-		}
-		var id types.FileContractID
-		switch update := t.Updates[0]; update.Name {
-		case updateNameSetHeader:
-			var u updateSetHeader
-			if err := unmarshalHeader(update.Instructions, &u); err != nil {
-				return errors.AddContext(err, "unable to unmarshal the contract header during wal txn recovery")
-			}
-			id = u.ID
-		case updateNameSetRoot:
-			var u updateSetRoot
-			if err := encoding.Unmarshal(update.Instructions, &u); err != nil {
-				return errors.AddContext(err, "unable to unmarshal the update root set during wal txn recovery")
-			}
-			id = u.ID
-		}
-		if id == header.ID() {
-			unappliedTxns = append(unappliedTxns, newUnappliedWalTxn(t))
-		}
-	}
 	var rc *refCounter
 	if build.Release == "testing" {
 		// load the reference counter or create a new one if it doesn't exist
@@ -1084,7 +1063,7 @@ func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCountF
 	sc := &SafeContract{
 		header:           header,
 		merkleRoots:      merkleRoots,
-		unappliedTxns:    unappliedTxns,
+		unappliedTxns:    walTxns[header.ID()],
 		staticDeps:       cs.staticDeps,
 		staticHeaderFile: headerFile,
 		staticWal:        cs.staticWal,
