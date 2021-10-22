@@ -385,8 +385,8 @@ func testWorkerSetCreate(t *testing.T) {
 		currentPieceLaunchedAt: time.Now().Add(-20 * time.Millisecond),
 		staticReadDistribution: readDT,
 		staticIdentifier:       "launched_worker",
+		staticCost:             1,
 	}
-	t.Log(lw.staticReadDistribution.ChancesAfter())
 
 	// mock a resolved worker
 	readDT = skymodules.NewDistribution(time.Minute)
@@ -400,6 +400,7 @@ func testWorkerSetCreate(t *testing.T) {
 
 		staticReadDistribution: readDT,
 		staticIdentifier:       "resolved_worker",
+		staticCost:             1,
 	}
 
 	// recalculate the distribution chances
@@ -429,7 +430,7 @@ func testWorkerSetCreate(t *testing.T) {
 	// assert the launched worker got selected
 	selected := ws.workers[0]
 	if selected.identifier() != "launched_worker" {
-		t.Fatal("unexpected")
+		t.Fatal("unexpected", selected.identifier())
 	}
 
 	// assert the resolved worker was selected as most likely, proving that the
