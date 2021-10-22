@@ -359,13 +359,10 @@ func (w *worker) initJobReadQueue(jrs *jobReadStats) {
 		w.staticRenter.staticLog.Critical("incorrect call on initJobReadQueue")
 	}
 
-	// TODO: fetch base cost from allowance
-	baseCost := skymodules.DefaultSkynetBaseCost
-
 	w.staticJobReadQueue = &jobReadQueue{
 		jobGenericQueue: newJobGenericQueue(w),
 
-		staticBaseCost: baseCost,
+		staticBaseCost: skymodules.DefaultSkynetBaseCost,
 		staticStats:    jrs,
 	}
 }
@@ -378,13 +375,10 @@ func (w *worker) initJobLowPrioReadQueue(jrs *jobReadStats) {
 		w.staticRenter.staticLog.Critical("incorret call on initJobReadQueue")
 	}
 
-	// TODO: fetch base cost from allowance
-	baseCost := skymodules.DefaultSkynetBaseCost
-
 	w.staticJobLowPrioReadQueue = &jobReadQueue{
 		jobGenericQueue: newJobGenericQueue(w),
 
-		staticBaseCost: baseCost,
+		staticBaseCost: skymodules.DefaultSkynetBaseCost,
 		staticStats:    jrs,
 	}
 }
