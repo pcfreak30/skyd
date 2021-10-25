@@ -3,6 +3,8 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/julienschmidt/httprouter"
@@ -57,8 +59,30 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 	}
 	defer c.Close()
 
+	// TODO: Get bandwidth limit and delay from query.
+	bandwidthLimit := uint64(1000)
+	notificationDelay := time.Second
+
+	// Compute how many notifications per second we want to serve.
+	notificationsPerSecond := bandwidthLimit / RegistrySubscriptionNotificationSize
+
+	// Compute how much time needs to pass between notifications to reach
+	// that limit.
+	timeBetweenNotifications := time.Second / time.Duration(notificationsPerSecond)
+
 	// Declare a handler for notifications.
+	var lastWriteMu sync.Mutex
+	var lastWrite time.Time
 	notifier := func(srv skymodules.RegistryEntry) error {
+		lastWriteMu.Lock()
+		sleepTime := notificationDelay
+		timeSinceLastWrite := time.Since(lastWrite)
+		lastWrite = time.Now()
+		lastWriteMu.Unlock()
+		if timeSinceLastWrite < timeBetweenNotifications {
+			sleepTime += timeBetweenNotifications - timeSinceLastWrite
+		}
+		time.Sleep(sleepTime)
 		return c.WriteJSON(RegistrySubscriptionResponse{
 			Error:     "",
 			DataKey:   srv.Tweak,
