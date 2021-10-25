@@ -441,6 +441,7 @@ func (u *ongoingTUSUpload) FinishUpload(ctx context.Context) (err error) {
 	if err != nil {
 		return errors.AddContext(err, "failed to fetch fanout")
 	}
+	fmt.Println("final fanout", len(fanout))
 
 	// If the upload is 0-byte, WriteChunk is skipped. So we need to finish
 	// the upload here.
