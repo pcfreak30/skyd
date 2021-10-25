@@ -2,6 +2,7 @@ package renter
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"time"
 
@@ -345,7 +346,13 @@ func (u *MongoTUSUpload) UploadParams(ctx context.Context) (skymodules.SkyfileUp
 func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error {
 	// NOTE: This could potentially be improved to append to the fanout
 	// instead of replacing it.
+	fmt.Println("*********************")
+	fmt.Println("newOffset", newOffset)
+	fmt.Println("fanout", len(fanout))
+	fmt.Println("oldFanout", len(u.FanoutBytes))
 	newFanoutBytes := append(u.FanoutBytes, fanout...)
+	fmt.Println("newFanout", len(newFanoutBytes))
+	fmt.Println("*********************")
 	err := u.commitWriteChunk(ctx, bson.M{
 		"fanoutbytes": newFanoutBytes,
 	}, newOffset, newLastWrite)
