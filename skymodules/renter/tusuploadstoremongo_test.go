@@ -510,11 +510,6 @@ func TestCommitWriteChunk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if err := createStore.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
 	getUploadStore, err := newMongoTestStore("commit")
 	if err != nil {
 		t.Fatal(err)
@@ -598,6 +593,23 @@ func TestCommitWriteChunk(t *testing.T) {
 	}
 	if !reflect.DeepEqual(upload.ServerNames, []string{"create", "commit"}) {
 		t.Fatal("wrong portalnames", upload.ServerNames)
+	}
+
+	// Close the store and try again. This should prevent the data from
+	// being updated in memory.
+	if err := createStore.Close(); err != nil {
+		t.Fatal(err)
+	}
+	fanout3 := fastrand.Bytes(crypto.HashSize)
+	err = u.CommitWriteChunk(context.Background(), 40, time.Now().UTC(), false, fanout3)
+	if err == nil {
+		t.Fatal("should fail")
+	}
+	if !bytes.Equal(upload.FanoutBytes, append(fanout1, fanout2...)) {
+		t.Fatal("wrong fanout", len(upload.FanoutBytes))
+	}
+	if upload.FileInfo.Offset != newOffset {
+		t.Fatal("wrong offset", upload.FileInfo.Offset, newOffset)
 	}
 }
 
