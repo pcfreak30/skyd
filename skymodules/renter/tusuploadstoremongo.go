@@ -467,13 +467,21 @@ func (u *MongoTUSUpload) Fanout(ctx context.Context) ([]byte, error) {
 	}
 
 	var fanout []byte
+	var expectedSequence uint64
 	for cursor.Next(ctx) {
 		var fanoutChunk fanoutChunk
 		if err := cursor.Decode(&fanoutChunk); err != nil {
 			build.Critical("Fanout: failed to decode fanout chunk", err)
 			return nil, err
 		}
+		// Sanity check that the sequence is complete.
+		if fanoutChunk.SequenceNumber != expectedSequence {
+			err := fmt.Errorf("Fanout: unexpected sequence number %v != %v", fanoutChunk.SequenceNumber, expectedSequence)
+			build.Critical(err)
+			return nil, err
+		}
 		fanout = append(fanout, fanoutChunk.Data...)
+		expectedSequence++
 	}
 	return fanout, nil
 }
