@@ -364,8 +364,8 @@ func (u *MongoTUSUpload) commitWriteChunk(ctx context.Context, set bson.M, newOf
 	uploads := u.staticUploadStore.staticUploadCollection()
 	newFileInfo := u.FileInfo
 	newFileInfo.Offset = newOffset
-	set["fileinfo"] = u.FileInfo
-	set["lastwrite"] = u.LastWrite.UTC()
+	set["fileinfo"] = newFileInfo
+	set["lastwrite"] = newLastWrite.UTC()
 	update := bson.M{
 		"$set": set,
 	}
