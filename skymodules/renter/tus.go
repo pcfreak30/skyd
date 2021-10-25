@@ -241,6 +241,8 @@ func (u *ongoingTUSUpload) tryUploadSmallFile(ctx context.Context, reader io.Rea
 
 // WriteChunk writes the chunk to the provided offset.
 func (u *ongoingTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.Reader) (_ int64, err error) {
+	fmt.Println("WriteChunk start")
+	defer fmt.Println("WriteChunk stop")
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	uploader := u.staticUploader
