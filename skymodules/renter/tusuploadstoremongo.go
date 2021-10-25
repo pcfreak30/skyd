@@ -394,6 +394,7 @@ func (u *MongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodu
 	newComplete := true
 	newFileInfo := u.FileInfo
 	newFileInfo.Offset = newFileInfo.Size
+	newFileInfo.MetaData["Skylink"] = skylink.String()
 	result := uploads.FindOneAndUpdate(ctx, bson.M{"_id": u.FileInfo.ID}, bson.M{
 		"$set": bson.M{
 			"complete": newComplete,
@@ -414,7 +415,6 @@ func (u *MongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodu
 	// Then update the in-memory state.
 	u.Complete = newComplete
 	u.FileInfo = newFileInfo
-	u.FileInfo.MetaData["Skylink"] = skylink.String()
 	u.LastWrite = time.Now()
 	u.FanoutBytes = nil
 	return nil
