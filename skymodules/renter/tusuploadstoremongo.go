@@ -361,7 +361,7 @@ func (u *MongoTUSUpload) UploadParams(ctx context.Context) (skymodules.SkyfileUp
 // CommitWriteChunk commits writing a chunk of either a small or
 // large file with fanout.
 func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error {
-	// This method write to the db twice. Make sure that the writes happen
+	// This method writes to the db twice. Make sure that the writes happen
 	// atomically.
 	err := u.staticUploadStore.staticClient.UseSession(ctx, func(sctx mongo.SessionContext) error {
 		_, err := sctx.WithTransaction(ctx, func(sctx mongo.SessionContext) (interface{}, error) {
@@ -369,15 +369,21 @@ func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, 
 			fsc := u.FanoutSequenceCounter
 
 			// Insert the chunk.
-			fanoutChunk := fanoutChunk{
+			fc := fanoutChunk{
 				ID:             fmt.Sprintf("%v-%v", u.ID, fsc),
 				Data:           fanout,
 				UploadID:       u.ID,
 				SequenceNumber: fsc,
 			}
 			fanouts := u.staticUploadStore.staticFanoutCollection()
-			_, err := fanouts.InsertOne(ctx, fanoutChunk)
+			_, err := fanouts.InsertOne(ctx, fc)
 			if err != nil {
+				// Check for duplicate key error.
+				// Reference: https://stackoverflow.com/questions/56916969/with-mongodb-go-driver-how-do-i-get-the-inner-exceptions
+				mongoErr, ok := err.(mongo.WriteException)
+				if ok && len(mongoErr.WriteErrors) > 0 && mongoErr.WriteErrors[0].Code == 11000 {
+					return nil, nil // Nothing to do. Chunk was already written before.
+				}
 				return nil, errors.AddContext(err, "failed to insert fanout chunk")
 			}
 
@@ -521,6 +527,16 @@ func newSkynetTUSMongoUploadStore(ctx context.Context, uri, portalName string, c
 		{Keys: bson.M{"servernames": 1}},
 	}
 	_, err = us.staticUploadCollection().Indexes().CreateMany(ctx, indexes)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create the indices for the fanout collection.
+	indexes = []mongo.IndexModel{
+		{Keys: bson.M{"upoadid": 1}},
+		{Keys: bson.M{"sequencenumber": 1}},
+	}
+	_, err = us.staticFanoutCollection().Indexes().CreateMany(ctx, indexes)
 	if err != nil {
 		return nil, err
 	}

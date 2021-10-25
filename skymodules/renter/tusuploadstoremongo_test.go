@@ -3,6 +3,7 @@ package renter
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"reflect"
@@ -609,6 +610,27 @@ func TestCommitWriteChunk(t *testing.T) {
 	}
 	if !bytes.Equal(finalFanout, append(fanout1, fanout2...)) {
 		t.Fatal("wrong final fanout")
+	}
+
+	// Commit again. With the same sequence counter as before. Should be a
+	// no-op.
+	copyBefore, err := json.Marshal(upload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upload.FanoutSequenceCounter--
+	err = u.CommitWriteChunk(context.Background(), newOffset, lastWrite, false, fanout2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	copyAfter, err := json.Marshal(upload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(copyBefore, copyAfter) {
+		t.Log(string(copyBefore))
+		t.Log(string(copyAfter))
+		t.Fatal("should've been a no-op")
 	}
 }
 
