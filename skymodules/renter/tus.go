@@ -447,6 +447,12 @@ func (u *ongoingTUSUpload) FinishUpload(ctx context.Context) (err error) {
 	}
 	fmt.Println("final fanout", len(fanout))
 
+	var sm skymodules.SkyfileMetadata
+	err = json.Unmarshal(smBytes, &sm)
+	if err != nil {
+		fmt.Println("ERR", err)
+	}
+
 	// If the upload is 0-byte, WriteChunk is skipped. So we need to finish
 	// the upload here.
 	var skylink skymodules.Skylink
