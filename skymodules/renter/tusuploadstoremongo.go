@@ -401,9 +401,10 @@ func (u *MongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodu
 			"fileinfo": newFileInfo,
 		},
 		// Clean up some space.
-		"$unset": bson.M{
-			"fanoutbytes": "",
-		},
+		// TODO: comment back in
+		//	"$unset": bson.M{
+		//		"fanoutbytes": "",
+		//	},
 	})
 	if errors.Contains(result.Err(), mongo.ErrNoDocuments) {
 		return os.ErrNotExist // return os.ErrNotExist for TUS
