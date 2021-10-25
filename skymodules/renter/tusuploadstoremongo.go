@@ -70,6 +70,10 @@ type (
 		LastWrite   time.Time `bson:"lastwrite"`
 		ServerNames []string  `bson:"servernames"`
 
+		// TODO: Remove FanoutBytes after the next deployment for a
+		// smooth transition of ongoing uploads.
+		FanoutBytes []byte `bson:"fanoutbytes"`
+
 		FanoutSequenceCounter uint64             `bson:"fanoutsequencecounter"`
 		FileInfo              handler.FileInfo   `bson:"fileinfo"`
 		FileName              string             `bson:"filename"`
@@ -361,6 +365,11 @@ func (u *MongoTUSUpload) UploadParams(ctx context.Context) (skymodules.SkyfileUp
 // CommitWriteChunk commits writing a chunk of either a small or
 // large file with fanout.
 func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error {
+	// COMPAT: If an upload has the 'fanoutbytes' set, we preppend the
+	// fanout with them and set them to nil in the db.
+	if len(u.FanoutBytes) > 0 {
+		fanout = append(u.FanoutBytes, fanout...)
+	}
 	// This method writes to the db twice. Make sure that the writes happen
 	// atomically.
 	err := u.staticUploadStore.staticClient.UseSession(ctx, func(sctx mongo.SessionContext) error {
@@ -390,6 +399,7 @@ func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, 
 			// Commit the chunk write.
 			return nil, u.commitWriteChunk(ctx, bson.M{
 				"fanoutsequencecounter": fsc + 1, // increment the sequence
+				"fanoutbytes":           nil,
 			}, newOffset, newLastWrite)
 		})
 		return err
@@ -400,6 +410,7 @@ func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, 
 
 	// Increment the sequence number in memory if everything went well.
 	u.FanoutSequenceCounter++
+	u.FanoutBytes = nil
 	return nil
 }
 
@@ -467,7 +478,7 @@ func (u *MongoTUSUpload) Fanout(ctx context.Context) ([]byte, error) {
 	}
 
 	var fanout []byte
-	var expectedSequence uint64
+	expectedSequence := uint64(1) // starts at 1
 	for cursor.Next(ctx) {
 		var fanoutChunk fanoutChunk
 		if err := cursor.Decode(&fanoutChunk); err != nil {

@@ -755,3 +755,81 @@ func TestCommitFinishUpload(t *testing.T) {
 		t.Fatal("there shouldn't be any chunks left")
 	}
 }
+
+// TestCommitWriteChunkFanoutBytesCompat tests that a tus upload with the
+// "fanoutbytes" field set is upgraded to use the sharded fanout with sequence
+// numbers.
+func TestCommitWriteChunkFanoutBytesCompat(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// Use different stores for creating the uploads and getting the upload.
+	createStore, err := newMongoTestStore(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := createStore.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Reset collection.
+	collection := createStore.staticUploadCollection()
+	if err := collection.Drop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	collection = createStore.staticFanoutCollection()
+	if err := collection.Drop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create large upload.
+	sm := fastrand.Bytes(10)
+	largeUpload, err := createStore.CreateUpload(context.Background(), handler.FileInfo{ID: "large"}, skymodules.RandomSiaPath(), "large", 1, 1, 1, sm, crypto.TypePlain)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Give it some fanout.
+	u := largeUpload.(*MongoTUSUpload)
+	fanout1 := fastrand.Bytes(crypto.HashSize)
+	u.FanoutBytes = fanout1
+
+	// Commit some more fanout.
+	fanout2 := fastrand.Bytes(crypto.HashSize)
+	err = largeUpload.CommitWriteChunk(context.Background(), 0, time.Now().UTC(), false, fanout2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Fanout bytes should be gone.
+	if u.FanoutBytes != nil {
+		t.Fatal("fanout bytes should be nil'd out")
+	}
+	fanout, err := largeUpload.Fanout(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(fanout, append(fanout1, fanout2...)) {
+		t.Fatal("wrong fanout returned")
+	}
+
+	// Fetch the upload. Shouldn't have fanout bytes.
+	fetched, err := createStore.GetUpload(context.Background(), "large")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fetchedUpload := fetched.(*MongoTUSUpload)
+	if fetchedUpload.FanoutBytes != nil {
+		t.Fatal("fanout bytes should be nil'd out")
+	}
+	fanout, err = fetched.Fanout(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(fanout, append(fanout1, fanout2...)) {
+		t.Fatal("wrong fanout returned")
+	}
+}
