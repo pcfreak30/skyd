@@ -345,21 +345,27 @@ func (u *MongoTUSUpload) UploadParams(ctx context.Context) (skymodules.SkyfileUp
 func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error {
 	// NOTE: This could potentially be improved to append to the fanout
 	// instead of replacing it.
-	u.FanoutBytes = append(u.FanoutBytes, fanout...)
-	return u.commitWriteChunk(ctx, bson.M{
-		"fanoutbytes": u.FanoutBytes,
+	newFanoutBytes := append(u.FanoutBytes, fanout...)
+	err := u.commitWriteChunk(ctx, bson.M{
+		"fanoutbytes": newFanoutBytes,
 	}, newOffset, newLastWrite)
+	if err != nil {
+		return err
+	}
+	u.FanoutBytes = newFanoutBytes
+	return nil
 }
 
 // commitWriteChunk commits a chunk write and also applies the updates provided
 // by update.
 func (u *MongoTUSUpload) commitWriteChunk(ctx context.Context, set bson.M, newOffset int64, newLastWrite time.Time) error {
+	// First, try to update the db. That way, we don't need to revert the
+	// in-memory state if writing to the database fails.
 	uploads := u.staticUploadStore.staticUploadCollection()
-	u.FileInfo.Offset = newOffset
-	u.LastWrite = newLastWrite
+	newFileInfo := u.FileInfo
+	newFileInfo.Offset = newOffset
 	set["fileinfo"] = u.FileInfo
 	set["lastwrite"] = u.LastWrite.UTC()
-	set["servernames"] = u.ServerNames
 	update := bson.M{
 		"$set": set,
 	}
@@ -367,6 +373,12 @@ func (u *MongoTUSUpload) commitWriteChunk(ctx context.Context, set bson.M, newOf
 	if errors.Contains(result.Err(), mongo.ErrNoDocuments) {
 		return os.ErrNotExist // return os.ErrNotExist for TUS
 	}
+	if err := result.Err(); err != nil {
+		return err
+	}
+	// Then update the in-memory state.
+	u.FileInfo = newFileInfo
+	u.LastWrite = newLastWrite
 	return result.Err()
 }
 
@@ -376,14 +388,16 @@ func (u *MongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodu
 		return ErrUploadFinished
 	}
 	uploads := u.staticUploadStore.staticUploadCollection()
-	u.Complete = true
-	u.FileInfo.Offset = u.FileInfo.Size
-	u.FileInfo.MetaData["Skylink"] = skylink.String()
-	u.LastWrite = time.Now()
+
+	// First, try to update the db. That way, we don't need to revert the
+	// in-memory state if writing to the database fails.
+	newComplete := true
+	newFileInfo := u.FileInfo
+	newFileInfo.Offset = newFileInfo.Size
 	result := uploads.FindOneAndUpdate(ctx, bson.M{"_id": u.FileInfo.ID}, bson.M{
 		"$set": bson.M{
-			"complete": u.Complete,
-			"fileinfo": u.FileInfo,
+			"complete": newComplete,
+			"fileinfo": newFileInfo,
 		},
 		// Clean up some space.
 		"$unset": bson.M{
@@ -393,7 +407,17 @@ func (u *MongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodu
 	if errors.Contains(result.Err(), mongo.ErrNoDocuments) {
 		return os.ErrNotExist // return os.ErrNotExist for TUS
 	}
-	return result.Err()
+	if err := result.Err(); err != nil {
+		return err
+	}
+
+	// Then update the in-memory state.
+	u.Complete = newComplete
+	u.FileInfo = newFileInfo
+	u.FileInfo.MetaData["Skylink"] = skylink.String()
+	u.LastWrite = time.Now()
+	u.FanoutBytes = nil
+	return nil
 }
 
 // Fanout returns the fanout of the upload. Should only be
