@@ -427,6 +427,8 @@ func ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []by
 		return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, nil, fmt.Errorf("unsupported skyfile version %v", sl.Version)
 	}
 
+	fmt.Println("parsing", offset, sl.FanoutSize, sl.MetadataSize)
+
 	// Currently there is no support for skyfiles with fanout + metadata that
 	// exceeds the base sector.
 	if offset+sl.FanoutSize+sl.MetadataSize > uint64(len(baseSector)) || sl.FanoutSize > modules.SectorSize || sl.MetadataSize > modules.SectorSize {
