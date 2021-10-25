@@ -99,6 +99,8 @@ func (stu *skynetTUSUploader) NewLock(id string) (handler.Lock, error) {
 
 // NewUpload creates a new upload from fileinfo.
 func (stu *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileInfo) (handler.Upload, error) {
+	fmt.Println("NewUpload start")
+	defer fmt.Println("NewUpload end")
 	// Create the upload object.
 	info.ID = persist.UID()
 
