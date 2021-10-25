@@ -1623,8 +1623,10 @@ func (r *Renter) ParseSkyfileMetadata(baseSector []byte) (sl skymodules.SkyfileL
 	// Try parsing the metadata the regular way.
 	sl, fanoutBytes, sm, rawSM, baseSectorPayload, err = skymodules.ParseSkyfileMetadata(baseSector)
 	if err == nil || (err != nil && !errors.Contains(err, skymodules.ErrRecursiveBaseSector)) {
+		fmt.Println("parsed small metadata", err)
 		return
 	}
+	fmt.Println("large metadata to parse", err)
 
 	// TODO: Should we request memory here?
 
