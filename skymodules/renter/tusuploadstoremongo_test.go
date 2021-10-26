@@ -511,11 +511,6 @@ func TestCommitWriteChunk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if err := createStore.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
 	getUploadStore, err := newMongoTestStore("commit")
 	if err != nil {
 		t.Fatal(err)
@@ -631,6 +626,33 @@ func TestCommitWriteChunk(t *testing.T) {
 		t.Log(string(copyBefore))
 		t.Log(string(copyAfter))
 		t.Fatal("should've been a no-op")
+	}
+
+	// Deep-Copy the upload.
+	copyBefore, err = json.Marshal(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Close the store and try again. This should prevent the data from
+	// being updated in memory.
+	if err := createStore.Close(); err != nil {
+		t.Fatal(err)
+	}
+	fanout3 := fastrand.Bytes(crypto.HashSize)
+	err = u.CommitWriteChunk(context.Background(), 40, time.Now().UTC(), false, fanout3)
+	if err == nil {
+		t.Fatal("should fail")
+	}
+
+	copyAfter, err = json.Marshal(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(copyBefore, copyAfter) {
+		t.Log(string(copyBefore))
+		t.Log(string(copyAfter))
+		t.Fatal("copies don't match")
 	}
 }
 
@@ -831,5 +853,74 @@ func TestCommitWriteChunkFanoutBytesCompat(t *testing.T) {
 	}
 	if !bytes.Equal(fanout, append(fanout1, fanout2...)) {
 		t.Fatal("wrong fanout returned")
+	}
+}
+
+// TestCommitFinishUploadErr is a unit test for CommitFinishUpload's error case.
+func TestCommitFinishUploadErr(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	us, err := newMongoTestStore(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Reset collection.
+	collection := us.staticUploadCollection()
+	if err := collection.Drop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create the upload.
+	regular, err := us.CreateUpload(context.Background(), handler.FileInfo{ID: "regular", MetaData: make(handler.MetaData)}, skymodules.RandomSiaPath(), "regular", 1, 1, 1, fastrand.Bytes(10), crypto.TypePlain)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check the relevant fields.
+	u, err := us.GetUpload(context.Background(), "regular")
+	if err != nil {
+		t.Fatal(err)
+	}
+	upload := u.(*MongoTUSUpload)
+	if upload.Complete {
+		t.Fatal("new upload shouldn't be complete")
+	}
+	if _, set := upload.FileInfo.MetaData["Skylink"]; set {
+		t.Fatal("skylink shouldn't be set")
+	}
+
+	// Deep-Copy the upload.
+	copyBefore, err := json.Marshal(upload)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Trigger an error by closing the store.
+	if err := us.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Finish it. Should fail.
+	var h crypto.Hash
+	fastrand.Read(h[:])
+	skylink, err := skymodules.NewSkylinkV1(h, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = regular.CommitFinishUpload(context.Background(), skylink)
+	if err == nil {
+		t.Fatal("should fail")
+	}
+
+	// In-Memory state should be the same as before.
+	copyAfter, err := json.Marshal(upload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(copyBefore, copyAfter) {
+		t.Fatal("copies don't match")
 	}
 }

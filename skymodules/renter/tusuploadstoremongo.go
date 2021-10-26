@@ -15,6 +15,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readconcern"
+	"go.mongodb.org/mongo-driver/mongo/readpref"
 	"go.mongodb.org/mongo-driver/mongo/writeconcern"
 	"go.sia.tech/siad/crypto"
 )
@@ -368,7 +369,10 @@ func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, 
 	// COMPAT: If an upload has the 'fanoutbytes' set, we prepend the fanout
 	// with them and set them to nil in the db.
 	if len(u.FanoutBytes) > 0 {
-		fanout = append(u.FanoutBytes, fanout...)
+		newFanout := make([]byte, len(u.FanoutBytes)+len(fanout))
+		copy(newFanout, u.FanoutBytes)
+		copy(newFanout[len(u.FanoutBytes):], fanout)
+		fanout = newFanout
 	}
 	// This method writes to the db twice. Make sure that the writes happen
 	// atomically.
@@ -417,12 +421,13 @@ func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, 
 // commitWriteChunk commits a chunk write and also applies the updates provided
 // by update.
 func (u *MongoTUSUpload) commitWriteChunk(ctx context.Context, set bson.M, newOffset int64, newLastWrite time.Time) error {
+	// First, try to update the db. That way, we don't need to revert the
+	// in-memory state if writing to the database fails.
 	uploads := u.staticUploadStore.staticUploadCollection()
-	u.FileInfo.Offset = newOffset
-	u.LastWrite = newLastWrite
-	set["fileinfo"] = u.FileInfo
-	set["lastwrite"] = u.LastWrite.UTC()
-	set["servernames"] = u.ServerNames
+	newFileInfo := u.FileInfo
+	newFileInfo.Offset = newOffset
+	set["fileinfo"] = newFileInfo
+	set["lastwrite"] = newLastWrite.UTC()
 	update := bson.M{
 		"$set": set,
 	}
@@ -430,6 +435,12 @@ func (u *MongoTUSUpload) commitWriteChunk(ctx context.Context, set bson.M, newOf
 	if errors.Contains(result.Err(), mongo.ErrNoDocuments) {
 		return os.ErrNotExist // return os.ErrNotExist for TUS
 	}
+	if err := result.Err(); err != nil {
+		return err
+	}
+	// Then update the in-memory state.
+	u.FileInfo = newFileInfo
+	u.LastWrite = newLastWrite
 	return result.Err()
 }
 
@@ -439,23 +450,33 @@ func (u *MongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodu
 		return ErrUploadFinished
 	}
 	uploads := u.staticUploadStore.staticUploadCollection()
-	u.Complete = true
-	u.FileInfo.Offset = u.FileInfo.Size
-	u.FileInfo.MetaData["Skylink"] = skylink.String()
-	u.LastWrite = time.Now()
+
+	// First, try to update the db. That way, we don't need to revert the
+	// in-memory state if writing to the database fails.
+	newComplete := true
+	newFileInfo := u.FileInfo
+	newFileInfo.Offset = newFileInfo.Size
+	newFileInfo.MetaData["Skylink"] = skylink.String()
 	result := uploads.FindOneAndUpdate(ctx, bson.M{"_id": u.FileInfo.ID}, bson.M{
 		"$set": bson.M{
-			"complete": u.Complete,
-			"fileinfo": u.FileInfo,
+			"complete": newComplete,
+			"fileinfo": newFileInfo,
 		},
 	})
 	if errors.Contains(result.Err(), mongo.ErrNoDocuments) {
 		return os.ErrNotExist // return os.ErrNotExist for TUS
 	}
-	if result.Err() != nil {
+	if err := result.Err(); err != nil {
 		return result.Err()
 	}
 
+	// Then update the in-memory state.
+	u.Complete = newComplete
+	u.FileInfo = newFileInfo
+	u.LastWrite = time.Now()
+	u.FanoutBytes = nil
+
+	// Remove the fanout chunks.
 	fanout := u.staticUploadStore.staticFanoutCollection()
 	_, err := fanout.DeleteMany(ctx, bson.M{"uploadid": u.ID})
 	return err
@@ -521,6 +542,7 @@ func newSkynetTUSMongoUploadStore(ctx context.Context, uri, portalName string, c
 		ApplyURI(uri).
 		SetAuth(creds).
 		SetReadConcern(readconcern.Local()).
+		SetReadPreference(readpref.Nearest()).
 		SetWriteConcern(writeconcern.New(writeconcern.W(1)))
 
 	client, err := mongo.Connect(ctx, opts)
