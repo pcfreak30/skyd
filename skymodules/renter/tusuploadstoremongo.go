@@ -401,6 +401,11 @@ func (u *MongoTUSUpload) commitWriteChunk(ctx context.Context, set bson.M, newOf
 	// Then update the in-memory state.
 	u.FileInfo = newFileInfo
 	u.LastWrite = newLastWrite
+	var sm skymodules.SkyfileMetadata
+	err := json.Unmarshal(u.Metadata, &sm)
+	if err != nil {
+		fmt.Println("commitWriteChunk: err", err)
+	}
 	return result.Err()
 }
 
