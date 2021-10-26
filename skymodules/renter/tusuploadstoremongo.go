@@ -2,6 +2,7 @@ package renter
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -238,8 +239,13 @@ func (us *skynetTUSMongoUploadStore) CreateUpload(ctx context.Context, fi handle
 
 		staticUploadStore: us,
 	}
+	var smCheck skymodules.SkyfileMetadata
+	err := json.Unmarshal(sm, &smCheck)
+	if err != nil {
+		fmt.Println("ERR3", err)
+	}
 	// Insert into db.
-	_, err := us.staticUploadCollection().InsertOne(ctx, upload)
+	_, err = us.staticUploadCollection().InsertOne(ctx, upload)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to insert new upload into db")
 	}
@@ -282,6 +288,11 @@ func (us *skynetTUSMongoUploadStore) GetUpload(ctx context.Context, id string) (
 	var upload MongoTUSUpload
 	if err := r.Decode(&upload); err != nil {
 		return nil, errors.AddContext(err, "failed to decode upload")
+	}
+	var sm skymodules.SkyfileMetadata
+	err := json.Unmarshal(upload.Metadata, &sm)
+	if err != nil {
+		fmt.Println("ERR4", err)
 	}
 	upload.staticUploadStore = us
 	return &upload, nil

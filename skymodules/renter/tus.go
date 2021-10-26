@@ -165,6 +165,11 @@ func (stu *skynetTUSUploader) managedCreateUpload(fi handler.FileInfo, sp skymod
 	if err != nil {
 		return nil, errors.AddContext(err, "upload store failed to create new upload")
 	}
+	var smCheck skymodules.SkyfileMetadata
+	err = json.Unmarshal(smBytes, &smCheck)
+	if err != nil {
+		fmt.Println("ERR2", err)
+	}
 	stu.mu.Lock()
 	defer stu.mu.Unlock()
 	ou := &ongoingTUSUpload{
