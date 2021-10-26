@@ -455,7 +455,16 @@ func (u *ongoingTUSUpload) FinishUpload(ctx context.Context) (err error) {
 	var sm skymodules.SkyfileMetadata
 	err = json.Unmarshal(smBytes, &sm)
 	if err != nil {
-		fmt.Println("ERR", err)
+		fmt.Println("ERR", err, len(smBytes))
+	}
+	testUpload, err := u.staticUploader.staticUploadStore.GetUpload(ctx, fi.ID)
+	if err != nil {
+		fmt.Println("argh", err)
+	}
+	testUpload2 := testUpload.(*MongoTUSUpload)
+	err = json.Unmarshal(testUpload2.Metadata, &sm)
+	if err != nil {
+		fmt.Println("ERR1.1", err, len(smBytes))
 	}
 
 	// If the upload is 0-byte, WriteChunk is skipped. So we need to finish
