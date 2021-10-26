@@ -216,18 +216,21 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// add 2 hosts
+	defer func() {
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	r := wt.rt.renter
+
+	// Add 2 hosts.
 	deps := modules.ProdDependencies
 	host2, err2 := wt.rt.addCustomHost(filepath.Join(wt.rt.dir, "host2"), deps)
 	host3, err3 := wt.rt.addCustomHost(filepath.Join(wt.rt.dir, "host3"), deps)
 	if err2 != nil || err3 != nil {
 		t.Fatal(errors.Compose(err2, err3))
 	}
-
 	defer func() {
-		if err := wt.Close(); err != nil {
-			t.Fatal(err)
-		}
 		if err := errors.Compose(
 			host2.Close(),
 			host3.Close(),
@@ -235,7 +238,23 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	r := wt.rt.renter
+
+	// Wait for workers to show up.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		_, err := wt.rt.miner.AddBlock()
+		if err != nil {
+			return err
+		}
+		wt.rt.renter.staticWorkerPool.callUpdate()
+		workers := wt.rt.renter.staticWorkerPool.callWorkers()
+		if len(workers) != 3 {
+			return fmt.Errorf("expected %v workers but got %v", 3, len(workers))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Prepare a metadata for a basic file.
 	fileSize := 3 * modules.SectorSize * modules.SectorSize
