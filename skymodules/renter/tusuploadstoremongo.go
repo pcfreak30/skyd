@@ -356,11 +356,10 @@ func (u *MongoTUSUpload) UploadParams(ctx context.Context) (skymodules.SkyfileUp
 // large file with fanout.
 func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error {
 	var sm skymodules.SkyfileMetadata
-	err := json.Unmarshal(u.Metadata, &sm)
-	fmt.Println("CommitWriteChunk start", err)
-	defer fmt.Println("CommitWriteChunk end")
 	// NOTE: This could potentially be improved to append to the fanout
 	// instead of replacing it.
+	err := json.Unmarshal(u.Metadata, &sm)
+	fmt.Println("CommitWriteChunk before append", err)
 	newFanoutBytes := append(u.FanoutBytes, fanout...)
 	err = json.Unmarshal(u.Metadata, &sm)
 	fmt.Println("CommitWriteChunk after append", err)
@@ -451,16 +450,12 @@ func (u *MongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodu
 // Fanout returns the fanout of the upload. Should only be
 // called once it's done uploading.
 func (u *MongoTUSUpload) Fanout(ctx context.Context) ([]byte, error) {
-	println("return fanout")
 	return append([]byte{}, u.FanoutBytes...), nil
 }
 
 // SkyfileMetadata returns the metadata of the upload. Should
 // only be called once it's done uploading.
 func (u *MongoTUSUpload) SkyfileMetadata(ctx context.Context) ([]byte, error) {
-	var sm skymodules.SkyfileMetadata
-	err := json.Unmarshal(u.Metadata, &sm)
-	println("return metadata", err)
 	return append([]byte{}, u.Metadata...), nil
 }
 
