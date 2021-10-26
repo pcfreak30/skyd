@@ -239,13 +239,8 @@ func (us *skynetTUSMongoUploadStore) CreateUpload(ctx context.Context, fi handle
 
 		staticUploadStore: us,
 	}
-	var smCheck skymodules.SkyfileMetadata
-	err := json.Unmarshal(sm, &smCheck)
-	if err != nil {
-		fmt.Println("ERR3", err)
-	}
 	// Insert into db.
-	_, err = us.staticUploadCollection().InsertOne(ctx, upload)
+	_, err := us.staticUploadCollection().InsertOne(ctx, upload)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to insert new upload into db")
 	}
@@ -289,11 +284,8 @@ func (us *skynetTUSMongoUploadStore) GetUpload(ctx context.Context, id string) (
 	if err := r.Decode(&upload); err != nil {
 		return nil, errors.AddContext(err, "failed to decode upload")
 	}
-	var sm skymodules.SkyfileMetadata
-	err := json.Unmarshal(upload.Metadata, &sm)
-	if err != nil {
-		fmt.Println("ERR4", err)
-	}
+	upload.Metadata = append([]byte{}, upload.Metadata...)
+	upload.FanoutBytes = append([]byte{}, upload.FanoutBytes...)
 	upload.staticUploadStore = us
 	return &upload, nil
 }
@@ -378,11 +370,6 @@ func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, 
 func (u *MongoTUSUpload) commitWriteChunk(ctx context.Context, set bson.M, newOffset int64, newLastWrite time.Time) error {
 	// First, try to update the db. That way, we don't need to revert the
 	// in-memory state if writing to the database fails.
-	var sm skymodules.SkyfileMetadata
-	err := json.Unmarshal(u.Metadata, &sm)
-	if err != nil {
-		fmt.Println("commitWriteChunk middle err", err)
-	}
 	uploads := u.staticUploadStore.staticUploadCollection()
 	newFileInfo := u.FileInfo
 	newFileInfo.Offset = newOffset
@@ -401,10 +388,6 @@ func (u *MongoTUSUpload) commitWriteChunk(ctx context.Context, set bson.M, newOf
 	// Then update the in-memory state.
 	u.FileInfo = newFileInfo
 	u.LastWrite = newLastWrite
-	err = json.Unmarshal(u.Metadata, &sm)
-	if err != nil {
-		fmt.Println("commitWriteChunk: err", err)
-	}
 	return result.Err()
 }
 
@@ -427,10 +410,9 @@ func (u *MongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodu
 			"fileinfo": newFileInfo,
 		},
 		// Clean up some space.
-		// TODO: comment back in
-		//	"$unset": bson.M{
-		//		"fanoutbytes": "",
-		//	},
+		"$unset": bson.M{
+			"fanoutbytes": "",
+		},
 	})
 	if errors.Contains(result.Err(), mongo.ErrNoDocuments) {
 		return os.ErrNotExist // return os.ErrNotExist for TUS
