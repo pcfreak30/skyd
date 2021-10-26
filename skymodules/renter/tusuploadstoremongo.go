@@ -442,12 +442,16 @@ func (u *MongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodu
 // Fanout returns the fanout of the upload. Should only be
 // called once it's done uploading.
 func (u *MongoTUSUpload) Fanout(ctx context.Context) ([]byte, error) {
+	println("return fanout")
 	return append([]byte{}, u.FanoutBytes...), nil
 }
 
 // SkyfileMetadata returns the metadata of the upload. Should
 // only be called once it's done uploading.
 func (u *MongoTUSUpload) SkyfileMetadata(ctx context.Context) ([]byte, error) {
+	var sm skymodules.SkyfileMetadata
+	err := json.Unmarshal(u.Metadata, &sm)
+	println("return metadata", err)
 	return append([]byte{}, u.Metadata...), nil
 }
 
