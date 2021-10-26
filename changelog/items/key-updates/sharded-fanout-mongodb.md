@@ -1,0 +1,1 @@
+- split fanout over multiple documents in mongodb to allow for potentially infinitely large TUS uploads.
