@@ -248,11 +248,6 @@ func (u *ongoingTUSUpload) tryUploadSmallFile(ctx context.Context, reader io.Rea
 
 // WriteChunk writes the chunk to the provided offset.
 func (u *ongoingTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.Reader) (_ int64, err error) {
-	var sm skymodules.SkyfileMetadata
-	smBytes, _ := u.staticUpload.SkyfileMetadata(ctx)
-	err = json.Unmarshal(smBytes, &sm)
-	fmt.Println("WriteChunk start", err)
-	defer fmt.Println("WriteChunk stop")
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	uploader := u.staticUploader
@@ -389,11 +384,6 @@ func (u *ongoingTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.
 	err = u.staticUpload.CommitWriteChunk(ctx, fi.Offset+n, time.Now(), isSmall, cr.Fanout())
 	if err != nil {
 		return n, err
-	}
-	smBytes, _ = u.staticUpload.SkyfileMetadata(ctx)
-	err = json.Unmarshal(smBytes, &sm)
-	if err != nil {
-		fmt.Println("WriteChunk END", err, len(smBytes))
 	}
 	return n, nil
 }

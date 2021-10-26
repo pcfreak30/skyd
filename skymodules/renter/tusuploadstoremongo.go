@@ -383,6 +383,11 @@ func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, 
 func (u *MongoTUSUpload) commitWriteChunk(ctx context.Context, set bson.M, newOffset int64, newLastWrite time.Time) error {
 	// First, try to update the db. That way, we don't need to revert the
 	// in-memory state if writing to the database fails.
+	var sm skymodules.SkyfileMetadata
+	err := json.Unmarshal(u.Metadata, &sm)
+	if err != nil {
+		fmt.Println("commitWriteChunk middle err", err)
+	}
 	uploads := u.staticUploadStore.staticUploadCollection()
 	newFileInfo := u.FileInfo
 	newFileInfo.Offset = newOffset
@@ -401,8 +406,7 @@ func (u *MongoTUSUpload) commitWriteChunk(ctx context.Context, set bson.M, newOf
 	// Then update the in-memory state.
 	u.FileInfo = newFileInfo
 	u.LastWrite = newLastWrite
-	var sm skymodules.SkyfileMetadata
-	err := json.Unmarshal(u.Metadata, &sm)
+	err = json.Unmarshal(u.Metadata, &sm)
 	if err != nil {
 		fmt.Println("commitWriteChunk: err", err)
 	}
