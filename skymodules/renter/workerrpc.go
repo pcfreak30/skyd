@@ -28,7 +28,7 @@ var defaultNewStreamTimeout = build.Select(build.Var{
 // defaultRPCDeadline is a default timeout for executing an RPC.
 var defaultRPCDeadline = build.Select(build.Var{
 	Standard: 5 * time.Minute,
-	Testing:  10 * time.Second,
+	Testing:  time.Minute,
 	Dev:      time.Minute,
 }).(time.Duration)
 
