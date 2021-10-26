@@ -365,8 +365,8 @@ func (u *MongoTUSUpload) UploadParams(ctx context.Context) (skymodules.SkyfileUp
 // CommitWriteChunk commits writing a chunk of either a small or
 // large file with fanout.
 func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error {
-	// COMPAT: If an upload has the 'fanoutbytes' set, we preppend the
-	// fanout with them and set them to nil in the db.
+	// COMPAT: If an upload has the 'fanoutbytes' set, we prepend the fanout
+	// with them and set them to nil in the db.
 	if len(u.FanoutBytes) > 0 {
 		fanout = append(u.FanoutBytes, fanout...)
 	}
