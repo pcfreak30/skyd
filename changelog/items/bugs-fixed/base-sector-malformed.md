@@ -1,0 +1,1 @@
+- Fix base sector malformed bug that was caused my mongodb's handling of slices.
