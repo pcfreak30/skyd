@@ -433,16 +433,6 @@ func (j *jobHasSectorBatch) managedHasSector() (results [][]uint64, err error) {
 	}
 
 	for _, hsj := range j.staticJobs {
-		// availables := hasSectors[:len(hsj.staticSectors)]
-		// var foundOneOrMore bool
-		// for _, available := range availables {
-		// 	if available {
-		// 		foundOneOrMore = true
-		// 		break
-		// 	}
-		// }
-		// hsj.staticSpan.SetTag("hasSector", foundOneOrMore)
-
 		var availables []uint64
 		for i := 0; i < len(hsj.staticSectors); i++ {
 			if hasSectors[i] {
