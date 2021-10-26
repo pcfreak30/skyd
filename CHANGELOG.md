@@ -10,11 +10,27 @@ Version History
 
 Latest:
 
-## Sep 21, 2021:
-### deploy-2021-09-21
+## Oct 18, 2021:
+### v1.5.9
 **Key Updates**
+- change response type of /skynet/registry/hosts
+- add NumBestEntriesBeforeCutoff field to registry entry health endpoint
+- renter stats are now persisted between restarts
+- add /skynet/registrymulti endpoint to allow for updating specific hosts with primary registry entries.
+- add /skynet/registry/hosts endpoint for fetching recommended hosts for registry update
 - Add tryfiles metadata field which lists potential subfiles to serve in case the requested files don't exist.
 - Add errorpages metadata field which defines custom content to be served in case specific error codes are to be returned.
+- Uploading in TUS will now block until the chunk is available on the network
+- Concatenation has been implemented in TUS to support uploading multiple pieces of a file in parallel
+- Add a `finished` field to siafiles so that the renter can distinguish between
+  stuck files and files that never finished their initial upload.
+
+**Bugs Fixed**
+- Fix minor bug where a stuck chunk that should be marked as unstuck would not
+  be.
+
+**Other**
+- Implement setting of Metadata version and link to compat code
 
 ## Sep 2, 2021:
 ### v1.5.8
