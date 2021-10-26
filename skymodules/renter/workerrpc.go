@@ -21,7 +21,7 @@ import (
 // defaultNewStreamTimeout is a default timeout for creating a new stream.
 var defaultNewStreamTimeout = build.Select(build.Var{
 	Standard: 5 * time.Minute,
-	Testing:  10 * time.Second,
+	Testing:  time.Minute,
 	Dev:      time.Minute,
 }).(time.Duration)
 
