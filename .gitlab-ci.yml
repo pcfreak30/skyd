@@ -232,7 +232,7 @@ package-renter-tests:
     paths:
       - .cache
   script:
-    - make test-custom mongouri=$MONGODB_URI run=. pkgs="$package_renter_pkgs"
+    - make test-long mongouri=$MONGODB_URI run=. pkgs="$package_renter_pkgs"
 
 package-tests:
   <<: *default_test_params
