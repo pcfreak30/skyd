@@ -284,8 +284,6 @@ func (us *skynetTUSMongoUploadStore) GetUpload(ctx context.Context, id string) (
 	if err := r.Decode(&upload); err != nil {
 		return nil, errors.AddContext(err, "failed to decode upload")
 	}
-	//	upload.Metadata = append([]byte{}, upload.Metadata...)
-	//	upload.FanoutBytes = append([]byte{}, upload.FanoutBytes...)
 	upload.staticUploadStore = us
 	return &upload, nil
 }
@@ -352,7 +350,12 @@ func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, 
 	// instead of replacing it.
 	err := json.Unmarshal(u.Metadata, &sm)
 	fmt.Println("CommitWriteChunk before append", err)
-	newFanoutBytes := append(u.FanoutBytes, fanout...)
+	// Create the new fanout bytes. Make sure we are not reusing
+	// u.FanoutBytes memory but instead assign new memory and then copy into
+	// that.
+	newFanoutBytes := make([]byte, len(u.FanoutBytes)+len(fanout))
+	copy(newFanoutBytes, u.FanoutBytes)
+	copy(newFanoutBytes[len(u.FanoutBytes):], fanout)
 	err = json.Unmarshal(u.Metadata, &sm)
 	fmt.Println("CommitWriteChunk after append", err)
 	err = u.commitWriteChunk(ctx, bson.M{
@@ -432,13 +435,13 @@ func (u *MongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodu
 // Fanout returns the fanout of the upload. Should only be
 // called once it's done uploading.
 func (u *MongoTUSUpload) Fanout(ctx context.Context) ([]byte, error) {
-	return append([]byte{}, u.FanoutBytes...), nil
+	return u.FanoutBytes, nil
 }
 
 // SkyfileMetadata returns the metadata of the upload. Should
 // only be called once it's done uploading.
 func (u *MongoTUSUpload) SkyfileMetadata(ctx context.Context) ([]byte, error) {
-	return append([]byte{}, u.Metadata...), nil
+	return u.Metadata, nil
 }
 
 // NewSkynetTUSMongoUploadStore creates a new upload store using a mongodb as
