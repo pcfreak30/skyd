@@ -361,13 +361,9 @@ func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, 
 	defer fmt.Println("CommitWriteChunk end")
 	// NOTE: This could potentially be improved to append to the fanout
 	// instead of replacing it.
-	fmt.Println("*********************")
-	fmt.Println("newOffset", newOffset)
-	fmt.Println("fanout", len(fanout))
-	fmt.Println("oldFanout", len(u.FanoutBytes))
 	newFanoutBytes := append(u.FanoutBytes, fanout...)
-	fmt.Println("newFanout", len(newFanoutBytes))
-	fmt.Println("*********************")
+	err = json.Unmarshal(u.Metadata, &sm)
+	fmt.Println("CommitWriteChunk after append", err)
 	err = u.commitWriteChunk(ctx, bson.M{
 		"fanoutbytes": newFanoutBytes,
 	}, newOffset, newLastWrite)
