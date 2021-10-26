@@ -355,6 +355,10 @@ func (u *MongoTUSUpload) UploadParams(ctx context.Context) (skymodules.SkyfileUp
 // CommitWriteChunk commits writing a chunk of either a small or
 // large file with fanout.
 func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error {
+	var sm skymodules.SkyfileMetadata
+	err := json.Unmarshal(u.Metadata, &sm)
+	fmt.Println("CommitWriteChunk start", err)
+	defer fmt.Println("CommitWriteChunk end")
 	// NOTE: This could potentially be improved to append to the fanout
 	// instead of replacing it.
 	fmt.Println("*********************")
@@ -364,7 +368,7 @@ func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, 
 	newFanoutBytes := append(u.FanoutBytes, fanout...)
 	fmt.Println("newFanout", len(newFanoutBytes))
 	fmt.Println("*********************")
-	err := u.commitWriteChunk(ctx, bson.M{
+	err = u.commitWriteChunk(ctx, bson.M{
 		"fanoutbytes": newFanoutBytes,
 	}, newOffset, newLastWrite)
 	if err != nil {
