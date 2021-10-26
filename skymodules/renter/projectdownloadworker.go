@@ -1212,9 +1212,10 @@ func isGoodForDownload(w *worker, pieces []uint64) bool {
 		return false
 	}
 
-	// workers with a read queue on cooldown
+	// workers with a read or has sector job queue on cooldown
 	rjq := w.staticJobReadQueue
-	if rjq.onCooldown() {
+	hsq := w.staticJobHasSectorQueue
+	if rjq.onCooldown() || hsq.onCooldown() {
 		return false
 	}
 
