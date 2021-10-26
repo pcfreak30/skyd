@@ -414,6 +414,12 @@ func (u *ongoingTUSUpload) finishUploadSmall(ctx context.Context, sup skymodules
 
 // FinishUpload is called when the upload is done.
 func (u *ongoingTUSUpload) FinishUpload(ctx context.Context) (err error) {
+	var sm skymodules.SkyfileMetadata
+	smBytes, _ := u.staticUpload.SkyfileMetadata(ctx)
+	err = json.Unmarshal(smBytes, &sm)
+	if err != nil {
+		fmt.Println("ERR FINISH UPLOAD", err, len(smBytes))
+	}
 	// Close upload when done.
 	defer func() {
 		err = errors.Compose(err, u.Close())
@@ -442,7 +448,7 @@ func (u *ongoingTUSUpload) FinishUpload(ctx context.Context) (err error) {
 	if err != nil {
 		return errors.AddContext(err, "failed to fetch upload params")
 	}
-	smBytes, err := u.staticUpload.SkyfileMetadata(ctx)
+	smBytes, err = u.staticUpload.SkyfileMetadata(ctx)
 	if err != nil {
 		return errors.AddContext(err, "failed to fetch smBytes")
 	}
@@ -452,7 +458,6 @@ func (u *ongoingTUSUpload) FinishUpload(ctx context.Context) (err error) {
 	}
 	fmt.Println("final fanout", len(fanout))
 
-	var sm skymodules.SkyfileMetadata
 	err = json.Unmarshal(smBytes, &sm)
 	if err != nil {
 		fmt.Println("ERR", err, len(smBytes))
