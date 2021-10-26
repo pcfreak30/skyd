@@ -321,7 +321,7 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 		t.Fatal(err)
 	}
 	var bs2 []byte
-	err = build.Retry(600, 100*time.Millisecond, func() error {
+	err = build.Retry(1000, 100*time.Millisecond, func() error {
 		r.staticWorkerPool.callUpdate()
 		bs2, _, err = r.managedDownloadByRoot(context.Background(), skylink.MerkleRoot(), offset, fetchSize, skymodules.DefaultSkynetPricePerMS)
 		if err != nil {
@@ -340,15 +340,24 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 
 	var sl2 skymodules.SkyfileLayout
 	var fanout2, rawSM []byte
-	err = build.Retry(600, 100*time.Millisecond, func() error {
+	var wps skymodules.WorkerPoolStatus
+	var wpsErr error
+	err = build.Retry(1000, 100*time.Millisecond, func() error {
 		r.staticWorkerPool.callUpdate()
 		sl2, fanout2, _, rawSM, _, _, err = r.ParseSkyfileMetadata(bs2)
 		if err != nil {
+			wps, wpsErr = r.WorkerPoolStatus()
+			if wpsErr != nil {
+				err = errors.Compose(err, wpsErr)
+			}
 			return err
 		}
 		return nil
 	})
 	if err != nil {
+		t.Log("num workers", wps.NumWorkers)
+		t.Log("total DL cooldown", wps.TotalDownloadCoolDown)
+		t.Log("total MAINT cooldown", wps.TotalMaintenanceCoolDown)
 		t.Fatal(err)
 	}
 
