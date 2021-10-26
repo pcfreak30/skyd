@@ -284,8 +284,8 @@ func (us *skynetTUSMongoUploadStore) GetUpload(ctx context.Context, id string) (
 	if err := r.Decode(&upload); err != nil {
 		return nil, errors.AddContext(err, "failed to decode upload")
 	}
-	upload.Metadata = append([]byte{}, upload.Metadata...)
-	upload.FanoutBytes = append([]byte{}, upload.FanoutBytes...)
+	//	upload.Metadata = append([]byte{}, upload.Metadata...)
+	//	upload.FanoutBytes = append([]byte{}, upload.FanoutBytes...)
 	upload.staticUploadStore = us
 	return &upload, nil
 }

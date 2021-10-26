@@ -214,7 +214,6 @@ func BuildBaseSector(layoutBytes, fanoutBytes, metadataBytes, fileBytes []byte) 
 		build.Critical(err)
 		return nil, 0, nil
 	}
-	fmt.Println("layoutBytes", len(layoutBytes), len(fanoutBytes), len(metadataBytes), len(fileBytes))
 
 	// Build baseSector
 	baseSector := make([]byte, modules.SectorSize)
@@ -225,7 +224,6 @@ func BuildBaseSector(layoutBytes, fanoutBytes, metadataBytes, fileBytes []byte) 
 	// If the upload is not a small upload, but it doesn't fit in the
 	// basesector, we compress the payload.
 	if uint64(totalSize) > modules.SectorSize {
-		fmt.Println("  large", totalSize)
 		payload := append(fanoutBytes, metadataBytes...)
 		baseSectorPart, uploadPart := buildBaseSectorExtension(payload, modules.SectorSize-uint64(offset))
 
@@ -426,8 +424,6 @@ func ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []by
 	if sl.Version != 1 {
 		return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, nil, fmt.Errorf("unsupported skyfile version %v", sl.Version)
 	}
-
-	fmt.Println("parsing", offset, sl.FanoutSize, sl.MetadataSize)
 
 	// Currently there is no support for skyfiles with fanout + metadata that
 	// exceeds the base sector.

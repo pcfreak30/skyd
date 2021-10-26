@@ -99,8 +99,6 @@ func (stu *skynetTUSUploader) NewLock(id string) (handler.Lock, error) {
 
 // NewUpload creates a new upload from fileinfo.
 func (stu *skynetTUSUploader) NewUpload(ctx context.Context, info handler.FileInfo) (handler.Upload, error) {
-	fmt.Println("NewUpload start")
-	defer fmt.Println("NewUpload end")
 	// Create the upload object.
 	info.ID = persist.UID()
 
@@ -164,11 +162,6 @@ func (stu *skynetTUSUploader) managedCreateUpload(fi handler.FileInfo, sp skymod
 	upload, err := stu.staticUploadStore.CreateUpload(ctx, fi, sp, fileName, baseChunkRedundancy, fanoutDataPieces, fanoutParityPieces, smBytes, ct)
 	if err != nil {
 		return nil, errors.AddContext(err, "upload store failed to create new upload")
-	}
-	var smCheck skymodules.SkyfileMetadata
-	err = json.Unmarshal(smBytes, &smCheck)
-	if err != nil {
-		fmt.Println("ERR2", err)
 	}
 	stu.mu.Lock()
 	defer stu.mu.Unlock()
@@ -381,11 +374,7 @@ func (u *ongoingTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.
 			return 0, errors.AddContext(err, "failed to upload chunk")
 		}
 	}
-	err = u.staticUpload.CommitWriteChunk(ctx, fi.Offset+n, time.Now(), isSmall, cr.Fanout())
-	if err != nil {
-		return n, err
-	}
-	return n, nil
+	return n, u.staticUpload.CommitWriteChunk(ctx, fi.Offset+n, time.Now(), isSmall, cr.Fanout())
 }
 
 // GetInfo returns the file info.
@@ -416,12 +405,6 @@ func (u *ongoingTUSUpload) finishUploadSmall(ctx context.Context, sup skymodules
 
 // FinishUpload is called when the upload is done.
 func (u *ongoingTUSUpload) FinishUpload(ctx context.Context) (err error) {
-	var sm skymodules.SkyfileMetadata
-	smBytes, _ := u.staticUpload.SkyfileMetadata(ctx)
-	err = json.Unmarshal(smBytes, &sm)
-	if err != nil {
-		fmt.Println("ERR FINISH UPLOAD", err, len(smBytes))
-	}
 	// Close upload when done.
 	defer func() {
 		err = errors.Compose(err, u.Close())
@@ -450,28 +433,13 @@ func (u *ongoingTUSUpload) FinishUpload(ctx context.Context) (err error) {
 	if err != nil {
 		return errors.AddContext(err, "failed to fetch upload params")
 	}
-	smBytes, err = u.staticUpload.SkyfileMetadata(ctx)
+	smBytes, err := u.staticUpload.SkyfileMetadata(ctx)
 	if err != nil {
 		return errors.AddContext(err, "failed to fetch smBytes")
 	}
 	fanout, err := u.staticUpload.Fanout(ctx)
 	if err != nil {
 		return errors.AddContext(err, "failed to fetch fanout")
-	}
-	fmt.Println("final fanout", len(fanout))
-
-	err = json.Unmarshal(smBytes, &sm)
-	if err != nil {
-		fmt.Println("ERR", err, len(smBytes))
-	}
-	testUpload, err := u.staticUploader.staticUploadStore.GetUpload(ctx, fi.ID)
-	if err != nil {
-		fmt.Println("argh", err)
-	}
-	testUpload2 := testUpload.(*MongoTUSUpload)
-	err = json.Unmarshal(testUpload2.Metadata, &sm)
-	if err != nil {
-		fmt.Println("ERR1.1", err, len(smBytes))
 	}
 
 	// If the upload is 0-byte, WriteChunk is skipped. So we need to finish

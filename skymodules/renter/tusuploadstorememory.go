@@ -161,14 +161,14 @@ func (u *skynetInMemoryUpload) UploadParams(ctx context.Context) (skymodules.Sky
 func (u *skynetInMemoryUpload) Fanout(ctx context.Context) ([]byte, error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
-	return append([]byte{}, u.fanout...), nil
+	return u.fanout, nil
 }
 
 // SkyfileMetadata returns the raw SkyfileMetadata of the upload.
 func (u *skynetInMemoryUpload) SkyfileMetadata(ctx context.Context) ([]byte, error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
-	return append([]byte{}, u.staticMetadata...), nil
+	return u.staticMetadata, nil
 }
 
 // Skylink returns the skylink of the upload if it was set already.
