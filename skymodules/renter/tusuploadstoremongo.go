@@ -2,8 +2,6 @@ package renter
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"os"
 	"time"
 
@@ -16,6 +14,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readconcern"
+	"go.mongodb.org/mongo-driver/mongo/readpref"
 	"go.mongodb.org/mongo-driver/mongo/writeconcern"
 	"go.sia.tech/siad/crypto"
 )
@@ -345,20 +344,13 @@ func (u *MongoTUSUpload) UploadParams(ctx context.Context) (skymodules.SkyfileUp
 // CommitWriteChunk commits writing a chunk of either a small or
 // large file with fanout.
 func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error {
-	var sm skymodules.SkyfileMetadata
-	// NOTE: This could potentially be improved to append to the fanout
-	// instead of replacing it.
-	err := json.Unmarshal(u.Metadata, &sm)
-	fmt.Println("CommitWriteChunk before append", err)
 	// Create the new fanout bytes. Make sure we are not reusing
 	// u.FanoutBytes memory but instead assign new memory and then copy into
 	// that.
 	newFanoutBytes := make([]byte, len(u.FanoutBytes)+len(fanout))
 	copy(newFanoutBytes, u.FanoutBytes)
 	copy(newFanoutBytes[len(u.FanoutBytes):], fanout)
-	err = json.Unmarshal(u.Metadata, &sm)
-	fmt.Println("CommitWriteChunk after append", err)
-	err = u.commitWriteChunk(ctx, bson.M{
+	err := u.commitWriteChunk(ctx, bson.M{
 		"fanoutbytes": newFanoutBytes,
 	}, newOffset, newLastWrite)
 	if err != nil {
@@ -462,6 +454,7 @@ func newSkynetTUSMongoUploadStore(ctx context.Context, uri, portalName string, c
 		ApplyURI(uri).
 		SetAuth(creds).
 		SetReadConcern(readconcern.Local()).
+		SetReadPreference(readpref.Nearest()).
 		SetWriteConcern(writeconcern.New(writeconcern.W(1)))
 
 	client, err := mongo.Connect(ctx, opts)
