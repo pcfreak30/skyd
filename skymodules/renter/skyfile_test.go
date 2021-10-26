@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -215,8 +216,22 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// add 2 hosts
+	deps := modules.ProdDependencies
+	host2, err2 := wt.rt.addCustomHost(filepath.Join(wt.rt.dir, "host2"), deps)
+	host3, err3 := wt.rt.addCustomHost(filepath.Join(wt.rt.dir, "host3"), deps)
+	if err2 != nil || err3 != nil {
+		t.Fatal(errors.Compose(err2, err3))
+	}
+
 	defer func() {
 		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := errors.Compose(
+			host2.Close(),
+			host3.Close(),
+		); err != nil {
 			t.Fatal(err)
 		}
 	}()
