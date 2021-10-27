@@ -217,10 +217,12 @@ func main() {
 	// we prevent that from occurring until our heap grows to double the size of
 	// the ballast. We allocate it with 10GiB.
 	//
+	// NOTE: we can safely add the balast here under the assumption that anyone
+	// running skyd is hosting a portal
+	//
 	// For more details see:
 	// https://blog.twitch.tv/en/2019/04/10/go-memory-ballast-how-i-learnt-to-stop-worrying-and-love-the-heap-26c2462549a2/
 	ballast := make([]byte, 10<<30)
-	fmt.Println("ballast added")
 
 	// Parse cmdline flags, overwriting both the default values and the config
 	// file values.

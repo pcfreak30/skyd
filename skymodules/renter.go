@@ -66,7 +66,7 @@ var (
 	// cost factor doesn't weigh as much. It also directly influences the cost
 	// of an overdrive worker, the higher the base cost, the higher the cost of
 	// an overdrive.
-	DefaultSkynetBaseCost = types.SiacoinPrecision.Mul64(200).Div(types.NewCurrency64(1e12)) // 100SC / TB
+	DefaultSkynetBaseCost = types.SiacoinPrecision.Mul64(200).Div(types.NewCurrency64(1e12)) // 200SC / TB
 
 	// ErrHostFault indicates if an error is the host's fault.
 	ErrHostFault = errors.New("host has returned an error")
