@@ -28,10 +28,11 @@ func TestPDC(t *testing.T) {
 	}
 	t.Parallel()
 
-	t.Run("handleJobResponse", testProjectDownloadChunkHandleJobResponse)
-	t.Run("finalize", testProjectDownloadChunkFinalize)
-	t.Run("finished", testProjectDownloadChunkFinished)
-	t.Run("launchWorker", testProjectDownloadChunkLaunchWorker)
+	// t.Run("handleJobResponse", testProjectDownloadChunkHandleJobResponse)
+	// t.Run("finalize", testProjectDownloadChunkFinalize)
+	// t.Run("finished", testProjectDownloadChunkFinished)
+	// t.Run("launchWorker", testProjectDownloadChunkLaunchWorker)
+	t.Run("workers", testProjectDownloadChunkWorkers)
 }
 
 // testProjectDownloadChunkHandleJobResponse is a unit test that verifies the
@@ -367,6 +368,64 @@ func testProjectDownloadChunkLaunchWorker(t *testing.T) {
 	}
 }
 
+// testProjectDownloadChunkWorkers is a unit test for the 'workers' function on
+// the pdc.
+func testProjectDownloadChunkWorkers(t *testing.T) {
+	t.Parallel()
+
+	// create pdc
+	pcws := newTestProjectChunkWorkerSet()
+	pdc := newTestProjectDownloadChunk(pcws, nil)
+	ws := pdc.workerState
+
+	// assert there are no workers
+	workers := pdc.workers()
+	if len(workers) != 0 {
+		t.Fatal("bad")
+	}
+
+	// mock some workers
+	w1 := mockWorker(0)
+	w2 := mockWorker(0)
+	w3 := mockWorker(0)
+
+	// mock two unresolved workers
+	ws.unresolvedWorkers["w1"] = &pcwsUnresolvedWorker{staticWorker: w1}
+	ws.unresolvedWorkers["w2"] = &pcwsUnresolvedWorker{staticWorker: w2}
+
+	// assert they're returned in the worker list
+	workers = pdc.workers()
+	if len(workers) != 2 {
+		t.Fatal("bad")
+	}
+
+	// mock a resolved worker
+	ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
+		worker:       w3,
+		pieceIndices: []uint64{0},
+	})
+
+	// assert they're returned in the worker list
+	workers = pdc.workers()
+	if len(workers) != 3 {
+		t.Fatal("bad")
+	}
+
+	// clear its piece indices and assert the worker is excluded
+	ws.resolvedWorkers[0].pieceIndices = nil
+	workers = pdc.workers()
+	if len(workers) != 2 {
+		t.Fatal("bad")
+	}
+
+	// mock w1 being on maintenance cooldown and assert the worker is excluded
+	w1.staticMaintenanceState.cooldownUntil = time.Now().Add(time.Minute)
+	workers = pdc.workers()
+	if len(workers) != 1 {
+		t.Fatal("bad")
+	}
+}
+
 // TestGetPieceOffsetAndLen is a unit test that probes the helper function
 // getPieceOffsetAndLength
 func TestGetPieceOffsetAndLen(t *testing.T) {
@@ -565,6 +624,11 @@ func TestLaunchedWorkerInfo_String(t *testing.T) {
 func newTestProjectDownloadChunk(pcws *projectChunkWorkerSet, responseChan chan *downloadResponse) *projectDownloadChunk {
 	ec := pcws.staticErasureCoder
 
+	pieceIndices := make([]uint64, ec.NumPieces())
+	for i := 0; i < len(pieceIndices); i++ {
+		pieceIndices[i] = uint64(i)
+	}
+
 	if responseChan == nil {
 		responseChan = make(chan *downloadResponse, 1)
 	}
@@ -577,10 +641,12 @@ func newTestProjectDownloadChunk(pcws *projectChunkWorkerSet, responseChan chan 
 
 		downloadResponseChan: responseChan,
 		workerSet:            pcws,
+		workerState:          pcws.managedWorkerState(),
 
 		ctx: context.Background(),
 
-		staticLaunchTime: time.Now(),
+		staticLaunchTime:   time.Now(),
+		staticPieceIndices: pieceIndices,
 	}
 }
 

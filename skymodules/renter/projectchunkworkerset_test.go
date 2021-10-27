@@ -578,7 +578,10 @@ func newCustomTestProjectChunkWorkerSet(ec skymodules.ErasureCoder) *projectChun
 
 	// create PCWS manually
 	return &projectChunkWorkerSet{
-		workerState: new(pcwsWorkerState),
+		workerState: &pcwsWorkerState{
+			unresolvedWorkers: make(map[string]*pcwsUnresolvedWorker),
+			staticRenter:      renter,
+		},
 
 		staticChunkIndex:   0,
 		staticErasureCoder: ec,
