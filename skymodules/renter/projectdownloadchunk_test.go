@@ -28,10 +28,10 @@ func TestPDC(t *testing.T) {
 	}
 	t.Parallel()
 
-	// t.Run("handleJobResponse", testProjectDownloadChunkHandleJobResponse)
-	// t.Run("finalize", testProjectDownloadChunkFinalize)
-	// t.Run("finished", testProjectDownloadChunkFinished)
-	// t.Run("launchWorker", testProjectDownloadChunkLaunchWorker)
+	t.Run("handleJobResponse", testProjectDownloadChunkHandleJobResponse)
+	t.Run("finalize", testProjectDownloadChunkFinalize)
+	t.Run("finished", testProjectDownloadChunkFinished)
+	t.Run("launchWorker", testProjectDownloadChunkLaunchWorker)
 	t.Run("workers", testProjectDownloadChunkWorkers)
 }
 
