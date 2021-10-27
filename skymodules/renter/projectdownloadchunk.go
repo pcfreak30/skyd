@@ -452,7 +452,6 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 // download. A bool is returned which indicates whether or not the launch was
 // successful.
 func (pdc *projectDownloadChunk) launchWorker(worker *individualWorker, pieceIndex uint64, isOverdrive bool) (time.Time, bool) {
-
 	w := worker.worker()
 
 	// Sanity check that the pieceOffset and pieceLength are segment aligned.
