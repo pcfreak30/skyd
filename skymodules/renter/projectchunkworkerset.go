@@ -51,18 +51,6 @@ const (
 	maxOverdriveWorkers = 10
 )
 
-// JobsPerHostMu protects the jobsperhost map
-var JobsPerHostMu sync.Mutex
-
-// JobsPerHost keeps track of the number of HS jobs per host
-var JobsPerHost = make(map[string]uint64)
-
-// WorkerPoolLengthMu protects the WorkerPoolLength map
-var WorkerPoolLengthMu sync.Mutex
-
-// WorkerPoolLength keeps track of the number of workers in the pool
-var WorkerPoolLength = make(map[int]uint64)
-
 // pcwsUnresolvedWorker tracks an unresolved worker that is associated with a
 // specific projectChunkWorkerSet. The timestamp indicates when the unresolved
 // worker is expected to have a resolution, and is an estimate based on historic
@@ -313,22 +301,6 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 		wms.mu.Unlock()
 	}
 
-	JobsPerHostMu.Lock()
-	JobsPerHost[w.staticHostPubKeyStr]++
-	if JobsPerHost[w.staticHostPubKeyStr]%25 == 0 {
-		fmt.Println("\n- - - - -")
-		for worker, cnt := range JobsPerHost {
-			fmt.Printf("worker %v jobs %v\n", worker, cnt)
-		}
-		WorkerPoolLengthMu.Lock()
-		for cnt, occurrences := range WorkerPoolLength {
-			fmt.Printf("num workers %v cnts %v\n", cnt, occurrences)
-		}
-		WorkerPoolLengthMu.Unlock()
-		fmt.Println("- - - - -")
-	}
-	JobsPerHostMu.Unlock()
-
 	// Create and launch the job.
 	ctx, cancel := context.WithTimeout(pcws.staticCtx, pcwsHasSectorTimeout)
 	jhs := w.newJobHasSectorWithPostExecutionHook(ctx, responseChan, func(resp *jobHasSectorResponse) {
@@ -368,10 +340,6 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorkers(ws *pcwsWorkerState) {
 	// in size to the number of queries so that none of the workers sending
 	// reponses get blocked sending down the channel.
 	workers := ws.staticRenter.staticWorkerPool.callWorkers()
-
-	WorkerPoolLengthMu.Lock()
-	WorkerPoolLength[len(workers)]++
-	WorkerPoolLengthMu.Unlock()
 
 	responseChan := make(chan *jobHasSectorResponse, len(workers))
 	for _, w := range workers {
