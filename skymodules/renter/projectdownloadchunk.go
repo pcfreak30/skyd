@@ -451,12 +451,8 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 // A time is returned which indicates the expected return time of the worker's
 // download. A bool is returned which indicates whether or not the launch was
 // successful.
-func (pdc *projectDownloadChunk) launchWorker(worker downloadWorker, pieceIndex uint64, isOverdrive bool) (time.Time, bool) {
-	// sanity check the given worker is not a chimera worker
-	iw, ok := worker.(*individualWorker)
-	if !ok {
-		build.Critical("developer error, can not launch chimera")
-	}
+func (pdc *projectDownloadChunk) launchWorker(worker *individualWorker, pieceIndex uint64, isOverdrive bool) (time.Time, bool) {
+
 	w := worker.worker()
 
 	// Sanity check that the pieceOffset and pieceLength are segment aligned.
@@ -505,7 +501,7 @@ func (pdc *projectDownloadChunk) launchWorker(worker downloadWorker, pieceIndex 
 		})
 
 		pdc.workerProgress[workerKey].launchedPieces[pieceIndex] = time.Now()
-		iw.currentPieceLaunchedAt = time.Now()
+		worker.currentPieceLaunchedAt = time.Now()
 	}
 
 	return expectedCompleteTime, added

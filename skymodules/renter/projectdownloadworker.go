@@ -751,8 +751,8 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, workers []*indiv
 	// range over all workers in the set and launch if possible
 	for _, w := range ws.workers {
 		// continue if the worker is a chimera worker
-		_, ok := w.(*chimeraWorker)
-		if ok {
+		iw, ok := w.(*individualWorker)
+		if !ok {
 			continue
 		}
 
@@ -764,7 +764,7 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, workers []*indiv
 
 		// launch the worker
 		isOverdrive := len(pdc.launchedWorkers) >= minPieces
-		_, gotLaunched := pdc.launchWorker(w, piece, isOverdrive)
+		_, gotLaunched := pdc.launchWorker(iw, piece, isOverdrive)
 
 		// debugging
 		if gotLaunched {
@@ -1218,9 +1218,8 @@ func isGoodForDownload(w *worker, pieces []uint64) (bool, string) {
 
 	// workers with a read or has sector job queue on cooldown
 	rjq := w.staticJobReadQueue
-	hsq := w.staticJobHasSectorQueue
-	if rjq.onCooldown() || hsq.onCooldown() {
-		return false, fmt.Sprintf("RJ CD: %v HSJ CD: %v", rjq.onCooldown(), hsq.onCooldown())
+	if rjq.onCooldown() {
+		return false, fmt.Sprintf("RJ CD: %v HSJ CD: %v", rjq.onCooldown())
 	}
 
 	// workers that are price gouging are not useful
