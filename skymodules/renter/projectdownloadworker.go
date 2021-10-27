@@ -1109,10 +1109,16 @@ func (pdc *projectDownloadChunk) buildDownloadWorkers(workers []*individualWorke
 // method will split the given workers array in a list of most likely workers,
 // and a list of less likely workers.
 func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWorker, workersNeeded int) ([]downloadWorker, []downloadWorker) {
+	// calculate the initial capacity of the less likely array
+	var lessLikelyCap int
+	if len(workers) > workersNeeded {
+		lessLikelyCap = len(workers) - workersNeeded
+	}
+
 	// prepare two slices that hold the workers which are most likely and the
 	// ones that are less likely
 	mostLikely := make([]downloadWorker, 0, workersNeeded)
-	lessLikely := make([]downloadWorker, 0, len(workers)-workersNeeded)
+	lessLikely := make([]downloadWorker, 0, lessLikelyCap)
 
 	// define some state variables to ensure we select workers in a way the
 	// pieces are unique and we are not using a worker twice
