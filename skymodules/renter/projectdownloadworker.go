@@ -656,7 +656,9 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 
 	// add all resolved workers that are deemed good for downloading
 	for _, rw := range ws.resolvedWorkers {
-		if !isGoodForDownload(rw.worker, rw.pieceIndices) {
+		gfd, reason := isGoodForDownload(rw.worker, rw.pieceIndices)
+		if !gfd {
+			fmt.Println("resolved worker not good for download", reason)
 			continue
 		}
 
@@ -684,7 +686,9 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 	for _, uw := range ws.unresolvedWorkers {
 		// exclude workers that are not useful
 		w := uw.staticWorker
-		if !isGoodForDownload(w, pdc.staticPieceIndices) {
+		gfd, reason := isGoodForDownload(w, pdc.staticPieceIndices)
+		if !gfd {
+			fmt.Println("unresolved worker not good for download", reason)
 			continue
 		}
 
@@ -1201,32 +1205,32 @@ func bucketIndexRange(bI int) (int, int) {
 // worker meets a certain set of criteria that make it useful for downloads.
 // It's only useful if it is not on any type of cooldown, if it's async ready
 // and if it's not price gouging.
-func isGoodForDownload(w *worker, pieces []uint64) bool {
+func isGoodForDownload(w *worker, pieces []uint64) (bool, string) {
 	// workers that can't download any pieces are ignored
 	if len(pieces) == 0 {
-		return false
+		return false, "no pieces"
 	}
 
 	// workers on cooldown or that are non async ready are not useful
 	if w.managedOnMaintenanceCooldown() || !w.managedAsyncReady() {
-		return false
+		return false, fmt.Sprintf("MAINT CD: %v ASYNC READY: %v", w.managedOnMaintenanceCooldown(), w.managedAsyncReady())
 	}
 
 	// workers with a read or has sector job queue on cooldown
 	rjq := w.staticJobReadQueue
 	hsq := w.staticJobHasSectorQueue
 	if rjq.onCooldown() || hsq.onCooldown() {
-		return false
+		return false, fmt.Sprintf("RJ CD: %v HSJ CD: %v", rjq.onCooldown(), hsq.onCooldown())
 	}
 
 	// workers that are price gouging are not useful
 	pt := w.staticPriceTable().staticPriceTable
 	allowance := w.staticCache().staticRenterAllowance
 	if err := checkProjectDownloadGouging(pt, allowance); err != nil {
-		return false
+		return false, "gouging"
 	}
 
-	return true
+	return true, ""
 }
 
 // splitResolvedUnresolved is a helper function that splits the given workers
