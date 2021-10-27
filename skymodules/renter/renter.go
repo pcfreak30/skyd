@@ -1130,7 +1130,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 			heapDirectories: make(map[skymodules.SiaPath]*directory),
 		},
 
-		staticBallast: make([]byte, 0),
+		staticBallast: make([]byte, 5<<30),
 
 		staticDownloadHistory: newDownloadHistory(),
 
