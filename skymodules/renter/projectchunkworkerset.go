@@ -29,9 +29,9 @@ var (
 	// wait before resetting / refreshing the worker state, meaning that all of
 	// the workers will do another round of HasSector queries on the network.
 	pcwsWorkerStateResetTime = build.Select(build.Var{
-		Dev:      time.Minute * 10,
+		Dev:      time.Hour,
 		Standard: time.Hour * 9,
-		Testing:  time.Second * 15,
+		Testing:  time.Minute * 5,
 	}).(time.Duration)
 
 	// pcwsHasSectorTimeout defines the amount of time that the pcws will wait
@@ -41,7 +41,7 @@ var (
 	pcwsHasSectorTimeout = build.Select(build.Var{
 		Dev:      time.Minute * 1,
 		Standard: time.Minute * 3,
-		Testing:  time.Second * 10,
+		Testing:  time.Second * 30,
 	}).(time.Duration)
 )
 
