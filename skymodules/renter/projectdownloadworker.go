@@ -73,7 +73,7 @@ const (
 	// before and after the index we found.
 	bucketIndexScanStep = 12
 
-	// chimeraAvailabilityRateThreshold defines the number that much be reached
+	// chimeraAvailabilityRateThreshold defines the number that must be reached
 	// when composing a chimera from unresolved workers. If the sum of the
 	// availability rate of each worker reaches this threshold we build a
 	// chimera out of them.
