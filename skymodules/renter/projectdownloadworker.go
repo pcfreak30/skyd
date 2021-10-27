@@ -176,6 +176,12 @@ type (
 		pieceIndices []uint64
 		resolved     bool
 
+		// onCoolDown is a flag that indicates whether this worker's HS or RS
+		// queues are on cooldown, a worker with a queue on cooldown is not
+		// necessarily discounted as not useful for downloading, instead it's
+		// marked as on cooldown and only used if it comes off of cooldown
+		onCoolDown bool
+
 		// currentPiece is the piece that was marked by the download algorithm
 		// as the piece to download next, this is used to ensure that workers
 		// in the worker are not selected for duplicate piece indices.
@@ -370,6 +376,11 @@ func (iw *individualWorker) identifier() string {
 // isLaunched returns true when this workers has been launched.
 func (iw *individualWorker) isLaunched() bool {
 	return !iw.currentPieceLaunchedAt.IsZero()
+}
+
+// isOnCooldown returns whether this individual worker is on cooldown.
+func (iw *individualWorker) isOnCooldown() bool {
+	return iw.onCoolDown
 }
 
 // isResolved returns whether this individual worker has resolved.
@@ -635,6 +646,11 @@ func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker) {
 			w.pieceIndices = pieceIndices
 		}
 
+		// check whether the worker is on cooldown
+		hsq := w.staticWorker.staticJobHasSectorQueue
+		rjq := w.staticWorker.staticJobReadQueue
+		w.onCoolDown = hsq.callOnCooldown() || rjq.callOnCooldown()
+
 		// recalculate the distributions
 		w.recalculateDistributionChances()
 	}
@@ -665,14 +681,15 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 		jrq := rw.worker.staticJobReadQueue
 		rdt := jrq.staticStats.distributionTrackerForLength(length)
 		cost, _ := jrq.callExpectedJobCost(length).Float64()
-		jhsq := rw.worker.staticJobHasSectorQueue
-		ldt := jhsq.staticDT
+		hsq := rw.worker.staticJobHasSectorQueue
+		ldt := hsq.staticDT
 
 		workers = append(workers, &individualWorker{
 			resolved:     true,
 			pieceIndices: rw.pieceIndices,
+			onCoolDown:   jrq.callOnCooldown() || hsq.callOnCooldown(),
 
-			staticAvailabilityRate:   jhsq.callAvailabilityRate(numPieces),
+			staticAvailabilityRate:   hsq.callAvailabilityRate(numPieces),
 			staticCost:               cost,
 			staticDownloadLaunchTime: time.Now(),
 			staticIdentifier:         rw.worker.staticHostPubKey.ShortString(),
@@ -694,15 +711,16 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 
 		jrq := w.staticJobReadQueue
 		rdt := jrq.staticStats.distributionTrackerForLength(length)
-		jhsq := w.staticJobHasSectorQueue
-		ldt := jhsq.staticDT
+		hsq := w.staticJobHasSectorQueue
+		ldt := hsq.staticDT
 
 		cost, _ := jrq.callExpectedJobCost(length).Float64()
 		workers = append(workers, &individualWorker{
 			resolved:     false,
 			pieceIndices: pdc.staticPieceIndices,
+			onCoolDown:   jrq.callOnCooldown() || hsq.callOnCooldown(),
 
-			staticAvailabilityRate:   jhsq.callAvailabilityRate(numPieces),
+			staticAvailabilityRate:   hsq.callAvailabilityRate(numPieces),
 			staticCost:               cost,
 			staticDownloadLaunchTime: time.Now(),
 			staticIdentifier:         w.staticHostPubKey.ShortString(),
@@ -744,7 +762,7 @@ func (pdc *projectDownloadChunk) currentDownload(w downloadWorker) (uint64, bool
 // launchWorkerSet will range over the workers in the given worker set and will
 // try to launch every worker that has not yet been launched and is ready to
 // launch.
-func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet, workers []*individualWorker) {
+func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) {
 	// convenience variables
 	minPieces := pdc.workerSet.staticErasureCoder.MinPieces()
 
@@ -821,7 +839,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			return
 		}
 		if workerSet != nil {
-			pdc.launchWorkerSet(workerSet, workers)
+			pdc.launchWorkerSet(workerSet)
 		}
 
 		// iterate
@@ -1216,12 +1234,6 @@ func isGoodForDownload(w *worker, pieces []uint64) (bool, string) {
 		return false, fmt.Sprintf("MAINT CD: %v ASYNC READY: %v", w.managedOnMaintenanceCooldown(), w.managedAsyncReady())
 	}
 
-	// workers with a read or has sector job queue on cooldown
-	rjq := w.staticJobReadQueue
-	if rjq.onCooldown() {
-		return false, fmt.Sprintf("RJ CD: %v", rjq.onCooldown())
-	}
-
 	// workers that are price gouging are not useful
 	pt := w.staticPriceTable().staticPriceTable
 	allowance := w.staticCache().staticRenterAllowance
@@ -1241,6 +1253,10 @@ func splitResolvedUnresolved(workers []*individualWorker) ([]downloadWorker, []*
 	unresolvedWorkers := make([]*individualWorker, 0, len(workers))
 
 	for _, w := range workers {
+		if w.isOnCooldown() {
+			continue
+		}
+
 		if w.isResolved() {
 			resolvedWorkers = append(resolvedWorkers, w)
 		} else {
