@@ -3,8 +3,10 @@ package renter
 import (
 	"math"
 	"reflect"
+	"sync/atomic"
 	"testing"
 	"time"
+	"unsafe"
 
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -1052,6 +1054,90 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 	mostLikelyKey2 = mostLikely[1].identifier()
 	lessLikelyKey1 = lessLikely[0].identifier()
 	if mostLikelyKey1 != cw2Key || mostLikelyKey2 != iw1Key || lessLikelyKey1 != cw1Key {
+		t.Fatal("bad")
+	}
+}
+
+// TestBucketIndexRange is a unit test that verifies the functionality of the
+// helper function BucketIndexRange
+func TestBucketIndexRange(t *testing.T) {
+	t.Parallel()
+
+	maxBI := skymodules.DistributionTrackerTotalBuckets - 1
+
+	min, max := bucketIndexRange(0)
+	if min != 0 || max != bucketIndexScanStep {
+		t.Fatal("bad")
+	}
+
+	min, max = bucketIndexRange(maxBI - bucketIndexScanStep)
+	if min != maxBI-2*bucketIndexScanStep || max != maxBI {
+		t.Fatal("bad")
+	}
+
+	min, max = bucketIndexRange(bucketIndexScanStep)
+	if min != 0 || max != 2*bucketIndexScanStep {
+		t.Fatal("bad")
+	}
+
+	// randomly generate a bucket index that's constructed in a way that the
+	// range is not below 0 or above the max
+	maxBII := uint64(skymodules.DistributionTrackerTotalBuckets - 2*bucketIndexScanStep)
+	random := fastrand.Uint64n(maxBII) + bucketIndexScanStep
+	min, max = bucketIndexRange(int(random))
+	if min != int(random)-bucketIndexScanStep || max != int(random)+bucketIndexScanStep {
+		t.Fatal("bad", random)
+	}
+}
+
+// TestIsGoodForDownload is a unit test that verifies the functionality of the
+// helper function IsGoodForDownload
+func TestIsGoodForDownload(t *testing.T) {
+	t.Parallel()
+
+	w := mockWorker(0)
+	sc := types.SiacoinPrecision
+
+	// assert happy case
+	gfd := isGoodForDownload(w, []uint64{0})
+	if !gfd {
+		t.Fatal("bad")
+	}
+
+	// assert workers with no pieces are not good for download
+	gfd = isGoodForDownload(w, nil)
+	if gfd {
+		t.Fatal("bad")
+	}
+	gfd = isGoodForDownload(w, []uint64{})
+	if gfd {
+		t.Fatal("bad")
+	}
+
+	// assert workers on maintenance cooldown are not good for download
+	w.staticMaintenanceState.cooldownUntil = time.Now().Add(time.Minute)
+	gfd = isGoodForDownload(w, []uint64{0})
+	if gfd {
+		t.Fatal("bad")
+	}
+	w.staticMaintenanceState.cooldownUntil = time.Time{} // reset
+
+	// assert workers that are not async ready are not good for download
+	w.staticPriceTable().staticExpiryTime = time.Now().Add(-time.Minute)
+	gfd = isGoodForDownload(w, []uint64{0})
+	if gfd {
+		t.Fatal("bad")
+	}
+	w.staticPriceTable().staticExpiryTime = time.Now().Add(time.Minute) // reset
+
+	// assert workers that are considered gouging are not good for download (we
+	// trigger gouging detection by pushing the dl bandwidthcost over the max)
+	wc := new(workerCache)
+	wc.staticRenterAllowance.MaxDownloadBandwidthPrice = sc
+	atomic.StorePointer(&w.atomicCache, unsafe.Pointer(wc))
+	w.staticPriceTable().staticPriceTable.DownloadBandwidthCost = sc.Mul64(2)
+	gfd = isGoodForDownload(w, []uint64{0})
+	if gfd {
 		t.Fatal("bad")
 	}
 }

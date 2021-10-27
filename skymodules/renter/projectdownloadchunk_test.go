@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
+	"unsafe"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -592,14 +594,31 @@ func mockWorker(jobTime time.Duration) *worker {
 	}
 
 	worker := new(worker)
-	worker.newPriceTable()
-	worker.staticPriceTable().staticPriceTable = newDefaultPriceTable()
 	worker.staticHostPubKey = spk
 	worker.staticHostPubKeyStr = spk.String()
 
+	worker.newMaintenanceState()
+
+	// init price table
+	worker.newPriceTable()
+	worker.staticPriceTable().staticPriceTable = newDefaultPriceTable()
+	worker.staticPriceTable().staticUpdateTime = time.Now()
+	worker.staticPriceTable().staticExpiryTime = time.Now().Add(5 * time.Minute)
+
+	// init worker cache
+	wc := new(workerCache)
+	atomic.StorePointer(&worker.atomicCache, unsafe.Pointer(wc))
+
 	jrs := NewJobReadStats()
 	jrs.weightedJobTime64k = float64(jobTime)
+
+	// init queues
+	worker.initJobHasSectorQueue()
+	worker.initJobUpdateRegistryQueue()
+	worker.initJobReadRegistryQueue()
 	worker.initJobReadQueue(jrs)
+	worker.initJobLowPrioReadQueue(jrs)
+
 	return worker
 }
 

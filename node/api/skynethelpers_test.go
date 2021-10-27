@@ -310,10 +310,10 @@ func testParseSkylinkURL(t *testing.T) {
 // testParseUploadRequestParameters verifies the functionality of
 // 'parseUploadHeadersAndRequestParameters'.
 func testParseUploadRequestParameters(t *testing.T) {
-	t.Parallel()
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 
 	// create a siapath
 	siapath, err := skymodules.NewSiaPath(t.Name())

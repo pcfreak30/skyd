@@ -58,6 +58,50 @@ func TestHasSectorJobBatchCallNext(t *testing.T) {
 	}
 }
 
+// TestHasSectorJobQueueUpdateAvailabilityMetrics is a unit that verifies the HS
+// job queue correctly updates the availability metrics
+func TestHasSectorJobQueueUpdateAvailabilityMetrics(t *testing.T) {
+	t.Parallel()
+
+	// mock a worker
+	w := mockWorker(0)
+	hsq := w.staticJobHasSectorQueue
+
+	// assert basic case
+	hsq.callUpdateAvailabilityMetrics(1, 2, 1)
+	ar := hsq.callAvailabilityRate(1)
+	if ar != .5 {
+		t.Fatal("bad")
+	}
+
+	// assert updates take effect
+	hsq.callUpdateAvailabilityMetrics(1, 1, 0)
+	ar = hsq.callAvailabilityRate(1)
+	if ar != float64(1)/float64(3) {
+		t.Fatal("bad")
+	}
+
+	// assert min rate is returned of 0 metrics
+	ar = hsq.callAvailabilityRate(2)
+	if ar != jobHasSectorQueueMinAvailabilityRate {
+		t.Fatal("bad")
+	}
+
+	// assert min rate is returned if 0 available
+	hsq.callUpdateAvailabilityMetrics(2, 1, 0)
+	ar = hsq.callAvailabilityRate(2)
+	if ar != jobHasSectorQueueMinAvailabilityRate {
+		t.Fatal("bad")
+	}
+
+	// assert correct rate is returned if available
+	hsq.callUpdateAvailabilityMetrics(2, 1, 1)
+	ar = hsq.callAvailabilityRate(2)
+	if ar != .5 {
+		t.Fatal("bad")
+	}
+}
+
 // TestHasSectorJobQueueAvailabilityRate is a unit that verifies the HS job
 // queue correctly returns the availability rate
 func TestHasSectorJobQueueAvailabilityRate(t *testing.T) {

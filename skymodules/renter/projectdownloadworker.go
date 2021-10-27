@@ -98,9 +98,9 @@ type (
 	// chimera workers that represents a worker that can be used for downloads.
 	downloadWorker interface {
 		// completeChanceCached returns the chance this download worker
-		// completes a read within the duration that corresponds to the given
-		// bucket index. This value is cached and recomputed for every bucket
-		// duration.
+		// completes a read within a certain duration. This value is cached and
+		// gets recomputed for every bucket index (which represents a duration).
+		// The value returned here is recomputed by 'recalculateCompleteChance'.
 		completeChanceCached() float64
 
 		// cost returns the expected job cost for downloading a piece. If the
@@ -672,9 +672,7 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 
 	// add all resolved workers that are deemed good for downloading
 	for _, rw := range ws.resolvedWorkers {
-		gfd, reason := isGoodForDownload(rw.worker, rw.pieceIndices)
-		if !gfd {
-			fmt.Println("resolved worker not good for download", reason)
+		if !isGoodForDownload(rw.worker, rw.pieceIndices) {
 			continue
 		}
 
@@ -703,9 +701,7 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 	for _, uw := range ws.unresolvedWorkers {
 		// exclude workers that are not useful
 		w := uw.staticWorker
-		gfd, reason := isGoodForDownload(w, pdc.staticPieceIndices)
-		if !gfd {
-			fmt.Println("unresolved worker not good for download", reason)
+		if !isGoodForDownload(w, pdc.staticPieceIndices) {
 			continue
 		}
 
@@ -784,7 +780,7 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) {
 		isOverdrive := len(pdc.launchedWorkers) >= minPieces
 		_, gotLaunched := pdc.launchWorker(iw, piece, isOverdrive)
 
-		// debugging
+		// log the event in case we launched a worker
 		if gotLaunched {
 			if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
 				span.LogKV(
@@ -961,10 +957,11 @@ OUTER:
 	return bestSet, nil
 }
 
-// createWorkerSetInner is the inner loop that is called by createWorkerSet,
-// please refer to the documentation there to see what this function performs.
-// It returns a workerset, and a boolean that indicates whether we want to break
-// out of the (outer) loop that surrounds this function call.
+// createWorkerSetInner is the inner loop that is called by createWorkerSet, it
+// tries to create a worker set from the given list of workers, taking into
+// account the given amount of workers and overdrive workers, but also the given
+// bucket duration. It returns a workerset, and a boolean that indicates whether
+// we want to break out of the (outer) loop that surrounds this function call.
 func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorker, minPieces, numOverdrive, bI int, bDur time.Duration) (*workerSet, bool) {
 	workersNeeded := minPieces + numOverdrive
 
@@ -1115,13 +1112,13 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 	// prepare two slices that hold the workers which are most likely and the
 	// ones that are less likely
 	mostLikely := make([]downloadWorker, 0, workersNeeded)
-	lessLikely := make([]downloadWorker, 0, len(workers))
+	lessLikely := make([]downloadWorker, 0, len(workers)-workersNeeded)
 
 	// define some state variables to ensure we select workers in a way the
 	// pieces are unique and we are not using a worker twice
 	numPieces := pdc.workerSet.staticErasureCoder.NumPieces()
 	pieces := make(map[uint64]struct{}, numPieces)
-	added := make(map[string]struct{}, 0)
+	added := make(map[string]struct{}, len(workers))
 
 	// add worker is a helper function that adds a worker to either the most
 	// likely or less likely worker array and updates our state variables
@@ -1147,12 +1144,6 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 
 	// loop over the workers and try to add them
 	for _, w := range workers {
-		// do not reuse the same worker twice
-		_, added := added[w.identifier()]
-		if added {
-			continue
-		}
-
 		// workers that have in-progress downloads are re-added as long as we
 		// don't already have a worker for the piece they are downloading
 		currPiece, launched, completed := pdc.currentDownload(w)
@@ -1183,7 +1174,8 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 
 	// loop over the workers again to fill both the most likely and less likely
 	// array with the remainder of the workers, still ensuring a worker is only
-	// used once, but this time we don't assert the piece indices are unique
+	// used once, this time we don't assert the piece indices are unique as this
+	// makes it possible to overdrive on the same piece
 	for _, w := range workers {
 		_, added := added[w.identifier()]
 		if added {
@@ -1211,7 +1203,7 @@ func bucketIndexRange(bI int) (int, int) {
 		bIMin = bI - bucketIndexScanStep
 	}
 
-	bIMax := skymodules.DistributionTrackerTotalBuckets
+	bIMax := skymodules.DistributionTrackerTotalBuckets - 1
 	if bI+bucketIndexScanStep <= skymodules.DistributionTrackerTotalBuckets {
 		bIMax = bI + bucketIndexScanStep
 	}
@@ -1223,31 +1215,30 @@ func bucketIndexRange(bI int) (int, int) {
 // worker meets a certain set of criteria that make it useful for downloads.
 // It's only useful if it is not on any type of cooldown, if it's async ready
 // and if it's not price gouging.
-func isGoodForDownload(w *worker, pieces []uint64) (bool, string) {
+func isGoodForDownload(w *worker, pieces []uint64) bool {
 	// workers that can't download any pieces are ignored
 	if len(pieces) == 0 {
-		return false, "no pieces"
+		return false
 	}
 
 	// workers on cooldown or that are non async ready are not useful
 	if w.managedOnMaintenanceCooldown() || !w.managedAsyncReady() {
-		return false, fmt.Sprintf("MAINT CD: %v ASYNC READY: %v", w.managedOnMaintenanceCooldown(), w.managedAsyncReady())
+		return false
 	}
 
 	// workers that are price gouging are not useful
 	pt := w.staticPriceTable().staticPriceTable
 	allowance := w.staticCache().staticRenterAllowance
 	if err := checkProjectDownloadGouging(pt, allowance); err != nil {
-		return false, "gouging"
+		return false
 	}
 
-	return true, ""
+	return true
 }
 
 // splitResolvedUnresolved is a helper function that splits the given workers
-// into resolved and unresolved worker arrays. Note that if the complete chance
-// of the unresolved worker is zero, it gets filtered as its theoretically never
-// going to resolve.
+// into resolved and unresolved worker arrays. Note that if the worker is on a
+// cooldown we exclude it from the returned workers list.
 func splitResolvedUnresolved(workers []*individualWorker) ([]downloadWorker, []*individualWorker) {
 	resolvedWorkers := make([]downloadWorker, 0, len(workers))
 	unresolvedWorkers := make([]*individualWorker, 0, len(workers))

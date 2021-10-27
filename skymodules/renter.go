@@ -62,6 +62,10 @@ var (
 	}
 
 	// DefaultSkynetBaseCost is the default base cost applied to all downloads.
+	// The base cost protects us against very cheap (or free) workers as their
+	// cost factor doesn't weigh as much. It also directly influences the cost
+	// of an overdrive worker, the higher the base cost, the higher the cost of
+	// an overdrive.
 	DefaultSkynetBaseCost = types.SiacoinPrecision.Mul64(200).Div(types.NewCurrency64(1e12)) // 100SC / TB
 
 	// ErrHostFault indicates if an error is the host's fault.
