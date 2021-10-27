@@ -51,6 +51,9 @@ const (
 	maxOverdriveWorkers = 10
 )
 
+var JobsPerHostMu sync.Mutex
+var JobsPerHost = make(map[string]uint64)
+
 // pcwsUnresolvedWorker tracks an unresolved worker that is associated with a
 // specific projectChunkWorkerSet. The timestamp indicates when the unresolved
 // worker is expected to have a resolution, and is an estimate based on historic
@@ -300,6 +303,17 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 		coolDownPenalty = time.Until(wms.cooldownUntil)
 		wms.mu.Unlock()
 	}
+
+	JobsPerHostMu.Lock()
+	JobsPerHost[w.staticHostPubKeyStr]++
+	if JobsPerHost[w.staticHostPubKeyStr]%25 == 0 {
+		fmt.Println("\n- - - - -")
+		for worker, cnt := range JobsPerHost {
+			fmt.Printf("worker %v jobs %v\n", worker, cnt)
+		}
+		fmt.Println("- - - - -")
+	}
+	JobsPerHostMu.Unlock()
 
 	// Create and launch the job.
 	ctx, cancel := context.WithTimeout(pcws.staticCtx, pcwsHasSectorTimeout)
