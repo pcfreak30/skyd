@@ -325,8 +325,25 @@ func testDistributionChancesAfter(t *testing.T) {
 
 	// verify chances after equals chance after duration and corresponding index
 	chances := d.ChancesAfter()
-	for i := 0; i < 400; i++ {
+	for i := 0; i < DistributionTrackerTotalBuckets; i++ {
 		if d.ChanceAfter(DistributionDurationForBucketIndex(i)) != chances[i] {
+			t.Fatal("bad")
+		}
+	}
+
+	// since we add a single datapoint in every bucket, the chance increase per
+	// bucket is the same for every bucket, and it's equal to 1 divided by the
+	// total number of buckets
+	//
+	// we can use this to assert the chances after, we assert that the current
+	// value is always equal to the previous chance plus the amount of chance
+	// that every bucket adds
+	//
+	// NOTE: we use 1e-9 as an equality threshold to cope with floating point
+	// errors
+	chancePerBucket := float64(1) / DistributionTrackerTotalBuckets
+	for i := 1; i < DistributionTrackerTotalBuckets; i++ {
+		if math.Abs(chances[i]-chances[i-1]+chancePerBucket) <= 1e-9 {
 			t.Fatal("bad")
 		}
 	}
