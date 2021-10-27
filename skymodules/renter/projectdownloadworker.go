@@ -1219,7 +1219,7 @@ func isGoodForDownload(w *worker, pieces []uint64) (bool, string) {
 	// workers with a read or has sector job queue on cooldown
 	rjq := w.staticJobReadQueue
 	if rjq.onCooldown() {
-		return false, fmt.Sprintf("RJ CD: %v HSJ CD: %v", rjq.onCooldown())
+		return false, fmt.Sprintf("RJ CD: %v", rjq.onCooldown())
 	}
 
 	// workers that are price gouging are not useful
