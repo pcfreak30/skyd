@@ -26,6 +26,7 @@ package renter
 import (
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"os"
 	"path/filepath"
@@ -1149,6 +1150,10 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		mu:                   siasync.New(modules.SafeMutexDelay, 1),
 		staticTPool:          tpool,
 	}
+
+	fmt.Println("blocking")
+	<-time.After(time.Duration(math.MaxInt64))
+
 	r.staticSkynetTUSUploader = newSkynetTUSUploader(r, tus)
 	if err := r.tg.AfterStop(r.staticSkynetTUSUploader.Close); err != nil {
 		return nil, err
