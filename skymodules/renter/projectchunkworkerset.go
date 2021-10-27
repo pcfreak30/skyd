@@ -51,7 +51,10 @@ const (
 	maxOverdriveWorkers = 10
 )
 
+// JobsPerHostMu protects the jobsperhost map
 var JobsPerHostMu sync.Mutex
+
+// JobsPerHost keeps track of the number of HS jobs per host
 var JobsPerHost = make(map[string]uint64)
 
 // pcwsUnresolvedWorker tracks an unresolved worker that is associated with a
