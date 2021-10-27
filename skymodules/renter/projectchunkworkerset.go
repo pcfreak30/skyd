@@ -57,7 +57,7 @@ var JobsPerHostMu sync.Mutex
 // JobsPerHost keeps track of the number of HS jobs per host
 var JobsPerHost = make(map[string]uint64)
 
-// WorkerPoolLength protects the WorkerPoolLength map
+// WorkerPoolLengthMu protects the WorkerPoolLength map
 var WorkerPoolLengthMu sync.Mutex
 
 // WorkerPoolLength keeps track of the number of workers in the pool
