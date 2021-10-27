@@ -2,7 +2,6 @@ package renter
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -352,7 +351,6 @@ func (j jobHasSectorBatch) callExecute() {
 		})
 		// Report success or failure to the queue.
 		if err != nil {
-			fmt.Println("HS err", err)
 			hsj.staticQueue.callReportFailure(err)
 			continue
 		}

@@ -231,4 +231,5 @@ func main() {
 	// https://blog.twitch.tv/en/2019/04/10/go-memory-ballast-how-i-learnt-to-stop-worrying-and-love-the-heap-26c2462549a2/
 	ballast := make([]byte, 10<<30)
 	fmt.Fprintf(ioutil.Discard, fmt.Sprintf("%v", len(ballast)))
+	fmt.Println("ballast added")
 }
