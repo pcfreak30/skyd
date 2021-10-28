@@ -299,7 +299,6 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Log("BS uploaded")
 
 	// Download the base sector using the skylink and parse it.
 	offset, fetchSize, err := skylink.OffsetAndFetchSize()
@@ -308,10 +307,8 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	}
 	var bs2 []byte
 	err = build.Retry(600, 100*time.Millisecond, func() error {
-		t.Log("BS downloading...")
 		bs2, _, err = r.managedDownloadByRoot(context.Background(), skylink.MerkleRoot(), offset, fetchSize, skymodules.DefaultSkynetPricePerMS)
 		if err != nil {
-			t.Log("BS download err", err)
 			_, mineErr := wt.rt.miner.AddBlock()
 			r.staticWorkerPool.callUpdate()
 			return errors.Compose(err, mineErr)
@@ -321,7 +318,6 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Log("BS downloaded")
 
 	// Compare base sectors.
 	if !bytes.Equal(bs[:modules.SectorSize], bs2) {
@@ -333,13 +329,11 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	var wps skymodules.WorkerPoolStatus
 	var wpsErr error
 	err = build.Retry(60, time.Second, func() error {
-		t.Log("MD parsing...")
 		sl2, fanout2, _, rawSM, _, _, err = r.ParseSkyfileMetadata(bs2)
 		if err != nil {
-			t.Log("MD parse err", err)
 			_, mineErr := wt.rt.miner.AddBlock()
-			r.staticWorkerPool.callUpdate()
 			wps, wpsErr = r.WorkerPoolStatus()
+			r.staticWorkerPool.callUpdate()
 			return errors.Compose(err, wpsErr, mineErr)
 		}
 		return nil
