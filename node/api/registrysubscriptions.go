@@ -59,16 +59,39 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 	}
 	defer c.Close()
 
-	// TODO: Get bandwidth limit and delay from query.
-	bandwidthLimit := uint64(1000)
-	notificationDelay := time.Second
+	// Make sure the limit and delay are set.
+	bandwidthLimitStr := req.FormValue("bandwidthlimit")
+	if bandwidthLimitStr == "" {
+		WriteError(w, Error{"bandwidthlimit param not specified"}, http.StatusBadRequest)
+		return
+	}
+	notificationDelayStr := req.FormValue("notificationdelay")
+	if notificationDelayStr == "" {
+		WriteError(w, Error{"notificationdelay param not specified"}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse them.
+	var bandwidthLimit uint64
+	_, err = fmt.Sscan(bandwidthLimitStr, &bandwidthLimit)
+	if err != nil {
+		WriteError(w, Error{"failed to parse bandwidthlimit" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	var notificationDelayMS uint64
+	_, err = fmt.Sscan(notificationDelayStr, &notificationDelayMS)
+	if err != nil {
+		WriteError(w, Error{"failed to parse notificationdelay" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	notificationDelay := time.Millisecond * time.Duration(notificationDelayMS)
 
 	// Compute how many notifications per second we want to serve.
-	notificationsPerSecond := bandwidthLimit / RegistrySubscriptionNotificationSize
+	notificationsPerSecond := float64(bandwidthLimit) / RegistrySubscriptionNotificationSize
 
 	// Compute how much time needs to pass between notifications to reach
 	// that limit.
-	timeBetweenNotifications := time.Second / time.Duration(notificationsPerSecond)
+	timeBetweenNotifications := time.Duration(float64(time.Second) / notificationsPerSecond)
 
 	// Declare a handler for notifications.
 	var lastWriteMu sync.Mutex
@@ -82,7 +105,12 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 		if timeSinceLastWrite < timeBetweenNotifications {
 			sleepTime += timeBetweenNotifications - timeSinceLastWrite
 		}
-		time.Sleep(sleepTime)
+		fmt.Println("time to sleep", sleepTime.Milliseconds())
+		select {
+		case <-req.Context().Done():
+			return nil
+		case <-time.After(sleepTime):
+		}
 		return c.WriteJSON(RegistrySubscriptionResponse{
 			Error:     "",
 			DataKey:   srv.Tweak,

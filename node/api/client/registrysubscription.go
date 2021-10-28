@@ -1,7 +1,11 @@
 package client
 
 import (
+	"fmt"
+	"math"
 	"net/http"
+	"net/url"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"gitlab.com/NebulousLabs/errors"
@@ -15,8 +19,17 @@ import (
 
 // BeginRegistrySubscription starts a new subscription.
 func (c *Client) BeginRegistrySubscription(notifyFunc func(skymodules.RegistryEntry), closeHandler func(_ int, _ string) error) (*RegistrySubscription, error) {
+	// Subscribe without limits.
+	return c.BeginRegistrySubscriptionCustom(math.MaxUint64, 0, notifyFunc, closeHandler)
+}
+
+// BeginRegistrySubscriptionCustom starts a new subscription with custom params.
+func (c *Client) BeginRegistrySubscriptionCustom(bandwidthLimit uint64, notificationDelay time.Duration, notifyFunc func(skymodules.RegistryEntry), closeHandler func(_ int, _ string) error) (*RegistrySubscription, error) {
 	// Build the URL.
-	url := "ws://" + c.Address + "/skynet/registry/subscription"
+	var values url.Values
+	values.Set("bandwidthlimit", fmt.Sprint(bandwidthLimit))
+	values.Set("notificationdelay", fmt.Sprint(notificationDelay.Milliseconds()))
+	url := fmt.Sprintf("ws://%v/skynet/registry/subscription?%v", c.Address, values.Encode())
 
 	// Set the useragent.
 	agent := c.UserAgent
