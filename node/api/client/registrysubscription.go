@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/hex"
 	"fmt"
 	"math"
 	"net/http"
@@ -89,7 +90,19 @@ func (rs *RegistrySubscription) threadedListen() {
 			_ = rs.staticConn.Close()
 			return
 		}
-		srv := modules.NewSignedRegistryValue(resp.DataKey, resp.Data, resp.Revision, resp.Signature, resp.Type)
+		var sig crypto.Signature
+		signature, err := hex.DecodeString(resp.Signature)
+		if err != nil {
+			_ = rs.staticConn.Close()
+			return
+		}
+		data, err := hex.DecodeString(resp.Data)
+		if err != nil {
+			_ = rs.staticConn.Close()
+			return
+		}
+		copy(sig[:], signature)
+		srv := modules.NewSignedRegistryValue(resp.DataKey, data, resp.Revision, sig, resp.Type)
 		rs.staticNotifyFunc(skymodules.NewRegistryEntry(resp.PubKey, srv))
 	}
 }

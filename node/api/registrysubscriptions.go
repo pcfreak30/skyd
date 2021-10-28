@@ -2,6 +2,7 @@ package api
 
 import (
 	"container/list"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"sync"
@@ -35,9 +36,9 @@ type RegistrySubscriptionResponse struct {
 
 	DataKey   crypto.Hash        `json:"datakey"`
 	PubKey    types.SiaPublicKey `json:"pubkey"`
-	Signature crypto.Signature   `json:"signature"`
+	Signature string             `json:"signature"`
 
-	Data     []byte                    `json:"data"`
+	Data     string                    `json:"data"`
 	Revision uint64                    `json:"revision"`
 	Type     modules.RegistryEntryType `json:"type"`
 }
@@ -181,8 +182,8 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 				Error:     "",
 				DataKey:   next.staticSRV.Tweak,
 				PubKey:    next.staticSRV.PubKey,
-				Signature: next.staticSRV.Signature,
-				Data:      next.staticSRV.Data,
+				Signature: hex.EncodeToString(next.staticSRV.Signature[:]),
+				Data:      hex.EncodeToString(next.staticSRV.Data),
 				Revision:  next.staticSRV.Revision,
 				Type:      next.staticSRV.Type,
 			})

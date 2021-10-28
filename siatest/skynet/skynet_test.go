@@ -5771,7 +5771,9 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 	// Set an entry.
 	sk, pk := crypto.GenerateKeyPair()
 	spk := types.Ed25519PublicKey(pk)
-	srv1 := modules.NewRegistryValue(crypto.Hash{}, []byte{}, 0, modules.RegistryTypeWithoutPubkey).Sign(sk)
+	var tweak crypto.Hash
+	fastrand.Read(tweak[:])
+	srv1 := modules.NewRegistryValue(tweak, []byte{}, 0, modules.RegistryTypeWithoutPubkey).Sign(sk)
 	err = p.RegistryUpdateWithEntry(spk, srv1)
 	if err != nil {
 		t.Fatal(err)
