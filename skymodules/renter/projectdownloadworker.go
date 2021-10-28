@@ -800,6 +800,7 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) {
 // and launch every worker that can be launched from that set. Every iteration
 // we check whether the download was finished.
 func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
+	fmt.Println("DL launched...")
 	// grab some variables
 	ws := pdc.workerState
 	ec := pdc.workerSet.staticErasureCoder
@@ -859,6 +860,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		case jrr := <-pdc.workerResponseChan:
 			pdc.handleJobReadResponse(jrr)
 		case <-pdc.ctx.Done():
+			fmt.Println("DL timed out")
 			pdc.fail(errors.New("download timed out"))
 			return
 		}
@@ -866,10 +868,12 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		// check whether the download is completed
 		completed, err := pdc.finished()
 		if completed {
+			fmt.Println("DL succeeded")
 			pdc.finalize()
 			return
 		}
 		if err != nil {
+			fmt.Println("DL failed", err)
 			pdc.fail(err)
 			return
 		}
