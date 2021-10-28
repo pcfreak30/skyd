@@ -20,6 +20,7 @@ require (
 	github.com/uber/jaeger-client-go v2.27.0+incompatible
 	github.com/uber/jaeger-lib v2.4.1+incompatible
 	github.com/vbauerster/mpb/v5 v5.0.3
+	gitlab.com/NebulousLabs/Sia v1.5.7-0.20211028173059-04e463f5f84c // indirect
 	gitlab.com/NebulousLabs/encoding v0.0.0-20200604091946-456c3dc907fe
 	gitlab.com/NebulousLabs/entropy-mnemonics v0.0.0-20181018051301-7532f67e3500
 	gitlab.com/NebulousLabs/errors v0.0.0-20200929122200-06c536cf6975
