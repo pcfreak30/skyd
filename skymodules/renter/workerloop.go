@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -218,6 +219,7 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 		// just not launching any new jobs until its current jobs finish up.
 		return false
 	}
+	fmt.Printf("read outstanding vs limit %v < %v\n", readOutstanding, readLimit)
 
 	// Perform a disrupt for testing. This is some code that ensures async job
 	// launches are controlled correctly. The disrupt operates on a mock worker,
