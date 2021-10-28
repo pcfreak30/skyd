@@ -214,7 +214,7 @@ docker-ci: clean
 	@docker stop test || true && docker rm test || true
 # docker-test-long allows for running long tests faster in the docker container
 docker-test-long:
-	GORACE='$(racevars)' go test -race -v -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=TestParseSkyfileMetadataRecursive -count=1
+	GORACE='$(racevars)' go test -race -v -failfast -tags='testing debug netgo' -timeout=3600s -run=TestParseSkyfileMetadataRecursive -count=1 ./skymodules.renter
 
 test-cpu:
 	go test -v -tags='testing debug netgo' -timeout=500s -cpuprofile cpu.prof $(pkgs) -run=$(run) -count=$(count)
