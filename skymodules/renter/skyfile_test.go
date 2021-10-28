@@ -308,12 +308,6 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	}
 	var bs2 []byte
 	err = build.Retry(600, 100*time.Millisecond, func() error {
-		_, err := wt.rt.miner.AddBlock()
-		if err != nil {
-			return err
-		}
-		r.staticWorkerPool.callUpdate()
-
 		t.Log("BS downloading...")
 		bs2, _, err = r.managedDownloadByRoot(context.Background(), skylink.MerkleRoot(), offset, fetchSize, skymodules.DefaultSkynetPricePerMS)
 		if err != nil {
@@ -337,12 +331,6 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	var wps skymodules.WorkerPoolStatus
 	var wpsErr error
 	err = build.Retry(600, 100*time.Millisecond, func() error {
-		_, err := wt.rt.miner.AddBlock()
-		if err != nil {
-			return err
-		}
-		r.staticWorkerPool.callUpdate()
-
 		t.Log("MD parsing...")
 		sl2, fanout2, _, rawSM, _, _, err = r.ParseSkyfileMetadata(bs2)
 		if err != nil {
