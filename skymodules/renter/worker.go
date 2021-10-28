@@ -21,6 +21,7 @@ import (
 	"unsafe"
 
 	"gitlab.com/NebulousLabs/threadgroup"
+	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -37,7 +38,8 @@ const (
 	// registry cache.
 	registryCacheSize = 1 << 20 // 1 MiB
 )
-const (
+
+var (
 	// These variables define the total amount of data that a worker is willing
 	// to queue at once when performing async tasks. If the worker has more data
 	// queued in its async queue than this, it will stop launching jobs so that
@@ -46,8 +48,16 @@ const (
 	// The worker may adjust these values dynamically as it starts to run and
 	// determines how much stuff it can do simultaneously before its jobs start
 	// to have significant latency impact.
-	initialConcurrentAsyncReadData  = 10e6
-	initialConcurrentAsyncWriteData = 10e6
+	initialConcurrentAsyncReadData = build.Select(build.Var{
+		Standard: 10e6,
+		Dev:      10e6,
+		Testing:  10e4, // don't strain CI
+	}).(uint64)
+	initialConcurrentAsyncWriteData = build.Select(build.Var{
+		Standard: 10e6,
+		Dev:      10e6,
+		Testing:  10e4, // don't strain CI
+	}).(uint64)
 )
 
 type (

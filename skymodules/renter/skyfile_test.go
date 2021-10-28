@@ -330,7 +330,7 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	var fanout2, rawSM []byte
 	var wps skymodules.WorkerPoolStatus
 	var wpsErr error
-	err = build.Retry(6, 10*time.Second, func() error {
+	err = build.Retry(60, time.Second, func() error {
 		t.Log("MD parsing...")
 		sl2, fanout2, _, rawSM, _, _, err = r.ParseSkyfileMetadata(bs2)
 		if err != nil {

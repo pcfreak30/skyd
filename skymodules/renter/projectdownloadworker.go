@@ -78,15 +78,25 @@ const (
 	// availability rate of each worker reaches this threshold we build a
 	// chimera out of them.
 	chimeraAvailabilityRateThreshold = float64(2)
+)
 
+var (
 	// maxWaitUnresolvedWorkerUpdate defines the maximum amount of time we want
 	// to wait for unresolved workers to become resolved before trying to
 	// recreate the worker set.
-	maxWaitUnresolvedWorkerUpdate = 50 * time.Millisecond
+	maxWaitUnresolvedWorkerUpdate = build.Select(build.Var{
+		Standard: 50 * time.Millisecond,
+		Dev:      50 * time.Millisecond,
+		Testing:  250 * time.Millisecond, // don't strain CI
+	}).(time.Duration)
 
 	// maxWaitUpdateWorkers defines the maximum amount of time we want to wait
 	// for workers to be updated.
-	maxWaitUpdateWorkers = 25 * time.Millisecond
+	maxWaitUpdateWorkers = build.Select(build.Var{
+		Standard: 25 * time.Millisecond,
+		Dev:      25 * time.Millisecond,
+		Testing:  250 * time.Millisecond, // don't strain CI
+	}).(time.Duration)
 )
 
 // NOTE: all of the following defined types are used by the PDC, which is
