@@ -178,6 +178,9 @@ test-v:
 test-long: clean 
 	@mkdir -p cover
 	GORACE='$(racevars)' MONGODB_URI=$(mongouri) go test -race --coverprofile='./cover/cover.out' -v -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=$(run) -count=$(count)
+test-custom: clean 
+	@mkdir -p cover
+	GORACE='$(racevars)' MONGODB_URI=$(mongouri) go test -race --coverprofile='./cover/cover.out' -v -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=TestParseSkyfileMetadataRecursive -count=1
 
 # Use on Linux (and MacOS)
 test-vlong: clean fmt vet lint
