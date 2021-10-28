@@ -1,7 +1,6 @@
 package renter
 
 import (
-	"fmt"
 	"sync/atomic"
 	"time"
 
