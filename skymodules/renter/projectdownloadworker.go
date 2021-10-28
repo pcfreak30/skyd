@@ -813,11 +813,11 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		ws.mu.Lock()
 		for _, uw := range ws.unresolvedWorkers {
 			gfd := isGoodForDownload(uw.staticWorker, pdc.staticPieceIndices)
-			fmt.Printf("unresolved worker gfd %v maint CD %v HS CD %v RS CD %v\n", gfd, uw.staticWorker.managedOnMaintenanceCooldown(), uw.staticWorker.staticJobHasSectorQueue.callOnCooldown(), uw.staticWorker.staticJobReadQueue.callOnCooldown())
+			fmt.Printf("unresolved worker gfd %v maint CD %v HS CD %v RS CD %v async ready %v\n", gfd, uw.staticWorker.managedOnMaintenanceCooldown(), uw.staticWorker.staticJobHasSectorQueue.callOnCooldown(), uw.staticWorker.staticJobReadQueue.callOnCooldown(), uw.staticWorker.managedAsyncReady())
 		}
 		for _, rw := range ws.resolvedWorkers {
 			gfd := isGoodForDownload(rw.worker, rw.pieceIndices)
-			fmt.Printf("unresolved worker gfd %v maint CD %v HS CD %v RS CD %v\n", gfd, rw.worker.managedOnMaintenanceCooldown(), rw.worker.staticJobHasSectorQueue.callOnCooldown(), rw.worker.staticJobReadQueue.callOnCooldown())
+			fmt.Printf("unresolved worker gfd %v maint CD %v HS CD %v RS CD %v async ready %v\n", gfd, rw.worker.managedOnMaintenanceCooldown(), rw.worker.staticJobHasSectorQueue.callOnCooldown(), rw.worker.staticJobReadQueue.callOnCooldown(), rw.worker.managedAsyncReady())
 		}
 		ws.mu.Unlock()
 
