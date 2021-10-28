@@ -429,17 +429,17 @@ func TestCreateGetUpload(t *testing.T) {
 		Complete:    false,
 		ServerNames: []string{us.staticPortalHostname},
 
-		FanoutBytes: nil,
-		FileInfo:    fi,
-		FileName:    "somename",
-		SiaPath:     skymodules.RandomSiaPath(),
+		FileInfo: fi,
+		FileName: "somename",
+		SiaPath:  skymodules.RandomSiaPath(),
 
 		BaseChunkRedundancy: 1,
 		Metadata:            []byte{3, 2, 1},
 
-		FanoutDataPieces:   2,
-		FanoutParityPieces: 3,
-		CipherType:         crypto.TypePlain,
+		FanoutSequenceCounter: 1,
+		FanoutDataPieces:      2,
+		FanoutParityPieces:    3,
+		CipherType:            crypto.TypePlain,
 	}
 	createdUpload, err := us.CreateUpload(context.Background(), fi, expectedUpload.SiaPath, expectedUpload.FileName, expectedUpload.BaseChunkRedundancy, expectedUpload.FanoutDataPieces, expectedUpload.FanoutParityPieces, expectedUpload.Metadata, expectedUpload.CipherType)
 	if err != nil {
@@ -526,6 +526,10 @@ func TestCommitWriteChunk(t *testing.T) {
 	if err := collection.Drop(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	collection = createStore.staticFanoutCollection()
+	if err := collection.Drop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 
 	// Large upload.
 	sm := fastrand.Bytes(10)
@@ -549,8 +553,8 @@ func TestCommitWriteChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 	upload := u.(*MongoTUSUpload)
-	if !bytes.Equal(upload.FanoutBytes, fanout1) {
-		t.Fatal("wrong fanout", len(upload.FanoutBytes), len(fanout1))
+	if upload.FanoutSequenceCounter != 2 {
+		t.Fatal("wrong sequence number", 2, upload.FanoutSequenceCounter)
 	}
 	if upload.FileInfo.Offset != newOffset {
 		t.Fatal("wrong offset", upload.FileInfo.Offset, newOffset)
@@ -580,8 +584,8 @@ func TestCommitWriteChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 	upload = u.(*MongoTUSUpload)
-	if !bytes.Equal(upload.FanoutBytes, append(fanout1, fanout2...)) {
-		t.Fatal("wrong fanout", len(upload.FanoutBytes))
+	if upload.FanoutSequenceCounter != 3 {
+		t.Fatal("wrong sequence number", 3, upload.FanoutSequenceCounter)
 	}
 	if upload.FileInfo.Offset != newOffset {
 		t.Fatal("wrong offset", upload.FileInfo.Offset, newOffset)
@@ -595,9 +599,37 @@ func TestCommitWriteChunk(t *testing.T) {
 	if !reflect.DeepEqual(upload.ServerNames, []string{"create", "commit"}) {
 		t.Fatal("wrong portalnames", upload.ServerNames)
 	}
+	finalFanout, err := upload.Fanout(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(finalFanout, append(fanout1, fanout2...)) {
+		t.Fatal("wrong final fanout")
+	}
+
+	// Commit again. With the same sequence counter as before. Should be a
+	// no-op.
+	copyBefore, err := json.Marshal(upload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upload.FanoutSequenceCounter--
+	err = u.CommitWriteChunk(context.Background(), newOffset, lastWrite, false, fanout2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	copyAfter, err := json.Marshal(upload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(copyBefore, copyAfter) {
+		t.Log(string(copyBefore))
+		t.Log(string(copyAfter))
+		t.Fatal("should've been a no-op")
+	}
 
 	// Deep-Copy the upload.
-	copyBefore, err := json.Marshal(u)
+	copyBefore, err = json.Marshal(u)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -613,11 +645,13 @@ func TestCommitWriteChunk(t *testing.T) {
 		t.Fatal("should fail")
 	}
 
-	copyAfter, err := json.Marshal(u)
+	copyAfter, err = json.Marshal(u)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(copyBefore, copyAfter) {
+		t.Log(string(copyBefore))
+		t.Log(string(copyAfter))
 		t.Fatal("copies don't match")
 	}
 }
@@ -687,6 +721,22 @@ func TestCommitFinishUpload(t *testing.T) {
 		t.Fatal("skylink shouldn't be set")
 	}
 
+	// Commit a chunk.
+	err = u.CommitWriteChunk(context.Background(), 1, time.Now(), false, []byte{1, 2, 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be a fanout chunk.
+	fanouts := us.staticFanoutCollection()
+	result, err := fanouts.Find(context.Background(), bson.M{"uploadid": "regular"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.RemainingBatchLength() != 1 {
+		t.Fatal("there should be 1 chunk")
+	}
+
 	// Finish it.
 	var h crypto.Hash
 	fastrand.Read(h[:])
@@ -716,6 +766,93 @@ func TestCommitFinishUpload(t *testing.T) {
 	}
 	if sl, set := upload.FileInfo.MetaData["Skylink"]; !set || !reflect.DeepEqual(sl, skylink.String()) {
 		t.Fatal("wrong skylink")
+	}
+
+	// Fanout chunks should be gone.
+	result, err = fanouts.Find(context.Background(), bson.M{"uploadid": "regular"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.RemainingBatchLength() > 0 {
+		t.Fatal("there shouldn't be any chunks left")
+	}
+}
+
+// TestCommitWriteChunkFanoutBytesCompat tests that a tus upload with the
+// "fanoutbytes" field set is upgraded to use the sharded fanout with sequence
+// numbers.
+func TestCommitWriteChunkFanoutBytesCompat(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// Use different stores for creating the uploads and getting the upload.
+	createStore, err := newMongoTestStore(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := createStore.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Reset collection.
+	collection := createStore.staticUploadCollection()
+	if err := collection.Drop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	collection = createStore.staticFanoutCollection()
+	if err := collection.Drop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create large upload.
+	sm := fastrand.Bytes(10)
+	largeUpload, err := createStore.CreateUpload(context.Background(), handler.FileInfo{ID: "large"}, skymodules.RandomSiaPath(), "large", 1, 1, 1, sm, crypto.TypePlain)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Give it some fanout.
+	u := largeUpload.(*MongoTUSUpload)
+	fanout1 := fastrand.Bytes(crypto.HashSize)
+	u.FanoutBytes = fanout1
+
+	// Commit some more fanout.
+	fanout2 := fastrand.Bytes(crypto.HashSize)
+	err = largeUpload.CommitWriteChunk(context.Background(), 0, time.Now().UTC(), false, fanout2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Fanout bytes should be gone.
+	if u.FanoutBytes != nil {
+		t.Fatal("fanout bytes should be nil'd out")
+	}
+	fanout, err := largeUpload.Fanout(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(fanout, append(fanout1, fanout2...)) {
+		t.Fatal("wrong fanout returned")
+	}
+
+	// Fetch the upload. Shouldn't have fanout bytes.
+	fetched, err := createStore.GetUpload(context.Background(), "large")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fetchedUpload := fetched.(*MongoTUSUpload)
+	if fetchedUpload.FanoutBytes != nil {
+		t.Fatal("fanout bytes should be nil'd out")
+	}
+	fanout, err = fetched.Fanout(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(fanout, append(fanout1, fanout2...)) {
+		t.Fatal("wrong fanout returned")
 	}
 }
 

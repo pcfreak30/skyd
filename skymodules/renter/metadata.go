@@ -154,20 +154,23 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 				if r.staticDeps.Disrupt("ShortUnfinishedFilesPruneDuration") {
 					unfinishedFilePruneDuration = UnfinishedFilePruneDurationTestDeps
 				}
-				// Check if it is time to prune the file
-				timeToPrune := time.Since(fileMetadata.CreateTime) > unfinishedFilePruneDuration
-				if timeToPrune {
-					// Delete the file if it is still unfinished after a month
-					err := r.staticFileSystem.DeleteFile(fileSiaPath)
-					if err != nil {
-						r.staticLog.Printf("Unable to delete unfinished file at %v: %v", fileSiaPath, err)
-					}
-					// No need to call update on the directory after deleting
-					// the file since we are in the process of updating the
-					// directory.
-					continue
-				}
+				/*
+					TODO: enable once portals have handled the current file updates.
 
+					// Check if it is time to prune the file
+						timeToPrune := time.Since(fileMetadata.CreateTime) > unfinishedFilePruneDuration
+						if timeToPrune {
+							// Delete the file if it is still unfinished after a month
+							err := r.staticFileSystem.DeleteFile(fileSiaPath)
+							if err != nil {
+								r.staticLog.Printf("Unable to delete unfinished file at %v: %v", fileSiaPath, err)
+							}
+							// No need to call update on the directory after deleting
+							// the file since we are in the process of updating the
+							// directory.
+							continue
+						}
+				*/
 				// Update the unfinished metadata fields
 				metadata.AggregateNumUnfinishedFiles++
 				metadata.NumUnfinishedFiles++
