@@ -49,14 +49,14 @@ var (
 	// determines how much stuff it can do simultaneously before its jobs start
 	// to have significant latency impact.
 	initialConcurrentAsyncReadData = build.Select(build.Var{
-		Standard: 1 << 7,
-		Dev:      1 << 7,
-		Testing:  1 << 5, // don't strain CI
+		Standard: 10 << 20,
+		Dev:      10 << 20,
+		Testing:  10 << 18,
 	}).(int)
 	initialConcurrentAsyncWriteData = build.Select(build.Var{
-		Standard: 1 << 7,
-		Dev:      1 << 7,
-		Testing:  1 << 5, // don't strain CI
+		Standard: 10 << 20,
+		Dev:      10 << 20,
+		Testing:  10 << 18,
 	}).(int)
 )
 
