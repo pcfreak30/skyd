@@ -180,6 +180,7 @@ func (wpt *workerPriceTable) staticNeedsToUpdate() bool {
 
 // managedUpdatePriceTable performs the UpdatePriceTableRPC on the host.
 func (w *worker) staticUpdatePriceTable() {
+	fmt.Println("updating PT...")
 	// Sanity check - This function runs on a fairly strict schedule, the
 	// control loop should not have called this function unless the price table
 	// is after its updateTime.
@@ -249,6 +250,7 @@ func (w *worker) staticUpdatePriceTable() {
 		if err == nil {
 			return
 		}
+		fmt.Println("PT update err", err)
 
 		// Because of race conditions, can't modify the existing price
 		// table, need to make a new one.
@@ -377,6 +379,7 @@ func (w *worker) staticUpdatePriceTable() {
 		staticRecentErrTime:    currentPT.staticRecentErrTime,
 	}
 	w.staticSetPriceTable(wpt)
+	fmt.Println("PT updated")
 }
 
 // checkUpdatePriceTableGouging verifies the cost of updating the price table is
