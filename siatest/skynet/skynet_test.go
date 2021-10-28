@@ -5943,7 +5943,7 @@ func testRegistrySubscriptionDelays(t *testing.T, p *siatest.TestNode) {
 		// 2 seconds between notifications.
 		d = notifications[1].Sub(start2)
 		if d < time.Second*5/2 || d >= time.Second*3 {
-			t.Fatalf("2: wrong delay: %v < %v < %v", delay, d, time.Second*3)
+			t.Fatalf("2: wrong delay: %v < %v < %v", time.Second*5/2, d, time.Second*3)
 		}
 		return nil
 	})

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"container/list"
 	"fmt"
 	"net/http"
 	"sync"
@@ -49,6 +50,33 @@ type RegistrySubscriptionRequest struct {
 	DataKey crypto.Hash        `json:"datakey,omitempty"`
 }
 
+// queuedNotification describes a queued websocket update.
+type queuedNotification struct {
+	staticSRV        skymodules.RegistryEntry
+	staticNotifyTime time.Time
+}
+
+// notificationQueue holds all undelivered websocket updates.
+type notificationQueue struct {
+	*list.List
+}
+
+// newNotificationQueue creates a new queue.
+func newNotificationQueue() *notificationQueue {
+	return &notificationQueue{
+		List: list.New(),
+	}
+}
+
+// Pop removes the first element of the queue.
+func (queue *notificationQueue) Pop() *queuedNotification {
+	mr := queue.Front()
+	if mr == nil {
+		return nil
+	}
+	return queue.List.Remove(mr).(*queuedNotification)
+}
+
 // skynetRegistrySubscriptionHandler handles websocket subscriptions to the registry.
 func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Upgrade connection to use websocket.
@@ -93,41 +121,80 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 	// that limit.
 	timeBetweenNotifications := time.Duration(float64(time.Second) / notificationsPerSecond)
 
-	// Declare a handler for notifications.
-	var lastWriteMu sync.Mutex
+	// Declare a handler for queuing notifications.
+	var queueMu sync.Mutex
+	queue := newNotificationQueue()
+	wakeChan := make(chan struct{}, 1)
 	var lastWrite time.Time
-	notifier := func(srv skymodules.RegistryEntry) error {
-		lastWriteMu.Lock()
-		sleepTime := notificationDelay
-		timeSinceLastWrite := time.Since(lastWrite)
-		lastWrite = time.Now()
-		lastWriteMu.Unlock()
-		if timeSinceLastWrite < timeBetweenNotifications {
-			sleepTime += timeBetweenNotifications - timeSinceLastWrite
+	queueNotification := func(srv skymodules.RegistryEntry) error {
+		queueMu.Lock()
+		// Compute lastWrite1 by adding he delay to the current time.
+		lastWrite1 := time.Now().Add(notificationDelay)
+
+		// Compute lastWrite2 by adding the minimum time between
+		// notifications to the last update we gave the client.
+		lastWrite2 := lastWrite.Add(timeBetweenNotifications)
+
+		// We push the next update, at the time that is further in the
+		// future.
+		if lastWrite1.After(lastWrite2) {
+			lastWrite = lastWrite1
+		} else {
+			lastWrite = lastWrite2
 		}
-		// Sleep. We only do this if the time to sleep is >1ms.
-		// Otherwise the connection is basically unrestricted and we
-		// save the overhead of time.After.
-		if sleepTime > time.Millisecond {
-			select {
-			case <-req.Context().Done():
-				return nil
-			case <-time.After(sleepTime):
-			}
-		}
-		return c.WriteJSON(RegistrySubscriptionResponse{
-			Error:     "",
-			DataKey:   srv.Tweak,
-			PubKey:    srv.PubKey,
-			Signature: srv.Signature,
-			Data:      srv.Data,
-			Revision:  srv.Revision,
-			Type:      srv.Type,
+		queue.PushBack(&queuedNotification{
+			staticSRV:        srv,
+			staticNotifyTime: lastWrite,
 		})
+		queueMu.Unlock()
+		select {
+		case wakeChan <- struct{}{}:
+		default:
+		}
+		return nil
 	}
 
+	// Start a worker for pushing notifications.
+	go func() {
+		for {
+			select {
+			case <-req.Context().Done():
+				return
+			case <-wakeChan:
+			}
+
+			queueMu.Lock()
+			next := queue.Pop()
+			queueMu.Unlock()
+			if next == nil {
+				continue
+			}
+
+			// Sleep until the notification time.
+			select {
+			case <-req.Context().Done():
+				return
+			case <-time.After(time.Until(next.staticNotifyTime)):
+			}
+
+			err := c.WriteJSON(RegistrySubscriptionResponse{
+				Error:     "",
+				DataKey:   next.staticSRV.Tweak,
+				PubKey:    next.staticSRV.PubKey,
+				Signature: next.staticSRV.Signature,
+				Data:      next.staticSRV.Data,
+				Revision:  next.staticSRV.Revision,
+				Type:      next.staticSRV.Type,
+			})
+			if err != nil {
+				msg := fmt.Sprintf("failed to notify client: %v", err)
+				_ = c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseAbnormalClosure, msg))
+			}
+		}
+	}()
+
 	// Start subscription.
-	subscriber, err := api.renter.NewRegistrySubscriber(notifier)
+	subscriber, err := api.renter.NewRegistrySubscriber(queueNotification)
 	if err != nil {
 		c.WriteJSON(RegistrySubscriptionResponse{Error: fmt.Sprintf("failed to create subscriber: %v", err)})
 	}
@@ -153,7 +220,7 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 		case RegistrySubscriptionActionSubscribe:
 			srv := subscriber.Subscribe(r.PubKey, r.DataKey)
 			if srv != nil {
-				if err := notifier(*srv); err != nil {
+				if err := queueNotification(*srv); err != nil {
 					// This probably won't reach the client
 					// but try a graceful close anyway.
 					msg := fmt.Sprintf("failed to notify client: %v", err)
