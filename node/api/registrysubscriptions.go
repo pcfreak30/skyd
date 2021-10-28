@@ -105,11 +105,15 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 		if timeSinceLastWrite < timeBetweenNotifications {
 			sleepTime += timeBetweenNotifications - timeSinceLastWrite
 		}
-		fmt.Println("time to sleep", sleepTime.Milliseconds())
-		select {
-		case <-req.Context().Done():
-			return nil
-		case <-time.After(sleepTime):
+		// Sleep. We only do this if the time to sleep is >1ms.
+		// Otherwise the connection is basically unrestricted and we
+		// save the overhead of time.After.
+		if sleepTime > time.Millisecond {
+			select {
+			case <-req.Context().Done():
+				return nil
+			case <-time.After(sleepTime):
+			}
 		}
 		return c.WriteJSON(RegistrySubscriptionResponse{
 			Error:     "",
