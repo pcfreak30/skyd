@@ -26,7 +26,7 @@ func (c *Client) BeginRegistrySubscription(notifyFunc func(skymodules.RegistryEn
 // BeginRegistrySubscriptionCustom starts a new subscription with custom params.
 func (c *Client) BeginRegistrySubscriptionCustom(bandwidthLimit uint64, notificationDelay time.Duration, notifyFunc func(skymodules.RegistryEntry), closeHandler func(_ int, _ string) error) (*RegistrySubscription, error) {
 	// Build the URL.
-	var values url.Values
+	values := url.Values{}
 	values.Set("bandwidthlimit", fmt.Sprint(bandwidthLimit))
 	values.Set("notificationdelay", fmt.Sprint(notificationDelay.Milliseconds()))
 	url := fmt.Sprintf("ws://%v/skynet/registry/subscription?%v", c.Address, values.Encode())
