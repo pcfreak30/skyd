@@ -176,12 +176,11 @@ lint:
     paths:
       - .cache
   script:
-      - echo "skipped"
-    # - export GOCACHE=$CI_PROJECT_DIR/.cache/gocache
-    # - make vet
-    # - make lint
-    # - make markdown-spellcheck
-    # - make test
+    - export GOCACHE=$CI_PROJECT_DIR/.cache/gocache
+    - make vet
+    - make lint
+    - make markdown-spellcheck
+    - make test
 
 #################
 # Build Stage
@@ -195,7 +194,7 @@ build:
     paths:
       - $CI_PROJECT_DIR/artifacts
   script:
-    - make test-custom mongouri=$MONGODB_URI run=. pkgs="$package_renter_pkgs"
+    - ./check-builds.sh
 
 #################
 # Deploy Stage
@@ -233,7 +232,7 @@ package-renter-tests:
     paths:
       - .cache
   script:
-    - make test-custom mongouri=$MONGODB_URI run=. pkgs="$package_renter_pkgs"
+    - make test-long mongouri=$MONGODB_URI run=. pkgs="$package_renter_pkgs"
 
 package-tests:
   <<: *default_test_params
