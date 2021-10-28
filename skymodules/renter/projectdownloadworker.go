@@ -810,6 +810,17 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 
 	// verify we have enough workers to complete the download
 	if len(workers) < ec.MinPieces() {
+		ws.mu.Lock()
+		for _, uw := range ws.unresolvedWorkers {
+			gfd := isGoodForDownload(uw.staticWorker, pdc.staticPieceIndices)
+			fmt.Printf("unresolved worker gfd %v maint CD %v HS CD %v RS CD %v\n", gfd, uw.staticWorker.managedOnMaintenanceCooldown(), uw.staticWorker.staticJobHasSectorQueue.callOnCooldown(), uw.staticWorker.staticJobReadQueue.callOnCooldown())
+		}
+		for _, rw := range ws.resolvedWorkers {
+			gfd := isGoodForDownload(rw.worker, rw.pieceIndices)
+			fmt.Printf("unresolved worker gfd %v maint CD %v HS CD %v RS CD %v\n", gfd, rw.worker.managedOnMaintenanceCooldown(), rw.worker.staticJobHasSectorQueue.callOnCooldown(), rw.worker.staticJobReadQueue.callOnCooldown())
+		}
+		ws.mu.Unlock()
+
 		pdc.fail(errors.Compose(ErrRootNotFound, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v", len(workers), ec.MinPieces()))))
 		return
 	}
