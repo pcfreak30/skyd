@@ -52,12 +52,12 @@ var (
 		Standard: 1 << 7,
 		Dev:      1 << 7,
 		Testing:  1 << 5, // don't strain CI
-	}).(uint64)
+	}).(int)
 	initialConcurrentAsyncWriteData = build.Select(build.Var{
 		Standard: 1 << 7,
 		Dev:      1 << 7,
 		Testing:  1 << 5, // don't strain CI
-	}).(uint64)
+	}).(int)
 )
 
 type (
@@ -275,8 +275,8 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		// These may be updated in real time as the worker collects metrics
 		// about itself.
 		staticLoopState: &workerLoopState{
-			atomicReadDataLimit:  initialConcurrentAsyncReadData,
-			atomicWriteDataLimit: initialConcurrentAsyncWriteData,
+			atomicReadDataLimit:  uint64(initialConcurrentAsyncReadData),
+			atomicWriteDataLimit: uint64(initialConcurrentAsyncWriteData),
 		},
 
 		// Initialize a buffer pool handing out 4kb buffers. This to prevent
