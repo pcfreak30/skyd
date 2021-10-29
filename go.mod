@@ -2,7 +2,7 @@ module gitlab.com/SkynetLabs/skyd
 
 go 1.13
 
-replace go.sia.tech/siad v1.5.7 => gitlab.com/pjbrone/Sia v1.4.13
+replace go.sia.tech/siad v1.5.7 => github.com/peterjan/siad v1.5.7
 
 require (
 	github.com/HdrHistogram/hdrhistogram-go v1.1.0 // indirect
