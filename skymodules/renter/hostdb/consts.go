@@ -135,6 +135,6 @@ var (
 	minScanSleep = build.Select(build.Var{
 		Standard: time.Hour + time.Minute*20,
 		Dev:      time.Minute * 3,
-		Testing:  time.Second * 1,
+		Testing:  time.Second * 30,
 	}).(time.Duration)
 )
