@@ -16,6 +16,7 @@ all: release
 
 # count says how many times to run the tests.
 count = 1
+count10 = 10
 
 # cpkg determines which package is the target when running 'make fullcover'.
 # 'make fullcover' can only provide full coverage statistics on a single package
@@ -180,7 +181,7 @@ test-long: clean
 	GORACE='$(racevars)' MONGODB_URI=$(mongouri) go test -race --coverprofile='./cover/cover.out' -v -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=$(run) -count=$(count)
 test-custom: clean 
 	@mkdir -p cover
-	GORACE='$(racevars)' MONGODB_URI=$(mongouri) go test -race --coverprofile='./cover/cover.out' -v -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=TestParseSkyfileMetadataRecursive -count=1
+	GORACE='$(racevars)' MONGODB_URI=$(mongouri) go test -race --coverprofile='./cover/cover.out' -v -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=TestParseSkyfileMetadataRecursive -count=$(count10)
 
 # Use on Linux (and MacOS)
 test-vlong: clean fmt vet lint
