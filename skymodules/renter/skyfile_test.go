@@ -309,9 +309,8 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	err = build.Retry(600, 100*time.Millisecond, func() error {
 		bs2, _, err = r.managedDownloadByRoot(context.Background(), skylink.MerkleRoot(), offset, fetchSize, skymodules.DefaultSkynetPricePerMS)
 		if err != nil {
-			_, mineErr := wt.rt.miner.AddBlock()
 			r.staticWorkerPool.callUpdate()
-			return errors.Compose(err, mineErr)
+			return err
 		}
 		return nil
 	})
@@ -331,10 +330,9 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	err = build.Retry(60, time.Second, func() error {
 		sl2, fanout2, _, rawSM, _, _, err = r.ParseSkyfileMetadata(bs2)
 		if err != nil {
-			_, mineErr := wt.rt.miner.AddBlock()
 			wps, wpsErr = r.WorkerPoolStatus()
 			r.staticWorkerPool.callUpdate()
-			return errors.Compose(err, wpsErr, mineErr)
+			return errors.Compose(err, wpsErr)
 		}
 		return nil
 	})
