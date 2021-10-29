@@ -331,7 +331,6 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 		sl2, fanout2, _, rawSM, _, _, err = r.ParseSkyfileMetadata(bs2)
 		if err != nil {
 			r.staticWorkerPool.callUpdate()
-			fmt.Println("parse", err)
 			return err
 		}
 		return nil
