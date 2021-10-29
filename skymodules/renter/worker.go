@@ -51,12 +51,12 @@ var (
 	initialConcurrentAsyncReadData = build.Select(build.Var{
 		Standard: 10e6,
 		Dev:      10e6,
-		Testing:  10e4,
+		Testing:  10e6,
 	}).(float64)
 	initialConcurrentAsyncWriteData = build.Select(build.Var{
 		Standard: 10e6,
 		Dev:      10e6,
-		Testing:  10e4,
+		Testing:  10e6,
 	}).(float64)
 )
 

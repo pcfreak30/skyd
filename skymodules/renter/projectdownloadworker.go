@@ -87,7 +87,7 @@ var (
 	maxWaitUnresolvedWorkerUpdate = build.Select(build.Var{
 		Standard: 50 * time.Millisecond,
 		Dev:      50 * time.Millisecond,
-		Testing:  250 * time.Millisecond, // don't strain CI
+		Testing:  50 * time.Millisecond, // don't strain CI (TODO)
 	}).(time.Duration)
 
 	// maxWaitUpdateWorkers defines the maximum amount of time we want to wait
@@ -95,7 +95,7 @@ var (
 	maxWaitUpdateWorkers = build.Select(build.Var{
 		Standard: 25 * time.Millisecond,
 		Dev:      25 * time.Millisecond,
-		Testing:  250 * time.Millisecond, // don't strain CI
+		Testing:  50 * time.Millisecond, // don't strain CI (TODO)
 	}).(time.Duration)
 )
 
