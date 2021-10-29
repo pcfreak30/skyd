@@ -194,7 +194,7 @@ build:
     paths:
       - $CI_PROJECT_DIR/artifacts
   script:
-    - ./check-builds.sh
+    - make test-custom mongouri=$MONGODB_URI run=. pkgs="$package_renter_pkgs"
 
 #################
 # Deploy Stage
