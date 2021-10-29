@@ -272,7 +272,7 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTa
 	if !exists {
 		return errContractNotFound
 	}
-	fmt.Printf("update SO took %v\n", time.Since(start))
+	fmt.Printf("RENTER ProvidePayment: find contract took %v\n", time.Since(start))
 	start = time.Now()
 
 	// acquire a safe contract
@@ -281,7 +281,7 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTa
 		return errContractNotFound
 	}
 	defer c.staticContracts.Return(sc)
-	fmt.Printf("acquire contract took %v\n", time.Since(start))
+	fmt.Printf("RENTER ProvidePayment: acquire contract took %v\n", time.Since(start))
 	start = time.Now()
 
 	// create a new revision
@@ -291,7 +291,7 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTa
 		return errors.AddContext(err, "Failed to create a payment revision")
 	}
 
-	fmt.Printf("create revision took %v\n", time.Since(start))
+	fmt.Printf("RENTER ProvidePayment: create revision took %v\n", time.Since(start))
 	start = time.Now()
 
 	// create transaction containing the revision
@@ -299,7 +299,7 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTa
 	sig := sc.Sign(signedTxn.SigHash(0, bh))
 	signedTxn.TransactionSignatures[0].Signature = sig[:]
 
-	fmt.Printf("create tx took %v\n", time.Since(start))
+	fmt.Printf("RENTER ProvidePayment: create tx took %v\n", time.Since(start))
 	start = time.Now()
 
 	// record the payment intent
@@ -308,7 +308,7 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTa
 		return errors.AddContext(err, "Failed to record payment intent")
 	}
 
-	fmt.Printf("record payment intent took %v\n", time.Since(start))
+	fmt.Printf("RENTER ProvidePayment: record payment intent took %v\n", time.Since(start))
 	start = time.Now()
 
 	// prepare a buffer so we can optimize our writes
@@ -332,7 +332,7 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTa
 		return errors.AddContext(err, "could not write the buffer contents")
 	}
 
-	fmt.Printf("write PaymentRequest & PayByContractRequest took %v\n", time.Since(start))
+	fmt.Printf("RENTER ProvidePayment: write PaymentRequest & PayByContractRequest took %v\n", time.Since(start))
 	start = time.Now()
 
 	// receive PayByContractResponse
@@ -348,7 +348,7 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTa
 		return errors.AddContext(err, "unable to read the pay by contract response")
 	}
 
-	fmt.Printf("receive PayByContractResponse took %v\n", time.Since(start))
+	fmt.Printf("RENTER ProvidePayment: receive PayByContractResponse took %v\n", time.Since(start))
 	start = time.Now()
 
 	// TODO: Check for revision mismatch and recover by applying the contract
@@ -362,7 +362,7 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTa
 		return errors.New("could not verify host's signature")
 	}
 
-	fmt.Printf("verify signature took %v\n", time.Since(start))
+	fmt.Printf("RENTER ProvidePayment: verify signature took %v\n", time.Since(start))
 	start = time.Now()
 
 	// commit payment intent
@@ -373,7 +373,7 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTa
 		}
 	}
 
-	fmt.Printf("commit payment intent took %v\n", time.Since(start))
+	fmt.Printf("RENTER ProvidePayment: commit payment intent took %v\n", time.Since(start))
 	start = time.Now()
 	return nil
 }
