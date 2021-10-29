@@ -119,7 +119,7 @@ var (
 	maxScanSleep = build.Select(build.Var{
 		Standard: time.Hour * 8,
 		Dev:      time.Minute * 10,
-		Testing:  time.Second * 30,
+		Testing:  time.Second * 5,
 	}).(time.Duration)
 
 	// scanCheckInterval is the interval used when waiting for the scanList to
@@ -135,6 +135,6 @@ var (
 	minScanSleep = build.Select(build.Var{
 		Standard: time.Hour + time.Minute*20,
 		Dev:      time.Minute * 3,
-		Testing:  time.Second * 10,
+		Testing:  time.Second * 1,
 	}).(time.Duration)
 )
