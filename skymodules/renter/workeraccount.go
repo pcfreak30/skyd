@@ -719,6 +719,7 @@ func (w *worker) managedRefillAccount() {
 	var stream net.Conn
 	stream, err = w.staticNewStream()
 	if err != nil {
+		fmt.Println("refill", err)
 		err = errors.AddContext(err, "Unable to create a new stream")
 		return
 	}
@@ -833,6 +834,7 @@ func (w *worker) staticHostAccountBalance() (_ types.Currency, err error) {
 	// Get a stream.
 	stream, err := w.staticNewStream()
 	if err != nil {
+		fmt.Println("balance", err)
 		return types.ZeroCurrency, err
 	}
 	defer func() {

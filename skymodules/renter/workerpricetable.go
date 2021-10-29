@@ -274,6 +274,7 @@ func (w *worker) staticUpdatePriceTable() {
 	stream, err := w.staticNewStream()
 	if err != nil {
 		err = errors.AddContext(err, "unable to create new stream")
+		fmt.Println("pt", err)
 		return
 	}
 	defer func() {

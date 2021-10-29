@@ -67,6 +67,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	stream, err := w.staticNewStream()
 	if err != nil {
 		err = errors.AddContext(err, "Unable to create a new stream")
+		fmt.Println("execute", err)
 		return
 	}
 	defer func() {
@@ -207,6 +208,7 @@ func (w *worker) managedRenew(fcid types.FileContractID, params skymodules.Contr
 	// create a new stream
 	stream, err := w.staticNewStream()
 	if err != nil {
+		fmt.Println("renew", err)
 		return skymodules.RenterContract{}, nil, errors.AddContext(err, "managedRenew: unable to create a new stream")
 	}
 	defer func() {
