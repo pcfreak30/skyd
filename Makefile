@@ -28,6 +28,7 @@ lockcheckpkgs = \
 	./build \
 	./cmd/skyc \
 	./cmd/skyd \
+	./cmd/skynet-utils \
 	./cmd/skynet-benchmark \
 	./compatibility \
 	./fixtures \
@@ -74,7 +75,7 @@ mongouri = mongodb://$(mongohost):27017
 
 # release-pkgs determine which packages are built for release and distribution
 # when running a 'make release' command.
-release-pkgs = ./cmd/skyc ./cmd/skyd
+release-pkgs = ./cmd/skyc ./cmd/skyd ./cmd/skynet-utils
 
 
 # run determines which tests run when running any variation of 'make test'.
