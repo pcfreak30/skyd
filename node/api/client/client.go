@@ -134,6 +134,9 @@ func drainAndClose(rc io.ReadCloser) {
 }
 
 // readAPIError decodes and returns an api.Error.
+//
+// TODO: If the response is "Method Not Allowed", we get 'could not read error
+// message' instead of the proper error.
 func readAPIError(r io.Reader) error {
 	var apiErr api.Error
 	b, _ := ioutil.ReadAll(r)

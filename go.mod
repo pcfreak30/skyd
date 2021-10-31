@@ -4,6 +4,7 @@ go 1.13
 
 require (
 	github.com/HdrHistogram/hdrhistogram-go v1.1.0 // indirect
+	github.com/SkynetLabs/go-skynet/v2 v2.0.2 // indirect
 	github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da
 	github.com/dchest/threefish v0.0.0-20120919164726-3ecf4c494abf
 	github.com/eventials/go-tus v0.0.0-20200718001131-45c7ec8f5d59

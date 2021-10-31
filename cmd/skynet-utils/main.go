@@ -3,9 +3,11 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 	"text/tabwriter"
 
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"github.com/SkynetLabs/go-skynet/v2"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/types"
 )
@@ -19,12 +21,23 @@ func printHelp() {
 	fmt.Println("	skynet-utils [command]")
 	fmt.Println()
 	fmt.Println("Available Commands:")
-
 	// List the commands through a cleanly formatted tabwriter.
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 	fmt.Fprintf(w, "\tgenerate-seed\tgenerates a secure seed\n")
-	fmt.Fprintf(w, "\tgenerate-pubkey [salt] [seed]\tgenerates a pubkey from a seed using the provided salt\n")
+	fmt.Fprintf(w, "\tgenerate-v2skylink [salt] [seed]\tgenerates a pubkey from a seed using the provided salt\n")
+	fmt.Fprintf(w, "\tupload-file [filepath]\tuploads the provided file and returns a skylink\n")
 	err := w.Flush()
+	if err != nil {
+		fmt.Println("Error:", err)
+		os.Exit(1)
+	}
+	fmt.Println("Shortcuts:")
+	// List the commands through a cleanly formatted tabwriter.
+	w = tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	fmt.Fprintf(w, "\tgenerate-seed\t(g) (s) (gs)\n")
+	fmt.Fprintf(w, "\tgenerate-v2skylink\t(p) (v2)\n")
+	fmt.Fprintf(w, "\tupload-file\t(u) (uf)\n")
+	err = w.Flush()
 	if err != nil {
 		fmt.Println("Error:", err)
 		os.Exit(1)
@@ -80,19 +93,44 @@ func generateV2SkylinkFromSeed(salt string, phraseWords []string) {
 	os.Exit(0)
 }
 
+// uploadFile will upload a file to the user's preferred skynet portal, which
+// is detected via an environment variable. If no portal is set, siasky.net is
+// used.
+//
+// TODO: We need to update this function to verify that the skylink being
+// returned by the portal is correct. We should probably do this by extending
+// the client.
+func uploadFile(path string) {
+	client := skynet.New()
+	skylink, err := client.UploadFile(path, skynet.DefaultUploadOptions)
+	if err != nil {
+		fmt.Println("Upload failed:", err)
+		os.Exit(1)
+	}
+	skylink = strings.TrimPrefix(skylink, "sia://")
+	fmt.Println(skylink)
+	os.Exit(0)
+}
+
 // main checks the args to figure out what command to run, then calls the
 // corresponding command.
 func main() {
 	args := os.Args
 	if len(args) == 2 {
 		switch args[1] {
-		case "generate-seed", "s":
+		case "generate-seed", "g", "s", "gs":
 			generateAndPrintSeed()
+		}
+	}
+	if len(args) == 3 {
+		switch args[1] {
+		case "upload-file", "u", "uf":
+			uploadFile(args[2])
 		}
 	}
 	if len(args) > 3 {
 		switch args[1] {
-		case "generate-v2Skylink", "v2":
+		case "generate-v2skylink", "p", "v2":
 			generateV2SkylinkFromSeed(args[2], args[3:])
 		}
 	}
