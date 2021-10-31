@@ -78,25 +78,15 @@ const (
 	// availability rate of each worker reaches this threshold we build a
 	// chimera out of them.
 	chimeraAvailabilityRateThreshold = float64(2)
-)
 
-var (
 	// maxWaitUnresolvedWorkerUpdate defines the maximum amount of time we want
 	// to wait for unresolved workers to become resolved before trying to
 	// recreate the worker set.
-	maxWaitUnresolvedWorkerUpdate = build.Select(build.Var{
-		Standard: 50 * time.Millisecond,
-		Dev:      50 * time.Millisecond,
-		Testing:  50 * time.Millisecond, // don't strain CI (TODO)
-	}).(time.Duration)
+	maxWaitUnresolvedWorkerUpdate = 50 * time.Millisecond
 
 	// maxWaitUpdateWorkers defines the maximum amount of time we want to wait
 	// for workers to be updated.
-	maxWaitUpdateWorkers = build.Select(build.Var{
-		Standard: 25 * time.Millisecond,
-		Dev:      25 * time.Millisecond,
-		Testing:  50 * time.Millisecond, // don't strain CI (TODO)
-	}).(time.Duration)
+	maxWaitUpdateWorkers = 25 * time.Millisecond
 )
 
 // NOTE: all of the following defined types are used by the PDC, which is
@@ -810,7 +800,6 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) {
 // and launch every worker that can be launched from that set. Every iteration
 // we check whether the download was finished.
 func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
-	fmt.Println("DL launched...")
 	// grab some variables
 	ws := pdc.workerState
 	ec := pdc.workerSet.staticErasureCoder
@@ -821,17 +810,6 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 
 	// verify we have enough workers to complete the download
 	if len(workers) < ec.MinPieces() {
-		ws.mu.Lock()
-		for _, uw := range ws.unresolvedWorkers {
-			gfd := isGoodForDownload(uw.staticWorker, pdc.staticPieceIndices)
-			fmt.Printf("unresolved worker gfd %v maint CD %v HS CD %v RS CD %v async ready %v\n", gfd, uw.staticWorker.managedOnMaintenanceCooldown(), uw.staticWorker.staticJobHasSectorQueue.callOnCooldown(), uw.staticWorker.staticJobReadQueue.callOnCooldown(), uw.staticWorker.managedAsyncReady())
-		}
-		for _, rw := range ws.resolvedWorkers {
-			gfd := isGoodForDownload(rw.worker, rw.pieceIndices)
-			fmt.Printf("unresolved worker gfd %v maint CD %v HS CD %v RS CD %v async ready %v\n", gfd, rw.worker.managedOnMaintenanceCooldown(), rw.worker.staticJobHasSectorQueue.callOnCooldown(), rw.worker.staticJobReadQueue.callOnCooldown(), rw.worker.managedAsyncReady())
-		}
-		ws.mu.Unlock()
-
 		pdc.fail(errors.Compose(ErrRootNotFound, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v", len(workers), ec.MinPieces()))))
 		return
 	}
@@ -870,7 +848,6 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		case jrr := <-pdc.workerResponseChan:
 			pdc.handleJobReadResponse(jrr)
 		case <-pdc.ctx.Done():
-			fmt.Println("DL timed out")
 			pdc.fail(errors.New("download timed out"))
 			return
 		}
@@ -878,12 +855,10 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		// check whether the download is completed
 		completed, err := pdc.finished()
 		if completed {
-			fmt.Println("DL succeeded")
 			pdc.finalize()
 			return
 		}
 		if err != nil {
-			fmt.Println("DL failed", err)
 			pdc.fail(err)
 			return
 		}

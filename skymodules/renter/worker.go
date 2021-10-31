@@ -48,15 +48,23 @@ var (
 	// The worker may adjust these values dynamically as it starts to run and
 	// determines how much stuff it can do simultaneously before its jobs start
 	// to have significant latency impact.
+	//
+	// NOTE: these variables are lowered in test environment currently to avoid
+	// a large amount of parallel downloads. We've found that the host is
+	// currently facing a locking issue causing slow reads on the CI when
+	// there's a lot of parallel reads taking place. This issue is tackled by
+	// the following PR https://github.com/SiaFoundation/siad/pull/50
+	// (partially) and thus this build var should be removed again when that is
+	// merged and rolled out fully.
 	initialConcurrentAsyncReadData = build.Select(build.Var{
 		Standard: 10e6,
 		Dev:      10e6,
-		Testing:  10e6,
+		Testing:  10e4,
 	}).(float64)
 	initialConcurrentAsyncWriteData = build.Select(build.Var{
 		Standard: 10e6,
 		Dev:      10e6,
-		Testing:  10e6,
+		Testing:  10e4,
 	}).(float64)
 )
 

@@ -2,7 +2,6 @@ package contractor
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"net"
 	"os"
@@ -10,7 +9,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/ratelimit"
@@ -260,7 +258,6 @@ func (c *Contractor) UpdateWorkerPool(wp skymodules.WorkerPool) {
 // the payment for an RPC by sending and processing payment request and
 // response objects to the host. It returns an error in case of failure.
 func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTable, details PaymentDetails) error {
-	start := time.Now()
 	// convenience variables
 	host := details.Host
 	refundAccount := details.RefundAccount
@@ -272,8 +269,6 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTa
 	if !exists {
 		return errContractNotFound
 	}
-	fmt.Printf("RENTER ProvidePayment: find contract took %v\n", time.Since(start))
-	start = time.Now()
 
 	// acquire a safe contract
 	sc, exists := c.staticContracts.Acquire(contract.ID)
@@ -281,8 +276,6 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTa
 		return errContractNotFound
 	}
 	defer c.staticContracts.Return(sc)
-	fmt.Printf("RENTER ProvidePayment: acquire contract took %v\n", time.Since(start))
-	start = time.Now()
 
 	// create a new revision
 	current := sc.LastRevision()
@@ -291,25 +284,16 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTa
 		return errors.AddContext(err, "Failed to create a payment revision")
 	}
 
-	fmt.Printf("RENTER ProvidePayment: create revision took %v\n", time.Since(start))
-	start = time.Now()
-
 	// create transaction containing the revision
 	signedTxn := rev.ToTransaction()
 	sig := sc.Sign(signedTxn.SigHash(0, bh))
 	signedTxn.TransactionSignatures[0].Signature = sig[:]
-
-	fmt.Printf("RENTER ProvidePayment: create tx took %v\n", time.Since(start))
-	start = time.Now()
 
 	// record the payment intent
 	walTxn, err := sc.RecordPaymentIntent(rev, amount, details.SpendingDetails)
 	if err != nil {
 		return errors.AddContext(err, "Failed to record payment intent")
 	}
-
-	fmt.Printf("RENTER ProvidePayment: record payment intent took %v\n", time.Since(start))
-	start = time.Now()
 
 	// prepare a buffer so we can optimize our writes
 	buffer := bytes.NewBuffer(nil)
@@ -332,9 +316,6 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTa
 		return errors.AddContext(err, "could not write the buffer contents")
 	}
 
-	fmt.Printf("RENTER ProvidePayment: write PaymentRequest & PayByContractRequest took %v\n", time.Since(start))
-	start = time.Now()
-
 	// receive PayByContractResponse
 	var payByResponse modules.PayByContractResponse
 	if err := modules.RPCRead(stream, &payByResponse); err != nil {
@@ -348,9 +329,6 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTa
 		return errors.AddContext(err, "unable to read the pay by contract response")
 	}
 
-	fmt.Printf("RENTER ProvidePayment: receive PayByContractResponse took %v\n", time.Since(start))
-	start = time.Now()
-
 	// TODO: Check for revision mismatch and recover by applying the contract
 	// unapplied transactions and trying again.
 
@@ -362,9 +340,6 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTa
 		return errors.New("could not verify host's signature")
 	}
 
-	fmt.Printf("RENTER ProvidePayment: verify signature took %v\n", time.Since(start))
-	start = time.Now()
-
 	// commit payment intent
 	if !c.staticDeps.Disrupt("DisableCommitPaymentIntent") {
 		err = sc.CommitPaymentIntent(walTxn, signedTxn, amount, details.SpendingDetails)
@@ -373,8 +348,6 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, pt *modules.RPCPriceTa
 		}
 	}
 
-	fmt.Printf("RENTER ProvidePayment: commit payment intent took %v\n", time.Since(start))
-	start = time.Now()
 	return nil
 }
 

@@ -325,24 +325,17 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 
 	var sl2 skymodules.SkyfileLayout
 	var fanout2, rawSM []byte
-	var wps skymodules.WorkerPoolStatus
-	var wpsErr error
-	err = build.Retry(60, time.Second, func() error {
+	err = build.Retry(600, 100*time.Millisecond, func() error {
 		sl2, fanout2, _, rawSM, _, _, err = r.ParseSkyfileMetadata(bs2)
 		if err != nil {
-			wps, wpsErr = r.WorkerPoolStatus()
 			r.staticWorkerPool.callUpdate()
-			return errors.Compose(err, wpsErr)
+			return err
 		}
 		return nil
 	})
 	if err != nil {
-		t.Log("num workers", wps.NumWorkers)
-		t.Log("total DL cooldown", wps.TotalDownloadCoolDown)
-		t.Log("total MAINT cooldown", wps.TotalMaintenanceCoolDown)
 		t.Fatal(err)
 	}
-	t.Log("MD parsed")
 
 	// Compare fanouts.
 	if !bytes.Equal(sl.Encode(), sl2.Encode()) {
