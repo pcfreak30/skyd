@@ -219,8 +219,6 @@ type (
 	// workerSet is a collection of workers that may or may not have been
 	// launched yet in order to fulfil a download.
 	workerSet struct {
-		computation string
-
 		workers []downloadWorker
 
 		staticBucketDuration time.Duration
