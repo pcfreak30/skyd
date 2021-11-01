@@ -124,6 +124,7 @@ func TestRenterRemoteRepair(t *testing.T) {
 		{Name: "Basic", Test: testRemoteRepairBasic},
 		{Name: "ForceLegacyDownload", Test: testRemoteRepairForceLegacyDownload},
 		{Name: "FailLegacyDownload", Test: testRemoteRepairFailLegacyDownload},
+		{Name: "FailLegacyDownloadMultipleDataPieces", Test: testRemoteRepairFailLegacyDownloadMultiDataPieces},
 	}
 
 	// Run tests
@@ -1217,7 +1218,7 @@ func testPriceTablesUpdated(t *testing.T, tg *siatest.TestGroup) {
 // testRemoteRepairBasic executes testRemoteRepair with a standard renter.
 func testRemoteRepairBasic(t *testing.T, tg *siatest.TestGroup) {
 	rt := node.RenterTemplate
-	testRemoteRepair(t, tg, rt)
+	testRemoteRepair(t, tg, rt, 1)
 }
 
 // testRemoteRepairFailLegacyDownload executes testRemoteRepair while causing
@@ -1225,7 +1226,16 @@ func testRemoteRepairBasic(t *testing.T, tg *siatest.TestGroup) {
 func testRemoteRepairFailLegacyDownload(t *testing.T, tg *siatest.TestGroup) {
 	rt := node.RenterTemplate
 	rt.RenterDeps = &dependencies.DependencyFailLegacyRepairDownload{}
-	testRemoteRepair(t, tg, rt)
+	testRemoteRepair(t, tg, rt, 1)
+}
+
+// testRemoteRepairFailLegacyDownloadMultiDataPieces executes testRemoteRepair
+// while causing the legacy repair download to fail while uploading a file with
+// 2 datapieces.
+func testRemoteRepairFailLegacyDownloadMultiDataPieces(t *testing.T, tg *siatest.TestGroup) {
+	rt := node.RenterTemplate
+	rt.RenterDeps = &dependencies.DependencyFailLegacyRepairDownload{}
+	testRemoteRepair(t, tg, rt, 2)
 }
 
 // testRemoteRepairForceLegacyDownload executes testRemoteRepair while forcing
@@ -1233,14 +1243,14 @@ func testRemoteRepairFailLegacyDownload(t *testing.T, tg *siatest.TestGroup) {
 func testRemoteRepairForceLegacyDownload(t *testing.T, tg *siatest.TestGroup) {
 	rt := node.RenterTemplate
 	rt.RenterDeps = &dependencies.DependencyForceLegacyRepairDownload{}
-	testRemoteRepair(t, tg, rt)
+	testRemoteRepair(t, tg, rt, 1)
 }
 
 // testRemoteRepair tests if a renter correctly repairs a file by
 // downloading it after a host goes offline.
 //
 // This test was extended to also support testing the download cooldowns.
-func testRemoteRepair(t *testing.T, tg *siatest.TestGroup, rt node.NodeParams) {
+func testRemoteRepair(t *testing.T, tg *siatest.TestGroup, rt node.NodeParams, dataPieces uint64) {
 	// Create the renter.
 	nodes, err := tg.AddNodeN(rt, 1)
 	if err != nil {
@@ -1256,7 +1266,7 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup, rt node.NodeParams) {
 	}()
 
 	// Check that we have enough hosts for this test.
-	if len(tg.Hosts()) < 2 {
+	if len(tg.Hosts()) < 3 {
 		t.Fatal("This test requires at least 2 hosts")
 	}
 
@@ -1275,7 +1285,6 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup, rt node.NodeParams) {
 	t.Log("testRemoteRepair fileSize choice:", fileSize)
 
 	// Set fileSize and redundancy for upload
-	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
 	// Upload file
