@@ -6,9 +6,11 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"gitlab.com/SkynetLabs/skyd/node/api/client"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"github.com/SkynetLabs/go-skynet/v2"
 	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 )
 
@@ -54,6 +56,76 @@ func generateAndPrintSeed() {
 // generateV2SkylinkFromSeed will generate a V2 skylink from a seed using the
 // specified salt.
 func generateV2SkylinkFromSeed(salt string, phraseWords []string) {
+	// Get the crypto keys.
+	_, spk, dataKey := skylinkKeysFromPhraseWords(salt, phraseWords)
+	skylinkV2 := skymodules.NewSkylinkV2(spk, dataKey)
+
+	// Print the salt and seed.
+	fmt.Println(skylinkV2)
+	os.Exit(0)
+}
+
+// uploadToV2Skylnk will upload the provided v1Skylink to the v2Skylink that
+// corresponds to the provided salt and phraseWords.
+func uploadToV2Skylink(v1Skylink string, salt string, phraseWords []string) {
+	// Get the keys that we need.
+	sk, spk, dataKey := skylinkKeysFromPhraseWords(salt, phraseWords)
+
+	// Get the raw bytes of the v1 skylink.
+	var skylink skymodules.Skylink
+	err := skylink.LoadString(v1Skylink)
+	if err != nil {
+		fmt.Println("Invalid skylink:", err)
+		os.Exit(1)
+	}
+	linkBytes := skylink.Bytes()
+
+	// Create a signed registry entry containing the v1skylink.
+	//
+	// TODO: Need to learn what revision number we are supposed to get,
+	// can't just use 0.
+	srv := modules.NewRegistryValue(dataKey, linkBytes, 0, modules.RegistryTypeWithoutPubkey).Sign(sk)
+
+	// TODO: Need to upload the srv to a portal. Check out
+	// testNode.RegistryUpdate.
+	//
+	// TODO: Need to adjust the client so that we're using the portal
+	// environment variable.
+	c := client.New(client.Options{
+		Address: "siasky.net",
+	})
+	fmt.Println(spk)
+	fmt.Println()
+	fmt.Println(srv)
+	err = c.RegistryUpdateWithEntry(spk, srv)
+	if err != nil {
+		fmt.Println("Error while trying to update the registry:", err)
+		os.Exit(1)
+	}
+	os.Exit(0)
+}
+
+// uploadFile will upload a file to the user's preferred skynet portal, which
+// is detected via an environment variable. If no portal is set, siasky.net is
+// used.
+//
+// TODO: We need to update this function to verify that the skylink being
+// returned by the portal is correct. We should probably do this by extending
+// the client.
+func uploadFile(path string) {
+	client := skynet.New()
+	skylink, err := client.UploadFile(path, skynet.DefaultUploadOptions)
+	if err != nil {
+		fmt.Println("Upload failed:", err)
+		os.Exit(1)
+	}
+	skylink = strings.TrimPrefix(skylink, "sia://")
+	fmt.Println(skylink)
+	os.Exit(0)
+}
+
+// skylinkKeysFromPhraseWords returns the entropy for a given seed and salt.
+func skylinkKeysFromPhraseWords(salt string, phraseWords []string) (sk crypto.SecretKey, spk types.SiaPublicKey, dataKey crypto.Hash) {
 	// Turn the phrase words in to a phrase.
 	var phrase string
 	for i, word := range phraseWords {
@@ -78,38 +150,14 @@ func generateV2SkylinkFromSeed(salt string, phraseWords []string) {
 	saltedSeed := "v2SkylinkFromSeed" + salt + string(seed[:])
 	dataKeyBase := "v2SkylinkFromSeedDataKey" + salt + string(seed[:])
 	entropy := crypto.HashObject(saltedSeed)
-	dataKey := crypto.HashObject(dataKeyBase)
+	dataKey = crypto.HashObject(dataKeyBase)
 
 	// Get the actual crypto keys.
-	_, pk := crypto.GenerateKeyPairDeterministic(entropy)
-	spk := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key: pk[:],
-	}
-	skylinkV2 := skymodules.NewSkylinkV2(spk, dataKey)
+	sk, pk := crypto.GenerateKeyPairDeterministic(entropy)
+	spk = types.Ed25519PublicKey(pk)
 
-	// Print the salt and seed.
-	fmt.Println(skylinkV2)
-	os.Exit(0)
-}
-
-// uploadFile will upload a file to the user's preferred skynet portal, which
-// is detected via an environment variable. If no portal is set, siasky.net is
-// used.
-//
-// TODO: We need to update this function to verify that the skylink being
-// returned by the portal is correct. We should probably do this by extending
-// the client.
-func uploadFile(path string) {
-	client := skynet.New()
-	skylink, err := client.UploadFile(path, skynet.DefaultUploadOptions)
-	if err != nil {
-		fmt.Println("Upload failed:", err)
-		os.Exit(1)
-	}
-	skylink = strings.TrimPrefix(skylink, "sia://")
-	fmt.Println(skylink)
-	os.Exit(0)
+	// Return the secret key and the SiaPublicKey.
+	return sk, spk, dataKey
 }
 
 // main checks the args to figure out what command to run, then calls the
@@ -132,6 +180,8 @@ func main() {
 		switch args[1] {
 		case "generate-v2skylink", "p", "v2":
 			generateV2SkylinkFromSeed(args[2], args[3:])
+		case "upload-to-v2skylink", "u2", "u2v2", "utv", "utv2":
+			uploadToV2Skylink(args[2], args[3], args[4:])
 		}
 	}
 	printHelp()
