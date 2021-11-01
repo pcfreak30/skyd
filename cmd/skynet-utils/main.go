@@ -92,7 +92,7 @@ func uploadToV2Skylink(v1Skylink string, salt string, phraseWords []string) {
 	// TODO: Need to adjust the client so that we're using the portal
 	// environment variable.
 	c := client.New(client.Options{
-		Address: "siasky.net",
+		Address: portal()+"/skynet",
 	})
 	fmt.Println(spk)
 	fmt.Println()
@@ -114,6 +114,9 @@ func uploadToV2Skylink(v1Skylink string, salt string, phraseWords []string) {
 // the client.
 func uploadFile(path string) {
 	client := skynet.New()
+	c := client.New(client.Options{
+		Address: portal()+"/skynet",
+	})
 	skylink, err := client.UploadFile(path, skynet.DefaultUploadOptions)
 	if err != nil {
 		fmt.Println("Upload failed:", err)
@@ -122,6 +125,15 @@ func uploadFile(path string) {
 	skylink = strings.TrimPrefix(skylink, "sia://")
 	fmt.Println(skylink)
 	os.Exit(0)
+}
+
+// portal returns the skynet portal that should be used.
+func portal() string {
+	userPortal := os.Getenv("SKYNET_PORTAL")
+	if userPortal == "" {
+		return "siasky.net"
+	}
+	return userPortal
 }
 
 // skylinkKeysFromPhraseWords returns the entropy for a given seed and salt.
