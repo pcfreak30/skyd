@@ -303,16 +303,24 @@ func (r *Renter) managedDownloadLogicalChunkDataFromSkynet(chunk *unfinishedUplo
 	// Get roots, erasure coder and masterkey from siafile.
 	ec := chunk.fileEntry.ErasureCode()
 	mk := chunk.fileEntry.MasterKey()
+	onlyOnePieceNeeded := ec.MinPieces() == 1 && mk.Type() == crypto.TypePlain
 	roots := make([]crypto.Hash, 0, ec.NumPieces())
 	allPieces, err := chunk.fileEntry.Pieces(chunk.staticIndex)
 	if err != nil {
 		return nil, err
 	}
+
+OUTER:
 	for _, pieceSet := range allPieces {
 		for _, piece := range pieceSet {
-			// Only need 1 root per piece.
 			roots = append(roots, piece.MerkleRoot)
-			break
+			if onlyOnePieceNeeded {
+				// Only need 1 root total.
+				break OUTER
+			} else {
+				// Only need 1 root per piece.
+				break
+			}
 		}
 	}
 	pcws, err := r.newPCWSByRoots(chunk.ctx, roots, ec, mk, chunk.staticIndex)
