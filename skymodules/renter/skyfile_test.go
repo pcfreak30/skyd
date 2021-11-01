@@ -307,9 +307,9 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	}
 	var bs2 []byte
 	err = build.Retry(600, 100*time.Millisecond, func() error {
-		r.staticWorkerPool.callUpdate()
 		bs2, _, err = r.managedDownloadByRoot(context.Background(), skylink.MerkleRoot(), offset, fetchSize, skymodules.DefaultSkynetPricePerMS)
 		if err != nil {
+			r.staticWorkerPool.callUpdate()
 			return err
 		}
 		return nil
@@ -326,9 +326,9 @@ func TestParseSkyfileMetadataRecursive(t *testing.T) {
 	var sl2 skymodules.SkyfileLayout
 	var fanout2, rawSM []byte
 	err = build.Retry(600, 100*time.Millisecond, func() error {
-		r.staticWorkerPool.callUpdate()
 		sl2, fanout2, _, rawSM, _, _, err = r.ParseSkyfileMetadata(bs2)
 		if err != nil {
+			r.staticWorkerPool.callUpdate()
 			return err
 		}
 		return nil

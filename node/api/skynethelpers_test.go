@@ -310,6 +310,9 @@ func testParseSkylinkURL(t *testing.T) {
 // testParseUploadRequestParameters verifies the functionality of
 // 'parseUploadHeadersAndRequestParameters'.
 func testParseUploadRequestParameters(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
 	t.Parallel()
 
 	// create a siapath

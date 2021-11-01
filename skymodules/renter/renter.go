@@ -65,7 +65,6 @@ var (
 		Testing:  uint64(1),          // threshold == fee estimate
 	}).(uint64)
 )
-
 var (
 	errNilContractor = errors.New("cannot create renter with nil contractor")
 	errNilCS         = errors.New("cannot create renter with nil consensus set")
@@ -1125,6 +1124,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		mu:                   siasync.New(modules.SafeMutexDelay, 1),
 		staticTPool:          tpool,
 	}
+
 	r.staticSkynetTUSUploader = newSkynetTUSUploader(r, tus)
 	if err := r.tg.AfterStop(r.staticSkynetTUSUploader.Close); err != nil {
 		return nil, err
