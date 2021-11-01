@@ -80,23 +80,18 @@ func uploadToV2Skylink(v1Skylink string, salt string, phraseWords []string) {
 	}
 	linkBytes := skylink.Bytes()
 
-	// Create a signed registry entry containing the v1skylink.
-	//
-	// TODO: Need to learn what revision number we are supposed to get,
-	// can't just use 0.
-	srv := modules.NewRegistryValue(dataKey, linkBytes, 0, modules.RegistryTypeWithoutPubkey).Sign(sk)
+	// TODO: Do a registry read to figure out what revision number we
+	// should be using. Currently we are ignoring this step because we are
+	// only doing development deployments, which means a new random seed is
+	// generated on every deploy, meaning that a revision number of 0 is
+	// always fine.
 
-	// TODO: Need to upload the srv to a portal. Check out
-	// testNode.RegistryUpdate.
-	//
-	// TODO: Need to adjust the client so that we're using the portal
-	// environment variable.
+	// Create a signed registry entry containing the v1skylink and upload
+	// it using a portal.
+	srv := modules.NewRegistryValue(dataKey, linkBytes, 0, modules.RegistryTypeWithoutPubkey).Sign(sk)
 	c := client.New(client.Options{
 		Address: portal()+"/skynet",
 	})
-	fmt.Println(spk)
-	fmt.Println()
-	fmt.Println(srv)
 	err = c.RegistryUpdateWithEntry(spk, srv)
 	if err != nil {
 		fmt.Println("Error while trying to update the registry:", err)
@@ -114,9 +109,6 @@ func uploadToV2Skylink(v1Skylink string, salt string, phraseWords []string) {
 // the client.
 func uploadFile(path string) {
 	client := skynet.New()
-	c := client.New(client.Options{
-		Address: portal()+"/skynet",
-	})
 	skylink, err := client.UploadFile(path, skynet.DefaultUploadOptions)
 	if err != nil {
 		fmt.Println("Upload failed:", err)

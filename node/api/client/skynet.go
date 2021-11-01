@@ -1004,15 +1004,10 @@ func (c *Client) RegistryUpdateWithEntry(spk types.SiaPublicKey, srv modules.Sig
 		Data:      srv.Data,
 		Type:      srv.Type,
 	}
-	// TODO: This is incorrect, because it's not marshalling the publickey
-	// correctly.
 	reqBytes, err := json.Marshal(req)
 	if err != nil {
 		return err
 	}
-	fmt.Println()
-	fmt.Println(string(reqBytes))
-	fmt.Println()
 	return c.post("/skynet/registry", string(reqBytes), nil)
 }
 
