@@ -78,15 +78,33 @@ const (
 	// availability rate of each worker reaches this threshold we build a
 	// chimera out of them.
 	chimeraAvailabilityRateThreshold = float64(2)
+)
 
+var (
 	// maxWaitUnresolvedWorkerUpdate defines the maximum amount of time we want
 	// to wait for unresolved workers to become resolved before trying to
 	// recreate the worker set.
-	maxWaitUnresolvedWorkerUpdate = 50 * time.Millisecond
-
+	//
 	// maxWaitUpdateWorkers defines the maximum amount of time we want to wait
 	// for workers to be updated.
-	maxWaitUpdateWorkers = 25 * time.Millisecond
+	//
+	// NOTE: these variables are lowered in test environment currently to avoid
+	// a large amount of parallel downloads. We've found that the host is
+	// currently facing a locking issue causing slow reads on the CI when
+	// there's a lot of parallel reads taking place. This issue is tackled by
+	// the following PR https://github.com/SiaFoundation/siad/pull/50
+	// (partially) and thus this build var should be removed again when that is
+	// merged and rolled out fully.
+	maxWaitUpdateWorkers = build.Select(build.Var{
+		Standard: 25 * time.Millisecond,
+		Dev:      25 * time.Millisecond,
+		Testing:  250 * time.Millisecond,
+	}).(time.Duration)
+	maxWaitUnresolvedWorkerUpdate = build.Select(build.Var{
+		Standard: 50 * time.Millisecond,
+		Dev:      50 * time.Millisecond,
+		Testing:  250 * time.Millisecond,
+	}).(time.Duration)
 )
 
 // NOTE: all of the following defined types are used by the PDC, which is
