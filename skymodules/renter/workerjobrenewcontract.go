@@ -67,14 +67,14 @@ func renewJobExpectedBandwidth() (ul, dl uint64) {
 // callDiscard will discard a job, sending the provided error.
 func (j *jobRenew) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
-	w.staticRenter.tg.Launch(func() {
+	w.staticTG.Launch(func() {
 		response := &jobRenewResponse{
-			staticErr: errors.Extend(err, ErrJobDiscarded),
+			staticErr: err,
 		}
 		select {
 		case j.staticResponseChan <- response:
 		case <-j.staticCtx.Done():
-		case <-w.staticRenter.tg.StopChan():
+		case <-w.staticTG.StopChan():
 		}
 	})
 }
@@ -103,11 +103,11 @@ func (j *jobRenew) callExecute() {
 
 		staticWorker: w,
 	}
-	w.staticRenter.tg.Launch(func() {
+	w.staticTG.Launch(func() {
 		select {
 		case j.staticResponseChan <- response:
 		case <-j.staticCtx.Done():
-		case <-w.staticRenter.tg.StopChan():
+		case <-w.staticTG.StopChan():
 		}
 	})
 

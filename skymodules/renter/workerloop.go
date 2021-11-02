@@ -71,7 +71,7 @@ func (w *worker) externLaunchSerialJob(job func()) {
 		// worker to check for a new serial job.
 		w.staticWake()
 	}
-	err := w.staticRenter.tg.Launch(fn)
+	err := w.staticTG.Launch(fn)
 	if err != nil {
 		// Renter has closed, job will not be executed.
 		atomic.StoreUint64(&w.staticLoopState.atomicSerialJobRunning, 0)
@@ -159,7 +159,7 @@ func (w *worker) externLaunchAsyncJob(job workerJob) bool {
 		// blocked / ignored because there was not enough bandwidth available.
 		w.staticWake()
 	}
-	err := w.staticRenter.tg.Launch(fn)
+	err := w.staticTG.Launch(fn)
 	if err != nil {
 		// Renter has closed, but we want to represent that the work was
 		// processed anyway - returning true indicates that the worker should

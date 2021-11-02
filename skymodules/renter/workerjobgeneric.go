@@ -12,15 +12,6 @@ import (
 	"gitlab.com/SkynetLabs/skyd/build"
 )
 
-var (
-	// ErrJobDiscarded is returned by a job if worker conditions have resulted
-	// in the worker being able to run this type of job. Perhaps another job of
-	// the same type failed recently, or some prerequisite like an ephemeral
-	// account refill is not being met. The error may or may not be extended to
-	// provide a reason.
-	ErrJobDiscarded = errors.New("job is being discarded")
-)
-
 type (
 	// jobGeneric implements the basic functionality for a job.
 	jobGeneric struct {

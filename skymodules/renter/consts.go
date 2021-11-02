@@ -46,7 +46,7 @@ var (
 	cachedUtilitiesUpdateInterval = build.Select(build.Var{
 		Dev:      time.Minute,
 		Standard: time.Minute * 10,
-		Testing:  time.Second * 3,
+		Testing:  100 * time.Millisecond,
 	}).(time.Duration)
 )
 
@@ -261,6 +261,15 @@ var (
 		Standard: 10 * time.Minute,
 		Testing:  5 * time.Second,
 	}).(time.Duration)
+
+	// unfinishedFilePruneDuration is the length of time before an
+	// unfinished file is pruned from the filesystem.
+	unfinishedFilePruneDuration = time.Hour * 24 * 30 // 30 Days
+
+	// UnfinishedFilePruneDurationTestDeps is the length of time before an
+	// unfinished file is pruned from the filesystem when using the custom
+	// testing dependency.
+	UnfinishedFilePruneDurationTestDeps = time.Second * 5
 
 	// uploadAndRepairErrorSleepDuration indicates how long a repair process
 	// should sleep before retrying if there is an error fetching the metadata

@@ -425,6 +425,9 @@ func compareDirectoryInfoAndMetadataCustom(di skymodules.DirectoryInfo, siaDir *
 	if md.AggregateNumSubDirs != di.AggregateNumSubDirs {
 		return fmt.Errorf("AggregateNumSubDirs not equal, %v and %v", md.AggregateNumSubDirs, di.AggregateNumSubDirs)
 	}
+	if md.AggregateNumUnfinishedFiles != di.AggregateNumUnfinishedFiles {
+		return fmt.Errorf("AggregateNumUnfinishedFiles not equal, %v and %v", md.AggregateNumUnfinishedFiles, di.AggregateNumUnfinishedFiles)
+	}
 	if md.AggregateSize != di.AggregateSize {
 		return fmt.Errorf("AggregateSizes not equal, %v and %v", md.AggregateSize, di.AggregateSize)
 	}
@@ -465,6 +468,9 @@ func compareDirectoryInfoAndMetadataCustom(di skymodules.DirectoryInfo, siaDir *
 	}
 	if md.NumSubDirs != di.NumSubDirs {
 		return fmt.Errorf("NumSubDirs not equal, %v and %v", md.NumSubDirs, di.NumSubDirs)
+	}
+	if md.NumUnfinishedFiles != di.NumUnfinishedFiles {
+		return fmt.Errorf("NumUnfinishedFiles not equal, %v and %v", md.NumUnfinishedFiles, di.NumUnfinishedFiles)
 	}
 	if md.Size != di.DirSize {
 		return fmt.Errorf("Sizes not equal, %v and %v", md.Size, di.DirSize)

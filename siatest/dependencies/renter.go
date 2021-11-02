@@ -64,8 +64,8 @@ func (d *DependencyAddUnrepairableChunks) Disrupt(s string) bool {
 	return s == "DisableRepairAndHealthLoops" || s == "AddUnrepairableChunks"
 }
 
-// DependencyFailUploadStreamFromReader prevents SiaFileEntries in the upload code
-// from being closed.
+// DependencyFailUploadStreamFromReader prevents SiaFileEntries in the upload
+// code from being closed.
 type DependencyFailUploadStreamFromReader struct {
 	skymodules.SkynetDependencies
 }
@@ -180,4 +180,11 @@ func (d *DependencyToggleDisableDeleteBlockedFiles) Disrupt(s string) bool {
 	d.mu.Unlock()
 
 	return disabled && (s == "DisableDeleteBlockedFiles")
+}
+
+// NewDependencyUnfinishedFiles creates a new dependency that can be used to
+// target edge cases for unfinished files.
+func NewDependencyUnfinishedFiles() *DependencyMultiDisrupt {
+	strs := []string{"ShortUnfinishedFilesPruneDuration", "AllowLessThanMinWorkers"}
+	return newDependencyMultiDisrupt(strs)
 }

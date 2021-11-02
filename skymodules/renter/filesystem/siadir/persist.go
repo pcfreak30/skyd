@@ -199,6 +199,7 @@ func (sd *SiaDir) updateMetadata(metadata Metadata) error {
 	sd.metadata.AggregateNumLostFiles = metadata.AggregateNumLostFiles
 	sd.metadata.AggregateNumStuckChunks = metadata.AggregateNumStuckChunks
 	sd.metadata.AggregateNumSubDirs = metadata.AggregateNumSubDirs
+	sd.metadata.AggregateNumUnfinishedFiles = metadata.AggregateNumUnfinishedFiles
 	sd.metadata.AggregateRemoteHealth = metadata.AggregateRemoteHealth
 	sd.metadata.AggregateRepairSize = metadata.AggregateRepairSize
 	sd.metadata.AggregateSize = metadata.AggregateSize
@@ -217,6 +218,7 @@ func (sd *SiaDir) updateMetadata(metadata Metadata) error {
 	sd.metadata.NumLostFiles = metadata.NumLostFiles
 	sd.metadata.NumStuckChunks = metadata.NumStuckChunks
 	sd.metadata.NumSubDirs = metadata.NumSubDirs
+	sd.metadata.NumUnfinishedFiles = metadata.NumUnfinishedFiles
 	sd.metadata.RemoteHealth = metadata.RemoteHealth
 	sd.metadata.RepairSize = metadata.RepairSize
 	sd.metadata.Size = metadata.Size

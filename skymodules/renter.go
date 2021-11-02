@@ -60,6 +60,14 @@ var (
 		ExpectedRedundancy: 3.0,                                          // default is 10/30 erasure coding
 		MaxPeriodChurn:     uint64(250e9),                                // 250 GB
 	}
+
+	// DefaultSkynetBaseCost is the default base cost applied to all downloads.
+	// The base cost protects us against very cheap (or free) workers as their
+	// cost factor doesn't weigh as much. It also directly influences the cost
+	// of an overdrive worker, the higher the base cost, the higher the cost of
+	// an overdrive.
+	DefaultSkynetBaseCost = types.SiacoinPrecision.Mul64(200).Div(types.NewCurrency64(1e12)) // 200SC / TB
+
 	// ErrHostFault indicates if an error is the host's fault.
 	ErrHostFault = errors.New("host has returned an error")
 
@@ -466,6 +474,7 @@ type DirectoryInfo struct {
 	AggregateNumLostFiles        uint64    `json:"aggregatenumlostfiles"`
 	AggregateNumStuckChunks      uint64    `json:"aggregatenumstuckchunks"`
 	AggregateNumSubDirs          uint64    `json:"aggregatenumsubdirs"`
+	AggregateNumUnfinishedFiles  uint64    `json:"aggregatenumunfinishedfiles"`
 	AggregateRepairSize          uint64    `json:"aggregaterepairsize"`
 	AggregateSize                uint64    `json:"aggregatesize"`
 	AggregateStuckHealth         float64   `json:"aggregatestuckhealth"`
@@ -488,6 +497,7 @@ type DirectoryInfo struct {
 	NumLostFiles        uint64      `json:"numlostfiles"`
 	NumStuckChunks      uint64      `json:"numstuckchunks"`
 	NumSubDirs          uint64      `json:"numsubdirs"`
+	NumUnfinishedFiles  uint64      `json:"numunfinishedfiles"`
 	RepairSize          uint64      `json:"repairsize"`
 	SiaPath             SiaPath     `json:"siapath"`
 	DirSize             uint64      `json:"size,siamismatch"` // Stays as 'size' in json for compatibility
@@ -564,6 +574,7 @@ type FileInfo struct {
 	CreateTime       time.Time         `json:"createtime"`
 	Expiration       types.BlockHeight `json:"expiration"`
 	Filesize         uint64            `json:"filesize"`
+	Finished         bool              `json:"finished"`
 	Health           float64           `json:"health"`
 	LocalPath        string            `json:"localpath"`
 	MaxHealth        float64           `json:"maxhealth"`
@@ -1178,6 +1189,18 @@ type FanoutChunkReader interface {
 	Fanout() []byte
 }
 
+// RegistrySubscriber is the interface for an object capable of subscribing to
+// the skynet registry.
+type RegistrySubscriber interface {
+	io.Closer
+
+	// Subscribe subscribes to a new entry.
+	Subscribe(spk types.SiaPublicKey, tweak crypto.Hash) *RegistryEntry
+
+	// Unsubscribe unsubscribes from an entry.
+	Unsubscribe(eid modules.RegistryEntryID)
+}
+
 // A Renter uploads, tracks, repairs, and downloads a set of files for the
 // user.
 type Renter interface {
@@ -1248,6 +1271,15 @@ type Renter interface {
 
 	// MountInfo returns the list of currently mounted FUSE filesystems.
 	MountInfo() []MountInfo
+
+	// ParseSkyfileMetadata parses all the information from a base sector
+	// similar to skymodules.ParseSkyfileMetadata. The difference is that it
+	// can also parse a recursive base sector.
+	ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []byte, sm SkyfileMetadata, rawSM, baseSectorPayload, baseSectorExtension []byte, err error)
+
+	// NewRegistrySubscriber creates a new registry subscriber which can be
+	// used to subscribe to registry entries for updates.
+	NewRegistrySubscriber(notifyFunc func(entry RegistryEntry) error) (RegistrySubscriber, error)
 
 	// Unmount unmounts the FUSE filesystem currently mounted at mountPoint.
 	Unmount(mountPoint string) error
@@ -1337,7 +1369,7 @@ type Renter interface {
 
 	// HostsForRegistryUpdate returns a list of hosts that the renter would be using
 	// for updating the registry.
-	HostsForRegistryUpdate() ([]types.SiaPublicKey, error)
+	HostsForRegistryUpdate() ([]HostForRegistryUpdate, error)
 
 	// InitialScanComplete returns a boolean indicating if the initial scan of the
 	// hostdb is completed.
@@ -1396,7 +1428,11 @@ type Renter interface {
 
 	// UpdateRegistry updates the registries on all workers with the given
 	// registry value.
-	UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegistryValue, timeout time.Duration) error
+	UpdateRegistry(ctx context.Context, spk types.SiaPublicKey, srv modules.SignedRegistryValue) error
+
+	// UpdateRegistryMulti updates the registries on the given workers with the
+	// corresponding registry values.
+	UpdateRegistryMulti(ctx context.Context, srvs map[string]RegistryEntry) error
 
 	// PauseRepairsAndUploads pauses the renter's repairs and uploads for a time
 	// duration

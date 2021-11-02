@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -28,6 +29,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/contractor"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siadir"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -3083,6 +3085,9 @@ func testZeroByteFile(t *testing.T, tg *siatest.TestGroup) {
 			t.Errorf("Expected UploadProgress to be %v, got %v", expectedRF.UploadProgress, actualRF.UploadProgress)
 		}
 		// Check health information
+		if expectedRF.Finished != actualRF.Finished {
+			t.Errorf("Expected Finished to be %v, got %v", expectedRF.Finished, actualRF.Finished)
+		}
 		if expectedRF.Health != actualRF.Health {
 			t.Errorf("Expected Health to be %v, got %v", expectedRF.Health, actualRF.Health)
 		}
@@ -3126,6 +3131,7 @@ func testZeroByteFile(t *testing.T, tg *siatest.TestGroup) {
 	expectedRF := skymodules.FileInfo{
 		Redundancy:       redundancy,
 		UploadProgress:   100,
+		Finished:         true,
 		Health:           0,
 		MaxHealth:        0,
 		MaxHealthPercent: 100,
@@ -5438,7 +5444,7 @@ func TestRenterClean(t *testing.T) {
 	// Since it doesn't have a local file it will appear as unrecoverable if the
 	// hosts are taken down.
 	data := fastrand.Bytes(100)
-	_, _, _, rf3, err := r.UploadSkyfileCustom("skyfile", data, "", renter.SkyfileDefaultBaseChunkRedundancy, false)
+	_, sup, _, rf3, err := r.UploadSkyfileCustom("skyfile", data, "", renter.SkyfileDefaultBaseChunkRedundancy, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5447,6 +5453,14 @@ func TestRenterClean(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err = r.WaitForUploadHealth(rf3); err != nil {
+		t.Fatal(err)
+	}
+	skyfileDir, err := sup.SiaPath.Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	skyfileDir, err = skyfileDir.Rebase(skymodules.RootSiaPath(), skymodules.SkynetFolder)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -5477,7 +5491,7 @@ func TestRenterClean(t *testing.T) {
 		}
 
 		// Check for the expected SkyFiles
-		rds, err = r.RenterDirRootGet(skymodules.SkynetFolder)
+		rds, err = r.RenterDirRootGet(skyfileDir)
 		if err != nil {
 			return err
 		}
@@ -5551,7 +5565,7 @@ func TestRenterRepairSize(t *testing.T) {
 	// Define helper
 	m := tg.Miners()[0]
 	checkDirRepairSize := func(dirSiaPath skymodules.SiaPath, repairExpected, stuckExpected uint64) error {
-		return build.Retry(15, time.Second, func() error {
+		return build.Retry(5, time.Second, func() error {
 			// Make sure the directory is being updated
 			err := r.RenterBubblePost(dirSiaPath, true)
 			if err != nil {
@@ -5613,7 +5627,7 @@ func TestRenterRepairSize(t *testing.T) {
 		})
 	}
 	checkFileRepairSize := func(rf *siatest.RemoteFile, repairExpected, stuckExpected uint64) error {
-		return build.Retry(15, time.Second, func() error {
+		return build.Retry(5, time.Second, func() error {
 			// Mine a block to make sure contracts are being updated for hosts.
 			if err := m.MineBlock(); err != nil {
 				return err
@@ -5669,27 +5683,6 @@ func TestRenterRepairSize(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Mark as stuck
-	err = r.RenterSetFileStuckPost(rf.SiaPath(), false, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Since the file is marked as stuck it should register that stuck repair
-	expected := modules.SectorSize
-	if err := checkDirRepairSize(dirSiaPath, 0, expected); err != nil {
-		t.Error(err)
-	}
-	if err := checkFileRepairSize(rf, 0, expected); err != nil {
-		t.Error(err)
-	}
-
-	// Mark as not stuck
-	err = r.RenterSetFileStuckPost(rf.SiaPath(), false, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// With only one host taken down there should be no repair needed since the
 	// file won't be seen as needing repair
 	if err := checkDirRepairSize(dirSiaPath, 0, 0); err != nil {
@@ -5706,6 +5699,7 @@ func TestRenterRepairSize(t *testing.T) {
 
 	// Take down the rest of the hosts one by one and verify the repair values are dropping.
 	hosts = hosts[1:]
+	expected := modules.SectorSize
 	for i, host := range hosts {
 		// Stop the host
 		if err := tg.StopNode(host); err != nil {
@@ -6045,5 +6039,199 @@ func TestRenterBubble(t *testing.T) {
 		if err != nil {
 			t.Errorf("Unexpected Dir Info '%v'\n%v", test.siaPath, err)
 		}
+	}
+}
+
+// TestRenterUnfinishedFiles probes the handling of unfinished files
+func TestRenterUnfinishedFiles(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	t.Skip("Re-enable with deletion code")
+
+	// Create a group for testing
+	groupParams := siatest.GroupParams{
+		Hosts:  2,
+		Miners: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Add renter with depenedency
+	renterParams := node.Renter(testDir)
+	renterParams.RenterDeps = dependencies.NewDependencyUnfinishedFiles()
+	_, err = tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("WithLocalPath", func(t *testing.T) {
+		testRenterUnfinishedFileWithLocalPath(t, tg)
+	})
+	t.Run("WithoutLocalPath", func(t *testing.T) {
+		testRenterUnfinishedFileWithoutLocalPath(t, tg)
+	})
+}
+
+// testRenterUnfinishedFileWithLocalPath probes the handling of an unfinished file with a local path
+func testRenterUnfinishedFileWithLocalPath(t *testing.T, tg *siatest.TestGroup) {
+	// Grab Renter
+	r := tg.Renters()[0]
+
+	// Upload a file
+	_, rf, err := r.UploadNewFileBlocking(100, 1, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the file info
+	fi, err := r.File(rf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Since the upload was successful the file should be marked as finished
+	if !fi.Finished {
+		t.Fatal("file not marked as finished")
+	}
+	if fi.Redundancy < 1 {
+		t.Fatal("Redundancy is less than 1", fi.Redundancy)
+	}
+
+	// Upload a file that won't reach full health
+	lf, rf, err := r.UploadNewFile(100, 3, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the file info
+	fi, err = r.File(rf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Even though the upload cannot be successful, the file will be
+	// considered finished because there is a localpath.
+	if !fi.Finished {
+		t.Fatal("file not marked as finished")
+	}
+	if fi.Redundancy >= 1 {
+		t.Fatal("Redundancy is greater than 1", fi.Redundancy)
+	}
+
+	// Remove the local file.
+	if err := lf.Delete(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a host so that there are enough hosts for the repair loop to
+	// consider repairing the file
+	_, err = tg.AddNodes(node.HostTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Even though the repair/health loops should overwrite the localpath
+	// once the localfile cannot be accessed, the file should stay marked as
+	// finished and therefore should not be pruned.
+	time.Sleep(renter.UnfinishedFilePruneDurationTestDeps)
+
+	// Get the file info
+	fi, err = r.File(rf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fi.Finished {
+		t.Fatal("file not marked as finished")
+	}
+	if fi.Redundancy >= 1 {
+		t.Fatal("Redundancy is greater than 1", fi.Redundancy)
+	}
+}
+
+// testRenterUnfinishedFileWithoutLocalPath probes the handling of unfinished
+// files without a localpath
+func testRenterUnfinishedFileWithoutLocalPath(t *testing.T, tg *siatest.TestGroup) {
+	// Grab Renter
+	r := tg.Renters()[0]
+
+	// Upload a file that will finish.
+	data := fastrand.Bytes(100)
+	d := bytes.NewReader(data)
+	finishedSiaPath := skymodules.RandomSiaPath()
+	err := r.RenterUploadStreamPost(d, finishedSiaPath, 1, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check if the renter has the file. This is done in a build retry
+	// because the finished field is updated in updateMetadata which is
+	// called in the chunk clean up process.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		rf, err := r.RenterFileGet(finishedSiaPath)
+		if err != nil {
+			return err
+		}
+		// File should be finished
+		if !rf.File.Finished {
+			return errors.New("File should be finished")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload a file that won't finish.
+	data = fastrand.Bytes(100)
+	d = bytes.NewReader(data)
+	unfinishedSiaPath := skymodules.RandomSiaPath()
+	oneMoreThanHosts := uint64(len(tg.Hosts()) + 1)
+	err = r.RenterUploadStreamPost(d, unfinishedSiaPath, oneMoreThanHosts, oneMoreThanHosts, false)
+	if err == nil {
+		t.Fatal("Expected Upload Stream to fail for too many dp and pp")
+	}
+
+	// Check if the renter has the file
+	rf, err := r.RenterFileGet(unfinishedSiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// File should be unfinished
+	if rf.File.Finished {
+		t.Fatal("File should not be finished")
+	}
+
+	// Since the file is unfinished, the file should be pruned.
+	err = build.Retry(15, time.Second, func() error {
+		err = r.RenterBubblePost(skymodules.RootSiaPath(), true)
+		if err != nil {
+			return err
+		}
+		rf, err = r.RenterFileGet(unfinishedSiaPath)
+		if err != nil && strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+			return nil
+		}
+		return errors.New("file still exists")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The Finished file should still be present
+	rf, err = r.RenterFileGet(finishedSiaPath)
+	if err != nil {
+		t.Fatal(err)
 	}
 }

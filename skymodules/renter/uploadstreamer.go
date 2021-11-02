@@ -191,10 +191,11 @@ func (r *Renter) callUploadStreamFromReaderWithFileNodeNoBlock(ctx context.Conte
 
 	// Check if we currently have enough workers for the specified redundancy.
 	minWorkers := fileNode.ErasureCode().MinPieces()
-	r.staticWorkerPool.mu.RLock()
-	availableWorkers := len(r.staticWorkerPool.workers)
-	r.staticWorkerPool.mu.RUnlock()
-	if availableWorkers < minWorkers {
+	availableWorkers := r.staticWorkerPool.callNumWorkers()
+	// Skip this check if testing dependency is used to let the upload fail
+	// during upload instead of proactively.
+	skip := r.staticDeps.Disrupt("AllowLessThanMinWorkers")
+	if availableWorkers < minWorkers && !skip {
 		return nil, 0, fmt.Errorf("Need at least %v workers for upload but got only %v", minWorkers, availableWorkers)
 	}
 
@@ -219,9 +220,15 @@ func (r *Renter) callUploadStreamFromReaderWithFileNodeNoBlock(ctx context.Conte
 
 		// Start the chunk upload.
 		offline, goodForRenew, _, _ := r.callRenterContractsAndUtilities()
-		uuc, err := r.managedBuildUnfinishedChunk(ctx, fileNode, chunkIndex, hosts, memoryPriorityHigh, offline, goodForRenew, r.staticUserUploadMemoryManager)
+		uuc, exists, err := r.managedBuildUnfinishedChunk(ctx, fileNode, chunkIndex, hosts, memoryPriorityHigh, offline, goodForRenew, r.staticUserUploadMemoryManager)
 		if err != nil {
 			return nil, n, errors.AddContext(err, "unable to fetch chunk for stream")
+		}
+
+		// Chunk might already be repairing.
+		if exists {
+			chunks = append(chunks, uuc)
+			continue
 		}
 
 		// Create a new shard set it to be the source reader of the chunk.
@@ -340,7 +347,10 @@ func (r *Renter) callUploadStreamFromReader(ctx context.Context, up skymodules.F
 	chunkReader := NewChunkReader(reader, fileNode.ErasureCode(), fileNode.MasterKey())
 	_, err = r.callUploadStreamFromReaderWithFileNode(ctx, fileNode, chunkReader, 0)
 	if err != nil {
-		// Delete the file if the upload wasn't successful.
+		// Close the file if the upload wasn't successful. We don't
+		// delete the file on error here because the file could be
+		// resumed if it was a TUS upload. If it isn't resumed, the
+		// unfinished files code will prune the unfinished file.
 		err = errors.Compose(err, fileNode.Close())
 		return nil, err
 	}

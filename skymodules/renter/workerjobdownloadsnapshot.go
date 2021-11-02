@@ -98,14 +98,14 @@ func checkDownloadSnapshotGouging(allowance skymodules.Allowance, pt modules.RPC
 // channel.
 func (j *jobDownloadSnapshot) callDiscard(err error) {
 	resp := &jobDownloadSnapshotResponse{
-		staticErr: errors.Extend(err, ErrJobDiscarded),
+		staticErr: err,
 	}
 	w := j.staticQueue.staticWorker()
-	w.staticRenter.tg.Launch(func() {
+	w.staticTG.Launch(func() {
 		select {
 		case j.staticResponseChan <- resp:
 		case <-j.staticCtx.Done():
-		case <-w.staticRenter.tg.StopChan():
+		case <-w.staticTG.StopChan():
 		}
 	})
 }
@@ -122,11 +122,11 @@ func (j *jobDownloadSnapshot) callExecute() {
 			staticErr:       err,
 			staticSnapshots: snapshots,
 		}
-		w.staticRenter.tg.Launch(func() {
+		w.staticTG.Launch(func() {
 			select {
 			case j.staticResponseChan <- resp:
 			case <-j.staticCtx.Done():
-			case <-w.staticRenter.tg.StopChan():
+			case <-w.staticTG.StopChan():
 			}
 		})
 

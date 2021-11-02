@@ -325,7 +325,7 @@ func parseDownloadRequestParameters(req *http.Request) (*skyfileDownloadParams, 
 	}
 
 	// Parse pricePerMS.
-	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMS := skymodules.DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
 		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
@@ -715,6 +715,10 @@ func handleSkynetError(w http.ResponseWriter, prefix string, err error) {
 	}
 	if errors.Contains(err, renter.ErrRegistryEntryNotFound) {
 		WriteError(w, httpErr, http.StatusNotFound)
+		return
+	}
+	if errors.Contains(err, renter.ErrRegistryUpdateTimeout) {
+		WriteError(w, httpErr, http.StatusRequestTimeout)
 		return
 	}
 	if errors.Contains(err, renter.ErrRegistryLookupTimeout) {

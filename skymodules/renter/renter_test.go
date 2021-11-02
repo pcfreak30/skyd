@@ -15,6 +15,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/contractor"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/hostdb"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/proto"
 	"go.sia.tech/siad/crypto"
@@ -105,7 +106,7 @@ func (rt *renterTester) addCustomHost(testdir string, deps modules.Dependencies)
 	if err != nil {
 		return nil, err
 	}
-	err = h.AddStorageFolder(storageFolder, modules.SectorSize*64)
+	err = h.AddStorageFolder(storageFolder, 1<<20) // 1 MiB
 	if err != nil {
 		return nil, err
 	}
@@ -169,6 +170,27 @@ func (rt *renterTester) createZeroByteFileOnDisk() (string, error) {
 		return "", err
 	}
 	return path, nil
+}
+
+// newTestSiaFile creates and returns a new siafile for testing. This file is
+// marked as finished for backwards compatibility in testing.
+func (rt *renterTester) newTestSiaFile(siaPath skymodules.SiaPath, source string, rc skymodules.ErasureCoder, size uint64) (*filesystem.FileNode, error) {
+	// Create the siafile
+	err := rt.renter.staticFileSystem.NewSiaFile(siaPath, source, rc, crypto.GenerateSiaKey(crypto.RandomCipherType()), size, persist.DefaultDiskPermissionsTest)
+	if err != nil {
+		return nil, err
+	}
+	// Open the file
+	f, err := rt.renter.staticFileSystem.OpenSiaFile(siaPath)
+	if err != nil {
+		return nil, err
+	}
+	// Mark it as finished for backwards compatibility in testing
+	err = f.SetFinished(0)
+	if err != nil {
+		return nil, err
+	}
+	return f, nil
 }
 
 // reloadRenter closes the given renter and then re-adds it, effectively

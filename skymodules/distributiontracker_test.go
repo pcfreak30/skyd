@@ -18,6 +18,8 @@ func TestDistributionTracker(t *testing.T) {
 
 	t.Run("Bucketing", testDistributionBucketing)
 	t.Run("ChanceAfter", testDistributionChanceAfter)
+	t.Run("ChancesAfter", testDistributionChancesAfter)
+	t.Run("ChanceAfterShift", testDistributionChanceAfterShift)
 	t.Run("Clone", testDistributionClone)
 	t.Run("Decay", testDistributionDecay)
 	t.Run("DecayedLifetime", testDistributionDecayedLifetime)
@@ -307,6 +309,70 @@ func testDistributionChanceAfter(t *testing.T) {
 		if d.ChanceAfter(DistributionDurationForBucketIndex(i)) != float64(i)/d.DataPoints() {
 			t.Fatal("bad", i)
 		}
+	}
+}
+
+// testDistributionChancesAfter will test the `ChancesAfter` method on the
+// distribution tracker.
+func testDistributionChancesAfter(t *testing.T) {
+	t.Parallel()
+
+	// add a datapoint to every bucket
+	d := NewDistribution(time.Minute * 100)
+	for i := 0; i < DistributionTrackerTotalBuckets; i++ {
+		d.AddDataPoint(DistributionDurationForBucketIndex(i))
+	}
+
+	// verify chances after equals chance after duration and corresponding index
+	chances := d.ChancesAfter()
+	for i := 0; i < DistributionTrackerTotalBuckets; i++ {
+		if d.ChanceAfter(DistributionDurationForBucketIndex(i)) != chances[i] {
+			t.Fatal("bad")
+		}
+	}
+
+	// since we add a single datapoint in every bucket, the chance increase per
+	// bucket is the same for every bucket, and it's equal to 1 divided by the
+	// total number of buckets
+	//
+	// we can use this to assert the chances after, we assert that the current
+	// value is always equal to the previous chance plus the amount of chance
+	// that every bucket adds
+	//
+	// NOTE: we use 1e-9 as an equality threshold to cope with floating point
+	// errors
+	chancePerBucket := float64(1) / DistributionTrackerTotalBuckets
+	for i := 1; i < DistributionTrackerTotalBuckets; i++ {
+		if math.Abs(chances[i]-chances[i-1]+chancePerBucket) <= 1e-9 {
+			t.Fatal("bad")
+		}
+	}
+}
+
+// testDistributionChanceAfterShift will test the `ChanceAfter` method on the
+// distribution tracker after a `Shift` has been applied to the distribution.
+func testDistributionChanceAfterShift(t *testing.T) {
+	t.Parallel()
+
+	d := NewDistribution(time.Minute * 100)
+	for i := 0; i < 100; i++ {
+		d.AddDataPoint(time.Duration(i) * time.Millisecond)
+	}
+
+	if d.ChanceAfter(90*time.Millisecond) != .9 {
+		t.Fatal("bad")
+	}
+
+	d.Shift(80 * time.Millisecond)
+	chanceAfter := d.ChanceAfter(90 * time.Millisecond)
+	if chanceAfter != 0.5 {
+		t.Fatal("bad", chanceAfter)
+	}
+
+	d.Shift(100 * time.Millisecond)
+	chanceAfter = d.ChanceAfter(100 * time.Millisecond)
+	if chanceAfter != 0 {
+		t.Fatal("bad", chanceAfter)
 	}
 }
 

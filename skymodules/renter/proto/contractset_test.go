@@ -2,6 +2,7 @@ package proto
 
 import (
 	"bytes"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -290,7 +291,7 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Load the set again. This should ignore the invalid update and succeed.
-	cs, err = NewContractSet(testDir, rl, modules.ProdDependencies)
+	cs, err = NewContractSet(testDir, rl, &dependencyIgnoreInvalidUpdate{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +316,7 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 	}
 	// Load the set again. This should apply the invalid update and fail at
 	// startup.
-	cs, err = NewContractSet(testDir, rl, modules.ProdDependencies)
+	cs, err = NewContractSet(testDir, rl, &dependencyIgnoreInvalidUpdate{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -412,5 +413,114 @@ func TestInsertContractTotalCost(t *testing.T) {
 	expectedTotalCost := renterPayout.Add(txnFee)
 	if !contract.TotalCost.Equals(expectedTotalCost) {
 		t.Fatal("wrong TotalCost", contract.TotalCost, expectedTotalCost)
+	}
+}
+
+// TestContractDelete tests the contractsets Delete method and makes sure that
+// not only the contract files are gone but also the unapplied txns in the wal.
+func TestContractDelete(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create contract set
+	testDir := build.TempDir(t.Name())
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := NewContractSet(testDir, rl, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	header := contractHeader{Transaction: types.Transaction{
+		FileContractRevisions: []types.FileContractRevision{{
+			ParentID:             types.FileContractID{1},
+			NewValidProofOutputs: []types.SiacoinOutput{{}, {}},
+			UnlockConditions: types.UnlockConditions{
+				PublicKeys: []types.SiaPublicKey{{}, {}},
+			},
+		}},
+	}}
+	id := header.ID()
+
+	_, err = cs.managedInsertContract(header, []crypto.Hash{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sc, ok := cs.Acquire(id)
+	if !ok {
+		t.Fatal("failed to acquire")
+	}
+
+	// There should be 4 files. The wal, the rc file the contract header and
+	// body.
+	fis, err := ioutil.ReadDir(testDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fis) != 4 {
+		t.Fatal("wrong number of files", len(fis))
+	}
+
+	// Add a wal txn to the contract.
+	insertUpdate := sc.makeUpdateSetHeader(header)
+	txn, err := cs.staticWal.NewTransaction([]writeaheadlog.Update{insertUpdate})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-txn.SignalSetupComplete()
+
+	sc.unappliedTxns = append(sc.unappliedTxns, newUnappliedWalTxn(txn))
+	cs.Return(sc)
+
+	// Load the contractset again.
+	cs2, err := NewContractSet(testDir, rl, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should be able to acquire the contract.
+	sc, ok = cs2.Acquire(id)
+	if !ok {
+		t.Fatal("failed to acquire")
+	}
+
+	// Should have one txn.
+	if len(sc.unappliedTxns) != 1 {
+		t.Fatal("wrong number of txns", len(sc.unappliedTxns))
+	}
+
+	// Delete the contract this time.
+	cs.Delete(sc)
+
+	// Load the contractset again.
+	cs3, err := NewContractSet(testDir, rl, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Shouldn't be able to acquire the contract.
+	sc, ok = cs3.Acquire(id)
+	if ok {
+		t.Fatal("shouldn't be able to do this")
+	}
+
+	// Load the wal. Shouldn't return any contracts.
+	txns, _, err := writeaheadlog.New(filepath.Join(testDir, "contractset.wal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(txns) != 0 {
+		t.Fatal("wal not empty")
+	}
+
+	// There should be 2 files. The wal and the rc file.
+	fis, err = ioutil.ReadDir(testDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fis) != 2 {
+		t.Fatal("wrong number of files", len(fis))
 	}
 }

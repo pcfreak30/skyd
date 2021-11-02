@@ -682,7 +682,7 @@ func testWorkerAccountSpendingDetails(t *testing.T, wt *workerTester) {
 	// Check the spending is updated
 	time.Sleep(stopSubscriptionGracePeriod)
 	spending = w.staticAccount.callSpendingDetails()
-	if spending.subscriptions.IsZero() {
+	if !spending.subscriptions.IsZero() {
 		t.Fatal("unexpected")
 	}
 

@@ -50,6 +50,7 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 		AggregateNumLostFiles:        uint64(0),
 		AggregateNumStuckChunks:      uint64(0),
 		AggregateNumSubDirs:          uint64(0),
+		AggregateNumUnfinishedFiles:  uint64(0),
 		AggregateRemoteHealth:        siadir.DefaultDirHealth,
 		AggregateRepairSize:          uint64(0),
 		AggregateSize:                uint64(0),
@@ -67,6 +68,7 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 		NumLostFiles:        uint64(0),
 		NumStuckChunks:      uint64(0),
 		NumSubDirs:          uint64(0),
+		NumUnfinishedFiles:  uint64(0),
 		RemoteHealth:        siadir.DefaultDirHealth,
 		RepairSize:          uint64(0),
 		Size:                uint64(0),
@@ -142,6 +144,39 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 			bubbledMetadatas = bubbledMetadatas[1:]
 			fileSiaPath := bubbledMetadata.sp
 			fileMetadata := bubbledMetadata.bm
+
+			// Check if the file is unfinished
+			if !fileMetadata.Finished {
+				// Check if the dependency for a shorted prune
+				// duration is enabled. We rely on a dependency
+				// instead of a build variable to reduce NDFs in
+				// testing.
+				if r.staticDeps.Disrupt("ShortUnfinishedFilesPruneDuration") {
+					unfinishedFilePruneDuration = UnfinishedFilePruneDurationTestDeps
+				}
+				/*
+					TODO: enable once portals have handled the current file updates.
+
+					// Check if it is time to prune the file
+						timeToPrune := time.Since(fileMetadata.CreateTime) > unfinishedFilePruneDuration
+						if timeToPrune {
+							// Delete the file if it is still unfinished after a month
+							err := r.staticFileSystem.DeleteFile(fileSiaPath)
+							if err != nil {
+								r.staticLog.Printf("Unable to delete unfinished file at %v: %v", fileSiaPath, err)
+							}
+							// No need to call update on the directory after deleting
+							// the file since we are in the process of updating the
+							// directory.
+							continue
+						}
+				*/
+				// Update the unfinished metadata fields
+				metadata.AggregateNumUnfinishedFiles++
+				metadata.NumUnfinishedFiles++
+				continue
+			}
+
 			// If 75% or more of the redundancy is missing, register an alert
 			// for the file.
 			uid := string(fileMetadata.UID)
@@ -344,11 +379,11 @@ func (r *Renter) managedCachedFileMetadata(siaPath skymodules.SiaPath) (bubbledS
 	}
 
 	// Check if original file is on disk
-	_, err = os.Stat(sf.LocalPath())
+	md := sf.Metadata()
+	_, err = os.Stat(md.LocalPath)
 	onDisk := err == nil
 
 	// Check if file is unrecoverable and log it
-	md := sf.Metadata()
 	maxHealth := math.Max(md.CachedHealth, md.CachedStuckHealth)
 	unrecoverable := siafile.Unrecoverable(maxHealth, onDisk)
 	if unrecoverable {
@@ -359,18 +394,20 @@ func (r *Renter) managedCachedFileMetadata(siaPath skymodules.SiaPath) (bubbledS
 	return bubbledSiaFileMetadata{
 		sp: siaPath,
 		bm: siafile.BubbledMetadata{
+			CreateTime:          md.CreateTime,
+			Finished:            md.Finished,
 			Health:              md.CachedHealth,
-			LastHealthCheckTime: sf.LastHealthCheckTime(),
-			ModTime:             sf.ModTime(),
+			LastHealthCheckTime: md.LastHealthCheckTime,
+			ModTime:             md.ModTime,
 			NumSkylinks:         uint64(len(md.Skylinks)),
 			NumStuckChunks:      md.CachedNumStuckChunks,
 			OnDisk:              onDisk,
 			Redundancy:          md.CachedRedundancy,
 			RepairBytes:         md.CachedRepairBytes,
-			Size:                sf.Size(),
+			Size:                uint64(md.FileSize),
 			StuckHealth:         md.CachedStuckHealth,
 			StuckBytes:          md.CachedStuckBytes,
-			UID:                 sf.UID(),
+			UID:                 md.UniqueID,
 			Unrecoverable:       unrecoverable,
 		},
 	}, nil

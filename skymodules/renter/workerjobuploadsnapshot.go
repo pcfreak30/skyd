@@ -114,14 +114,14 @@ func checkUploadSnapshotGouging(allowance skymodules.Allowance, hostSettings mod
 // channel.
 func (j *jobUploadSnapshot) callDiscard(err error) {
 	resp := &jobUploadSnapshotResponse{
-		staticErr: errors.Extend(err, ErrJobDiscarded),
+		staticErr: err,
 	}
 	w := j.staticQueue.staticWorker()
-	errLaunch := w.staticRenter.tg.Launch(func() {
+	errLaunch := w.staticTG.Launch(func() {
 		select {
 		case j.staticResponseChan <- resp:
 		case <-j.staticCtx.Done():
-		case <-w.staticRenter.tg.StopChan():
+		case <-w.staticTG.StopChan():
 		}
 	})
 	if errLaunch != nil {
@@ -140,11 +140,11 @@ func (j *jobUploadSnapshot) callExecute() {
 		resp := &jobUploadSnapshotResponse{
 			staticErr: err,
 		}
-		errLaunch := w.staticRenter.tg.Launch(func() {
+		errLaunch := w.staticTG.Launch(func() {
 			select {
 			case j.staticResponseChan <- resp:
 			case <-j.staticCtx.Done():
-			case <-w.staticRenter.tg.StopChan():
+			case <-w.staticTG.StopChan():
 			}
 		})
 		if errLaunch != nil {
@@ -167,7 +167,7 @@ func (j *jobUploadSnapshot) callExecute() {
 
 	// Perform the actual upload.
 	var sess contractor.Session
-	sess, err = w.staticRenter.staticHostContractor.Session(w.staticHostPubKey, w.staticRenter.tg.StopChan())
+	sess, err = w.staticRenter.staticHostContractor.Session(w.staticHostPubKey, w.staticTG.StopChan())
 	if err != nil {
 		w.staticRenter.staticLog.Debugln("unable to grab a session to perform an upload snapshot job:", err)
 		err = errors.AddContext(err, "unable to get host session")

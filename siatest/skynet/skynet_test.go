@@ -60,7 +60,6 @@ func TestSkynetSuiteOne(t *testing.T) {
 		{Name: "Basic", Test: testSkynetBasic},
 		{Name: "SkylinkV2Download", Test: testSkylinkV2Download},
 		{Name: "ConvertSiaFile", Test: testConvertSiaFile},
-		{Name: "LargeMetadata", Test: testSkynetLargeMetadata},
 		{Name: "MultipartUpload", Test: testSkynetMultipartUpload},
 		{Name: "InvalidFilename", Test: testSkynetInvalidFilename},
 		{Name: "SubDirDownload", Test: testSkynetSubDirDownload},
@@ -111,7 +110,9 @@ func TestSkynetSuiteTwo(t *testing.T) {
 		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
 		{Name: "Registry", Test: testSkynetRegistryReadWrite},
 		{Name: "Stats", Test: testSkynetStats},
+		{Name: "RegistryUpdateMulti", Test: testUpdateRegistryMulti},
 		{Name: "HostsForRegistryUpdate", Test: testHostsForRegistryUpdate},
+		{Name: "RecursiveBaseSector", Test: testRecursiveBaseSector},
 	}
 
 	// Run tests
@@ -783,11 +784,11 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	emptyFile := siatest.TestFile{Name: "file", Data: []byte{}}
 	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(fileName, []siatest.TestFile{emptyFile}, "", false, false)
 	if err != nil {
-		t.Fatal("Expected upload of empty file to succeed")
+		t.Fatal("Expected upload of empty file to succeed", err)
 	}
 	data, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
-		t.Fatal("Expected download of empty file to succeed")
+		t.Fatal("Expected download of empty file to succeed", err)
 	}
 	_, md, err := r.SkynetMetadataGet(skylink)
 	if err != nil {
@@ -797,7 +798,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Unexpected data")
 	}
 	if md.Length != 0 {
-		t.Fatal("Unexpected metadata")
+		t.Fatal("Unexpected metadata length", md.Length)
 	}
 
 	// TEST SMALL SUBFILE
@@ -1047,13 +1048,11 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	// upload the files and keep track of their expected impact on the stats
 	var uploadedFilesSize, uploadedFilesCount uint64
 	var sps []skymodules.SiaPath
-	var skylinks []string
 	for name, size := range files {
-		skylink, sup, _, err := r.UploadNewSkyfileBlocking(name, size, false)
+		_, sup, _, err := r.UploadNewSkyfileBlocking(name, size, false)
 		if err != nil {
 			t.Fatal(err)
 		}
-		skylinks = append(skylinks, skylink)
 
 		sp, err := sup.SiaPath.Rebase(skymodules.RootSiaPath(), skymodules.SkynetFolder)
 		if err != nil {
@@ -1110,14 +1109,18 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			return err
 		}
-		var countErr, sizeErr, perfErr error
+		var countErr, sizeErr, healthErr error
 		if uint64(statsBefore.NumFiles)+uploadedFilesCount != uint64(statsAfter.NumFiles) {
 			countErr = fmt.Errorf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.NumFiles)+uploadedFilesCount, statsAfter.NumFiles)
 		}
 		if statsBefore.Storage+uploadedFilesSize != statsAfter.Storage {
 			sizeErr = fmt.Errorf("stats did not report the correct size. expected %d, found %d", statsBefore.Storage+uploadedFilesSize, statsAfter.Storage)
 		}
-		return errors.Compose(countErr, sizeErr, perfErr)
+		// Just make sure that a health is returned
+		if statsAfter.MaxHealthPercentage == 0 {
+			healthErr = errors.New("no MaxHealthPercentage retuned")
+		}
+		return errors.Compose(countErr, sizeErr, healthErr)
 	})
 	if err != nil {
 		t.Error(err)
@@ -1168,14 +1171,18 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var countErr, sizeErr error
+		var countErr, sizeErr, healthErr error
 		if statsAfter.NumFiles != statsBefore.NumFiles {
 			countErr = fmt.Errorf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.NumFiles), statsAfter.NumFiles)
 		}
 		if statsAfter.Storage != statsBefore.Storage {
 			sizeErr = fmt.Errorf("stats did not report the correct size. expected %d, found %d", statsBefore.Storage, statsAfter.Storage)
 		}
-		return errors.Compose(countErr, sizeErr)
+		// Just make sure that a health is returned
+		if statsAfter.MaxHealthPercentage == 0 {
+			healthErr = errors.New("no MaxHealthPercentage retuned")
+		}
+		return errors.Compose(countErr, sizeErr, healthErr)
 	})
 	if err != nil {
 		t.Error(err)
@@ -1204,44 +1211,6 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if stats.StreamBufferRead15mDataPoints <= 1 {
 		t.Error("throughput is being recorded at or below baseline:", stats.StreamBufferRead15mDataPoints)
-	}
-
-	// Upload a siafile with N-M scheme and convert it to a skyfile, this should
-	// ensure that when we download that file, the fanout sector download stats
-	// are updated.
-	filesize := 2 * int(modules.SectorSize)
-	_, remoteFile, err := r.UploadNewFileBlocking(filesize, 2, 1, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sup = skymodules.SkyfileUploadParameters{
-		SiaPath: skymodules.RandomSiaPath(),
-	}
-	sshp, err := r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
-	if err != nil {
-		t.Fatal("Expected conversion from Siafile to Skyfile Post to succeed.")
-	}
-	skylinks = append(skylinks, sshp.Skylink)
-
-	// Download all skyfiles.
-	for _, skylink := range skylinks {
-		_, err := r.SkynetSkylinkGet(skylink)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	// Fetch the stats again and verify all sector download stats are present
-	// and are non-zero, proving they're set and updated correctly.
-	stats, err = r.SkynetStatsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if stats.BaseSectorOverdriveAvg == 0 || stats.BaseSectorOverdrivePct == 0 {
-		t.Fatal("base sector download stats all zero", stats.BaseSectorOverdriveAvg, stats.BaseSectorOverdrivePct)
-	}
-	if stats.FanoutSectorOverdriveAvg == 0 || stats.FanoutSectorOverdrivePct == 0 {
-		t.Fatal("fanout sector download stats all zero", stats.FanoutSectorOverdriveAvg, stats.FanoutSectorOverdrivePct)
 	}
 }
 
@@ -2385,13 +2354,19 @@ func testSkynetDisableForce(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Upload Skyfile
-	_, _, _, err := r.UploadNewSkyfileBlocking(t.Name(), 100, false)
+	_, sup, _, err := r.UploadNewSkyfileBlocking(t.Name(), 100, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Upload at same path without force, assert this fails
-	_, _, _, err = r.UploadNewSkyfileBlocking(t.Name(), 100, false)
+	sup = skymodules.SkyfileUploadParameters{
+		Filename: t.Name(),
+		Reader:   bytes.NewReader([]byte{1, 2, 3}),
+		SiaPath:  sup.SiaPath,
+		Force:    false,
+	}
+	_, _, err = r.SkynetSkyfilePost(sup)
 	if err == nil {
 		t.Fatal("Expected the upload without force to fail but it didn't.")
 	}
@@ -2401,7 +2376,8 @@ func testSkynetDisableForce(t *testing.T, tg *siatest.TestGroup) {
 
 	// Upload once more, but now use force. It should allow us to
 	// overwrite the file at the existing path
-	_, sup, _, err := r.UploadNewSkyfileBlocking(t.Name(), 100, true)
+	sup.Force = true
+	_, _, err = r.SkynetSkyfilePost(sup)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2417,6 +2393,105 @@ func testSkynetDisableForce(t *testing.T, tg *siatest.TestGroup) {
 	if !strings.Contains(err.Error(), "'force' has been disabled") {
 		t.Log(err)
 		t.Fatalf("Unexpected response, expected error to contain a mention of the force flag but instaed received: %v", err.Error())
+	}
+}
+
+// TestSkynetDownloadStats is a test that verifies whether overdrive downloads
+// base sectors and fanout sectors are properly reflected in the stats. This is
+// separate test using a custom dependency because this was causing an NDF in
+// the TestSkynetStats test.
+func TestSkynetDownloadStats(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  3,
+		Miners: 1,
+	}
+	groupDir := skynetTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Define a portal with a dependency that forces overdrive on downloads
+	renterParams := node.Renter(filepath.Join(groupDir, t.Name()))
+	renterParams.CreatePortal = true
+	deps := dependencies.NewDependencyOverdriveDownload()
+	renterParams.RenterDeps = deps
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Check all stats are 0 still
+	ss, err := r.SkynetStatsGet()
+	if ss.BaseSectorOverdriveAvg != 0 {
+		t.Fatal(err, ss.BaseSectorOverdriveAvg)
+	}
+	if ss.BaseSectorOverdrivePct != 0 {
+		t.Fatal(err, ss.BaseSectorOverdrivePct)
+	}
+	if ss.FanoutSectorOverdriveAvg != 0 {
+		t.Fatal(err, ss.FanoutSectorOverdriveAvg)
+	}
+	if ss.FanoutSectorOverdrivePct != 0 {
+		t.Fatal(err, ss.FanoutSectorOverdrivePct)
+	}
+
+	// Upload a small and large file with N-M redundancy
+	skylinkSmall, _, _, err := r.UploadNewSkyfileBlocking("small", modules.SectorSize/2, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, remoteFile, err := r.UploadNewFileBlocking(int(modules.SectorSize)*2, 2, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sup := skymodules.SkyfileUploadParameters{
+		SiaPath: skymodules.RandomSiaPath(),
+	}
+	rhsp, err := r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
+	if err != nil {
+		t.Fatal("Expected conversion from Siafile to Skyfile Post to succeed.")
+	}
+	skylinkLarge := rhsp.Skylink
+
+	// Enable the dependency
+	deps.Enable()
+
+	// Download both skylinks
+	_, err = r.SkynetSkylinkGet(skylinkSmall)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.SkynetSkylinkGet(skylinkLarge)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check all download stats are not 0
+	ss, err = r.SkynetStatsGet()
+	if ss.BaseSectorOverdriveAvg == 0 {
+		t.Fatal(err, ss.BaseSectorOverdriveAvg)
+	}
+	if ss.BaseSectorOverdrivePct == 0 {
+		t.Fatal(err, ss.BaseSectorOverdrivePct)
+	}
+	if ss.FanoutSectorOverdriveAvg == 0 {
+		t.Fatal(err, ss.FanoutSectorOverdriveAvg)
+	}
+	if ss.FanoutSectorOverdrivePct == 0 {
+		t.Fatal(err, ss.FanoutSectorOverdrivePct)
 	}
 }
 
@@ -3398,34 +3473,6 @@ func testRegressionTimeoutPanic(t *testing.T, tg *siatest.TestGroup) {
 	_, err = r.SkynetSkylinkGetWithTimeout(skylink, 1)
 	if errors.Contains(err, renter.ErrProjectTimedOut) {
 		t.Fatal("Expected download request to time out")
-	}
-}
-
-// testSkynetLargeMetadata makes sure that
-func testSkynetLargeMetadata(t *testing.T, tg *siatest.TestGroup) {
-	r := tg.Renters()[0]
-
-	// Prepare a filename that's greater than a sector. That's the easiest way
-	// to force the metadata to be larger than a sector.
-	filename := hex.EncodeToString(fastrand.Bytes(int(modules.SectorSize + 1)))
-	filedata := fastrand.Bytes(int(100 + siatest.Fuzz()))
-	files := []siatest.TestFile{{Name: filename, Data: filedata}}
-
-	// Quick fuzz on the force value so that sometimes it is set, sometimes it
-	// is not.
-	var force bool
-	if fastrand.Intn(2) == 0 {
-		force = true
-	}
-
-	// Upload the file
-	//
-	// Note that we use a multipart upload to avoid running into `file name too
-	// long`, returned by the file system. By using a multipart upload we really
-	// isolate the error returned after validating the metadata.
-	_, _, _, err := r.UploadNewMultipartSkyfileBlocking(t.Name(), files, "", false, force)
-	if err == nil || !strings.Contains(err.Error(), renter.ErrMetadataTooBig.Error()) {
-		t.Fatal("Should fail due to ErrMetadataTooBig", err)
 	}
 }
 
@@ -4701,8 +4748,7 @@ func TestSkynetCleanupOnError(t *testing.T) {
 	}
 
 	// Create a helper function that returns true if the siapath does not exist.
-	skyfileDeleted := func(path skymodules.SiaPath) bool {
-		_, err = r.RenterFileRootGet(path)
+	skyfileDeleted := func(err error) bool {
 		return err != nil && strings.Contains(err.Error(), filesystem.ErrNotExist.Error())
 	}
 
@@ -4716,7 +4762,7 @@ func TestSkynetCleanupOnError(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = r.RenterFileRootGet(smallPath)
-	if !skyfileDeleted(smallPath) {
+	if !skyfileDeleted(err) {
 		t.Fatal("unexpected error on getting root for a small file", err)
 	}
 
@@ -4730,16 +4776,17 @@ func TestSkynetCleanupOnError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !skyfileDeleted(largePath) {
-		t.Fatal("unexpected error on deleting a large file", err)
+	_, err = r.RenterFileRootGet(largePath)
+	if !skyfileDeleted(err) {
+		t.Fatal("unexpected error on getting root for a large file", err)
 	}
-
 	largePathExtended, err := largePath.AddSuffixStr(skymodules.ExtendedSuffix)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !skyfileDeleted(largePathExtended) {
-		t.Fatal("unexpected error on deleting a large file extended", err)
+	_, err = r.RenterFileRootGet(largePathExtended)
+	if !skyfileDeleted(err) {
+		t.Fatal("unexpected error on getting root for a large file extended", err)
 	}
 
 	// Disable the dependency and verify the files are not removed
@@ -4747,23 +4794,30 @@ func TestSkynetCleanupOnError(t *testing.T) {
 
 	// Re-upload the small file and re-test
 	_, small, _, err = r.UploadNewSkyfileBlocking("smallfile", 100, true)
-	if uploadFailed(err) {
-		t.Fatal("unexpected error on reuploading a small file", err)
+	if err != nil {
+		t.Fatal("re-uploading a small file should succeed", err)
 	}
-	if skyfileDeleted(smallPath) {
-		t.Fatal("unexpected error on deleting a reuploaded small file", err)
+	_, err = r.RenterSkyfileGet(small.SiaPath, small.Root)
+	if err != nil {
+		t.Fatal("unexpected error on getting root for a small file", err)
 	}
 
 	// Re-upload the large file and re-test
 	_, large, _, err = r.UploadNewSkyfileBlocking("largefile", ss*2, true)
-	if uploadFailed(err) {
-		t.Fatal("unexpected error on reuploading a large file", err)
+	if err != nil {
+		t.Fatal("re-uploading a large file should succeed", err)
 	}
-	if skyfileDeleted(largePath) {
-		t.Fatal("unexpected error on deleting a reuploaded large file", err)
+	_, err = r.RenterSkyfileGet(large.SiaPath, large.Root)
+	if err != nil {
+		t.Fatal("unexpected error on getting root for a large file", err)
 	}
-	if skyfileDeleted(largePathExtended) {
-		t.Fatal("unexpected error on deleting reuploaded larde file extended", err)
+	largePathExtended, err = large.SiaPath.AddSuffixStr(skymodules.ExtendedSuffix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.RenterSkyfileGet(largePathExtended, large.Root)
+	if err != nil {
+		t.Fatal("unexpected error on getting root for a large file extended", err)
 	}
 }
 
@@ -5081,6 +5135,10 @@ func testSkynetPinUnpin(t *testing.T, p1, p2 *siatest.TestNode, fileSize uint64,
 		t.Fatal(err)
 	}
 	siaPath = sup.SiaPath
+	fullSiaPath, err = skymodules.SkynetFolder.Join(siaPath.String())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Try pinning the link as v2. Shouldn't work.
 	var slV1 skymodules.Skylink
@@ -5526,6 +5584,60 @@ func TestHostLosingRegistryEntry(t *testing.T) {
 	}
 }
 
+// testUpdateRegistryMulti tests the endpoint for updating multiple host with
+// different entries.
+func testUpdateRegistryMulti(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Make sure we got at least 3 hosts.
+	// One to update with a primary key.
+	// One to update with a secondary key.
+	// Two to not update at all.
+	hosts := tg.Hosts()
+	if len(hosts) < 3 {
+		t.Fatal("not enough hosts for test")
+	}
+
+	// Ignore the first host. We don't use it.
+	hosts = hosts[1:]
+
+	// Prepare an entry that's a primary entry on the second host.
+	hpk, err := hosts[0].HostPublicKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hpkh := crypto.HashObject(hpk)
+	sk, pk := crypto.GenerateKeyPair()
+	spk := types.Ed25519PublicKey(pk)
+	var dataKey crypto.Hash
+	fastrand.Read(dataKey[:])
+	data := hpkh[:modules.RegistryPubKeyHashSize]
+	srv := modules.NewRegistryValue(dataKey, data, 0, modules.RegistryTypeWithPubkey).Sign(sk)
+	entry := skymodules.NewRegistryEntry(spk, srv)
+
+	// Set the entry on all hosts from the second till the last.
+	srvs := make(map[string]skymodules.RegistryEntry)
+	for _, h := range hosts {
+		hostKey, err := h.HostPublicKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		srvs[hostKey.String()] = entry
+	}
+	err = r.RegistryUpdateMulti(srvs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check the health. We should find the entry on every host but one and
+	// one host should be considered a primary entry.
+	reh, err := r.RegistryEntryHealth(spk, dataKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(siatest.PrintJSON(reh))
+}
+
 // testHostsForRegistryUpdate is a basic smoke test for /skynet/registry/hosts.
 func testHostsForRegistryUpdate(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
@@ -5538,8 +5650,8 @@ func testHostsForRegistryUpdate(t *testing.T, tg *siatest.TestGroup) {
 
 	// Store them in a map for easier lookup.
 	hostMap := make(map[string]struct{})
-	for _, hpk := range hg.Hosts {
-		hostMap[hpk.String()] = struct{}{}
+	for _, host := range hg.Hosts {
+		hostMap[host.Pubkey.String()] = struct{}{}
 	}
 
 	// Compare them to the active contracts.
@@ -5646,5 +5758,263 @@ func TestRegistryReadRepair(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestRegistrySubscription runs registry subscription related tests.
+func TestRegistrySubscription(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	testDir := skynetTestDir(t.Name())
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   renter.MinUpdateRegistrySuccesses,
+		Portals: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	p := tg.Portals()[0]
+
+	// Run basic test.
+	t.Run("Basic", func(t *testing.T) {
+		testRegistrySubscriptionBasic(t, p)
+	})
+}
+
+// testRegistrySubscriptionBasic tests the basic case of subscribing to
+// an entry and then updating it.
+func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
+	// Collect notifications in a slice.
+	var notifications []skymodules.RegistryEntry
+	var notificationMu sync.Mutex
+	notifyFunc := func(entry skymodules.RegistryEntry) {
+		if err := entry.Verify(); err != nil {
+			t.Fatal("failed to verify entry", err)
+		}
+		notificationMu.Lock()
+		defer notificationMu.Unlock()
+		notifications = append(notifications, entry)
+	}
+
+	// Start the subscription.
+	closeHandler := func(_ int, msg string) error {
+		// We are going to close the subscription gracefully so the
+		// close handler shouldn't be called on our end.
+		t.Fatal("Close handler called:", msg)
+		return nil
+	}
+	subscription, err := p.BeginRegistrySubscription(notifyFunc, closeHandler)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := subscription.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Set an entry.
+	sk, pk := crypto.GenerateKeyPair()
+	spk := types.Ed25519PublicKey(pk)
+	srv1 := modules.NewRegistryValue(crypto.Hash{}, []byte{}, 0, modules.RegistryTypeWithoutPubkey).Sign(sk)
+	err = p.RegistryUpdateWithEntry(spk, srv1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Subscribe to that entry.
+	err = subscription.Subscribe(spk, srv1.Tweak)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be 1 notification now.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		notificationMu.Lock()
+		defer notificationMu.Unlock()
+		if len(notifications) != 1 {
+			return fmt.Errorf("notifications: %v != %v", len(notifications), 2)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Increase the revision number and set again.
+	srv2 := srv1
+	srv2.Revision++
+	srv2 = srv2.Sign(sk)
+	err = p.RegistryUpdateWithEntry(spk, srv2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be 2 notifications now.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		notificationMu.Lock()
+		defer notificationMu.Unlock()
+		if len(notifications) != 2 {
+			return fmt.Errorf("notifications: %v != %v", len(notifications), 2)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Unsubscribe
+	err = subscription.Unsubscribe(spk, srv2.Tweak)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Increase the revision number and set again.
+	srv3 := srv2
+	srv3.Revision++
+	srv3 = srv3.Sign(sk)
+	err = p.RegistryUpdateWithEntry(spk, srv3)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for a bit to give the notification some time.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// There should still be 2 notifications.
+		notificationMu.Lock()
+		nNotifications := len(notifications)
+		notificationMu.Unlock()
+		if nNotifications != 2 {
+			return fmt.Errorf("notifications: %v != %v", len(notifications), 2)
+		}
+		return nil
+	})
+
+	// Make sure first notification matches.
+	if !reflect.DeepEqual(srv1, notifications[0].SignedRegistryValue) {
+		t.Log(srv1)
+		t.Log(notifications[0].SignedRegistryValue)
+		t.Fatal("notification mismatch")
+	}
+	// Make sure second notification matches.
+	if !reflect.DeepEqual(srv2, *&notifications[1].SignedRegistryValue) {
+		t.Log(srv2)
+		t.Log(notifications[1].SignedRegistryValue)
+		t.Fatal("notification mismatch")
+	}
+}
+
+// testRecursiveBaseSector is a integration test for uploading a file which has
+// more metadata + fanout than would fit into the base sector without the
+// recursive extension.
+func testRecursiveBaseSector(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Choose a filename that is >SectorSize to guarantee we exceed the base
+	// sector. Keep the content small to make it a small upload.
+	data := fastrand.Bytes(10)
+	largeName := hex.EncodeToString(fastrand.Bytes(int(modules.SectorSize) + 1))
+	sp := skymodules.RandomSkynetFilePath()
+
+	// Add a skykey. That way we also confirm that the encryption is
+	// working.
+	sk, err := r.SkykeyCreateKeyPost(t.Name(), skykey.TypePrivateID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add another renter.
+	nodes, err := tg.AddNodes(node.RenterTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2 := nodes[0]
+	defer func() {
+		if err := tg.RemoveNode(r2); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	if err := r2.SkykeyAddKeyPost(sk); err != nil {
+		t.Fatal(err)
+	}
+
+	sup := skymodules.SkyfileUploadParameters{
+		SiaPath:             sp,
+		BaseChunkRedundancy: 2,
+		Filename:            largeName,
+		Mode:                skymodules.DefaultFilePerm,
+		Reader:              bytes.NewReader(data),
+		Force:               false,
+		Root:                true,
+		SkykeyName:          t.Name(),
+	}
+
+	// upload a skyfile
+	skylink, _, err := r.SkynetSkyfilePost(sup)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	downloadedData, err := r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, downloadedData) {
+		t.Fatalf("data mismatch %v %v", len(data), len(downloadedData))
+	}
+
+	// Fetch the metadata.
+	_, md, err := r.SkynetMetadataGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if int(md.Length) != len(data) {
+		t.Fatal("md.Length is wrong", md.Length)
+	}
+	if md.Filename != largeName {
+		t.Fatal("name is wrong")
+	}
+
+	// Try pinning the file with the new renter.
+	err = r2.SkynetSkylinkPinPost(skylink, skymodules.SkyfilePinParameters{
+		SiaPath: sp,
+		Root:    true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Both base sector .sia files should have the same size. This verifies
+	// that we added the baseSectorExtension when we pinned the file.
+	f1, err := r.RenterFileRootGet(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f2, err := r2.RenterFileRootGet(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f1.File.Size() != f2.File.Size() {
+		t.Fatal("size mismatch", f1.File.Size(), f2.File.Size())
+	}
+
+	// Check the actual size. With the settings of this test, raw metadata
+	// and fanout should have a length of 8392 bytes. Uploading that results
+	// in 3 merkle roots which all fit into the original base sector. So the
+	// resulting size is one sector plus 8392 bytes.
+	extensionSize := int64(8392)
+	if f1.File.Size() != int64(modules.SectorSize)+extensionSize {
+		t.Fatal("wrong size", f1.File.Size())
 	}
 }

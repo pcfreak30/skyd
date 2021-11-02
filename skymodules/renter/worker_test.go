@@ -95,6 +95,12 @@ func newWorkerTesterCustomDependency(name string, renterDeps skymodules.SkydDepe
 func (wt *workerTester) Close() error {
 	var err1, err2 error
 	var wg sync.WaitGroup
+
+	// Kill the worker first to verify that all of the worker's background
+	// threads are stopped by merely killing the worker and not the whole
+	// renter.
+	wt.worker.managedKill()
+
 	wg.Add(2)
 	go func() {
 		err1 = wt.rt.Close()
@@ -194,7 +200,7 @@ func TestReadOffsetCorruptedProof(t *testing.T) {
 func TestManagedAsyncReady(t *testing.T) {
 	w := new(worker)
 	w.initJobHasSectorQueue()
-	jrs := &jobReadStats{}
+	jrs := NewJobReadStats()
 	w.initJobReadQueue(jrs)
 	w.initJobLowPrioReadQueue(jrs)
 	w.initJobReadRegistryQueue()

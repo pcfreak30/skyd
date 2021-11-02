@@ -1691,3 +1691,80 @@ func TestUpdateMetadataPruneHosts(t *testing.T) {
 		t.Fatal("wrong length", len(sf.pubKeyTable))
 	}
 }
+
+// TestFinished is a simple unit test to probe the Finished and SetFinished
+// Method of the siafile
+func TestFinished(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create file
+	siaFilePath, _, _, rc, sk, fileSize, numChunks, fileMode := newTestFileParams(1, true)
+	file, _, _ := customTestFileAndWAL(siaFilePath, "", rc, sk, fileSize, numChunks, fileMode)
+
+	// Create helper
+	checkFinished := func(finished bool) error {
+		if file.Finished() != finished {
+			return fmt.Errorf("Expected file to be finished %v but found finished %v", finished, file.Finished())
+		}
+		return nil
+	}
+
+	// Initial File should be unfinished
+	if err := checkFinished(false); err != nil {
+		t.Fatal(err)
+	}
+
+	// SetFinished shouldn't change status for health > 1
+	file.SetFinished(1.1)
+	if err := checkFinished(false); err != nil {
+		t.Fatal(err)
+	}
+
+	// SetFinished with health of 1 should mark as finished
+	file.SetFinished(1)
+	if err := checkFinished(true); err != nil {
+		t.Fatal(err)
+	}
+
+	// Manually reset
+	file.staticMetadata.Finished = false
+	if err := checkFinished(false); err != nil {
+		t.Fatal(err)
+	}
+
+	// SetFinished with health of 0 should mark as finished
+	file.SetFinished(0)
+	if err := checkFinished(true); err != nil {
+		t.Fatal(err)
+	}
+
+	// Calling SetFinished with a high health again should have no effect.
+	file.SetFinished(10)
+	if err := checkFinished(true); err != nil {
+		t.Fatal(err)
+	}
+
+	// Manually reset
+	file.staticMetadata.Finished = false
+	if err := checkFinished(false); err != nil {
+		t.Fatal(err)
+	}
+
+	// File should be considered finished with local path even if
+	// SetFinished is called with a high health
+	file.staticMetadata.LocalPath = "notblank"
+	file.SetFinished(10)
+	if err := checkFinished(true); err != nil {
+		t.Fatal(err)
+	}
+
+	// Removing the localpath should have no effect
+	file.staticMetadata.LocalPath = ""
+	file.SetFinished(10)
+	if err := checkFinished(true); err != nil {
+		t.Fatal(err)
+	}
+}

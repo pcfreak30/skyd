@@ -25,6 +25,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siafile"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/types"
 )
@@ -164,7 +165,7 @@ func (uch *uploadChunkHeap) removeByID(uuc *unfinishedUploadChunk) {
 	}
 
 	//Remove the chunk from the heap
-	if index == -1 || (*uch)[index] != uuc {
+	if index == -1 || (*uch)[index].id != uuc.id {
 		// Chunk not found
 		return
 	}
@@ -177,7 +178,7 @@ func (uch *uploadChunkHeap) removeByID(uuc *unfinishedUploadChunk) {
 // the chunks are closed
 func (uch *uploadChunkHeap) reset() (err error) {
 	for _, c := range *uch {
-		err = errors.Compose(err, c.fileEntry.Close())
+		err = errors.Compose(err, c.Close())
 	}
 	*uch = uploadChunkHeap{}
 	return err
@@ -194,7 +195,6 @@ type uploadHeap struct {
 	//
 	// repairingChunks is a map containing all the chunks are that currently
 	// assigned to workers and are being repaired/worked on.
-	repairingChunks   map[uploadChunkID]*unfinishedUploadChunk
 	stuckHeapChunks   map[uploadChunkID]*unfinishedUploadChunk
 	unstuckHeapChunks map[uploadChunkID]*unfinishedUploadChunk
 
@@ -219,9 +219,8 @@ func (uh *uploadHeap) managedExists(id uploadChunkID) bool {
 	uh.mu.Lock()
 	defer uh.mu.Unlock()
 	_, existsUnstuckHeap := uh.unstuckHeapChunks[id]
-	_, existsRepairing := uh.repairingChunks[id]
 	_, existsStuckHeap := uh.stuckHeapChunks[id]
-	return existsUnstuckHeap || existsRepairing || existsStuckHeap
+	return existsUnstuckHeap || existsStuckHeap
 }
 
 // managedIsPaused returns the boolean indicating whether or not the user
@@ -257,19 +256,6 @@ func (uh *uploadHeap) managedPauseStatus() (bool, time.Time) {
 	default:
 		return true, endTime
 	}
-}
-
-// managedMarkRepairDone removes the chunk from the repairingChunks map of the
-// uploadHeap. It also performs a sanity check that the chunk was in the map,
-// this is to ensure that we are adding and removing the chunks as expected
-func (uh *uploadHeap) managedMarkRepairDone(uuc *unfinishedUploadChunk) {
-	uh.mu.Lock()
-	defer uh.mu.Unlock()
-	existingUUC, ok := uh.repairingChunks[uuc.id]
-	if ok && existingUUC == uuc {
-		delete(uh.repairingChunks, uuc.id)
-	}
-	//	build.Critical("Chunk is not in the repair map, this means it was removed prematurely or was never added")
 }
 
 // managedNumStuckChunks returns total number of stuck chunks in the heap and
@@ -334,9 +320,8 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk, ct chunkType) (*un
 	uh.mu.Lock()
 	defer uh.mu.Unlock()
 	uucUnstuck, existsUnstuckHeap := uh.unstuckHeapChunks[uuc.id]
-	uucRepairing, existsRepairing := uh.repairingChunks[uuc.id]
 	uucStuck, existsStuckHeap := uh.stuckHeapChunks[uuc.id]
-	exists := existsUnstuckHeap || existsRepairing || existsStuckHeap
+	exists := existsUnstuckHeap || existsStuckHeap
 
 	// Check if the chunk can be added to the heap
 	canAddStuckChunk := chunkStuck && !exists && len(uh.stuckHeapChunks) < maxStuckChunksInHeap && ct == chunkTypeLocalChunk
@@ -351,7 +336,7 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk, ct chunkType) (*un
 		uh.unstuckHeapChunks[uuc.id] = uuc
 		heap.Push(&uh.heap, uuc)
 		return nil, true
-	} else if ct == chunkTypeStreamChunk && !existsRepairing {
+	} else if ct == chunkTypeStreamChunk {
 		// Make sure the chunk is removed from unstuck and stuck maps
 		delete(uh.unstuckHeapChunks, uuc.id)
 		delete(uh.stuckHeapChunks, uuc.id)
@@ -360,17 +345,12 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk, ct chunkType) (*un
 		if exists {
 			uh.heap.removeByID(uuc)
 		}
-
-		// Add to the repair map
-		uh.repairingChunks[uuc.id] = uuc
 		return uuc, true
 	}
 	// Return a potentially existing upload chunk that prevented our chunk
 	// from being added to the heap.
 	if existsUnstuckHeap {
 		return uucUnstuck, false
-	} else if existsRepairing {
-		return uucRepairing, false
 	} else if existsStuckHeap {
 		return uucStuck, false
 	}
@@ -384,10 +364,6 @@ func (uh *uploadHeap) managedPop() (uc *unfinishedUploadChunk) {
 		uc = heap.Pop(&uh.heap).(*unfinishedUploadChunk)
 		delete(uh.unstuckHeapChunks, uc.id)
 		delete(uh.stuckHeapChunks, uc.id)
-		if _, exists := uh.repairingChunks[uc.id]; exists {
-			build.Critical("There should not be a chunk in the heap that can be popped that is currently being repaired")
-		}
-		uh.repairingChunks[uc.id] = uc
 	}
 	uh.mu.Unlock()
 	return uc
@@ -446,9 +422,8 @@ func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType)
 	// Check to see if the chunk is currently in the heap
 	uh.mu.Lock()
 	unstuckUUC, existsunstuckheap := uh.unstuckHeapChunks[uuc.id]
-	repairingUUC, existsrepairing := uh.repairingChunks[uuc.id]
 	stuckUUC, existsstuckheap := uh.stuckHeapChunks[uuc.id]
-	exists := existsunstuckheap || existsrepairing || existsstuckheap
+	exists := existsunstuckheap || existsstuckheap
 
 	// If the chunk doesn't already exist there is nothing to update
 	if !exists {
@@ -460,8 +435,6 @@ func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType)
 	var existingUUC *unfinishedUploadChunk
 	if existsstuckheap {
 		existingUUC = stuckUUC
-	} else if existsrepairing {
-		existingUUC = repairingUUC
 	} else if existsunstuckheap {
 		existingUUC = unstuckUUC
 	}
@@ -470,16 +443,6 @@ func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType)
 	if existingUUC.sourceReader != nil {
 		uh.mu.Unlock()
 		return nil
-	}
-
-	// If the existing chunk is not repairing yet then we can just remove it from
-	// the maps and close the file entry.
-	if !existsrepairing {
-		delete(uh.unstuckHeapChunks, existingUUC.id)
-		delete(uh.stuckHeapChunks, existingUUC.id)
-		uh.heap.removeByID(existingUUC)
-		uh.mu.Unlock()
-		return existingUUC.fileEntry.Close()
 	}
 	uh.mu.Unlock()
 
@@ -494,7 +457,6 @@ func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType)
 	existingUUC.cancelWG.Wait()
 
 	// Mark the repair as done.
-	uh.managedMarkRepairDone(existingUUC)
 	return nil
 }
 
@@ -520,13 +482,22 @@ func (r *Renter) ResumeRepairsAndUploads() error {
 }
 
 // managedBuildUnfinishedChunk will pull out a single unfinished chunk of a file.
-func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesystem.FileNode, chunkIndex uint64, hosts map[string]struct{}, priority bool, offline, goodForRenew map[string]bool, mm *memoryManager) (*unfinishedUploadChunk, error) {
+func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesystem.FileNode, chunkIndex uint64, hosts map[string]struct{}, priority bool, offline, goodForRenew map[string]bool, mm *memoryManager) (_ *unfinishedUploadChunk, _ bool, err error) {
+	cid := uploadChunkID{entry.UID(), chunkIndex}
+
+	// Check if the chunk is already being repaired before building it.
+	r.repairingChunksMu.Lock()
+	defer r.repairingChunksMu.Unlock()
+	if uc, repairing := r.repairingChunks[cid]; repairing {
+		return uc, true, nil // already being repaired
+	}
+
 	// Copy entry
 	entryCopy := entry.Copy()
 	stuck, err := entry.StuckChunkByIndex(chunkIndex)
 	if err != nil {
 		r.staticLog.Println("WARN: unable to get 'stuck' status:", err)
-		return nil, errors.AddContext(err, "unable to get 'stuck' status")
+		return nil, false, errors.AddContext(err, "unable to get 'stuck' status")
 	}
 	_, err = os.Stat(entryCopy.LocalPath())
 	onDisk := err == nil
@@ -539,8 +510,9 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 	}
 
 	uuc := &unfinishedUploadChunk{
-		ctx:       ctx,
-		fileEntry: entryCopy,
+		ctx:          ctx,
+		fileEntry:    entryCopy,
+		staticRenter: r,
 
 		id: uploadChunkID{
 			fileUID: entry.UID(),
@@ -591,10 +563,12 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 	pieces, err := entry.Pieces(chunkIndex)
 	if err != nil {
 		r.staticLog.Println("failed to get pieces for building incomplete chunks", err)
-		if err := entry.SetStuck(chunkIndex, true); err != nil {
-			r.staticLog.Printf("failed to set chunk %v stuck: %v", chunkIndex, err)
+		if entry.Finished() {
+			if err := entry.SetStuck(chunkIndex, true); err != nil {
+				r.staticLog.Printf("failed to set chunk %v stuck: %v", chunkIndex, err)
+			}
 		}
-		return nil, errors.AddContext(err, "error trying to get the pieces for the chunk")
+		return nil, false, errors.AddContext(err, "error trying to get the pieces for the chunk")
 	}
 	for pieceIndex, pieceSet := range pieces {
 		for _, piece := range pieceSet {
@@ -616,8 +590,11 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 			if exists && goodForRenew && exists2 && !offline && exists3 && !redundantPiece {
 				uuc.pieceUsage[pieceIndex] = true
 				uuc.piecesCompleted++
+			} else if redundantPiece && build.Release == "testing" {
+				// This shouldn't happen in testing unless
+				// explicitly tested for.
+				build.Critical("same piece was uploaded to multiple hosts")
 			}
-
 			// In all cases, if this host already has a piece, the host cannot
 			// appear in the set of unused hosts.
 			delete(uuc.unusedHosts, hpk)
@@ -632,8 +609,10 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 	}
 	// Now that we have calculated the completed pieces for the chunk we can
 	// calculate the health of the chunk to avoid a call to ChunkHealth
-	uuc.health = 1 - (float64(uuc.piecesCompleted-uuc.staticMinimumPieces) / float64(uuc.staticPiecesNeeded-uuc.staticMinimumPieces))
-	return uuc, nil
+	uuc.health = siafile.CalculateHealth(uuc.piecesCompleted, uuc.staticMinimumPieces, uuc.staticPiecesNeeded)
+	// Add the chunk to the repairing chunks.
+	r.repairingChunks[cid] = uuc
+	return uuc, false, nil
 }
 
 // managedBuildUnfinishedChunks will pull all of the unfinished chunks out of a
@@ -645,12 +624,14 @@ func (r *Renter) managedBuildUnfinishedChunk(ctx context.Context, entry *filesys
 // they are done and so cannot share a SiaFileSetEntry as the first chunk to
 // finish would then close the Entry and consequentially impact the remaining
 // chunks.
+//
+// NOTE: The caller is responsible for ensuring that the file should be repair,
+// therefore we do not check if a file is Unfinished in this method or lower
+// down. This is to avoid blocking or failing uploads.
 func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool, mm *memoryManager) []*unfinishedUploadChunk {
 	// If we don't have enough workers for the file, don't repair it right now.
 	minPieces := entry.ErasureCode().MinPieces()
-	r.staticWorkerPool.mu.RLock()
-	workerPoolLen := len(r.staticWorkerPool.workers)
-	r.staticWorkerPool.mu.RUnlock()
+	workerPoolLen := r.staticWorkerPool.callNumWorkers()
 	if workerPoolLen < minPieces {
 		// There are not enough workers for the chunk to reach minimum
 		// redundancy. Check if the allowance has enough hosts for the chunk to
@@ -660,9 +641,9 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		// Only perform this check when we are looking for unstuck chunks. This
 		// will prevent log spam from repeatedly logging to the user the issue
 		// with the file after marking the chunks as stuck
-		if allowance.Hosts < uint64(minPieces) && target == targetUnstuckChunks {
+		if allowance.Hosts < uint64(minPieces) && target == targetUnstuckChunks && entry.Finished() {
 			// There are not enough hosts in the allowance for the file to reach
-			// minimum redundancy. Mark all chunks as stuck
+			// minimum redundancy. Mark all chunks as stuck.
 			r.staticLog.Printf("WARN: allownace had insufficient hosts for chunk to reach minimum redundancy, have %v need %v for file %v", allowance.Hosts, minPieces, entry.SiaFilePath())
 			if err := entry.SetAllStuck(true); err != nil {
 				r.staticLog.Println("WARN: unable to mark all chunks as stuck:", err)
@@ -706,40 +687,42 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		}
 
 		// Create unfinishedUploadChunk
-		chunk, err := r.managedBuildUnfinishedChunk(r.tg.StopCtx(), entry, uint64(index), hosts, memoryPriorityLow, offline, goodForRenew, mm)
+		chunk, exists, err := r.managedBuildUnfinishedChunk(r.tg.StopCtx(), entry, uint64(index), hosts, memoryPriorityLow, offline, goodForRenew, mm)
 		if err != nil {
 			r.staticLog.Debugln("Error when building an unfinished chunk:", err)
+			continue
+		}
+		// Chunk might already being repaired.
+		if exists {
 			continue
 		}
 		newUnfinishedChunks = append(newUnfinishedChunks, chunk)
 	}
 
+	// Prune the incomplete chunks
+	return r.managedPruneIncompleteChunks(newUnfinishedChunks)
+}
+
+// managedPruneIncompleteChunks will remove any completed chunks from the list
+// of unfinishedUploadChunks
+func (r *Renter) managedPruneIncompleteChunks(newUnfinishedChunks []*unfinishedUploadChunk) []*unfinishedUploadChunk {
 	// Iterate through the set of newUnfinishedChunks and remove any that are
-	// completed or are not downloadable.
+	// completed.
 	incompleteChunks := newUnfinishedChunks[:0]
 	for _, chunk := range newUnfinishedChunks {
-		// Check the chunk status. A chunk is repairable if it can be fully
-		// downloaded, or if the source file is available on disk. We also check
-		// if the chunk needs repair, which is only true if more than a certain
-		// amount of redundancy is missing. We only repair above a certain
-		// threshold of missing redundancy to minimize the amount of repair work
-		// that gets triggered by host churn.
-		//
-		// While a file could be on disk as long as !os.IsNotExist(err), for the
-		// purposes of repairing a file is only considered on disk if it can be
-		// accessed without error. If there is an error accessing the file then
-		// it is likely that we can not read the file in which case it can not
-		// be used for repair.
+		// Check if the chunk needs repair
 		needsRepair := skymodules.NeedsRepair(chunk.health)
 
-		// Add chunk to list of incompleteChunks if it is incomplete.
+		// Add chunk to list of incompleteChunks if it is in need of repair.
 		if needsRepair {
 			incompleteChunks = append(incompleteChunks, chunk)
 			continue
 		}
 
-		// Close entry of completed chunk
-		err := r.managedSetStuckAndClose(chunk, false)
+		// Close entry of completed chunk. Since the chunk doesn't need
+		// repair we should make sure that it is not marked as stuck.
+		chunk.stuck = false
+		err := chunk.managedSetStuckAndClose(true)
 		if err != nil {
 			r.staticLog.Debugln("WARN: unable to set chunk stuck status and close:", err)
 		}
@@ -867,19 +850,19 @@ func (r *Renter) managedBuildAndPushRandomChunk(siaPath skymodules.SiaPath, host
 	defer func() {
 		// Close the unused unfinishedUploadChunks
 		for _, chunk := range unfinishedUploadChunks {
-			allErrs = errors.Compose(allErrs, chunk.fileEntry.Close())
+			allErrs = errors.Compose(allErrs, chunk.Close())
 		}
 	}()
 
 	// Push chunk onto the uploadHeap
 	_, pushed, err := r.managedPushChunkForRepair(randChunk, chunkTypeLocalChunk)
 	if err != nil {
-		return errors.Compose(allErrs, err, randChunk.fileEntry.Close())
+		return errors.Compose(allErrs, err, randChunk.Close())
 	}
 	if !pushed {
 		// Chunk wasn't added to the heap. Close the file
 		r.staticLog.Debugln("WARN: stuck chunk", randChunk.id, "wasn't added to heap")
-		allErrs = errors.Compose(allErrs, randChunk.fileEntry.Close())
+		allErrs = errors.Compose(allErrs, randChunk.Close())
 	}
 	return allErrs
 }
@@ -926,6 +909,11 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	}
 	// Loop through all the files and build the temporary heap.
 	for _, file := range files {
+		// Skip any unfinished files
+		if !file.Finished() {
+			continue
+		}
+
 		// If this file has better health than other files that we have ignored,
 		// this file can be skipped. This only counts for unstuck chunks, if we
 		// are adding stuck files, we ignore health as a consideration.
@@ -945,7 +933,7 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 			// Skip adding this chunk if it is already in the upload heap.
 			if r.staticUploadHeap.managedExists(chunk.id) {
 				// Close the file entry before skipping the chunk.
-				err := chunk.fileEntry.Close()
+				err := chunk.Close()
 				if err != nil {
 					r.staticLog.Println("Error closing file entry:", err)
 				}
@@ -956,7 +944,7 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 			}
 			if wh.canSkip(chunk.health, chunk.onDisk) {
 				// Close the file entry before skipping the chunk.
-				err := chunk.fileEntry.Close()
+				err := chunk.Close()
 				if err != nil {
 					r.staticLog.Println("Error closing file entry:", err)
 				}
@@ -996,7 +984,7 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 			chunk = heap.Pop(&tempChunkHeap).(*unfinishedUploadChunk)
 			// Close the file entry, since this chunk is popped, the reset of
 			// the heap won't catch this chunk.
-			err := chunk.fileEntry.Close()
+			err := chunk.Close()
 			if err != nil {
 				r.staticLog.Println("Error closing file entry:", err)
 			}
@@ -1028,7 +1016,7 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 		_, pushed, err := r.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
 			r.staticRepairLog.Println("WARN: Error pushing chunk for repair", err)
-			err = chunk.fileEntry.Close()
+			err = chunk.Close()
 			if err != nil {
 				r.staticRepairLog.Println("Error closing file entry:", err)
 			}
@@ -1038,7 +1026,7 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 			// We don't track the health of this chunk since the only reason it
 			// wouldn't be added to the heap is if it is already in the heap or
 			// is currently being repaired. Close the file.
-			err := chunk.fileEntry.Close()
+			err := chunk.Close()
 			if err != nil {
 				r.staticRepairLog.Println("Error closing file entry:", err)
 			}
@@ -1052,7 +1040,7 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 		chunk := heap.Pop(&tempChunkHeap).(*unfinishedUploadChunk)
 		// Close the file entry since it's no longer in the temp heap and
 		// therefore will not be caught by the call to reset().
-		err := chunk.fileEntry.Close()
+		err := chunk.Close()
 		if err != nil {
 			r.staticLog.Println("Error closing file entry:", err)
 		}
@@ -1169,8 +1157,8 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath skymodules.SiaPath, hosts map[
 			}
 			continue
 		}
-		// For normal repairs, ignore files that don't have any unstuck chunks
-		// or are healthy and not in need of repair.
+		// For normal repairs, ignore files that don't have any unstuck chunks,
+		// are healthy and not in need of repair.
 		//
 		// We can used the cached value of health because it is updated during
 		// bubble. Since the repair loop operates off of the metadata
@@ -1397,9 +1385,7 @@ func (r *Renter) managedRepairLoop() error {
 
 		// Make sure we have enough workers for this chunk to reach minimum
 		// redundancy.
-		r.staticWorkerPool.mu.RLock()
-		availableWorkers := len(r.staticWorkerPool.workers)
-		r.staticWorkerPool.mu.RUnlock()
+		availableWorkers := r.staticWorkerPool.callNumWorkers()
 		if availableWorkers < nextChunk.staticMinimumPieces {
 			r.staticRepairLog.Printf("WARN: Not enough workers to repair %s, have %v but need %v", chunkPath, availableWorkers, nextChunk.staticMinimumPieces)
 			// If the chunk is not stuck, check whether there are enough hosts
@@ -1424,9 +1410,7 @@ func (r *Renter) managedRepairLoop() error {
 			// There are enough hosts set in the allowance so this is a
 			// temporary issue with available workers, just ignore the chunk
 			// for now and close the file
-			nextChunk.fileEntry.Close()
-			// Remove the chunk from the repairingChunks map
-			r.staticUploadHeap.managedMarkRepairDone(nextChunk)
+			nextChunk.Close()
 			continue
 		}
 
@@ -1444,9 +1428,7 @@ func (r *Renter) managedRepairLoop() error {
 			// we will just close the chunk file entry instead of marking it as
 			// stuck
 			r.staticRepairLog.Printf("WARN: error while preparing chunk %v from %s: %v", nextChunk.staticIndex, chunkPath, err)
-			nextChunk.fileEntry.Close()
-			// Remove the chunk from the repairingChunks map
-			r.staticUploadHeap.managedMarkRepairDone(nextChunk)
+			nextChunk.Close()
 			continue
 		}
 	}

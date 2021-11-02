@@ -101,16 +101,16 @@ func (j *jobUpdateRegistry) callDiscard(err error) {
 	defer j.staticSpan.Finish()
 
 	w := j.staticQueue.staticWorker()
-	errLaunch := w.staticRenter.tg.Launch(func() {
+	errLaunch := w.staticTG.Launch(func() {
 		response := &jobUpdateRegistryResponse{
 			srv:          nil,
-			staticErr:    errors.Extend(err, ErrJobDiscarded),
+			staticErr:    err,
 			staticWorker: j.staticQueue.staticWorker(),
 		}
 		select {
 		case j.staticResponseChan <- response:
 		case <-j.staticCtx.Done():
-		case <-w.staticRenter.tg.StopChan():
+		case <-w.staticTG.StopChan():
 		}
 	})
 	if errLaunch != nil {
@@ -133,7 +133,7 @@ func (j *jobUpdateRegistry) callExecute() {
 
 	// Prepare a method to send a response asynchronously.
 	sendResponse := func(srv *modules.SignedRegistryValue, err error) {
-		errLaunch := w.staticRenter.tg.Launch(func() {
+		errLaunch := w.staticTG.Launch(func() {
 			response := &jobUpdateRegistryResponse{
 				srv:          srv,
 				staticErr:    err,
@@ -142,7 +142,7 @@ func (j *jobUpdateRegistry) callExecute() {
 			select {
 			case j.staticResponseChan <- response:
 			case <-j.staticCtx.Done():
-			case <-w.staticRenter.tg.StopChan():
+			case <-w.staticTG.StopChan():
 			}
 		})
 		if errLaunch != nil {

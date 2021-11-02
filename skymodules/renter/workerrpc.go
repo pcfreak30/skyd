@@ -21,14 +21,14 @@ import (
 // defaultNewStreamTimeout is a default timeout for creating a new stream.
 var defaultNewStreamTimeout = build.Select(build.Var{
 	Standard: 5 * time.Minute,
-	Testing:  10 * time.Second,
+	Testing:  time.Minute,
 	Dev:      time.Minute,
 }).(time.Duration)
 
 // defaultRPCDeadline is a default timeout for executing an RPC.
 var defaultRPCDeadline = build.Select(build.Var{
 	Standard: 5 * time.Minute,
-	Testing:  10 * time.Second,
+	Testing:  time.Minute,
 	Dev:      time.Minute,
 }).(time.Duration)
 
@@ -79,7 +79,9 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	limit = stream.Limit()
 
 	// prepare a buffer so we can optimize our writes
-	buffer := bytes.NewBuffer(nil)
+	buffer := w.staticBufferPool.Get().(*bytes.Buffer)
+	defer w.staticBufferPool.Put(buffer)
+	buffer.Reset()
 
 	// write the specifier
 	err = modules.RPCWrite(buffer, modules.RPCExecuteProgram)
@@ -186,10 +188,10 @@ func (w *worker) staticNewStream() (siamux.Stream, error) {
 	//
 	// NOTE: this only ratelimits the data going over the stream and not the raw
 	// bytes going over the wire, so the ratelimit might be off by a few bytes.
-	rlStream := ratelimit.NewRLStream(stream, w.staticRenter.staticRL, w.staticRenter.tg.StopChan())
+	rlStream := ratelimit.NewRLStream(stream, w.staticRenter.staticRL, w.staticTG.StopChan())
 
 	// Wrap the stream in global ratelimit.
-	return ratelimit.NewRLStream(rlStream, skymodules.GlobalRateLimits, w.staticRenter.tg.StopChan()), nil
+	return ratelimit.NewRLStream(rlStream, skymodules.GlobalRateLimits, w.staticTG.StopChan()), nil
 }
 
 // managedRenew renews the contract with the worker's host.

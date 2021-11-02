@@ -14,12 +14,14 @@ package renter
 // not run out, it maintains a balance target by refilling it when necessary.
 
 import (
+	"bytes"
 	"container/list"
 	"sync"
 	"time"
 	"unsafe"
 
 	"gitlab.com/NebulousLabs/threadgroup"
+	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -36,7 +38,8 @@ const (
 	// registry cache.
 	registryCacheSize = 1 << 20 // 1 MiB
 )
-const (
+
+var (
 	// These variables define the total amount of data that a worker is willing
 	// to queue at once when performing async tasks. If the worker has more data
 	// queued in its async queue than this, it will stop launching jobs so that
@@ -45,8 +48,24 @@ const (
 	// The worker may adjust these values dynamically as it starts to run and
 	// determines how much stuff it can do simultaneously before its jobs start
 	// to have significant latency impact.
-	initialConcurrentAsyncReadData  = 10e6
-	initialConcurrentAsyncWriteData = 10e6
+	//
+	// NOTE: these variables are lowered in test environment currently to avoid
+	// a large amount of parallel downloads. We've found that the host is
+	// currently facing a locking issue causing slow reads on the CI when
+	// there's a lot of parallel reads taking place. This issue is tackled by
+	// the following PR https://github.com/SiaFoundation/siad/pull/50
+	// (partially) and thus this build var should be removed again when that is
+	// merged and rolled out fully.
+	initialConcurrentAsyncReadData = build.Select(build.Var{
+		Standard: 10e6,
+		Dev:      10e6,
+		Testing:  10e4,
+	}).(float64)
+	initialConcurrentAsyncWriteData = build.Select(build.Var{
+		Standard: 10e6,
+		Dev:      10e6,
+		Testing:  10e4,
+	}).(float64)
 )
 
 type (
@@ -68,6 +87,22 @@ type (
 		atomicCacheUpdating              uint64         // ensures only one cache update happens at a time
 		atomicPriceTable                 unsafe.Pointer // points to a workerPriceTable object
 		atomicPriceTableUpdateRunning    uint64         // used for a sanity check
+
+		// accountSyncMu is a special mutex used when syncing the
+		// worker's account balance with the host's. During the sync,
+		// the worker can't have any pending withdrawals or deposits. To
+		// avoid that, externSyncAccountBalanceToHost waits for all
+		// serial and async jobs to finish before doing the sync.
+		// Unfortunately that won't work for the subscription background
+		// loop since it's always running. That's why accountSyncMu
+		// needs to be locked by the subscription loop every time before
+		// it starts a pending deposit/withdrawal and unlocked after
+		// committing that deposit/withdrawal. That way
+		// externSyncAccountBalanceToHost only executes when the pending
+		// deposits/withdrawals are 0 and vice versa the subscription
+		// loop is blocked for a short period of time while the worker
+		// and host sync up on their balance.
+		accountSyncMu sync.Mutex
 
 		// The host pub key also serves as an id for the worker, as there is
 		// only one worker per host.
@@ -118,6 +153,8 @@ type (
 		// staticRegistryCache caches information about the worker's host's
 		// registry entries.
 		staticRegistryCache *registryRevisionCache
+
+		staticBufferPool sync.Pool
 
 		// staticSetInitialEstimates is an object that ensures the initial queue
 		// estimates of the HS and RJ queues are only set once.
@@ -180,9 +217,6 @@ func (queue *uploadChunks) Pop() *unfinishedUploadChunk {
 
 // managedKill will kill the worker.
 func (w *worker) managedKill() {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
 	err := w.staticTG.Stop()
 	if err != nil && !errors.Contains(err, threadgroup.ErrStopped) {
 		w.staticRenter.staticLog.Printf("Worker %v: kill failed: %v", w.staticHostPubKeyStr, err)
@@ -253,8 +287,17 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		// These may be updated in real time as the worker collects metrics
 		// about itself.
 		staticLoopState: &workerLoopState{
-			atomicReadDataLimit:  initialConcurrentAsyncReadData,
-			atomicWriteDataLimit: initialConcurrentAsyncWriteData,
+			atomicReadDataLimit:  uint64(initialConcurrentAsyncReadData),
+			atomicWriteDataLimit: uint64(initialConcurrentAsyncWriteData),
+		},
+
+		// Initialize a buffer pool handing out 4kb buffers. This to prevent
+		// reallocating a buffer of unknown size, but instead reusing the same
+		// buffer over and over again.
+		staticBufferPool: sync.Pool{
+			New: func() interface{} {
+				return bytes.NewBuffer(make([]byte, 1<<12))
+			},
 		},
 
 		unprocessedChunks: newUploadChunks(),
@@ -263,7 +306,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	}
 	// Share the read stats between the read queues. That way a repair
 	// download will contribute to user download estimations and vice versa.
-	jrs := &jobReadStats{}
+	jrs := NewJobReadStats()
 
 	// staticJobReadRegistryDT will be seeded when the first price table is
 	// fetched.

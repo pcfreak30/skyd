@@ -547,11 +547,18 @@ func (w *worker) externSyncAccountBalanceToHost() {
 			w.staticRenter.staticLog.Critical(fmt.Sprintf("worker has taken more than %v minutes to go idle", accountIdleMaxWait.Minutes()))
 			return
 		}
-		awake := w.staticRenter.tg.Sleep(accountIdleCheckFrequency)
+		awake := w.staticTG.Sleep(accountIdleCheckFrequency)
 		if !awake {
 			return
 		}
 	}
+
+	// Grab the account sync lock to prevent the subscription loop from
+	// starting new pending deposits or withdrawals. We do this after the
+	// idle check since it might take a while for all jobs to finish and we
+	// don't want to unnecessarily block subscriptions.
+	w.accountSyncMu.Lock()
+	defer w.accountSyncMu.Unlock()
 
 	// Do a check to ensure that the worker is still idle after the function is
 	// complete. This should help to catch any situation where the worker is
@@ -695,7 +702,7 @@ func (w *worker) managedRefillAccount() {
 
 		// Have the threadgroup wake the worker when the account comes off of
 		// cooldown.
-		w.staticRenter.tg.AfterFunc(cd.Sub(time.Now()), func() {
+		w.staticTG.AfterFunc(cd.Sub(time.Now()), func() {
 			w.staticWake()
 		})
 	}()

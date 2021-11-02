@@ -226,9 +226,9 @@ func (j *jobReadRegistry) callDiscard(err error) {
 	defer j.staticSpan.Finish()
 
 	w := j.staticQueue.staticWorker()
-	errLaunch := w.staticRenter.tg.Launch(func() {
+	errLaunch := w.staticTG.Launch(func() {
 		response := &jobReadRegistryResponse{
-			staticErr:          errors.Extend(err, ErrJobDiscarded),
+			staticErr:          err,
 			staticCompleteTime: time.Now(),
 			staticEID:          j.staticRegistryEntryID,
 			staticWorker:       w,
@@ -236,7 +236,7 @@ func (j *jobReadRegistry) callDiscard(err error) {
 		select {
 		case j.staticResponseChan <- response:
 		case <-j.staticCtx.Done():
-		case <-w.staticRenter.tg.StopChan():
+		case <-w.staticTG.StopChan():
 		}
 	})
 	if errLaunch != nil {
@@ -258,7 +258,7 @@ func (j *jobReadRegistry) callExecute() {
 
 	// Prepare a method to send a response asynchronously.
 	sendResponse := func(srv *skymodules.RegistryEntry, err error) {
-		errLaunch := w.staticRenter.tg.Launch(func() {
+		errLaunch := w.staticTG.Launch(func() {
 			response := &jobReadRegistryResponse{
 				staticCompleteTime:        time.Now(),
 				staticSignedRegistryValue: srv,
@@ -270,7 +270,7 @@ func (j *jobReadRegistry) callExecute() {
 			select {
 			case j.staticResponseChan <- response:
 			case <-j.staticCtx.Done():
-			case <-w.staticRenter.tg.StopChan():
+			case <-w.staticTG.StopChan():
 			}
 		})
 		if errLaunch != nil {

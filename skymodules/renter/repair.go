@@ -127,7 +127,7 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath skymodules.SiaPath, hosts m
 	defer func() {
 		// Close out remaining file entries
 		for _, chunk := range unfinishedStuckChunks {
-			allErrors = errors.Compose(allErrors, chunk.fileEntry.Close())
+			allErrors = errors.Compose(allErrors, chunk.Close())
 		}
 	}()
 
@@ -141,12 +141,12 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath skymodules.SiaPath, hosts m
 		chunk.fileRecentlySuccessful = true
 		_, pushed, err := r.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
-			return errors.Compose(allErrors, err, chunk.fileEntry.Close())
+			return errors.Compose(allErrors, err, chunk.Close())
 		}
 		if !pushed {
 			// Stuck chunk unable to be added. Close the file entry of that
 			// chunk
-			allErrors = errors.Compose(allErrors, chunk.fileEntry.Close())
+			allErrors = errors.Compose(allErrors, chunk.Close())
 			continue
 		}
 		stuckChunksAdded++

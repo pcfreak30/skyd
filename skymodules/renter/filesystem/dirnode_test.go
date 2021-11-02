@@ -71,6 +71,7 @@ func TestUpdateSiaDirSetMetadata(t *testing.T) {
 	metadataUpdate.AggregateNumFiles = 11
 	metadataUpdate.AggregateNumStuckChunks = 15
 	metadataUpdate.AggregateNumSubDirs = 5
+	metadataUpdate.AggregateNumUnfinishedFiles = 5
 	metadataUpdate.AggregateSize = 2432
 	metadataUpdate.AggregateStuckHealth = 5
 	// SiaDir fields
@@ -81,6 +82,7 @@ func TestUpdateSiaDirSetMetadata(t *testing.T) {
 	metadataUpdate.NumFiles = 5
 	metadataUpdate.NumStuckChunks = 6
 	metadataUpdate.NumSubDirs = 4
+	metadataUpdate.NumUnfinishedFiles = 5
 	metadataUpdate.Size = 223
 	metadataUpdate.StuckHealth = 2
 

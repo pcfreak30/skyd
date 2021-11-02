@@ -65,7 +65,6 @@ var (
 		Testing:  uint64(1),          // threshold == fee estimate
 	}).(uint64)
 )
-
 var (
 	errNilContractor = errors.New("cannot create renter with nil contractor")
 	errNilCS         = errors.New("cannot create renter with nil consensus set")
@@ -246,6 +245,9 @@ type Renter struct {
 	// information and updating directory metadata.  These values are cached to
 	// prevent recomputing them too often.
 	cachedUtilities cachedUtilities
+
+	repairingChunksMu sync.Mutex
+	repairingChunks   map[uploadChunkID]*unfinishedUploadChunk
 
 	// staticSubscriptionManager is the global manager of registry
 	// subscriptions.
@@ -1010,6 +1012,15 @@ func (r *Renter) CreateSkykey(name string, skType skykey.SkykeyType) (skykey.Sky
 	return r.staticSkykeyManager.CreateKey(name, skType)
 }
 
+// NewRegistrySubscriber creates a new registry subscriber.
+func (r *Renter) NewRegistrySubscriber(notifyFunc func(entry skymodules.RegistryEntry) error) (skymodules.RegistrySubscriber, error) {
+	if err := r.tg.Add(); err != nil {
+		return nil, err
+	}
+	defer r.tg.Done()
+	return r.staticSubscriptionManager.NewSubscriber(notifyFunc), nil
+}
+
 // SkykeyByID gets the Skykey with the given ID from the renter's skykey
 // manager if it exists.
 func (r *Renter) SkykeyByID(id skykey.SkykeyID) (skykey.Skykey, error) {
@@ -1068,6 +1079,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		// Initiate skynet resources
 		staticSkylinkManager: newSkylinkManager(),
 
+		repairingChunks: make(map[uploadChunkID]*unfinishedUploadChunk),
+
 		// Making newDownloads a buffered channel means that most of the time, a
 		// new download will trigger an unnecessary extra iteration of the
 		// download heap loop, searching for a chunk that's not there. This is
@@ -1080,7 +1093,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		staticFanoutSectorDownloadStats: skymodules.NewSectorDownloadStats(),
 
 		staticUploadHeap: uploadHeap{
-			repairingChunks:   make(map[uploadChunkID]*unfinishedUploadChunk),
 			stuckHeapChunks:   make(map[uploadChunkID]*unfinishedUploadChunk),
 			unstuckHeapChunks: make(map[uploadChunkID]*unfinishedUploadChunk),
 
@@ -1097,8 +1109,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 		staticDownloadHistory: newDownloadHistory(),
 
-		staticSubscriptionManager: newSubscriptionManager(),
-
 		ongoingRegistryRepairs: make(map[modules.RegistryEntryID]struct{}),
 
 		staticConsensusSet:   cs,
@@ -1114,6 +1124,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		mu:                   siasync.New(modules.SafeMutexDelay, 1),
 		staticTPool:          tpool,
 	}
+
 	r.staticSkynetTUSUploader = newSkynetTUSUploader(r, tus)
 	if err := r.tg.AfterStop(r.staticSkynetTUSUploader.Close); err != nil {
 		return nil, err
@@ -1244,6 +1255,14 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		}
 	}
 
+	// Create the subscription manager and launch the thread that updates the
+	// workers.
+	r.staticSubscriptionManager = newSubscriptionManager(r)
+	err = r.tg.Launch(r.staticSubscriptionManager.threadedUpdateWorkers)
+	if err != nil {
+		return nil, err
+	}
+
 	// Spin up the skynet fee paying goroutine.
 	if err := r.tg.Launch(r.threadedPaySkynetFee); err != nil {
 		return nil, err
@@ -1367,18 +1386,20 @@ func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpoo
 
 // HostsForRegistryUpdate returns a list of hosts that the renter would be using
 // for updating the registry.
-func (r *Renter) HostsForRegistryUpdate() ([]types.SiaPublicKey, error) {
+func (r *Renter) HostsForRegistryUpdate() ([]skymodules.HostForRegistryUpdate, error) {
 	if err := r.tg.Add(); err != nil {
 		return nil, err
 	}
 	defer r.tg.Done()
 
-	var hpks []types.SiaPublicKey
+	var hosts []skymodules.HostForRegistryUpdate
 	for _, w := range r.staticWorkerPool.callWorkers() {
 		if !isWorkerGoodForRegistryUpdate(w) {
 			continue
 		}
-		hpks = append(hpks, w.staticHostPubKey)
+		hosts = append(hosts, skymodules.HostForRegistryUpdate{
+			Pubkey: w.staticHostPubKey,
+		})
 	}
-	return hpks, nil
+	return hosts, nil
 }

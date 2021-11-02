@@ -57,11 +57,11 @@ type (
 
 // parseRootsFromData takes some data and splits it up into sector roots. It will return an error if the size of the data is not a multiple of crypto.HashSize.
 func parseRootsFromData(b []byte) ([]crypto.Hash, error) {
-	var roots []crypto.Hash
 	if len(b)%crypto.HashSize != 0 {
-		return roots, errors.New("roots have unexpected length and might be corrupted")
+		return nil, errors.New("roots have unexpected length and might be corrupted")
 	}
 
+	roots := make([]crypto.Hash, 0, len(b)/crypto.HashSize)
 	var root crypto.Hash
 	for len(b) > 0 {
 		copy(root[:], b[:crypto.HashSize])

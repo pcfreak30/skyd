@@ -2,11 +2,13 @@ package skynet
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"fmt"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -22,9 +24,18 @@ import (
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 )
+
+// mongoTestCreds are the credentials for the test mongodb.
+var mongoTestCreds = options.Credential{
+	Username: "root",
+	Password: "pwd",
+}
 
 // TestSkynetTUSUploader runs all skynetTUSUploader related tests.
 func TestSkynetTUSUploader(t *testing.T) {
@@ -33,44 +44,71 @@ func TestSkynetTUSUploader(t *testing.T) {
 	}
 	t.Parallel()
 
-	// Prepare a testgroup.
-	groupParams := siatest.GroupParams{
-		Hosts:   3,
-		Miners:  1,
-		Renters: 1,
-	}
-	groupDir := skynetTestDir(t.Name())
-	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := tg.Close(); err != nil {
+	// Helper to run tests.
+	runTests := func(t *testing.T, mongo bool) {
+		// Prepare a testgroup.
+		groupParams := siatest.GroupParams{
+			Hosts:  3,
+			Miners: 1,
+		}
+		groupDir := skynetTestDir(t.Name())
+		tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
+		if err != nil {
 			t.Fatal(err)
 		}
-	}()
+		defer func() {
+			if err := tg.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
 
-	// Run tests.
-	t.Run("PruneIdle", func(t *testing.T) {
-		testTUSUploaderPruneIdle(t, tg.Renters()[0]) // first to avoid ndf
+		// Create a mongo test store if necessary.
+		rt := node.RenterTemplate
+		if mongo {
+			uri, ok := build.MongoDBURI()
+			if !ok {
+				build.Critical("uri not set")
+			}
+			rt.MongoUploadStoreURI = uri
+			rt.MongoUploadStoreCreds = mongoTestCreds
+			rt.MongoUploadStorePortalName = t.Name()
+		}
+		if _, err := tg.AddNodes(rt); err != nil {
+			t.Fatal(err)
+		}
+
+		// Run tests.
+		t.Run("PruneIdle", func(t *testing.T) {
+			testTUSUploaderPruneIdle(t, tg.Renters()[0]) // first to avoid ndf
+		})
+		t.Run("Basic", func(t *testing.T) {
+			testTUSUploaderBasic(t, tg.Renters()[0])
+		})
+		t.Run("Options", func(t *testing.T) {
+			testOptionsHandler(t, tg.Renters()[0])
+		})
+		t.Run("Concat", func(t *testing.T) {
+			testTUSUploaderConcat(t, tg.Renters()[0])
+		})
+		t.Run("TooLarge", func(t *testing.T) {
+			testTUSUploaderTooLarge(t, tg.Renters()[0])
+		})
+		t.Run("UnstableConnection", func(t *testing.T) {
+			testTUSUploaderUnstableConnection(t, tg)
+		})
+		t.Run("DroppedConnection", func(t *testing.T) {
+			testTUSUploaderConnectionDropped(t, tg)
+		})
+	}
+
+	// Run with in-memory db.
+	t.Run("InMemory", func(t *testing.T) {
+		runTests(t, false)
 	})
-	t.Run("Basic", func(t *testing.T) {
-		testTUSUploaderBasic(t, tg.Renters()[0])
-	})
-	t.Run("Options", func(t *testing.T) {
-		testOptionsHandler(t, tg.Renters()[0])
-	})
-	t.Run("Concat", func(t *testing.T) {
-		testTUSUploaderConcat(t, tg.Renters()[0])
-	})
-	t.Run("TooLarge", func(t *testing.T) {
-		testTUSUploaderTooLarge(t, tg.Renters()[0])
-	})
-	t.Run("UnstableConnection", func(t *testing.T) {
-		testTUSUploaderUnstableConnection(t, tg)
-	})
-	t.Run("DroppedConnection", func(t *testing.T) {
-		testTUSUploaderConnectionDropped(t, tg)
+
+	// Run with mongodb.
+	t.Run("Mongo", func(t *testing.T) {
+		runTests(t, true)
 	})
 }
 
@@ -671,26 +709,6 @@ func testTUSUploaderConcat(t *testing.T, r *siatest.TestNode) {
 		t.Fatal("shouldn't work")
 	}
 
-	// Concat only the small file. This should work.
-	urlConcat, err = concat(urlPartial, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	sl, err = skylink(urlConcat)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Download the skylink.
-	downloaded, err = r.SkynetSkylinkGet(sl)
-	if err != nil {
-		t.Fatal(err)
-	}
-	expected = partialData
-	if !bytes.Equal(downloaded, expected) {
-		t.Fatal("data mismatch", len(downloaded), len(expected))
-	}
-
 	// Wait for two full pruning intervals to make sure pruning ran at least
 	// once.
 	time.Sleep(2 * renter.PruneTUSUploadTimeout)
@@ -700,7 +718,186 @@ func testTUSUploaderConcat(t *testing.T, r *siatest.TestNode) {
 		t.Fatal(err)
 	}
 	nFilesAfter := dir.Directories[0].AggregateNumFiles
-	if nFilesAfter-nFiles != 4 {
-		t.Fatal("expected 4 .sia files to be created for the 2 parts but got", nFilesAfter-nFiles)
+	if nFilesAfter-nFiles != 3 {
+		t.Fatal("expected 3 .sia files to be created for the 2 parts but got", nFilesAfter-nFiles)
+	}
+}
+
+// TestSkynetResumeOnSeparatePortal tests uploading a chunk to one portal and
+// finishing the upload on another portal.
+func TestSkynetResumeOnSeparatePortal(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	// NOTE: Don't run this test in parallel with other tests to make sure
+	// we can drop the collection
+
+	// Connect to db directly.
+	uri, ok := build.MongoDBURI()
+	if !ok {
+		t.Fatal("uri not set")
+	}
+	opts := options.Client().
+		ApplyURI(uri).
+		SetAuth(mongoTestCreds)
+
+	client, err := mongo.Connect(context.Background(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Disconnect(context.Background())
+
+	// Clear collection before the test.
+	collection := client.Database(renter.TusDBName).Collection(renter.TusUploadsMongoCollectionName)
+	if err := collection.Drop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Prepare a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  3,
+		Miners: 1,
+	}
+	groupDir := skynetTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Create 2 portals with a mongo connection.
+	rt := node.RenterTemplate
+	rt.CreatePortal = true
+	rt.MongoUploadStoreURI = uri
+	rt.MongoUploadStoreCreds = mongoTestCreds
+	rtA, rtB := rt, rt
+	rtA.MongoUploadStorePortalName = "A"
+	rtB.MongoUploadStorePortalName = "B"
+	portals, err := tg.AddNodes(rtA, rtB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	portalA, portalB := portals[0], portals[1]
+
+	// Prepare 3 chunks of upload data.
+	numChunks := 3
+	chunkSize := int64(numChunks) * int64(skymodules.ChunkSize(crypto.TypePlain, uint64(skymodules.RenterDefaultDataPieces)))
+	uploadData := fastrand.Bytes(int(chunkSize * 3))
+
+	// Create uploader.
+	tcA, upload, err := portalA.SkynetTUSNewUploadFromBytes(uploadData, chunkSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	uploaderA, err := tcA.CreateUpload(upload)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload a chunk to portal A.
+	if err := uploaderA.UploadChunck(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Both portal should not be able to provide a skylink yet.
+	urlA, found := tcA.Config.Store.Get(upload.Fingerprint)
+	if !found {
+		t.Fatal("url should exist")
+	}
+	uploadID := filepath.Base(urlA)
+	skylinkA, err := portalA.SkylinkFromTUSID(uploadID)
+	if err == nil {
+		t.Fatal(err)
+	}
+	skylinkB, err := portalB.SkylinkFromTUSID(uploadID)
+	if err == nil {
+		t.Fatal(err)
+	}
+
+	// Create a new client for portal B.
+	tcB, err := portalB.SkynetTUSClient(chunkSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Store the upload's url in tcB's storage for 'ResumeUpload' to work.
+	urlB := fmt.Sprintf("%s/%s", tcB.Url, uploadID)
+	tcB.Config.Store.Set(upload.Fingerprint, urlB)
+
+	// Finish the upload on portal B.
+	uploaderB, err := tcB.ResumeUpload(upload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := uploaderB.Upload(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Both portal should be able to provide a skylink and download it.
+	skylinkA, err = portalA.SkylinkFromTUSID(uploadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	skylinkB, err = portalB.SkylinkFromTUSID(uploadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dataA, err := portalA.SkynetSkylinkGet(skylinkA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataB, err := portalB.SkynetSkylinkGet(skylinkB)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(dataA, uploadData) {
+		t.Fatal("dataA mismatch")
+	}
+	if !bytes.Equal(dataB, uploadData) {
+		t.Fatal("dataB mismatch")
+	}
+
+	// Get all uploads.
+	c, err := collection.Find(context.Background(), bson.M{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var uploads []renter.MongoTUSUpload
+	for c.Next(context.Background()) {
+		var upload renter.MongoTUSUpload
+		err = c.Decode(&upload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		uploads = append(uploads, upload)
+	}
+
+	// Should have 1 upload.
+	if len(uploads) != 1 {
+		for _, u := range uploads {
+			t.Log(u.ID, u.ServerNames)
+		}
+		t.Fatal("expected 1 upload got", len(uploads))
+	}
+	u := uploads[0]
+
+	// Upload should contain both portal names.
+	if len(u.ServerNames) != 2 {
+		t.Fatal("expected 2 portals got", u.ServerNames)
+	}
+	portalNames := strings.Join(u.ServerNames, "")
+	if portalNames != "AB" && portalNames != "BA" {
+		t.Fatal("wrong portal names", u.ServerNames)
+	}
+
+	// Drop uploads at the end of the test.
+	if err := collection.Drop(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 }

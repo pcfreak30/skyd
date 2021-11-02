@@ -2,7 +2,6 @@ package renter
 
 import (
 	"bytes"
-	"container/heap"
 	"context"
 	"encoding/hex"
 	"fmt"
@@ -22,43 +21,19 @@ var (
 	// errNotEnoughPieces is returned when there are not enough pieces found to
 	// successfully complete the download
 	errNotEnoughPieces = errors.New("not enough pieces to complete download")
+
+	// errNotEnoughWorkers is returned if the working set does not have enough
+	// workers to successfully complete the download
+	errNotEnoughWorkers = errors.New("not enough workers to complete download")
 )
 
 type (
-	// pieceDownload tracks a worker downloading a piece, whether that piece has
-	// returned, and what time the piece is/was expected to return.
-	//
-	// NOTE: The actual piece data is stored in the projectDownloadChunk after
-	// the download completes.
-	pieceDownload struct {
-		// 'completed', 'launched', and 'downloadErr' are status variables for
-		// the piece. If 'launched' is false, it means the piece download has
-		// not started yet, 'completed' will also be false.
-		//
-		// If 'launched' is true and 'completed' is false, it means the download
-		// is in progress and the result is not known.
-		//
-		// If 'completed' is true, the download has been attempted, if it was
-		// unsuccessful 'downloadErr' will contain the error with which it
-		// failed. If 'downloadErr' is nil however, it means the piece was
-		// successfully downloaded.
-		completed   bool
-		launched    bool
-		downloadErr error
-
-		// expectedCompleteTime indicates the time when the download is expected
-		// to complete. This is used to determine whether or not a download is late.
-		expectedCompleteTime time.Time
-
-		worker *worker
-	}
-
 	// projectDownloadChunk is a bunch of state that helps to orchestrate a
 	// download from a projectChunkWorkerSet.
 	//
-	// The projectDownloadChunk is only ever accessed by a single thread which
-	// orchestrates the download, which means that it does not need to be thread
-	// safe.
+	// NOTE: the projectDownloadChunk is only ever accessed by a single thread
+	// which orchestrates the download, which means that it does not need to be
+	// thread safe.
 	projectDownloadChunk struct {
 		// Parameters for downloading a subset of the data within the chunk.
 		lengthInChunk uint64
@@ -70,8 +45,6 @@ type (
 		pieceLength uint64
 		pieceOffset uint64
 
-		staticIsLowPrio bool
-
 		// pricePerMS is the amount of money we are willing to spend on faster
 		// workers. If a certain set of workers is 100ms faster, but that
 		// exceeds the pricePerMS we are willing to pay for it, we won't use
@@ -79,28 +52,44 @@ type (
 		// favor the faster and more expensive worker set.
 		pricePerMS types.Currency
 
-		// availablePieces are pieces that resolved workers think they can
-		// fetch.
-		//
 		// workersConsideredIndex keeps track of what workers were already
 		// considered after looking at the 'resolvedWorkers' array defined on
 		// the pcws. This enables the worker selection code to realize which
 		// pieces in the worker set have been resolved since the last check.
-		//
+		workersConsideredIndex int
+
 		// unresolvedWorkersRemaining is the number of unresolved workers at the
 		// time the available pieces were last updated. This enables counting
 		// the hopeful pieces without introducing a race condition in the
 		// finished check.
-		availablePieces            [][]*pieceDownload
-		availablePiecesByWorker    map[string][]uint64
-		workersConsideredIndex     int
 		unresolvedWorkersRemaining int
 
-		// dataPieces is the buffer that is used to place data as it comes back.
+		// workerProgress keeps track what pieces are launched, and what pieces
+		// were completed for every worker that was launched
+		workerProgress map[string]workerProgress
+
+		// piecesInfo contains a list of piece info objects for every possible
+		// piece, it keeps tracks how many workers can download the piece and
+		// what pieces were downloaded successfully.
+		//
+		// piecesData is the buffer that is used to place data as it comes back.
 		// There is one piece per chunk, and pieces can be nil. To know if the
 		// download is complete, the number of non-nil pieces will be counted.
-		dataPieces         [][]byte
+		piecesInfo         []pieceInfo
+		piecesData         [][]byte
 		staticSkipRecovery bool
+
+		// staticIsLowPrio indicates the priority of this download and has an
+		// effect on the read jobs scheduled by the PDC.
+		staticIsLowPrio bool
+
+		// staticLaunchTime indicates when this PDC was launched.
+		staticLaunchTime time.Time
+
+		// staticPieceIndices contains a list of all possible piece indices,
+		// this list is shared by all chimera workers which are essentially
+		// capable of resolving all pieces, to avoid needlessly allocating mem.
+		staticPieceIndices []uint64
 
 		// The completed data gets sent down the response chan once the full
 		// download is done.
@@ -112,8 +101,31 @@ type (
 
 		// Debug helpers
 		uid             [8]byte
-		launchTime      time.Time
 		launchedWorkers []*launchedWorkerInfo
+	}
+
+	// pieceInfo is a helper struct that contains how many workers have the
+	// piece and whether the piece was successfully downloaded
+	pieceInfo struct {
+		// available is incremented when a worker responds it has the piece, it
+		// is decremented when a worker completed the download, it's used as a
+		// mechanism to count whether or not we are still hopeful a download
+		// will successfully complete
+		available int64
+
+		// downloaded is set to true when a piece was downloaded successfully
+		downloaded bool
+	}
+
+	// workerProgress is a helper struct that keeps track of what pieces were
+	// launched and what pieces completed for a worker that was selected by the
+	// download algorithm
+	//
+	// NOTE: a completed piece is not necessarily downloaded successfully but
+	// rather indicates only if the download completed or not
+	workerProgress struct {
+		completedPieces completedPieces
+		launchedPieces  launchedPieces
 	}
 
 	// launchedWorkerInfo tracks information about the worker that has been
@@ -158,6 +170,14 @@ type (
 		staticPDC    *projectDownloadChunk
 		staticWorker *worker
 	}
+
+	// completedPieces is a helper type that maps the piece index to a boolean
+	// that indicates whether the piece download was successful
+	completedPieces map[uint64]struct{}
+
+	// launchedPieces is a helper type that maps the piece index to the time a
+	// worker was launched to download the piece
+	launchedPieces map[uint64]time.Time
 
 	// downloadResponse is sent via a channel to the caller of
 	// 'projectChunkWorkerSet.managedDownload'.
@@ -213,125 +233,42 @@ func (lwi *launchedWorkerInfo) String() string {
 	return fmt.Sprintf("%v | %v | piece %v | estimated complete %v ms | responded after %vms | read job took %vms | %v", pdcId, wDescr, lwi.staticPieceIndex, estimate, totalDur, jobDur, jDescr)
 }
 
-// successful is a small helper method that returns whether the piece was
-// successfully downloaded, this is the case when it completed without error.
-func (pd *pieceDownload) successful() bool {
-	return pd.completed && pd.downloadErr == nil
-}
-
-// updateWorkerHeap updates a worker heap by going through all workers and
-// updating them depending on whether they are resolved or not. This does not
-// apply any gouging or maintenance checks again since we don't expect a
-// significant amount of time to pass between the creation of the heap and
-// launching the workers. As a result, this significantly reduces the amount of
-// allocations we are doing compared to creating the initial heap since we reuse
-// the allocated memory.
-func (pdc *projectDownloadChunk) updateWorkerHeap(h *pdcWorkerHeap) {
+// updatePieces updates the pieces info with availability updates from freshly
+// resolved workers. Essentially, this is pulling new information from the
+// overarching PCWS worker state. This function returns true if there were
+// new resolved workers, and false otherwise.
+func (pdc *projectDownloadChunk) updatePieces() bool {
 	ws := pdc.workerState
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 
-	// Update the available pieces in case some workers resolved.
-	pdc.updateAvailablePieces()
+	// always update the remaining unresolved workers
+	pdc.unresolvedWorkersRemaining = len(ws.unresolvedWorkers)
 
-	for _, w := range *h {
-		// Check if the worker is resolved.
-		_, unresolved := ws.unresolvedWorkers[w.worker.staticHostPubKeyStr]
-		jrq := w.worker.callReadQueue(pdc.staticIsLowPrio)
-		cost := jrq.callExpectedJobCost(pdc.pieceLength)
-		readDuration := jrq.staticStats.callExpectedJobTime(pdc.pieceLength)
-
-		if unresolved {
-			resolveTime := w.staticExpectedResolveTime
-			if resolveTime.Before(time.Now()) {
-				resolveTime = time.Now().Add(2 * time.Since(resolveTime))
-			}
-			completeTime := resolveTime.Add(readDuration)
-
-			// Same as in initialWorkerHeap but here we can just
-			// extend the already allocated pieces slice to its full
-			// size and reset it to reduce the number of
-			// allocations.
-			if cap(w.pieces) != pdc.workerSet.staticErasureCoder.NumPieces() {
-				build.Critical("w.pieces has the wrong capacity for an unresolved worker")
-				w.pieces = make([]uint64, pdc.workerSet.staticErasureCoder.NumPieces())
-			} else {
-				w.pieces = w.pieces[:cap(w.pieces)]
-			}
-			for i := 0; i < len(w.pieces); i++ {
-				w.pieces[i] = uint64(i)
-			}
-
-			// Update the fields specific to the unresolved worker.
-			// The complete time might have changed but the pieces
-			// are still the same.
-			w.completeTime = completeTime
-		} else {
-			// Update the fields for the resolved worker.
-			// The complete time is the current time plus the
-			// duration of the read and the pieces might have
-			// changed due to the worker resolving.
-			w.completeTime = time.Now().Add(readDuration)
-			w.pieces = append([]uint64{}, pdc.availablePiecesByWorker[w.worker.staticHostPubKeyStr]...)
-		}
-
-		// Update fields which are the same for resolved and unresolved
-		// workers.
-		w.readDuration = readDuration
-		w.unresolved = unresolved
-		w.cost = cost
+	// check whether an update is needed, if not return early
+	if pdc.workersConsideredIndex == len(ws.resolvedWorkers) {
+		return false
 	}
 
-	// Reestablish heap invariants.
-	heap.Init(h)
-}
-
-// updateAvailablePieces adds any new resolved workers to the pdc's list of
-// available pieces.
-func (pdc *projectDownloadChunk) updateAvailablePieces() {
-	ws := pdc.workerState
-
-	// Add any new resolved workers to the pdc's list of available pieces.
+	// add any new resolved workers to the pdc's list of available pieces.
 	for i := pdc.workersConsideredIndex; i < len(ws.resolvedWorkers); i++ {
-		// Add the returned worker to available pieces for each piece that the
-		// resolved worker has.
+		// Increment the 'available' prop on the piece info for every piece this
+		// worker can resolve.
 		resp := ws.resolvedWorkers[i]
-		hpk := resp.worker.staticHostPubKeyStr
 		for _, pieceIndex := range resp.pieceIndices {
-			pd := &pieceDownload{
-				worker: resp.worker,
-			}
-			pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], pd)
+			pdc.piecesInfo[pieceIndex].available++
 		}
-		pdc.availablePiecesByWorker[hpk] = resp.pieceIndices
+
+		// Log the resolved worker and its pieces
+		if span := opentracing.SpanFromContext(pdc.ctx); span != nil && len(resp.pieceIndices) > 0 {
+			span.LogKV(
+				"aWorkerResolved", resp.worker.staticHostPubKeyStr,
+				"pieces", resp.pieceIndices,
+			)
+		}
 	}
 	pdc.workersConsideredIndex = len(ws.resolvedWorkers)
-	pdc.unresolvedWorkersRemaining = len(ws.unresolvedWorkers)
-}
-
-// managedUnresolvedWorkers will return the set of unresolved workers from the
-// worker state of the pdc. This operation will also update the set of available
-// pieces within the pdc to reflect any previously unresolved workers that are
-// now available workers.
-//
-// A channel will also be returned which will be closed when there are new
-// unresolved workers available.
-func (pdc *projectDownloadChunk) managedUnresolvedWorkers() ([]*pcwsUnresolvedWorker, <-chan struct{}) {
-	ws := pdc.workerState
-	ws.mu.Lock()
-	defer ws.mu.Unlock()
-
-	var unresolvedWorkers []*pcwsUnresolvedWorker
-	for _, uw := range ws.unresolvedWorkers {
-		unresolvedWorkers = append(unresolvedWorkers, uw)
-	}
-
-	// Add any new resolved workers to the pdc's list of available pieces.
-	pdc.updateAvailablePieces()
-
-	// If there are more unresolved workers, fetch a channel that will be closed
-	// when more results from unresolved workers are available.
-	return unresolvedWorkers, ws.registerForWorkerUpdate()
+	return true
 }
 
 // handleJobReadResponse will take a jobReadResponse from a worker job
@@ -344,35 +281,30 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 	}
 
 	// Grab the metadata from the response
+	downloadErr := jrr.staticErr
 	metadata := jrr.staticMetadata
 	worker := metadata.staticWorker
+	workerKey := worker.staticHostPubKey.ShortString()
 	pieceIndex := metadata.staticPieceRootIndex
-	launchedWorker := pdc.launchedWorkers[metadata.staticLaunchedWorkerIndex]
 
-	// Update the launched worker information, we keep track of these metrics
-	// debugging purposes.
+	// Update the launched worker information
+	launchedWorker := pdc.launchedWorkers[metadata.staticLaunchedWorkerIndex]
 	launchedWorker.completeTime = time.Now()
 	launchedWorker.jobDuration = jrr.staticJobTime
 	launchedWorker.jobErr = jrr.staticErr
 	launchedWorker.totalDuration = time.Since(launchedWorker.staticLaunchTime)
 
-	// Check whether the job failed.
-	if jrr.staticErr != nil {
-		// The download failed, update the pdc available pieces to reflect the
-		// failure.
-		pieceFound := false
-		for i := 0; i < len(pdc.availablePieces[pieceIndex]); i++ {
-			if pdc.availablePieces[pieceIndex][i].worker.staticHostPubKeyStr == worker.staticHostPubKeyStr {
-				if pieceFound {
-					build.Critical("The list of available pieces contains duplicates.") // sanity check
-				}
-				pieceFound = true
-				pdc.availablePieces[pieceIndex][i].completed = true
-				pdc.availablePieces[pieceIndex][i].downloadErr = jrr.staticErr
-			}
-		}
+	// Update the piece information
+	pdc.workerProgress[workerKey].completedPieces[pieceIndex] = struct{}{}
+	pdc.piecesInfo[pieceIndex].available--
+
+	// If the job failed, we can return.
+	if downloadErr != nil {
 		return
 	}
+
+	// If the job succeeded, mark the piece as downloaded
+	pdc.piecesInfo[pieceIndex].downloaded = true
 
 	// Decrypt the piece that has come back.
 	key := pdc.workerSet.staticMasterKey.Derive(pdc.workerSet.staticChunkIndex, uint64(pieceIndex))
@@ -383,19 +315,8 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 	}
 
 	// The download succeeded, add the piece to the appropriate index.
-	pdc.dataPieces[pieceIndex] = jrr.staticData
+	pdc.piecesData[pieceIndex] = jrr.staticData
 	jrr.staticData = nil // Just in case there's a reference to the job response elsewhere.
-
-	pieceFound := false
-	for i := 0; i < len(pdc.availablePieces[pieceIndex]); i++ {
-		if pdc.availablePieces[pieceIndex][i].worker.staticHostPubKeyStr == worker.staticHostPubKeyStr {
-			if pieceFound {
-				build.Critical("The list of available pieces contains duplicates.") // sanity check
-			}
-			pieceFound = true
-			pdc.availablePieces[pieceIndex][i].completed = true
-		}
-	}
 }
 
 // fail will send an error down the download response channel.
@@ -431,7 +352,7 @@ func (pdc *projectDownloadChunk) recoverData() ([]byte, error) {
 	}
 
 	// Recover the pieces in to a single byte slice.
-	err := pdc.workerSet.staticErasureCoder.Recover(pdc.dataPieces, recoveredBytes, skipWriter)
+	err := pdc.workerSet.staticErasureCoder.Recover(pdc.piecesData, recoveredBytes, skipWriter)
 	if err != nil {
 		pdc.fail(errors.AddContext(err, "unable to complete erasure decode of download"))
 	}
@@ -448,22 +369,24 @@ func (pdc *projectDownloadChunk) finalize() {
 
 	// Log info and finish span.
 	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
+		span.LogKV("duration", time.Since(pdc.staticLaunchTime))
 		span.SetTag("success", true)
 		span.Finish()
 	}
 
 	// Update the sector download statistics
-	minPieces := ec.MinPieces()
-	numOverdriveWorkers := uint64(len(pdc.launchedWorkers) - minPieces)
-	if numOverdriveWorkers < 0 {
-		build.Critical("num overdrive workers should never be less than zero")
-	} else {
-		// track base sector and fanout sector download separately
-		if minPieces == 1 {
-			r.staticBaseSectorDownloadStats.AddDataPoint(numOverdriveWorkers)
-		} else {
-			r.staticFanoutSectorDownloadStats.AddDataPoint(numOverdriveWorkers)
+	var numOverdriveWorkers uint64
+	for _, lw := range pdc.launchedWorkers {
+		if lw.staticIsOverdriveWorker {
+			numOverdriveWorkers++
 		}
+	}
+
+	// track base sector and fanout sector download separately
+	if ec.MinPieces() == 1 {
+		r.staticBaseSectorDownloadStats.AddDataPoint(numOverdriveWorkers)
+	} else {
+		r.staticFanoutSectorDownloadStats.AddDataPoint(numOverdriveWorkers)
 	}
 
 	// Recover the data if necessary.
@@ -476,7 +399,7 @@ func (pdc *projectDownloadChunk) finalize() {
 	// Return the data to the caller.
 	dr := &downloadResponse{
 		data:                   data,
-		externLogicalChunkData: pdc.dataPieces,
+		externLogicalChunkData: pdc.piecesData,
 		err:                    err,
 
 		launchedWorkers: pdc.launchedWorkers,
@@ -490,44 +413,34 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 	// Convenience variables.
 	ec := pdc.workerSet.staticErasureCoder
 
-	// Count the number of completed pieces and hopeful pieces in our list of
-	// potential downloads.
-	completedPieces := 0
+	// Loop over the static pieces array and count how many pieces were
+	// downloaded successfully and how many pieces are still hopeful. A piece is
+	// hopeful if either it was already downloaded, or if we still have
+	// available workers capable of downloading it.
+	downloadedPieces := 0
 	hopefulPieces := 0
-	for _, piece := range pdc.availablePieces {
-		// Only count one piece as hopeful per set.
-		hopeful := false
-		for _, pieceDownload := range piece {
-			// If this piece is completed, count it both as hopeful and
-			// completed, no need to look at other pieces.
-			if pieceDownload.successful() {
-				hopeful = true
-				completedPieces++
-				break
-			}
-			// If this piece has not yet failed, it is hopeful. Keep looking
-			// through the pieces in case there is a piece that was downloaded
-			// successfully.
-			if pieceDownload.downloadErr == nil {
-				hopeful = true
+	for _, pieceInfo := range pdc.piecesInfo {
+		if pieceInfo.downloaded {
+			downloadedPieces++
+			if downloadedPieces >= ec.MinPieces() {
+				return true, nil
 			}
 		}
-		if hopeful {
+
+		if pieceInfo.downloaded || pieceInfo.available > 0 {
 			hopefulPieces++
 		}
 	}
-	if completedPieces >= ec.MinPieces() {
-		return true, nil
-	}
 
-	// Count the number of workers that haven't resolved yet, and thus
-	// (optimistically) might contribute towards downloading a unique piece.
+	// Add the number of unresolved workers to the hopeful pieces, since those
+	// might still resolve and thus (optimistically) contribute to successfully
+	// completing the download.
 	hopefulPieces += pdc.unresolvedWorkersRemaining
 
-	// Ensure that there are enough pieces that could potentially become
-	// completed to finish the download.
+	// If we don't have enough hopeful pieces, error out indicating we won't be
+	// able to successfully complete the download.
 	if hopefulPieces < ec.MinPieces() {
-		return false, errNotEnoughPieces
+		return false, errors.Compose(ErrRootNotFound, errors.AddContext(errNotEnoughPieces, fmt.Sprintf("%v < %v", hopefulPieces, ec.MinPieces())))
 	}
 	return false, nil
 }
@@ -538,19 +451,22 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 // A time is returned which indicates the expected return time of the worker's
 // download. A bool is returned which indicates whether or not the launch was
 // successful.
-func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOverdrive bool) (time.Time, bool) {
+func (pdc *projectDownloadChunk) launchWorker(worker *individualWorker, pieceIndex uint64, isOverdrive bool) (time.Time, bool) {
+	w := worker.worker()
+
 	// Sanity check that the pieceOffset and pieceLength are segment aligned.
 	if pdc.pieceOffset%crypto.SegmentSize != 0 ||
 		pdc.pieceLength%crypto.SegmentSize != 0 {
 		build.Critical("pieceOffset or pieceLength is not segment aligned")
 	}
 
-	// Log the event.
-	if span := opentracing.SpanFromContext(pdc.ctx); span != nil {
-		span.LogKV(
-			"launchWorker", w.staticHostPubKeyStr,
-			"overdriveWorker", isOverdrive,
-		)
+	// Ensure we initialize a progress struct for this worker
+	workerKey := worker.identifier()
+	if _, exists := pdc.workerProgress[workerKey]; !exists {
+		pdc.workerProgress[workerKey] = workerProgress{
+			completedPieces: make(completedPieces),
+			launchedPieces:  make(launchedPieces),
+		}
 	}
 
 	// Create the read job metadata.
@@ -568,10 +484,8 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 	jrq := w.callReadQueue(pdc.staticIsLowPrio)
 	jrs := w.newJobReadSector(pdc.ctx, jrq, pdc.workerResponseChan, jobMetadata, sectorRoot, pdc.pieceOffset, pdc.pieceLength)
 
-	// Submit the job.
+	// Submit the job and track the launched worker.
 	expectedCompleteTime, added := jrq.callAddWithEstimate(jrs)
-
-	// Track the launched worker
 	if added {
 		pdc.launchedWorkers = append(pdc.launchedWorkers, &launchedWorkerInfo{
 			staticPieceIndex:        pieceIndex,
@@ -584,67 +498,12 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64, isOv
 			staticPDC:    pdc,
 			staticWorker: w,
 		})
+
+		pdc.workerProgress[workerKey].launchedPieces[pieceIndex] = time.Now()
+		worker.currentPieceLaunchedAt = time.Now()
 	}
 
-	// Update the status of the piece that was launched. 'launched' should be
-	// set to 'true'. If the launch failed, 'failed' should be set to 'true'. If
-	// the launch succeeded, the expected completion time of the job should be
-	// set.
-	//
-	// NOTE: We don't break out of the loop when we find a piece/worker
-	// match. If all is going well, each worker should appear at most once
-	// in this piece, but for the sake of defensive programming we check all
-	// elements anyway.
-	for _, pieceDownload := range pdc.availablePieces[pieceIndex] {
-		if w.staticHostPubKeyStr == pieceDownload.worker.staticHostPubKeyStr {
-			pieceDownload.launched = true
-			if added {
-				pieceDownload.expectedCompleteTime = expectedCompleteTime
-			} else {
-				pieceDownload.completed = true
-				pieceDownload.downloadErr = errors.New("unable to add piece to queue")
-			}
-		}
-	}
 	return expectedCompleteTime, added
-}
-
-// threadedCollectAndOverdrivePieces will wait for responses from the workers.
-// If workers fail or are late, additional workers will be launched to ensure
-// that the download still completes.
-func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
-	// Loop until the download has either failed or completed.
-	for {
-		// Check whether the download is comlete. An error means that the
-		// download has failed and can no longer make progress.
-		completed, err := pdc.finished()
-		if completed {
-			pdc.finalize()
-			return
-		}
-		if err != nil {
-			pdc.fail(err)
-			return
-		}
-
-		// Run the overdrive code. This code needs to be asynchronous so that it
-		// does not block receiving on the workerResponseChan. The overdrive
-		// code will determine whether launching an overdrive worker is
-		// necessary, and will return a channel that will be closed when enough
-		// time has elapsed that another overdrive worker should be considered.
-		workersUpdatedChan, workersLateChan := pdc.managedTryOverdrive()
-
-		// Determine when the next overdrive check needs to run.
-		select {
-		case <-pdc.ctx.Done():
-			pdc.fail(errors.New("download timed out"))
-			return
-		case jrr := <-pdc.workerResponseChan:
-			pdc.handleJobReadResponse(jrr)
-		case <-workersLateChan:
-		case <-workersUpdatedChan:
-		}
-	}
 }
 
 // getPieceOffsetAndLen is a helper function to compute the piece offset and

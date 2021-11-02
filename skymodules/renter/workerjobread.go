@@ -6,6 +6,7 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -22,6 +23,17 @@ const (
 	// predictor tends to be more accurate over time, but is less responsive to
 	// things like network load.
 	jobReadPerformanceDecay = 0.9
+
+	// jobLength64k is the threshold we use to label a download as 64kb
+	// jobLength1m is the threshold we use to label a download as 1m
+	// jobLength4m is the threshold we use to label a download as 4m
+	//
+	// usually the length is evaluated using an if-else structure, comparing the
+	// length to these threshold in ascending fashion, so we first check to see
+	// whether it's a 64kb, then a 1mb and so on
+	jobLength64k = uint64(1 << 16)
+	jobLength1m  = uint64(1 << 20)
+	jobLength4m  = uint64(1 << 24)
 )
 
 type (
@@ -46,6 +58,9 @@ type (
 		staticLowPrio bool
 		staticStats   *jobReadStats
 		*jobGenericQueue
+
+		// staticBaseCost is applied to download costs, defined in SC/TB
+		staticBaseCost types.Currency
 	}
 
 	// jobReadStats contains statistics about read jobs. This object is
@@ -58,8 +73,13 @@ type (
 		weightedJobTime1m  float64
 		weightedJobTime4m  float64
 
-		*jobGenericQueue
+		// These distribution trackers keep track of the read durations for
+		// every length category.
+		staticDT64k *skymodules.DistributionTracker
+		staticDT1m  *skymodules.DistributionTracker
+		staticDT4m  *skymodules.DistributionTracker
 
+		*jobGenericQueue
 		mu sync.Mutex
 	}
 
@@ -111,6 +131,15 @@ func (j *jobRead) callWeight() uint64 {
 	return weight + modules.SectorSize - j.staticLength
 }
 
+// NewJobReadStats returns an initialized jobReadStats object.
+func NewJobReadStats() *jobReadStats {
+	return &jobReadStats{
+		staticDT64k: skymodules.NewDistributionTrackerStandard(),
+		staticDT1m:  skymodules.NewDistributionTrackerStandard(),
+		staticDT4m:  skymodules.NewDistributionTrackerStandard(),
+	}
+}
+
 // staticJobReadMetadata returns the read job's metadata.
 func (j *jobRead) staticJobReadMetadata() jobReadMetadata {
 	var metadata jobReadMetadata
@@ -131,14 +160,14 @@ func (j *jobRead) callDiscard(err error) {
 	}
 
 	w := j.staticQueue.staticWorker()
-	errLaunch := w.staticRenter.tg.Launch(func() {
+	errLaunch := w.staticTG.Launch(func() {
 		response := &jobReadResponse{
-			staticErr:      errors.Extend(err, ErrJobDiscarded),
+			staticErr:      err,
 			staticMetadata: j.staticJobReadMetadata(),
 		}
 		select {
 		case j.staticResponseChan <- response:
-		case <-w.staticRenter.tg.StopChan():
+		case <-w.staticTG.StopChan():
 		case <-j.staticCtx.Done():
 		}
 	})
@@ -172,11 +201,11 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 		staticJobTime:  readJobTime,
 	}
 	w := j.staticQueue.staticWorker()
-	err := w.staticRenter.tg.Launch(func() {
+	err := w.staticTG.Launch(func() {
 		select {
 		case j.staticResponseChan <- response:
 		case <-j.staticCtx.Done():
-		case <-w.staticRenter.tg.StopChan():
+		case <-w.staticTG.StopChan():
 		}
 	})
 	if err != nil {
@@ -278,9 +307,9 @@ func (jrs *jobReadStats) callExpectedJobTime(length uint64) time.Duration {
 // expectedJobTime returns the expected job time, based on recent performance,
 // for the given read length.
 func (jrs *jobReadStats) expectedJobTime(length uint64) time.Duration {
-	if length <= 1<<16 {
+	if length <= jobLength64k {
 		return time.Duration(jrs.weightedJobTime64k)
-	} else if length <= 1<<20 {
+	} else if length <= jobLength1m {
 		return time.Duration(jrs.weightedJobTime1m)
 	} else {
 		return time.Duration(jrs.weightedJobTime4m)
@@ -307,6 +336,9 @@ func (jq *jobReadQueue) callExpectedJobCost(length uint64) types.Currency {
 	// Add the bandwidth cost.
 	ulBandwidth, dlBandwidth := new(jobReadSector).callExpectedBandwidth()
 	cost = cost.Add(modules.MDMBandwidthCost(*pt, ulBandwidth, dlBandwidth))
+
+	// Add the base cost.
+	cost = cost.Add(jq.staticBaseCost.Mul64(dlBandwidth))
 	return cost
 }
 
@@ -315,12 +347,28 @@ func (jq *jobReadQueue) callExpectedJobCost(length uint64) types.Currency {
 func (jrs *jobReadStats) callUpdateJobTimeMetrics(length uint64, jobTime time.Duration) {
 	jrs.mu.Lock()
 	defer jrs.mu.Unlock()
-	if length <= 1<<16 {
+	if length <= jobLength64k {
 		jrs.weightedJobTime64k = expMovingAvgHotStart(jrs.weightedJobTime64k, float64(jobTime), jobReadPerformanceDecay)
-	} else if length <= 1<<20 {
+	} else if length <= jobLength1m {
 		jrs.weightedJobTime1m = expMovingAvgHotStart(jrs.weightedJobTime1m, float64(jobTime), jobReadPerformanceDecay)
 	} else {
 		jrs.weightedJobTime4m = expMovingAvgHotStart(jrs.weightedJobTime4m, float64(jobTime), jobReadPerformanceDecay)
+	}
+
+	// update distribution tracker
+	dt := jrs.distributionTrackerForLength(length)
+	dt.AddDataPoint(jobTime)
+}
+
+// distributionTrackerForLength returns the distribution tracker that
+// corresponds to the given length.
+func (jrs *jobReadStats) distributionTrackerForLength(length uint64) *skymodules.DistributionTracker {
+	if length <= jobLength64k {
+		return jrs.staticDT64k
+	} else if length <= jobLength1m {
+		return jrs.staticDT1m
+	} else {
+		return jrs.staticDT4m
 	}
 }
 
@@ -329,11 +377,13 @@ func (jrs *jobReadStats) callUpdateJobTimeMetrics(length uint64, jobTime time.Du
 func (w *worker) initJobReadQueue(jrs *jobReadStats) {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobReadQueue != nil {
-		w.staticRenter.staticLog.Critical("incorret call on initJobReadQueue")
+		w.staticRenter.staticLog.Critical("incorrect call on initJobReadQueue")
 	}
+
 	w.staticJobReadQueue = &jobReadQueue{
 		jobGenericQueue: newJobGenericQueue(w),
 		staticLowPrio:   false,
+		staticBaseCost:  skymodules.DefaultSkynetBaseCost,
 		staticStats:     jrs,
 	}
 }
@@ -345,9 +395,11 @@ func (w *worker) initJobLowPrioReadQueue(jrs *jobReadStats) {
 	if w.staticJobLowPrioReadQueue != nil {
 		w.staticRenter.staticLog.Critical("incorret call on initJobReadQueue")
 	}
+
 	w.staticJobLowPrioReadQueue = &jobReadQueue{
 		jobGenericQueue: newJobGenericQueue(w),
 		staticLowPrio:   true,
 		staticStats:     jrs,
+		staticBaseCost:  skymodules.DefaultSkynetBaseCost,
 	}
 }

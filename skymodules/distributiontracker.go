@@ -132,6 +132,9 @@ type (
 	PersistedDistributionTracker struct {
 		Distributions []PersistedDistribution `json:"distributions"`
 	}
+
+	// Chances is a helper type that represent a distribition's chance array
+	Chances [DistributionTrackerTotalBuckets]float64
 )
 
 // Persist returns a PersistedDistributionTracker for the DistributionTracker by
@@ -148,6 +151,13 @@ func (dt *DistributionTracker) Persist() PersistedDistributionTracker {
 	return PersistedDistributionTracker{
 		Distributions: distributions,
 	}
+}
+
+// DistributionBucketIndexForDuration converts the given duration to a bucket
+// index
+func DistributionBucketIndexForDuration(dur time.Duration) int {
+	index, _ := indexForDuration(dur)
+	return index
 }
 
 // DistributionDurationForBucketIndex converts the index of a timing bucket into
@@ -241,7 +251,7 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 func (d *Distribution) ChanceAfter(dur time.Duration) float64 {
 	// Check for negative inputs.
 	if dur < 0 {
-		build.Critical("cannot call ChanceAfter with negatime duration")
+		build.Critical("cannot call ChanceAfter with negative duration")
 		return 0
 	}
 
@@ -264,6 +274,28 @@ func (d *Distribution) ChanceAfter(dur time.Duration) float64 {
 	// Calculate the chance
 	chance := count / total
 	return chance
+}
+
+// ChancesAfter returns an array of chances, every entry represents the chance
+// we find a data point after the duration that corresponds with the bucket at
+// the index of the entry.
+func (d *Distribution) ChancesAfter() Chances {
+	var chances Chances
+
+	// Get the total data points.
+	total := d.DataPoints()
+	if total == 0 {
+		return chances
+	}
+
+	// Loop over every bucket once and calculate the chance at that bucket
+	count := float64(0)
+	for i := 0; i < DistributionTrackerTotalBuckets; i++ {
+		chances[i] = count / total
+		count += d.timings[i]
+	}
+
+	return chances
 }
 
 // Clone returns a deep copy of the distribution.
@@ -390,7 +422,7 @@ func (d *Distribution) PStat(p float64) time.Duration {
 func (d *Distribution) Shift(dur time.Duration) {
 	// Check for negative inputs.
 	if dur < 0 {
-		build.Critical("cannot call Shift with negatime duration")
+		build.Critical("cannot call Shift with negative duration")
 		return
 	}
 
@@ -408,7 +440,7 @@ func (d *Distribution) Shift(dur time.Duration) {
 	}
 
 	// Otherwise we calculate the remainder and smear it over all buckets
-	// up until we reach index
+	// up until we reach index.
 	remainder := fraction * value
 	smear := remainder / float64(index)
 	for i := 0; i < index; i++ {

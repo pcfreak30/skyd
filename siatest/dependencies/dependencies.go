@@ -223,12 +223,25 @@ type (
 	DependencyResolveSkylinkToFixture struct {
 		skymodules.SkynetDependencies
 	}
+
+	// DependencyMultiDisrupt is a generic dependency that will disrupt the
+	// normal code flow based on multiple keywords.
+	DependencyMultiDisrupt struct {
+		skymodules.SkynetDependencies
+		strs []string
+	}
 )
 
 // NewDependencyDelayRegistryHealthResponses simulates a delay to the
 // staticComplete time of all responses in managedRegistryEntryHealth.`
 func NewDependencyDelayRegistryHealthResponses() *DependencyWithDisableAndEnable {
 	return newDependencywithDisableAndEnable("DelayRegistryHealthResponses")
+}
+
+// NewDependencyOverdriveDownload is a dependency that will overdrive at least
+// one worker on every download.
+func NewDependencyOverdriveDownload() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("OverdriveDownload")
 }
 
 // NewDependencyTUSConnectionDrop creates a new DependencyTUSConnectionDrop
@@ -741,4 +754,22 @@ func (d *DependencyWithDisableAndEnable) Enable() {
 	d.mu.Lock()
 	d.disabled = false
 	d.mu.Unlock()
+}
+
+// newDependencyMultiDisrupt creates a new DependencyMultiDistrupt from a given
+// disrupt key set.
+func newDependencyMultiDisrupt(strs []string) *DependencyMultiDisrupt {
+	return &DependencyMultiDisrupt{
+		strs: strs,
+	}
+}
+
+// Disrupt returns true if the provided string is one of the disrupt strings.
+func (d *DependencyMultiDisrupt) Disrupt(s string) bool {
+	for _, str := range d.strs {
+		if str == s {
+			return true
+		}
+	}
+	return false
 }

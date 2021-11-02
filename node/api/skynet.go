@@ -65,18 +65,11 @@ const (
 	SkynetRequestedSkylinkHeader = "Skynet-Requested-Skylink"
 )
 
-var (
-	// DefaultSkynetPricePerMS is the default price per millisecond the renter
-	// is able to spend on faster workers when downloading a Skyfile. By default
-	// this is a sane default of 100 nS.
-	DefaultSkynetPricePerMS = types.SiacoinPrecision.MulFloat(1e-7) // 100 nS
-)
-
 type (
 	// HostsForRegistryUpdateGET is the response that the api returns after
 	// a request to /skynet/registry/hosts.
 	HostsForRegistryUpdateGET struct {
-		Hosts []types.SiaPublicKey `json:"hosts"`
+		Hosts []skymodules.HostForRegistryUpdate `json:"hosts"`
 	}
 
 	// SkynetSkyfileHandlerPOST is the response that the api returns after the
@@ -172,16 +165,17 @@ type (
 		SystemHealthScanDurationHours float64 `json:"systemhealthscandurationhours"`
 
 		// General Statuses
-		AllowanceStatus string         `json:"allowancestatus"` // 'low', 'good', 'high'
-		ContractStorage uint64         `json:"contractstorage"` // bytes
-		MaxStoragePrice types.Currency `json:"maxstorageprice"` // Hastings per byte per block
-		NumCritAlerts   int            `json:"numcritalerts"`
-		NumFiles        uint64         `json:"numfiles"`
-		PortalMode      bool           `json:"portalmode"`
-		Repair          uint64         `json:"repair"`  // bytes
-		Storage         uint64         `json:"storage"` // bytes
-		StuckChunks     uint64         `json:"stuckchunks"`
-		WalletStatus    string         `json:"walletstatus"` // 'low', 'good', 'high'
+		AllowanceStatus     string         `json:"allowancestatus"` // 'low', 'good', 'high'
+		ContractStorage     uint64         `json:"contractstorage"` // bytes
+		MaxHealthPercentage float64        `json:"maxhealthpercentage"`
+		MaxStoragePrice     types.Currency `json:"maxstorageprice"` // Hastings per byte per block
+		NumCritAlerts       int            `json:"numcritalerts"`
+		NumFiles            uint64         `json:"numfiles"`
+		PortalMode          bool           `json:"portalmode"`
+		Repair              uint64         `json:"repair"`  // bytes
+		Storage             uint64         `json:"storage"` // bytes
+		StuckChunks         uint64         `json:"stuckchunks"`
+		WalletStatus        string         `json:"walletstatus"` // 'low', 'good', 'high'
 
 		// Update and version information.
 		Uptime      int64         `json:"uptime"`
@@ -229,6 +223,13 @@ type (
 		Type      modules.RegistryEntryType `json:"type"`
 	}
 
+	// RegistryHandlerMultiRequestPOST is the expected format of the json request for
+	// /skynet/registry [POST].
+	RegistryHandlerMultiRequestPOST struct {
+		RegistryHandlerRequestPOST
+		HostKey types.SiaPublicKey `json:"hostkey"`
+	}
+
 	// SkylinkResolveGET is the response returned by the /skylink/resolve
 	// endpoint.
 	SkylinkResolveGET struct {
@@ -267,7 +268,7 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 	}
 
 	// Parse pricePerMS.
-	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMS := skymodules.DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
 		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
@@ -456,7 +457,7 @@ func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, _
 	}
 
 	// Parse pricePerMS.
-	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMS := skymodules.DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
 		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
@@ -682,7 +683,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 	}
 
 	// Parse pricePerMS.
-	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMS := skymodules.DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
 		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
@@ -1048,16 +1049,17 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 
 		SystemHealthScanDurationHours: float64(renterPerf.SystemHealthScanDuration) / float64(time.Hour),
 
-		AllowanceStatus: allowanceStatus,
-		ContractStorage: totalStorage,
-		NumCritAlerts:   numCritAlerts,
-		NumFiles:        rootDir.AggregateSkynetFiles,
-		PortalMode:      allowance.PortalMode(),
-		MaxStoragePrice: allowance.MaxStoragePrice,
-		Repair:          rootDir.AggregateRepairSize,
-		Storage:         rootDir.AggregateSkynetSize,
-		StuckChunks:     rootDir.AggregateNumStuckChunks,
-		WalletStatus:    walletStatus,
+		AllowanceStatus:     allowanceStatus,
+		ContractStorage:     totalStorage,
+		MaxHealthPercentage: rootDir.AggregateMaxHealthPercentage,
+		MaxStoragePrice:     allowance.MaxStoragePrice,
+		NumCritAlerts:       numCritAlerts,
+		NumFiles:            rootDir.AggregateSkynetFiles,
+		PortalMode:          allowance.PortalMode(),
+		Repair:              rootDir.AggregateRepairSize,
+		Storage:             rootDir.AggregateSkynetSize,
+		StuckChunks:         rootDir.AggregateNumStuckChunks,
+		WalletStatus:        walletStatus,
 
 		Uptime: int64(uptime),
 		VersionInfo: SkynetVersion{
@@ -1272,11 +1274,65 @@ func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 		return
 	}
 
+	// Prepare a context for the timeout.
+	ctx, cancel := context.WithTimeout(req.Context(), renter.DefaultRegistryUpdateTimeout)
+	defer cancel()
+
 	// Update the registry.
 	srv := modules.NewSignedRegistryValue(rhp.DataKey, rhp.Data, rhp.Revision, rhp.Signature, rhp.Type)
-	err = api.renter.UpdateRegistry(rhp.PublicKey, srv, renter.DefaultRegistryUpdateTimeout)
+	err = api.renter.UpdateRegistry(ctx, rhp.PublicKey, srv)
 	if err != nil {
-		WriteError(w, Error{"Unable to update the registry: " + err.Error()}, http.StatusBadRequest)
+		handleSkynetError(w, "Unable to update the registry", err)
+		return
+	}
+	WriteSuccess(w)
+}
+
+// registryMultiHandlerPOST handles the POST calls to /skynet/registrymulti.
+func (api *API) registryMultiHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Decode request.
+	dec := json.NewDecoder(req.Body)
+	var rhps []RegistryHandlerMultiRequestPOST
+	err := dec.Decode(&rhps)
+	if err != nil {
+		WriteError(w, Error{"Failed to decode request: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Check request and combine them into a map from host to entry.
+	srvs := make(map[string]skymodules.RegistryEntry, len(rhps))
+	for i, rhp := range rhps {
+		// If the type wasn't set, default to no pubkey to preserve
+		// compatibility.
+		if rhp.Type == modules.RegistryTypeInvalid {
+			rhps[i].Type = modules.RegistryTypeWithoutPubkey
+		}
+
+		// Check data length here to be able to offer a better and faster error
+		// message than when the hosts return it.
+		if len(rhp.Data) > modules.RegistryDataSize {
+			WriteError(w, Error{fmt.Sprintf("Registry data is too big: %v > %v", len(rhp.Data), modules.RegistryDataSize)}, http.StatusBadRequest)
+			return
+		}
+		srv := modules.NewSignedRegistryValue(rhp.DataKey, rhp.Data, rhp.Revision, rhp.Signature, rhp.Type)
+
+		// Each update should be for a different host.
+		_, exists := srvs[rhp.HostKey.String()]
+		if exists {
+			WriteError(w, Error{"Updating multiple entries on one host is not supported"}, http.StatusBadRequest)
+			return
+		}
+		srvs[rhp.HostKey.String()] = skymodules.NewRegistryEntry(rhp.PublicKey, srv)
+	}
+
+	// Prepare a context for the timeout.
+	ctx, cancel := context.WithTimeout(req.Context(), renter.DefaultRegistryUpdateTimeout)
+	defer cancel()
+
+	// Update the registry.
+	err = api.renter.UpdateRegistryMulti(ctx, srvs)
+	if err != nil {
+		handleSkynetError(w, "Unable to update the registry", err)
 		return
 	}
 	WriteSuccess(w)
@@ -1500,7 +1556,7 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 	}
 
 	// Parse pricePerMS.
-	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMS := skymodules.DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
 		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)
@@ -1554,7 +1610,7 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 	}
 
 	// Parse it.
-	_, _, _, rawMD, _, err := skymodules.ParseSkyfileMetadata(baseSector)
+	_, _, _, rawMD, _, _, err := api.renter.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
@@ -1591,7 +1647,7 @@ func (api *API) skynetSkylinkHealthGET(w http.ResponseWriter, req *http.Request,
 	defer cancel()
 
 	// Get health.
-	sh, err := api.renter.SkylinkHealth(ctx, skylink, DefaultSkynetPricePerMS)
+	sh, err := api.renter.SkylinkHealth(ctx, skylink, skymodules.DefaultSkynetPricePerMS)
 	if err != nil {
 		handleSkynetError(w, "failed to get skylink health", err)
 		return

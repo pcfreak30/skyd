@@ -56,6 +56,7 @@ func TestSiaFileFaultyDisk(t *testing.T) {
 	testDone := time.After(testTimeout)
 	numRecoveries := 0
 	numSuccessfulIterations := 0
+	filePath := sf.siaFilePath
 OUTER:
 	for {
 		select {
@@ -143,16 +144,14 @@ OUTER:
 				}
 			}
 			// Load file again.
-			sf, err = loadSiaFile(sf.siaFilePath, wal, fdd)
-			sf.deps = fdd
-			if err != nil {
-				if errors.Contains(err, dependencies.ErrDiskFault) {
-					numRecoveries++
-					continue // try again
-				} else {
-					t.Fatal(err)
-				}
+			sf, err = loadSiaFile(filePath, wal, fdd)
+			if err != nil && errors.Contains(err, dependencies.ErrDiskFault) {
+				numRecoveries++
+				continue // try again
+			} else if err != nil {
+				t.Fatal(err)
 			}
+			sf.deps = fdd
 			break
 		}
 	}

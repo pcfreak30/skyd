@@ -2,16 +2,19 @@ package renter
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem/siadir"
-	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 )
 
@@ -155,12 +158,11 @@ func TestCalculateDirectoryMetadata(t *testing.T) {
 	fileSize := uint64(100)
 	var dp, pp int = 1, 1
 	rsc, _ := skymodules.NewRSCode(dp, pp)
-	ct := crypto.RandomCipherType()
 	worstFileHealth := 1 - (0-float64(dp))/float64(pp)
 	repairSize := modules.SectorSize * uint64(dp+pp)
 
 	// Add a file to the root directory
-	rootFile, err := rt.renter.createRenterTestFileWithParamsAndSize(skymodules.RandomSiaPath(), rsc, ct, fileSize)
+	rootFile, err := rt.newTestSiaFile(skymodules.RandomSiaPath(), "", rsc, fileSize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +173,7 @@ func TestCalculateDirectoryMetadata(t *testing.T) {
 	}()
 
 	// Add a file to the root directory that has a skylink
-	rootSkyFile, err := rt.renter.createRenterTestFileWithParamsAndSize(skymodules.RandomSiaPath(), rsc, ct, fileSize)
+	rootSkyFile, err := rt.newTestSiaFile(skymodules.RandomSiaPath(), "", rsc, fileSize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,6 +297,91 @@ func TestCalculateDirectoryMetadata(t *testing.T) {
 		t.Log(string(expectedData))
 		t.Log("Actual Metadata")
 		t.Log(string(actual))
+		t.Fatal(err)
+	}
+}
+
+// TestPruneUnfinishedFiles probes the pruning of unfinished files.
+func TestPruneUnfinishedFiles(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	t.Skip("Re-enable with deletion")
+
+	// Create renter
+	rt, err := newRenterTesterWithDependency(t.Name(), dependencies.NewDependencyUnfinishedFiles())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Create file
+	sp := skymodules.RandomSiaPath()
+	file, err := rt.renter.createRenterTestFile(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify unfinished siafile metadata
+	if file.Finished() {
+		t.Fatal("File should be considered unfinished")
+	}
+
+	// Close File
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Trigger bubble
+	err = rt.renter.UpdateMetadata(skymodules.RootSiaPath(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify unfinished directory metadata
+	dirs, err := rt.renter.DirList(skymodules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dirs[0].AggregateNumUnfinishedFiles != 1 {
+		t.Fatal("Expected 1 aggregate unfinished file, found", dirs[0].AggregateNumUnfinishedFiles)
+	}
+	if dirs[0].NumUnfinishedFiles != 1 {
+		t.Fatal("Expected 1 unfinished file, found", dirs[0].NumUnfinishedFiles)
+	}
+
+	// Wait for file to be pruned
+	err = build.Retry(15, time.Second, func() error {
+		// Trigger bubble
+		err = rt.renter.UpdateMetadata(skymodules.RootSiaPath(), true)
+		if err != nil {
+			return err
+		}
+
+		// Verify file is deleted
+		dirs, err = rt.renter.DirList(skymodules.RootSiaPath())
+		if err != nil {
+			return err
+		}
+		if dirs[0].AggregateNumUnfinishedFiles != 0 {
+			return fmt.Errorf("Expected 0 aggregate unfinished file, found %v", dirs[0].AggregateNumUnfinishedFiles)
+		}
+		if dirs[0].NumUnfinishedFiles != 0 {
+			return fmt.Errorf("Expected 0 unfinished file, found %v", dirs[0].NumUnfinishedFiles)
+		}
+		_, err = rt.renter.File(sp)
+		if err == nil || !errors.Contains(err, filesystem.ErrNotExist) {
+			return fmt.Errorf("expected file to be deleted but got %v", err)
+		}
+		return nil
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 }

@@ -258,7 +258,7 @@ func (w *worker) managedPerformUploadChunkJob() {
 		return
 	}
 	// Open an editing connection to the host.
-	s, err := w.staticRenter.staticHostContractor.Session(w.staticHostPubKey, w.staticRenter.tg.StopChan())
+	s, err := w.staticRenter.staticHostContractor.Session(w.staticHostPubKey, w.staticTG.StopChan())
 	if err != nil {
 		failureErr := fmt.Errorf("Worker failed to acquire an editor: %v", err)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
@@ -303,7 +303,6 @@ func (w *worker) managedPerformUploadChunkJob() {
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return
 	}
-
 	id := w.staticRenter.mu.Lock()
 	w.staticRenter.mu.Unlock(id)
 

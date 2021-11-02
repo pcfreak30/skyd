@@ -413,7 +413,7 @@ func (c *Client) SkynetSkylinkBackup(skylinkStr string, backupDst io.Writer) err
 	// return early.
 	if !skymodules.IsEncryptedBaseSector(baseSector) {
 		// Parse the layout from the baseSector
-		sl, _, _, _, _, err := skymodules.ParseSkyfileMetadata(baseSector)
+		sl := skymodules.ParseSkyfileLayout(baseSector)
 		if err != nil {
 			return errors.AddContext(err, "unable to parse baseSector")
 		}
@@ -965,6 +965,33 @@ func (c *Client) RegistryEntryHealthRID(rid modules.RegistryEntryID) (reh skymod
 // RegistryUpdate queries the /skynet/registry [POST] endpoint.
 func (c *Client) RegistryUpdate(spk types.SiaPublicKey, dataKey crypto.Hash, revision uint64, sig crypto.Signature, skylink skymodules.Skylink) error {
 	return c.RegistryUpdateWithEntry(spk, modules.NewSignedRegistryValue(dataKey, skylink.Bytes(), revision, sig, modules.RegistryTypeWithoutPubkey))
+}
+
+// RegistryUpdateMulti queries the /skynet/registrymulti [POST] endpoint.
+func (c *Client) RegistryUpdateMulti(srvs map[string]skymodules.RegistryEntry) error {
+	req := make([]api.RegistryHandlerMultiRequestPOST, 0, len(srvs))
+	for hk, srv := range srvs {
+		var hpk types.SiaPublicKey
+		if err := hpk.LoadString(hk); err != nil {
+			return fmt.Errorf("invalid hostkey %v", hk)
+		}
+		req = append(req, api.RegistryHandlerMultiRequestPOST{
+			RegistryHandlerRequestPOST: api.RegistryHandlerRequestPOST{
+				PublicKey: srv.PubKey,
+				DataKey:   srv.Tweak,
+				Revision:  srv.Revision,
+				Signature: srv.Signature,
+				Data:      srv.Data,
+				Type:      srv.Type,
+			},
+			HostKey: hpk,
+		})
+	}
+	reqBytes, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+	return c.post("/skynet/registrymulti", string(reqBytes), nil)
 }
 
 // RegistryUpdateWithEntry queries the /skynet/registry [POST] endpoint.

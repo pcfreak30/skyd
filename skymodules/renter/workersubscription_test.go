@@ -17,6 +17,7 @@ import (
 	"gitlab.com/NebulousLabs/threadgroup"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/siatest/dependencies"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
@@ -226,12 +227,16 @@ func TestPriceTableForSubscription(t *testing.T) {
 	}()
 
 	// Create a unique price table for testing.
-	wptInvalid := &workerPriceTable{
+	wptInvalidFailedGouging := &workerPriceTable{
 		staticExpiryTime: time.Now().Add(modules.SubscriptionPeriod).Add(-time.Microsecond), // Won't cover the period
-		staticUpdateTime: time.Now().Add(time.Hour),                                         // 1 hour from now
+		staticUpdateTime: time.Now().Add(2 * time.Second),                                   // 1 hour from now
+		staticPriceTable: modules.RPCPriceTable{
+			SubscriptionMemoryCost:       types.NewCurrency64(2), // this will cause gouging
+			SubscriptionNotificationCost: types.NewCurrency64(1),
+		},
 	}
-	fastrand.Read(wptInvalid.staticPriceTable.UID[:])
-	wt.staticSetPriceTable(wptInvalid)
+	fastrand.Read(wptInvalidFailedGouging.staticPriceTable.UID[:])
+	wt.staticSetPriceTable(wptInvalidFailedGouging)
 
 	// Try to fetch a price table in a different goroutine. This should block
 	// since we don't have a valid price table.
@@ -249,12 +254,37 @@ func TestPriceTableForSubscription(t *testing.T) {
 	case <-time.After(time.Second):
 	}
 
-	// The price table should be updated to be renewed.
+	// The update time of the price table should not be 0 yet.
 	updatedPT := wt.staticPriceTable()
-	if !updatedPT.staticUpdateTime.IsZero() {
-		t.Fatal("update time of price table should be zero")
+	if updatedPT.staticUpdateTime.IsZero() {
+		t.Fatal("update time shouldn't be 0 yet", updatedPT.staticUpdateTime)
 	}
-	if updatedPT.staticPriceTable.UID != wptInvalid.staticPriceTable.UID {
+	if updatedPT.staticPriceTable.UID != wptInvalidFailedGouging.staticPriceTable.UID {
+		t.Fatal("UIDs don't match")
+	}
+
+	// Swap out the price table for one that doesn't fail the gouging check.
+	// Also make sure the price table doesn't accidentally update within the
+	// test.
+	wptInvalidNoGouging := *wptInvalidFailedGouging
+	wptInvalidNoGouging.staticUpdateTime = time.Now().Add(time.Hour)
+	wptInvalidNoGouging.staticPriceTable.SubscriptionMemoryCost = types.NewCurrency64(1)
+	wt.staticSetPriceTable(&wptInvalidNoGouging)
+
+	// Wait until the price table should be updated plus a bit longer to
+	// give the loop some time to wake up after the failed gouging check.
+	select {
+	case <-done:
+		t.Fatal("goroutine finished even though it should block")
+	case <-time.After(time.Until(wptInvalidFailedGouging.staticUpdateTime) + time.Second):
+	}
+
+	// The price table should be updated to be renewed.
+	updatedPT = wt.staticPriceTable()
+	if !updatedPT.staticUpdateTime.IsZero() {
+		t.Fatal("update time of price table should be zero", updatedPT.staticUpdateTime)
+	}
+	if updatedPT.staticPriceTable.UID != wptInvalidNoGouging.staticPriceTable.UID {
 		t.Fatal("UIDs don't match")
 	}
 
@@ -263,6 +293,10 @@ func TestPriceTableForSubscription(t *testing.T) {
 	wptValid := &workerPriceTable{
 		staticExpiryTime: time.Now().Add(modules.SubscriptionPeriod).Add(priceTableRetryInterval).Add(time.Second),
 		staticUpdateTime: time.Now().Add(time.Hour), // 1 hour from now
+		staticPriceTable: modules.RPCPriceTable{
+			SubscriptionMemoryCost:       types.NewCurrency64(1),
+			SubscriptionNotificationCost: types.NewCurrency64(1),
+		},
 	}
 	fastrand.Read(wptValid.staticPriceTable.UID[:])
 	wt.staticSetPriceTable(wptValid)
@@ -1249,7 +1283,8 @@ func TestThreadedSubscriptionLoop(t *testing.T) {
 	case <-c:
 	}
 	subInfo.mu.Lock()
-	if !reflect.DeepEqual(*reqSub.latestRV, rv) {
+	if reqSub.latestRV == nil || !reflect.DeepEqual(*reqSub.latestRV, rv) {
+		subInfo.mu.Unlock()
 		t.Fatal("entries don't match")
 	}
 	subInfo.mu.Unlock()
@@ -1466,4 +1501,91 @@ func TestCheckHostCheating(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestCheckSubscriptionGouging is a unit test for checkSubscriptionGouging.
+func TestCheckSubscriptionGouging(t *testing.T) {
+	// Create a pricetable and allowance which are reasonable.
+	a := skymodules.DefaultAllowance
+	pt := modules.RPCPriceTable{
+		SubscriptionMemoryCost:       types.NewCurrency64(1),
+		SubscriptionNotificationCost: types.NewCurrency64(1),
+	}
+
+	// Should work.
+	if err := checkSubscriptionGouging(pt, a); err != nil {
+		t.Fatal(err)
+	}
+
+	// High memory cost shouldn't work.
+	ptHighMemCost := pt
+	ptHighMemCost.SubscriptionMemoryCost = types.NewCurrency64(2)
+	if err := checkSubscriptionGouging(ptHighMemCost, a); !errors.Contains(err, errHighSubscriptionMemoryCost) {
+		t.Fatal(err)
+	}
+
+	// High notification cost shouldn't work.
+	ptHighNotificationCost := pt
+	ptHighNotificationCost.SubscriptionNotificationCost = types.NewCurrency64(2)
+	if err := checkSubscriptionGouging(ptHighNotificationCost, a); !errors.Contains(err, errHighSubscriptionNotificationCost) {
+		t.Fatal(err)
+	}
+
+	// High bandwidth cost should be caught by checkProjectDownloadGouging
+	// at the end.
+	ptHighBandwidthCost := pt
+	ptHighBandwidthCost.DownloadBandwidthCost = types.SiacoinPrecision.Mul64(1e9)
+	if err := checkSubscriptionGouging(ptHighBandwidthCost, a); err == nil {
+		t.Fatal("should fail")
+	}
+}
+
+// TestSyncAccountBalanceToHostSubscriptionPanic is a regression test to verify
+// that calling externSyncAccountBalanceToHost while running a subscription
+// won't trigger a build.Critical in externSyncAccountBalanceToHost.
+func TestSyncAccountBalanceToHostSubscriptionPanic(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyPreventEARefill{}, skymodules.SkydProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Manually fill the EA once.
+	wt.managedRefillAccount()
+
+	// Random registry value.
+	srv, spk, _ := randomRegistryValue()
+
+	timeout := time.After(10 * time.Second)
+	finished := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-timeout:
+				close(finished)
+				return
+			default:
+			}
+			wt.externSyncAccountBalanceToHost()
+		}
+	}()
+
+	// Create a subscriber.
+	sub := wt.staticRenter.staticSubscriptionManager.NewSubscriber(func(_ skymodules.RegistryEntry) error { return nil })
+	defer sub.Close()
+
+	// Start a subscription.
+	_ = sub.Subscribe(spk, srv.Tweak)
+
+	// Wait for loop to end.
+	<-finished
 }

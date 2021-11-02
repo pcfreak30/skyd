@@ -94,13 +94,17 @@ type (
 		// redundancy with which the sector was uploaded into account
 		availabilityMetrics *availabilityMetrics
 
+		// staticDT is a distribution tracker that keeps track of the HS job
+		// duration
+		staticDT *skymodules.DistributionTracker
+
 		*jobGenericQueue
 	}
 
 	// jobHasSectorResponse contains the result of a hasSector query.
 	jobHasSectorResponse struct {
-		staticAvailables []bool
-		staticErr        error
+		staticAvailbleIndices []uint64
+		staticErr             error
 
 		// The worker is included in the response so that the caller can listen
 		// on one channel for a bunch of workers and still know which worker
@@ -216,7 +220,7 @@ func (am *availabilityMetrics) bucket(numPieces int) *availabilityBucket {
 
 // updateMetrics will update the availability metrics for the bucket
 // corresponding with 'numPieces'
-func (am *availabilityMetrics) updateMetrics(numPieces int, availables []bool) {
+func (am *availabilityMetrics) updateMetrics(numPieces, numSectors, numAvailable int) {
 	bucket := am.bucket(numPieces)
 	if bucket == nil {
 		return
@@ -224,12 +228,8 @@ func (am *availabilityMetrics) updateMetrics(numPieces int, availables []bool) {
 
 	bucket.addDecay()
 
-	bucket.totalLookups += float64(len(availables))
-	for _, available := range availables {
-		if available {
-			bucket.totalAvailable++
-		}
-	}
+	bucket.totalLookups += float64(numSectors)
+	bucket.totalAvailable += float64(numAvailable)
 }
 
 // callNext overwrites the generic call next and batches a certain number of has
@@ -280,9 +280,9 @@ func (w *worker) newJobHasSectorWithPostExecutionHook(ctx context.Context, respo
 // callDiscard will discard a job, sending the provided error.
 func (j *jobHasSector) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
-	errLaunch := w.staticRenter.tg.Launch(func() {
+	errLaunch := w.staticTG.Launch(func() {
 		response := &jobHasSectorResponse{
-			staticErr: errors.Extend(err, ErrJobDiscarded),
+			staticErr: err,
 
 			staticWorker: w,
 		}
@@ -290,7 +290,7 @@ func (j *jobHasSector) callDiscard(err error) {
 		select {
 		case j.staticResponseChan <- response:
 		case <-j.staticCtx.Done():
-		case <-w.staticRenter.tg.StopChan():
+		case <-w.staticTG.StopChan():
 		}
 	})
 	if errLaunch != nil {
@@ -365,16 +365,15 @@ func (j jobHasSectorBatch) callExecute() {
 		}
 		// If it was successful, attach the result.
 		if err == nil {
-			hsj.staticSpan.LogKV("availables", availables[i])
-			response.staticAvailables = availables[i]
+			response.staticAvailbleIndices = availables[i]
 		}
 		// Send the response.
-		err2 := w.staticRenter.tg.Launch(func() {
+		err2 := w.staticTG.Launch(func() {
 			hsj.managedCallPostExecutionHook(response)
 			select {
 			case hsj.staticResponseChan <- response:
 			case <-hsj.staticCtx.Done():
-			case <-w.staticRenter.tg.StopChan():
+			case <-w.staticTG.StopChan():
 			}
 		})
 		// Report success or failure to the queue.
@@ -388,7 +387,7 @@ func (j jobHasSectorBatch) callExecute() {
 		// the queue.
 		jq := hsj.staticQueue.(*jobHasSectorQueue)
 		jq.callUpdateJobTimeMetrics(jobTime)
-		jq.callUpdateAvailabilityMetrics(hsj.staticNumPieces, availables[i])
+		jq.callUpdateAvailabilityMetrics(hsj.staticNumPieces, len(hsj.staticSectors), len(availables[i]))
 		if err2 != nil {
 			w.staticRenter.staticLog.Println("callExecute: launch failed", err)
 		}
@@ -421,7 +420,7 @@ func (j jobHasSectorBatch) callExpectedBandwidth() (ul, dl uint64) {
 }
 
 // managedHasSector returns whether or not the host has a sector with given root
-func (j *jobHasSectorBatch) managedHasSector() (results [][]bool, err error) {
+func (j *jobHasSectorBatch) managedHasSector() (results [][]uint64, err error) {
 	if len(j.staticJobs) == 0 {
 		return nil, nil
 	}
@@ -461,7 +460,13 @@ func (j *jobHasSectorBatch) managedHasSector() (results [][]bool, err error) {
 	}
 
 	for _, hsj := range j.staticJobs {
-		results = append(results, hasSectors[:len(hsj.staticSectors)])
+		var availables []uint64
+		for i := 0; i < len(hsj.staticSectors); i++ {
+			if hasSectors[i] {
+				availables = append(availables, uint64(i))
+			}
+		}
+		results = append(results, availables)
 		hasSectors = hasSectors[len(hsj.staticSectors):]
 	}
 	return results, nil
@@ -526,10 +531,10 @@ func (jq *jobHasSectorQueue) callAvailabilityRate(numPieces int) float64 {
 // callUpdateAvailabilityMetrics updates the fields on the has sector queue that
 // keep track of how many jobs were executed successfully, and how many jobs had
 // the sector be available.
-func (jq *jobHasSectorQueue) callUpdateAvailabilityMetrics(numPieces int, availables []bool) {
+func (jq *jobHasSectorQueue) callUpdateAvailabilityMetrics(numPieces, numSectors, numAvailable int) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
-	jq.availabilityMetrics.updateMetrics(numPieces, availables)
+	jq.availabilityMetrics.updateMetrics(numPieces, numSectors, numAvailable)
 }
 
 // callUpdateJobTimeMetrics takes a duration it took to fulfil that job and uses
@@ -538,12 +543,13 @@ func (jq *jobHasSectorQueue) callUpdateJobTimeMetrics(jobTime time.Duration) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	jq.weightedJobTime = expMovingAvgHotStart(jq.weightedJobTime, float64(jobTime), jobHasSectorPerformanceDecay)
+	jq.staticDT.AddDataPoint(jobTime)
 }
 
 // expectedJobTime will return the amount of time that a job is expected to
 // take, given the current conditions of the queue.
 func (jq *jobHasSectorQueue) expectedJobTime() time.Duration {
-	return time.Duration(jq.weightedJobTime)
+	return jq.staticDT.Distribution(0).ExpectedDuration()
 }
 
 // initJobHasSectorQueue will init the queue for the has sector jobs.
@@ -557,6 +563,7 @@ func (w *worker) initJobHasSectorQueue() {
 	w.staticJobHasSectorQueue = &jobHasSectorQueue{
 		availabilityMetrics: newAvailabilityMetrics(availabilityMetricsDefaultHalfLife),
 		jobGenericQueue:     newJobGenericQueue(w),
+		staticDT:            skymodules.NewDistributionTrackerStandard(),
 	}
 }
 

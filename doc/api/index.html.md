@@ -1885,6 +1885,7 @@ relative to 'home/user/'.
       "aggregatenumlostfiles":        0,    // uint64
       "aggregatenumstuckchunks":      4,    // uint64
       "aggregatenumsubdirs":          4,    // uint64
+      "aggregatenumunfinishedfiles":  100,  // uint64
       "aggregaterepairsize":          4096, // uint64
       "aggregatesize":                4096, // uint64
       "aggregatestuckhealth":         1.0,  // float64
@@ -1904,6 +1905,7 @@ relative to 'home/user/'.
       "numlostfiles":        0,        // uint64
       "numstuckchunks":      3,        // uint64
       "numsubdirs":          2,        // uint64
+      "numunfinishedfiles":  100,      // uint64
       "repairsize":          4096,     // uint64
       "siapath":             "foo/bar" // string
       "size":                4096,     // uint64
@@ -1967,6 +1969,9 @@ The total number of stuck chunks in the sub directory tree
 
 **aggregatenumsubdirs** | **numsubdirs** | uint64\
 The number of directories in the directory
+
+**aggregatenumunfinishedfiles** | **numunfinishedfiles** | uint64\
+The number of unfinished files in the directory
 
 **aggregaterepairsize** | **repairsize** | uint64\
 The total size in bytes that needs to be handled by the repair loop. This
@@ -2322,6 +2327,7 @@ lists the status of all files.
       "createtime":       12578940002019-02-20T17:46:20.34810935+01:00,  // timestamp
       "expiration":       60000,                // block height
       "filesize":         8192,                 // bytes
+      "finished":         true,                 // boolean
       "health":           0.5,                  // float64
       "localpath":        "/home/foo/bar.txt",  // string
       "maxhealth":        0.0,                  // float64  
@@ -2375,9 +2381,14 @@ Block height at which the file ceases availability.
 **filesize** | bytes  
 Size of the file in bytes.  
 
-**health** | float64 health is an indication of the amount of redundancy missing
-where 0 is full redundancy and >1 means the file is not available. The health of
-the siafile is the health of the worst unstuck chunk.
+**finished** | boolean  
+finished is a boolean indicating if the original upload ever finished, meaning
+the file made it to 1x redundancy.
+
+**health** | float64  
+health is an indication of the amount of redundancy missing where 0 is full
+redundancy and >1 means the file is not available. The health of the siafile is
+the health of the worst unstuck chunk.
 
 **localpath** | string  
 Path to the local file on disk.  
@@ -4118,6 +4129,7 @@ returns statistical information about Skynet, e.g. number of files uploaded
    "systemhealthscandurationhours":1.1795308075927777,
    "allowancestatus":"healthy",                         // 'low', 'high', 'healthy'
    "contractstorage":68897587855360,
+   "maxhealthpercentage":100,
    "maxstorageprice":"34722222222",
    "numcritalerts":0,
    "numfiles":403016,
@@ -4155,6 +4167,9 @@ The amount of time in seconds that siad has been running.
 
 **uploadstats** | object  
 Uploadstats is an object with statistics about the data uploaded to Skynet.
+
+**maxhealthpercentage** | float  
+The maximum, i.e. worst, health of any of the portal's files represented as a percentage.
 
 **numfiles** | int  
 Numfiles is the total number of files uploaded to Skynet.

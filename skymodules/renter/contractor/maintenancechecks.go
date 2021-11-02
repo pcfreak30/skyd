@@ -118,7 +118,7 @@ func (c *Contractor) managedUtilityChecks(contract skymodules.RenterContract, ho
 	newUtility.GoodForUpload = true
 
 	// A contract with a dead score should not be used for anything.
-	u, needsUpdate := deadScoreCheck(contract.Utility, sb.Score)
+	u, needsUpdate := deadScoreCheck(newUtility, sb.Score)
 	uus = uus.Merge(needsUpdate)
 	newUtility = newUtility.Merge(u)
 
