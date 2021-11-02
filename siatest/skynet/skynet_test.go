@@ -3263,7 +3263,11 @@ func testSkynetNoWorkers(t *testing.T, tg *siatest.TestGroup) {
 	// have any contracts and therefore the worker pool will be empty. Confirm
 	// that attempting to download a skylink will return an error and not dead
 	// lock.
-	_, err = r.SkynetSkylinkGet(skymodules.Skylink{}.String())
+	skylink, err := skymodules.NewSkylinkV1(crypto.Hash{1, 2, 3}, 0, modules.SectorSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.SkynetSkylinkGet(skylink.String())
 	if err == nil {
 		t.Fatal("Error is nil, expected error due to not enough workers")
 	} else if !(strings.Contains(err.Error(), skymodules.ErrNotEnoughWorkersInWorkerPool.Error()) || strings.Contains(err.Error(), "not enough workers to complete download")) {
