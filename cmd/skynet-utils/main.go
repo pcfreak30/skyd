@@ -9,8 +9,6 @@ import (
 	"github.com/SkynetLabs/go-skynet/v2"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
-	"go.sia.tech/siad/crypto"
-	"go.sia.tech/siad/types"
 )
 
 // main checks the args to figure out what command to run, then calls the
@@ -127,16 +125,10 @@ func uploadToV2Skylink(v1Skylink string, salt string, phraseWords []string) {
 	}
 	linkBytes := skylink.Bytes()
 
-	// TODO: Do a registry read to figure out what revision number we
-	// should be using. Currently we are ignoring this step because we are
-	// only doing development deployments, which means a new random seed is
-	// generated on every deploy, meaning that a revision number of 0 is
-	// always fine.
-
 	// Create a signed registry entry containing the v1skylink and upload
 	// it using a portal.
 	client := skynet.New()
-	err = client.UpdateRegistry(dataKey, linkBytes, sk)
+	err = client.OverwriteRegistry(dataKey, linkBytes, sk)
 	if err != nil {
 		fmt.Println("Error while trying to update the registry:", err)
 		os.Exit(1)

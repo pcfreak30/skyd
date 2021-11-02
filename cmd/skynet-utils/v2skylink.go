@@ -1,5 +1,14 @@
 package main
 
+import(
+	"fmt"
+	"os"
+
+	"github.com/SkynetLabs/go-skynet/v2"
+	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/types"
+)
+
 // skylinkKeysFromPhraseWords returns the entropy for a given seed and salt.
 func skylinkKeysFromPhraseWords(salt string, phraseWords []string) (sk crypto.SecretKey, spk types.SiaPublicKey, dataKey crypto.Hash) {
 	// Turn the phrase words in to a phrase.
