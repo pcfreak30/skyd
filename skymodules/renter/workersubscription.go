@@ -689,7 +689,7 @@ func (w *worker) managedPriceTableForSubscription(duration time.Duration) *modul
 	for {
 		// Check for shutdown.
 		select {
-		case _ = <-w.staticTG.StopChan():
+		case <-w.staticTG.StopChan():
 			w.staticRenter.staticLog.Print("managedPriceTableForSubscription: abort due to shutdown")
 			return nil // shutdown
 		default:
@@ -704,7 +704,7 @@ func (w *worker) managedPriceTableForSubscription(duration time.Duration) *modul
 			w.staticRenter.staticLog.Printf("WARN: worker %v failed subscription gouging: %v", w.staticHostPubKeyStr, err)
 			// Wait a bit before checking again.
 			select {
-			case _ = <-w.staticRenter.tg.StopChan():
+			case <-w.staticTG.StopChan():
 				return nil // shutdown
 			case <-time.After(time.Until(pt.staticUpdateTime)):
 				continue // check next price table
@@ -744,7 +744,7 @@ func (w *worker) managedPriceTableForSubscription(duration time.Duration) *modul
 
 		// Wait a bit before checking again.
 		select {
-		case _ = <-w.staticTG.StopChan():
+		case <-w.staticTG.StopChan():
 			w.staticRenter.staticLog.Print("managedPriceTableForSubscription: abort due to shutdown")
 			return nil // shutdown
 		case <-time.After(priceTableRetryInterval):
