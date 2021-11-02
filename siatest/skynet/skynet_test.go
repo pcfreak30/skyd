@@ -5794,6 +5794,9 @@ func TestRegistrySubscription(t *testing.T) {
 	t.Run("Basic", func(t *testing.T) {
 		testRegistrySubscriptionBasic(t, p)
 	})
+	t.Run("Delays", func(t *testing.T) {
+		testRegistrySubscriptionDelays(t, p)
+	})
 }
 
 // testRegistrySubscriptionBasic tests the basic case of subscribing to
@@ -5831,7 +5834,9 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 	// Set an entry.
 	sk, pk := crypto.GenerateKeyPair()
 	spk := types.Ed25519PublicKey(pk)
-	srv1 := modules.NewRegistryValue(crypto.Hash{}, []byte{}, 0, modules.RegistryTypeWithoutPubkey).Sign(sk)
+	var tweak crypto.Hash
+	fastrand.Read(tweak[:])
+	srv1 := modules.NewRegistryValue(tweak, []byte{}, 0, modules.RegistryTypeWithoutPubkey).Sign(sk)
 	err = p.RegistryUpdateWithEntry(spk, srv1)
 	if err != nil {
 		t.Fatal(err)
@@ -5916,6 +5921,99 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 		t.Log(srv2)
 		t.Log(notifications[1].SignedRegistryValue)
 		t.Fatal("notification mismatch")
+	}
+}
+
+// testRegistrySubscriptionDelays tests that the bandwidth limit and general
+// delays for notifications are working as expected.
+func testRegistrySubscriptionDelays(t *testing.T, p *siatest.TestNode) {
+	// Collect notifications in a slice.
+	var notifications []time.Time
+	var notificationMu sync.Mutex
+	notifyFunc := func(entry skymodules.RegistryEntry) {
+		if err := entry.Verify(); err != nil {
+			t.Fatal("failed to verify entry", err)
+		}
+		notificationMu.Lock()
+		defer notificationMu.Unlock()
+		notifications = append(notifications, time.Now())
+	}
+
+	// Start the subscription.
+	closeHandler := func(_ int, msg string) error {
+		// We are going to close the subscription gracefully so the
+		// close handler shouldn't be called on our end.
+		t.Fatal("Close handler called:", msg)
+		return nil
+	}
+	delay := 500 * time.Millisecond                                 // 0.5 seconds per notification
+	limit := uint64(api.RegistrySubscriptionNotificationSize * 0.5) // 0.5 notifications per second
+	subscription, err := p.BeginRegistrySubscriptionCustom(limit, delay, notifyFunc, closeHandler)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := subscription.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Set two entries.
+	sk, pk := crypto.GenerateKeyPair()
+	spk := types.Ed25519PublicKey(pk)
+	srv1 := modules.NewRegistryValue(crypto.Hash{1}, []byte{}, 0, modules.RegistryTypeWithoutPubkey).Sign(sk)
+	srv2 := modules.NewRegistryValue(crypto.Hash{2}, []byte{}, 0, modules.RegistryTypeWithoutPubkey).Sign(sk)
+	err = p.RegistryUpdateWithEntry(spk, srv1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = p.RegistryUpdateWithEntry(spk, srv2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Subscribe to those entries and measure the time. This will trigger a
+	// notification with a delay and another notification with a delay + an
+	// extended delay since the notifications arrived at about the same time.
+	start1 := time.Now()
+	err = subscription.Subscribe(spk, srv1.Tweak)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start2 := time.Now()
+	err = subscription.Subscribe(spk, srv2.Tweak)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be 2 notifications now.
+	err = build.Retry(1000, 10*time.Millisecond, func() error {
+		notificationMu.Lock()
+		defer notificationMu.Unlock()
+		if len(notifications) != 2 {
+			return fmt.Errorf("notifications: %v != %v", len(notifications), 2)
+		}
+		// The first notification should have taken 500 ms to arrive. To
+		// account for inaccuracies we check for 500ms < d < 1s.
+		d := notifications[0].Sub(start1)
+		if d < delay || d >= time.Second {
+			t.Fatalf("1: wrong delay: %v < %v < %v", delay, d, time.Second)
+		}
+		// The second notification should have taken 500ms to arrive +
+		// the time between notifications specified by the bandwidth
+		// limit which is 2s since we are doing 0.5 notifications per
+		// second. So 2.5 seconds should have passed because we already
+		// waited 500ms for the first notification and then the second
+		// notification is delayed by another 500ms + 1.5s to get to
+		// 2 seconds between notifications.
+		d = notifications[1].Sub(start2)
+		if d < time.Second*5/2 || d >= time.Second*3 {
+			t.Fatalf("2: wrong delay: %v < %v < %v", time.Second*5/2, d, time.Second*3)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
