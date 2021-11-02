@@ -1267,7 +1267,7 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup, rt node.NodeParams, d
 
 	// Check that we have enough hosts for this test.
 	if len(tg.Hosts()) < 3 {
-		t.Fatal("This test requires at least 2 hosts")
+		t.Fatal("This test requires at least 3 hosts")
 	}
 
 	// Choose a filesize for the upload. To hit a wide range of cases,
