@@ -13,6 +13,33 @@ import (
 	"go.sia.tech/siad/types"
 )
 
+// main checks the args to figure out what command to run, then calls the
+// corresponding command.
+func main() {
+	args := os.Args
+	if len(args) == 2 {
+		switch args[1] {
+		case "generate-seed", "g", "s", "gs":
+			generateAndPrintSeedPhrase()
+		}
+	}
+	if len(args) == 3 {
+		switch args[1] {
+		case "upload-file", "u", "uf":
+			uploadFile(args[2])
+		}
+	}
+	if len(args) > 3 {
+		switch args[1] {
+		case "generate-v2skylink", "p", "v2":
+			generateV2SkylinkFromSeed(args[2], args[3:])
+		case "upload-to-v2skylink", "u2", "u2v2", "utv", "utv2":
+			uploadToV2Skylink(args[2], args[3], args[4:])
+		}
+	}
+	printHelp()
+}
+
 // printHelp lists all of the supported commands and their functions.
 func printHelp() {
 	// Basic output
@@ -66,6 +93,25 @@ func generateV2SkylinkFromSeed(salt string, phraseWords []string) {
 	os.Exit(0)
 }
 
+// uploadFile will upload a file to the user's preferred skynet portal, which
+// is detected via an environment variable. If no portal is set, siasky.net is
+// used.
+//
+// TODO: We need to update this function to verify that the skylink being
+// returned by the portal is correct. We should probably do this by extending
+// the client.
+func uploadFile(path string) {
+	client := skynet.New()
+	skylink, err := client.UploadFile(path, skynet.DefaultUploadOptions)
+	if err != nil {
+		fmt.Println("Upload failed:", err)
+		os.Exit(1)
+	}
+	skylink = strings.TrimPrefix(skylink, "sia://")
+	fmt.Println(skylink)
+	os.Exit(0)
+}
+
 // uploadToV2Skylnk will upload the provided v1Skylink to the v2Skylink that
 // corresponds to the provided salt and phraseWords.
 func uploadToV2Skylink(v1Skylink string, salt string, phraseWords []string) {
@@ -96,50 +142,4 @@ func uploadToV2Skylink(v1Skylink string, salt string, phraseWords []string) {
 		os.Exit(1)
 	}
 	os.Exit(0)
-}
-
-// uploadFile will upload a file to the user's preferred skynet portal, which
-// is detected via an environment variable. If no portal is set, siasky.net is
-// used.
-//
-// TODO: We need to update this function to verify that the skylink being
-// returned by the portal is correct. We should probably do this by extending
-// the client.
-func uploadFile(path string) {
-	client := skynet.New()
-	skylink, err := client.UploadFile(path, skynet.DefaultUploadOptions)
-	if err != nil {
-		fmt.Println("Upload failed:", err)
-		os.Exit(1)
-	}
-	skylink = strings.TrimPrefix(skylink, "sia://")
-	fmt.Println(skylink)
-	os.Exit(0)
-}
-
-// main checks the args to figure out what command to run, then calls the
-// corresponding command.
-func main() {
-	args := os.Args
-	if len(args) == 2 {
-		switch args[1] {
-		case "generate-seed", "g", "s", "gs":
-			generateAndPrintSeedPhrase()
-		}
-	}
-	if len(args) == 3 {
-		switch args[1] {
-		case "upload-file", "u", "uf":
-			uploadFile(args[2])
-		}
-	}
-	if len(args) > 3 {
-		switch args[1] {
-		case "generate-v2skylink", "p", "v2":
-			generateV2SkylinkFromSeed(args[2], args[3:])
-		case "upload-to-v2skylink", "u2", "u2v2", "utv", "utv2":
-			uploadToV2Skylink(args[2], args[3], args[4:])
-		}
-	}
-	printHelp()
 }
