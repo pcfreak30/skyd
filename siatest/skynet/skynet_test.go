@@ -1054,13 +1054,11 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	// upload the files and keep track of their expected impact on the stats
 	var uploadedFilesSize, uploadedFilesCount uint64
 	var sps []skymodules.SiaPath
-	var skylinks []string
 	for name, size := range files {
-		skylink, sup, _, err := r.UploadNewSkyfileBlocking(name, size, false)
+		_, sup, _, err := r.UploadNewSkyfileBlocking(name, size, false)
 		if err != nil {
 			t.Fatal(err)
 		}
-		skylinks = append(skylinks, skylink)
 
 		sp, err := sup.SiaPath.Rebase(skymodules.RootSiaPath(), skymodules.SkynetFolder)
 		if err != nil {
@@ -1219,44 +1217,6 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if stats.StreamBufferRead15mDataPoints <= 1 {
 		t.Error("throughput is being recorded at or below baseline:", stats.StreamBufferRead15mDataPoints)
-	}
-
-	// Upload a siafile with N-M scheme and convert it to a skyfile, this should
-	// ensure that when we download that file, the fanout sector download stats
-	// are updated.
-	filesize := 2 * int(modules.SectorSize)
-	_, remoteFile, err := r.UploadNewFileBlocking(filesize, 2, 1, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sup = skymodules.SkyfileUploadParameters{
-		SiaPath: skymodules.RandomSiaPath(),
-	}
-	sshp, err := r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
-	if err != nil {
-		t.Fatal("Expected conversion from Siafile to Skyfile Post to succeed.")
-	}
-	skylinks = append(skylinks, sshp.Skylink)
-
-	// Download all skyfiles.
-	for _, skylink := range skylinks {
-		_, err := r.SkynetSkylinkGet(skylink)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	// Fetch the stats again and verify all sector download stats are present
-	// and are non-zero, proving they're set and updated correctly.
-	stats, err = r.SkynetStatsGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if stats.BaseSectorOverdriveAvg == 0 || stats.BaseSectorOverdrivePct == 0 {
-		t.Fatal("base sector download stats all zero", stats.BaseSectorOverdriveAvg, stats.BaseSectorOverdrivePct)
-	}
-	if stats.FanoutSectorOverdriveAvg == 0 || stats.FanoutSectorOverdrivePct == 0 {
-		t.Fatal("fanout sector download stats all zero", stats.FanoutSectorOverdriveAvg, stats.FanoutSectorOverdrivePct)
 	}
 }
 
@@ -2442,6 +2402,105 @@ func testSkynetDisableForce(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
+// TestSkynetDownloadStats is a test that verifies whether overdrive downloads
+// base sectors and fanout sectors are properly reflected in the stats. This is
+// separate test using a custom dependency because this was causing an NDF in
+// the TestSkynetStats test.
+func TestSkynetDownloadStats(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  3,
+		Miners: 1,
+	}
+	groupDir := skynetTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Define a portal with a dependency that forces overdrive on downloads
+	renterParams := node.Renter(filepath.Join(groupDir, t.Name()))
+	renterParams.CreatePortal = true
+	deps := dependencies.NewDependencyOverdriveDownload()
+	renterParams.RenterDeps = deps
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Check all stats are 0 still
+	ss, err := r.SkynetStatsGet()
+	if ss.BaseSectorOverdriveAvg != 0 {
+		t.Fatal(err, ss.BaseSectorOverdriveAvg)
+	}
+	if ss.BaseSectorOverdrivePct != 0 {
+		t.Fatal(err, ss.BaseSectorOverdrivePct)
+	}
+	if ss.FanoutSectorOverdriveAvg != 0 {
+		t.Fatal(err, ss.FanoutSectorOverdriveAvg)
+	}
+	if ss.FanoutSectorOverdrivePct != 0 {
+		t.Fatal(err, ss.FanoutSectorOverdrivePct)
+	}
+
+	// Upload a small and large file with N-M redundancy
+	skylinkSmall, _, _, err := r.UploadNewSkyfileBlocking("small", modules.SectorSize/2, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, remoteFile, err := r.UploadNewFileBlocking(int(modules.SectorSize)*2, 2, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sup := skymodules.SkyfileUploadParameters{
+		SiaPath: skymodules.RandomSiaPath(),
+	}
+	rhsp, err := r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
+	if err != nil {
+		t.Fatal("Expected conversion from Siafile to Skyfile Post to succeed.")
+	}
+	skylinkLarge := rhsp.Skylink
+
+	// Enable the dependency
+	deps.Enable()
+
+	// Download both skylinks
+	_, err = r.SkynetSkylinkGet(skylinkSmall)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.SkynetSkylinkGet(skylinkLarge)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check all download stats are not 0
+	ss, err = r.SkynetStatsGet()
+	if ss.BaseSectorOverdriveAvg == 0 {
+		t.Fatal(err, ss.BaseSectorOverdriveAvg)
+	}
+	if ss.BaseSectorOverdrivePct == 0 {
+		t.Fatal(err, ss.BaseSectorOverdrivePct)
+	}
+	if ss.FanoutSectorOverdriveAvg == 0 {
+		t.Fatal(err, ss.FanoutSectorOverdriveAvg)
+	}
+	if ss.FanoutSectorOverdrivePct == 0 {
+		t.Fatal(err, ss.FanoutSectorOverdrivePct)
+	}
+}
+
 // TestSkynetBlocklist verifies the functionality of the Skynet blocklist.
 func TestSkynetBlocklist(t *testing.T) {
 	if testing.Short() {
@@ -3210,7 +3269,11 @@ func testSkynetNoWorkers(t *testing.T, tg *siatest.TestGroup) {
 	// have any contracts and therefore the worker pool will be empty. Confirm
 	// that attempting to download a skylink will return an error and not dead
 	// lock.
-	_, err = r.SkynetSkylinkGet(skymodules.Skylink{}.String())
+	skylink, err := skymodules.NewSkylinkV1(crypto.Hash{1, 2, 3}, 0, modules.SectorSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.SkynetSkylinkGet(skylink.String())
 	if err == nil {
 		t.Fatal("Error is nil, expected error due to not enough workers")
 	} else if !(strings.Contains(err.Error(), skymodules.ErrNotEnoughWorkersInWorkerPool.Error()) || strings.Contains(err.Error(), "not enough workers to complete download")) {
@@ -5737,6 +5800,9 @@ func TestRegistrySubscription(t *testing.T) {
 	t.Run("Basic", func(t *testing.T) {
 		testRegistrySubscriptionBasic(t, p)
 	})
+	t.Run("Delays", func(t *testing.T) {
+		testRegistrySubscriptionDelays(t, p)
+	})
 }
 
 // testRegistrySubscriptionBasic tests the basic case of subscribing to
@@ -5774,7 +5840,9 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 	// Set an entry.
 	sk, pk := crypto.GenerateKeyPair()
 	spk := types.Ed25519PublicKey(pk)
-	srv1 := modules.NewRegistryValue(crypto.Hash{}, []byte{}, 0, modules.RegistryTypeWithoutPubkey).Sign(sk)
+	var tweak crypto.Hash
+	fastrand.Read(tweak[:])
+	srv1 := modules.NewRegistryValue(tweak, []byte{}, 0, modules.RegistryTypeWithoutPubkey).Sign(sk)
 	err = p.RegistryUpdateWithEntry(spk, srv1)
 	if err != nil {
 		t.Fatal(err)
@@ -5859,6 +5927,99 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 		t.Log(srv2)
 		t.Log(notifications[1].SignedRegistryValue)
 		t.Fatal("notification mismatch")
+	}
+}
+
+// testRegistrySubscriptionDelays tests that the bandwidth limit and general
+// delays for notifications are working as expected.
+func testRegistrySubscriptionDelays(t *testing.T, p *siatest.TestNode) {
+	// Collect notifications in a slice.
+	var notifications []time.Time
+	var notificationMu sync.Mutex
+	notifyFunc := func(entry skymodules.RegistryEntry) {
+		if err := entry.Verify(); err != nil {
+			t.Fatal("failed to verify entry", err)
+		}
+		notificationMu.Lock()
+		defer notificationMu.Unlock()
+		notifications = append(notifications, time.Now())
+	}
+
+	// Start the subscription.
+	closeHandler := func(_ int, msg string) error {
+		// We are going to close the subscription gracefully so the
+		// close handler shouldn't be called on our end.
+		t.Fatal("Close handler called:", msg)
+		return nil
+	}
+	delay := 500 * time.Millisecond                                 // 0.5 seconds per notification
+	limit := uint64(api.RegistrySubscriptionNotificationSize * 0.5) // 0.5 notifications per second
+	subscription, err := p.BeginRegistrySubscriptionCustom(limit, delay, notifyFunc, closeHandler)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := subscription.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Set two entries.
+	sk, pk := crypto.GenerateKeyPair()
+	spk := types.Ed25519PublicKey(pk)
+	srv1 := modules.NewRegistryValue(crypto.Hash{1}, []byte{}, 0, modules.RegistryTypeWithoutPubkey).Sign(sk)
+	srv2 := modules.NewRegistryValue(crypto.Hash{2}, []byte{}, 0, modules.RegistryTypeWithoutPubkey).Sign(sk)
+	err = p.RegistryUpdateWithEntry(spk, srv1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = p.RegistryUpdateWithEntry(spk, srv2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Subscribe to those entries and measure the time. This will trigger a
+	// notification with a delay and another notification with a delay + an
+	// extended delay since the notifications arrived at about the same time.
+	start1 := time.Now()
+	err = subscription.Subscribe(spk, srv1.Tweak)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start2 := time.Now()
+	err = subscription.Subscribe(spk, srv2.Tweak)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be 2 notifications now.
+	err = build.Retry(1000, 10*time.Millisecond, func() error {
+		notificationMu.Lock()
+		defer notificationMu.Unlock()
+		if len(notifications) != 2 {
+			return fmt.Errorf("notifications: %v != %v", len(notifications), 2)
+		}
+		// The first notification should have taken 500 ms to arrive. To
+		// account for inaccuracies we check for 500ms < d < 1s.
+		d := notifications[0].Sub(start1)
+		if d < delay || d >= time.Second {
+			t.Fatalf("1: wrong delay: %v < %v < %v", delay, d, time.Second)
+		}
+		// The second notification should have taken 500ms to arrive +
+		// the time between notifications specified by the bandwidth
+		// limit which is 2s since we are doing 0.5 notifications per
+		// second. So 2.5 seconds should have passed because we already
+		// waited 500ms for the first notification and then the second
+		// notification is delayed by another 500ms + 1.5s to get to
+		// 2 seconds between notifications.
+		d = notifications[1].Sub(start2)
+		if d < time.Second*5/2 || d >= time.Second*3 {
+			t.Fatalf("2: wrong delay: %v < %v < %v", time.Second*5/2, d, time.Second*3)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

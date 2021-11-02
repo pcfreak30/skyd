@@ -3,6 +3,7 @@ package renter
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"math"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
+	"go.sia.tech/siad/persist"
 	"go.sia.tech/siad/types"
 )
 
@@ -40,7 +42,6 @@ func TestPCWS(t *testing.T) {
 	t.Run("basic", func(t *testing.T) { testBasic(t, wt) })
 	t.Run("multiple", func(t *testing.T) { testMultiple(t, wt) })
 	t.Run("newPCWSByRoots", testNewPCWSByRoots)
-	t.Run("gouging", testGouging)
 }
 
 // testBasic verifies the PCWS using a simple setup with a single host, looking
@@ -72,8 +73,14 @@ func testBasic(t *testing.T, wt *workerTester) {
 		}
 	}
 
+	// create PCWS with empty root. This should fail.
+	pcws, err := wt.staticRenter.newPCWSByRoots(ctx, []crypto.Hash{{}}, ptec, ptck, 0)
+	if err == nil {
+		t.Fatal("should fail")
+	}
+
 	// create PCWS
-	pcws, err := wt.staticRenter.newPCWSByRoots(ctx, []crypto.Hash{sectorRoot}, ptec, ptck, 0)
+	pcws, err = wt.staticRenter.newPCWSByRoots(ctx, []crypto.Hash{sectorRoot}, ptec, ptck, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -363,108 +370,6 @@ func testNewPCWSByRoots(t *testing.T) {
 	}
 }
 
-// testGouging checks that the gouging check is triggering at the right
-// times.
-func testGouging(t *testing.T) {
-	// Create some defaults to get some intuitive ideas for gouging.
-	//
-	// 100 workers and 1e9 expected download means ~2e6 HasSector queries will
-	// be performed.
-	pt := modules.RPCPriceTable{
-		InitBaseCost:          types.NewCurrency64(1e3),
-		DownloadBandwidthCost: types.NewCurrency64(1e3),
-		UploadBandwidthCost:   types.NewCurrency64(1e3),
-		HasSectorBaseCost:     types.NewCurrency64(1e6),
-	}
-	allowance := skymodules.Allowance{
-		MaxDownloadBandwidthPrice: types.NewCurrency64(2e3),
-		MaxUploadBandwidthPrice:   types.NewCurrency64(2e3),
-
-		Funds: types.NewCurrency64(1e18),
-
-		ExpectedDownload: 1e9, // 1 GiB
-	}
-	numWorkers := 100
-	numRoots := 30
-
-	// Check that the gouging passes for normal values.
-	err := checkPCWSGouging(pt, allowance, numWorkers, numRoots)
-	if err != nil {
-		t.Error(err)
-	}
-
-	// Check with high init base cost.
-	pt.InitBaseCost = types.NewCurrency64(1e12)
-	err = checkPCWSGouging(pt, allowance, numWorkers, numRoots)
-	if err == nil {
-		t.Error("bad")
-	}
-	pt.InitBaseCost = types.NewCurrency64(1e3)
-
-	// Check with high upload bandwidth cost.
-	pt.UploadBandwidthCost = types.NewCurrency64(1e12)
-	err = checkPCWSGouging(pt, allowance, numWorkers, numRoots)
-	if err == nil {
-		t.Error("bad")
-	}
-	pt.UploadBandwidthCost = types.NewCurrency64(1e3)
-
-	// Check with high download bandwidth cost.
-	pt.DownloadBandwidthCost = types.NewCurrency64(1e12)
-	err = checkPCWSGouging(pt, allowance, numWorkers, numRoots)
-	if err == nil {
-		t.Error("bad")
-	}
-	pt.DownloadBandwidthCost = types.NewCurrency64(1e3)
-
-	// Check with high HasSector cost.
-	pt.HasSectorBaseCost = types.NewCurrency64(1e12)
-	err = checkPCWSGouging(pt, allowance, numWorkers, numRoots)
-	if err == nil {
-		t.Error("bad")
-	}
-	pt.HasSectorBaseCost = types.NewCurrency64(1e6)
-
-	// Check with low MaxDownloadBandwidthPrice.
-	allowance.MaxDownloadBandwidthPrice = types.NewCurrency64(100)
-	err = checkPCWSGouging(pt, allowance, numWorkers, numRoots)
-	if err == nil {
-		t.Error("bad")
-	}
-	allowance.MaxDownloadBandwidthPrice = types.NewCurrency64(2e3)
-
-	// Check with low MaxUploadBandwidthPrice.
-	allowance.MaxUploadBandwidthPrice = types.NewCurrency64(100)
-	err = checkPCWSGouging(pt, allowance, numWorkers, numRoots)
-	if err == nil {
-		t.Error("bad")
-	}
-	allowance.MaxUploadBandwidthPrice = types.NewCurrency64(2e3)
-
-	// Check with reduced funds.
-	allowance.Funds = types.NewCurrency64(1e15)
-	err = checkPCWSGouging(pt, allowance, numWorkers, numRoots)
-	if err == nil {
-		t.Error("bad")
-	}
-	allowance.Funds = types.NewCurrency64(1e18)
-
-	// Check with increased expected download.
-	allowance.ExpectedDownload = 1e12
-	err = checkPCWSGouging(pt, allowance, numWorkers, numRoots)
-	if err == nil {
-		t.Error("bad")
-	}
-	allowance.ExpectedDownload = 1e9
-
-	// Check that the base allowanace still passes. (ensures values have been
-	// reset correctly)
-	err = checkPCWSGouging(pt, allowance, numWorkers, numRoots)
-	if err != nil {
-		t.Error(err)
-	}
-}
-
 // TestProjectChunkWorsetSet_managedLaunchWorker probes the
 // 'managedLaunchWorker' function on the PCWS.
 func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
@@ -506,7 +411,9 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 	w.initJobHasSectorQueue()
 
 	// give it a name and set an initial estimate on the HS queue
-	w.staticJobHasSectorQueue.weightedJobTime = float64(123 * time.Second)
+	seed := 123 * time.Second
+	w.staticJobHasSectorQueue.staticDT.AddDataPoint(seed)
+	w.staticJobHasSectorQueue.weightedJobTime = float64(seed)
 	w.staticHostPubKeyStr = "myworker"
 
 	// ensure PT is valid
@@ -527,6 +434,8 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 	}
 
 	// launch the worker
+	w.staticJobHasSectorQueue.staticDT = skymodules.NewDistributionTrackerStandard()
+	w.staticJobHasSectorQueue.staticDT.AddDataPoint(pcwsHasSectorTimeout)
 	w.staticJobHasSectorQueue.weightedJobTime = float64(pcwsHasSectorTimeout)
 	responseChan = make(chan *jobHasSectorResponse, 0)
 	err = pcws.managedLaunchWorker(w, responseChan, ws)
@@ -644,5 +553,48 @@ func TestWaitForResult(t *testing.T) {
 	// worker.
 	if len(result) != 1 {
 		t.Fatal("unexpected", len(result))
+	}
+}
+
+// newTestProjectChunkWorkerSet returns a PCWS used for testing
+func newTestProjectChunkWorkerSet() *projectChunkWorkerSet {
+	return newCustomTestProjectChunkWorkerSet(skymodules.NewRSSubCodeDefault())
+}
+
+// newCustomTestProjectChunkWorkerSet returns a PCWS used for testing and allows
+// to pass a custom erasure coder
+func newCustomTestProjectChunkWorkerSet(ec skymodules.ErasureCoder) *projectChunkWorkerSet {
+	// create a passhtrough cipher key
+	ck, err := crypto.NewSiaKey(crypto.TypePlain, nil)
+	if err != nil {
+		return nil
+	}
+
+	// create renter
+	renter := new(Renter)
+	renter.staticBaseSectorDownloadStats = skymodules.NewSectorDownloadStats()
+	renter.staticFanoutSectorDownloadStats = skymodules.NewSectorDownloadStats()
+
+	// create discard logger
+	logger, err := persist.NewLogger(ioutil.Discard)
+	if err != nil {
+		return nil
+	}
+	renter.staticLog = logger
+
+	// create PCWS manually
+	return &projectChunkWorkerSet{
+		workerState: &pcwsWorkerState{
+			unresolvedWorkers: make(map[string]*pcwsUnresolvedWorker),
+			staticRenter:      renter,
+		},
+
+		staticChunkIndex:   0,
+		staticErasureCoder: ec,
+		staticMasterKey:    ck,
+		staticPieceRoots:   make([]crypto.Hash, ec.NumPieces()),
+
+		staticCtx:    context.Background(),
+		staticRenter: renter,
 	}
 }

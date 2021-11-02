@@ -238,6 +238,12 @@ func NewDependencyDelayRegistryHealthResponses() *DependencyWithDisableAndEnable
 	return newDependencywithDisableAndEnable("DelayRegistryHealthResponses")
 }
 
+// NewDependencyOverdriveDownload is a dependency that will overdrive at least
+// one worker on every download.
+func NewDependencyOverdriveDownload() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("OverdriveDownload")
+}
+
 // NewDependencyTUSConnectionDrop creates a new DependencyTUSConnectionDrop
 // which simulates a dropped connection during a TUS upload.
 func NewDependencyTUSConnectionDrop() *DependencyInterruptOnceOnKeyword {

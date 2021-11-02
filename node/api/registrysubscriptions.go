@@ -1,8 +1,12 @@
 package api
 
 import (
+	"container/list"
+	"encoding/hex"
 	"fmt"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/julienschmidt/httprouter"
@@ -32,9 +36,9 @@ type RegistrySubscriptionResponse struct {
 
 	DataKey   crypto.Hash        `json:"datakey"`
 	PubKey    types.SiaPublicKey `json:"pubkey"`
-	Signature crypto.Signature   `json:"signature"`
+	Signature string             `json:"signature"`
 
-	Data     []byte                    `json:"data"`
+	Data     string                    `json:"data"`
 	Revision uint64                    `json:"revision"`
 	Type     modules.RegistryEntryType `json:"type"`
 }
@@ -47,6 +51,33 @@ type RegistrySubscriptionRequest struct {
 	DataKey crypto.Hash        `json:"datakey,omitempty"`
 }
 
+// queuedNotification describes a queued websocket update.
+type queuedNotification struct {
+	staticSRV        skymodules.RegistryEntry
+	staticNotifyTime time.Time
+}
+
+// notificationQueue holds all undelivered websocket updates.
+type notificationQueue struct {
+	*list.List
+}
+
+// newNotificationQueue creates a new queue.
+func newNotificationQueue() *notificationQueue {
+	return &notificationQueue{
+		List: list.New(),
+	}
+}
+
+// Pop removes the first element of the queue.
+func (queue *notificationQueue) Pop() *queuedNotification {
+	mr := queue.Front()
+	if mr == nil {
+		return nil
+	}
+	return queue.List.Remove(mr).(*queuedNotification)
+}
+
 // skynetRegistrySubscriptionHandler handles websocket subscriptions to the registry.
 func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Upgrade connection to use websocket.
@@ -57,21 +88,114 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 	}
 	defer c.Close()
 
-	// Declare a handler for notifications.
-	notifier := func(srv skymodules.RegistryEntry) error {
-		return c.WriteJSON(RegistrySubscriptionResponse{
-			Error:     "",
-			DataKey:   srv.Tweak,
-			PubKey:    srv.PubKey,
-			Signature: srv.Signature,
-			Data:      srv.Data,
-			Revision:  srv.Revision,
-			Type:      srv.Type,
-		})
+	// Make sure the limit and delay are set.
+	bandwidthLimitStr := req.FormValue("bandwidthlimit")
+	if bandwidthLimitStr == "" {
+		WriteError(w, Error{"bandwidthlimit param not specified"}, http.StatusBadRequest)
+		return
+	}
+	notificationDelayStr := req.FormValue("notificationdelay")
+	if notificationDelayStr == "" {
+		WriteError(w, Error{"notificationdelay param not specified"}, http.StatusBadRequest)
+		return
 	}
 
+	// Parse them.
+	var bandwidthLimit uint64
+	_, err = fmt.Sscan(bandwidthLimitStr, &bandwidthLimit)
+	if err != nil {
+		WriteError(w, Error{"failed to parse bandwidthlimit" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	var notificationDelayMS uint64
+	_, err = fmt.Sscan(notificationDelayStr, &notificationDelayMS)
+	if err != nil {
+		WriteError(w, Error{"failed to parse notificationdelay" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	notificationDelay := time.Millisecond * time.Duration(notificationDelayMS)
+
+	// Compute how many notifications per second we want to serve.
+	notificationsPerSecond := float64(bandwidthLimit) / RegistrySubscriptionNotificationSize
+
+	// Compute how much time needs to pass between notifications to reach
+	// that limit.
+	timeBetweenNotifications := time.Duration(float64(time.Second) / notificationsPerSecond)
+
+	// Declare a handler for queuing notifications.
+	var queueMu sync.Mutex
+	queue := newNotificationQueue()
+	wakeChan := make(chan struct{}, 1)
+	var lastWrite time.Time
+	queueNotification := func(srv skymodules.RegistryEntry) error {
+		queueMu.Lock()
+		// Compute lastWrite1 by adding he delay to the current time.
+		lastWrite1 := time.Now().Add(notificationDelay)
+
+		// Compute lastWrite2 by adding the minimum time between
+		// notifications to the last update we gave the client.
+		lastWrite2 := lastWrite.Add(timeBetweenNotifications)
+
+		// We push the next update, at the time that is further in the
+		// future.
+		if lastWrite1.After(lastWrite2) {
+			lastWrite = lastWrite1
+		} else {
+			lastWrite = lastWrite2
+		}
+		queue.PushBack(&queuedNotification{
+			staticSRV:        srv,
+			staticNotifyTime: lastWrite,
+		})
+		queueMu.Unlock()
+		select {
+		case wakeChan <- struct{}{}:
+		default:
+		}
+		return nil
+	}
+
+	// Start a worker for pushing notifications.
+	go func() {
+		for {
+			select {
+			case <-req.Context().Done():
+				return
+			case <-wakeChan:
+			}
+
+			queueMu.Lock()
+			next := queue.Pop()
+			queueMu.Unlock()
+			if next == nil {
+				continue
+			}
+
+			// Sleep until the notification time.
+			select {
+			case <-req.Context().Done():
+				return
+			case <-time.After(time.Until(next.staticNotifyTime)):
+			}
+
+			err := c.WriteJSON(RegistrySubscriptionResponse{
+				Error:     "",
+				DataKey:   next.staticSRV.Tweak,
+				PubKey:    next.staticSRV.PubKey,
+				Signature: hex.EncodeToString(next.staticSRV.Signature[:]),
+				Data:      hex.EncodeToString(next.staticSRV.Data),
+				Revision:  next.staticSRV.Revision,
+				Type:      next.staticSRV.Type,
+			})
+			if err != nil {
+				msg := fmt.Sprintf("failed to notify client: %v", err)
+				_ = c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseAbnormalClosure, msg))
+			}
+		}
+	}()
+
 	// Start subscription.
-	subscriber, err := api.renter.NewRegistrySubscriber(notifier)
+	subscriber, err := api.renter.NewRegistrySubscriber(queueNotification)
 	if err != nil {
 		c.WriteJSON(RegistrySubscriptionResponse{Error: fmt.Sprintf("failed to create subscriber: %v", err)})
 	}
@@ -97,7 +221,7 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 		case RegistrySubscriptionActionSubscribe:
 			srv := subscriber.Subscribe(r.PubKey, r.DataKey)
 			if srv != nil {
-				if err := notifier(*srv); err != nil {
+				if err := queueNotification(*srv); err != nil {
 					// This probably won't reach the client
 					// but try a graceful close anyway.
 					msg := fmt.Sprintf("failed to notify client: %v", err)

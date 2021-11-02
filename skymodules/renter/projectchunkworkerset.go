@@ -29,9 +29,9 @@ var (
 	// wait before resetting / refreshing the worker state, meaning that all of
 	// the workers will do another round of HasSector queries on the network.
 	pcwsWorkerStateResetTime = build.Select(build.Var{
-		Dev:      time.Minute * 10,
+		Dev:      time.Hour,
 		Standard: time.Hour * 9,
-		Testing:  time.Second * 15,
+		Testing:  time.Minute * 5,
 	}).(time.Duration)
 
 	// pcwsHasSectorTimeout defines the amount of time that the pcws will wait
@@ -41,26 +41,14 @@ var (
 	pcwsHasSectorTimeout = build.Select(build.Var{
 		Dev:      time.Minute * 1,
 		Standard: time.Minute * 3,
-		Testing:  time.Second * 10,
+		Testing:  time.Second * 30,
 	}).(time.Duration)
-
-	// sectorLookupToDownloadRatio is an arbitrary ratio that resembles the
-	// amount of lookups vs downloads. It is used in price gouging checks.
-	sectorLookupToDownloadRatio = 16
 )
 
 const (
-	// pcwsGougingFractionDenom is used to identify what percentage of the
-	// allowance is allowed to be spent on HasSector jobs before a worker is
-	// flagged for being too expensive.
-	//
-	// For example, if the denom is 10, that means that if a worker's HasSector
-	// cost multiplied by the total expected number of HasSector jobs to be
-	// performed in a period exceeds 10% of the allowance, that worker will be
-	// flagged for price gouging. If the denom is 100, the worker will be
-	// flagged if the HasSector cost reaches 1% of the total cost of the
-	// allowance.
-	pcwsGougingFractionDenom = 25
+	// maxOverdriveWorkers defines the maximum amount of overdrive workers to
+	// select as part of a worker set
+	maxOverdriveWorkers = 10
 )
 
 // pcwsUnresolvedWorker tracks an unresolved worker that is associated with a
@@ -184,60 +172,6 @@ func (pcws *projectChunkWorkerSet) Download(ctx context.Context, pricePerMS type
 	return pcws.managedDownload(ctx, pricePerMS, offset, length, skipRecovery, lowPrio)
 }
 
-// checkPCWSGouging verifies the cost of grabbing the HasSector information from
-// a host is reasonble. The cost of completing the download is not checked.
-//
-// NOTE: The logic in this function assumes that every pcws results in just one
-// download. The reality is that depending on the type of use case, there may be
-// significantly less than 1 download per pcws (for single-user nodes that
-// frequently open large movies without watching the full movie), or
-// significantly more than one download per pcws (for multi-user nodes where
-// users most commonly are using the same file over and over).
-func checkPCWSGouging(pt modules.RPCPriceTable, allowance skymodules.Allowance, numWorkers int, numRoots int) error {
-	// Check whether the download bandwidth price is too high.
-	if !allowance.MaxDownloadBandwidthPrice.IsZero() && allowance.MaxDownloadBandwidthPrice.Cmp(pt.DownloadBandwidthCost) < 0 {
-		return fmt.Errorf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v - price gouging protection enabled", pt.DownloadBandwidthCost, allowance.MaxDownloadBandwidthPrice)
-	}
-	// Check whether the upload bandwidth price is too high.
-	if !allowance.MaxUploadBandwidthPrice.IsZero() && allowance.MaxUploadBandwidthPrice.Cmp(pt.UploadBandwidthCost) < 0 {
-		return fmt.Errorf("upload bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v - price gouging protection enabled", pt.UploadBandwidthCost, allowance.MaxUploadBandwidthPrice)
-	}
-	// If there is no allowance, price gouging checks have to be disabled,
-	// because there is no baseline for understanding what might count as price
-	// gouging.
-	if allowance.Funds.IsZero() {
-		return nil
-	}
-
-	// Calculate the cost of a has sector job.
-	pb := modules.NewProgramBuilder(&pt, 0)
-	for i := 0; i < numRoots; i++ {
-		pb.AddHasSectorInstruction(crypto.Hash{})
-	}
-	programCost, _, _ := pb.Cost(true)
-	ulbw, dlbw := hasSectorJobExpectedBandwidth(numRoots)
-	bandwidthCost := modules.MDMBandwidthCost(pt, ulbw, dlbw)
-	costHasSectorJob := programCost.Add(bandwidthCost)
-
-	// Determine based on the allowance the number of HasSector jobs that would
-	// need to be performed under normal conditions to reach the desired amount
-	// of total data.
-	requiredProjects := allowance.ExpectedDownload / skymodules.StreamDownloadSize
-	requiredHasSectorQueries := requiredProjects * uint64(numWorkers)
-
-	// Determine the total amount that we'd be willing to spend on all of those
-	// queries before considering the host complicit in gouging.
-	totalCost := costHasSectorJob.Mul64(requiredHasSectorQueries)
-	reducedAllowance := allowance.Funds.Div64(pcwsGougingFractionDenom)
-
-	// Check that we do not consider the host complicit in gouging.
-	if totalCost.Cmp(reducedAllowance) > 0 {
-		errStr := fmt.Sprintf("the cost of performing a HasSector job is too high - price gouging protection enabled")
-		return errors.New(errStr)
-	}
-	return nil
-}
-
 // closeUpdateChans will close all of the update chans and clear out the slice.
 // This will cause any threads waiting for more results from the unresolved
 // workers to unblock.
@@ -298,20 +232,22 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 		return
 	}
 
-	// Create the list of pieces that the worker supports and add it to the
-	// worker set.
-	var indices []uint64
-	for i, available := range resp.staticAvailables {
-		if available {
-			indices = append(indices, uint64(i))
-		}
-	}
 	// Add this worker to the set of resolved workers (even if there are no
 	// indices that the worker can fetch).
 	ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
 		worker:       w,
-		pieceIndices: indices,
+		pieceIndices: resp.staticAvailbleIndices,
 	})
+}
+
+// managedRegisterForWorkerUpdate will create a channel and append it to the
+// list of update chans in the worker state. When there is more information
+// available about which worker is the best worker to select, the channel will
+// be closed.
+func (ws *pcwsWorkerState) managedRegisterForWorkerUpdate() <-chan struct{} {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	return ws.registerForWorkerUpdate()
 }
 
 // WaitForResults waits for all workers of the state to resolve up until ctx is
@@ -404,6 +340,7 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorkers(ws *pcwsWorkerState) {
 	// in size to the number of queries so that none of the workers sending
 	// reponses get blocked sending down the channel.
 	workers := ws.staticRenter.staticWorkerPool.callWorkers()
+
 	responseChan := make(chan *jobHasSectorResponse, len(workers))
 	for _, w := range workers {
 		err := pcws.managedLaunchWorker(w, responseChan, ws)
@@ -500,6 +437,9 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// Convenience variables.
 	ec := pcws.staticErasureCoder
 
+	// Start a span for the PDC.
+	_, ctx = opentracing.StartSpanFromContext(ctx, "managedDownload")
+
 	// Depending on the encryption type we might have to download the entire
 	// entire chunk. For the ciphers we support, this will be the case when the
 	// overhead is not zero. This is due to the overhead being a checksum that
@@ -555,27 +495,33 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// extra goroutines to be spawned.
 	workerResponseChan := make(chan *jobReadResponse, ec.NumPieces()*5)
 
-	// Start a span for the PDC.
-	_, ctx = opentracing.StartSpanFromContext(ctx, "managedDownload")
+	// Build static piece indices, chimera workers use this static piece index
+	// array to avoid creating it for every chimera worker over and over again.
+	pieceIndices := make([]uint64, ec.NumPieces())
+	for i := 0; i < len(pieceIndices); i++ {
+		pieceIndices[i] = uint64(i)
+	}
 
 	// Build the full pdc.
 	pdc := &projectDownloadChunk{
-		offsetInChunk: offset,
 		lengthInChunk: length,
+		offsetInChunk: offset,
 
 		pieceOffset: pieceOffset,
 		pieceLength: pieceLength,
 
-		staticIsLowPrio: lowPrio,
-
 		pricePerMS: pricePerMS,
 
-		availablePieces:         make([][]*pieceDownload, ec.NumPieces()),
-		availablePiecesByWorker: make(map[string][]uint64),
-		dataPieces:              make([][]byte, ec.NumPieces()),
+		workerProgress: make(map[string]workerProgress),
 
+		piecesData:         make([][]byte, ec.NumPieces()),
+		piecesInfo:         make([]pieceInfo, ec.NumPieces()),
 		staticSkipRecovery: skipRecovery,
 
+		staticIsLowPrio:  lowPrio,
+		staticLaunchTime: time.Now(),
+
+		staticPieceIndices:   pieceIndices,
 		ctx:                  ctx,
 		workerResponseChan:   workerResponseChan,
 		downloadResponseChan: make(chan *downloadResponse, 1),
@@ -585,18 +531,10 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 
 	// Set debug variables on the pdc
 	fastrand.Read(pdc.uid[:])
-	pdc.launchTime = time.Now()
 
-	// Launch the initial set of workers for the pdc.
-	err = pdc.launchInitialWorkers()
-	if err != nil {
-		return nil, errors.Compose(err, ErrRootNotFound)
-	}
+	// Launch the download project in a separate go routine
+	go pdc.threadedLaunchProjectDownload()
 
-	// All initial workers have been launched. The function can return now,
-	// unblocking the caller. A background thread will be launched to collect
-	// the responses and launch overdrive workers when necessary.
-	go pdc.threadedCollectAndOverdrivePieces()
 	return pdc.downloadResponseChan, nil
 }
 
@@ -614,6 +552,17 @@ func (r *Renter) newPCWSByRoots(ctx context.Context, roots []crypto.Hash, ec sky
 	// NOTE: There's a legacy special case where 1-of-N only needs 1 root.
 	if len(roots) != ec.NumPieces() && !(len(roots) == 1 && ec.MinPieces() == 1) {
 		return nil, fmt.Errorf("%v roots provided, but erasure coder specifies %v pieces", len(roots), ec.NumPieces())
+	}
+
+	// Check if enough roots are known.
+	var knownRoots int
+	for _, root := range roots {
+		if root != (crypto.Hash{}) {
+			knownRoots++
+		}
+	}
+	if knownRoots < ec.MinPieces() {
+		return nil, fmt.Errorf("only %v roots are known which is smaller than the minimum of %v", knownRoots, ec.MinPieces())
 	}
 
 	// Check that the given cipher is not nil, if no encryption is required a

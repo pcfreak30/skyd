@@ -209,7 +209,7 @@ func (j *jobReadRegistry) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
 	errLaunch := w.staticTG.Launch(func() {
 		response := &jobReadRegistryResponse{
-			staticErr:          errors.Extend(err, ErrJobDiscarded),
+			staticErr:          err,
 			staticCompleteTime: time.Now(),
 			staticEID:          j.staticRegistryEntryID,
 			staticWorker:       w,

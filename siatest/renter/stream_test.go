@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/SkynetLabs/skyd/build"
@@ -300,8 +301,14 @@ func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("File wasn't repaired", err)
 	}
 	// We should be able to download
-	if _, _, err := r.DownloadByStream(remoteFile); err != nil {
-		t.Fatal("Failed to download file", err)
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if _, _, err := r.DownloadByStream(remoteFile); err != nil {
+			return errors.AddContext(err, "Failed to download file")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 	// Repair the file again to make sure we don't get stuck on chunks that are
 	// already repaired. Datapieces and paritypieces can be set to 0 as long as

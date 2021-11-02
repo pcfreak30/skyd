@@ -41,6 +41,12 @@ const (
 	// high timeouts.
 	MaxSkynetRequestTimeout = 15 * time.Minute
 
+	// RegistrySubscriptionNotificationSize is the estimated bandwidth
+	// involved when receiving a subscription notification from the hosts on
+	// the network. It's a result of the size of a single notification and
+	// the expected number of hosts on the network getting updated.
+	RegistrySubscriptionNotificationSize = 1 << 16 // 64 kib
+
 	// SkynetDisableForceHeader allows disabling the force-update feature.
 	SkynetDisableForceHeader = "Skynet-Disable-Force"
 

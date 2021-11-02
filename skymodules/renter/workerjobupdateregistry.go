@@ -87,7 +87,7 @@ func (j *jobUpdateRegistry) callDiscard(err error) {
 	errLaunch := w.staticTG.Launch(func() {
 		response := &jobUpdateRegistryResponse{
 			srv:          nil,
-			staticErr:    errors.Extend(err, ErrJobDiscarded),
+			staticErr:    err,
 			staticWorker: j.staticQueue.staticWorker(),
 		}
 		select {
