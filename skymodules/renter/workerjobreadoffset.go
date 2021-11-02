@@ -104,10 +104,9 @@ func (j *jobReadOffset) managedReadOffset() ([]byte, error) {
 	return downloadResponse.Output, nil
 }
 
-// ReadOffset is a helper method to run a ReadOffset job on a worker.
-func (w *worker) ReadOffset(ctx context.Context, category spendingCategory, offset, length uint64) ([]byte, error) {
+func (w *worker) managedNewJobReadOffset(ctx context.Context, category spendingCategory, offset, length uint64) *jobReadOffset {
 	readOffsetRespChan := make(chan *jobReadResponse)
-	jro := &jobReadOffset{
+	return &jobReadOffset{
 		jobRead: jobRead{
 			staticResponseChan: readOffsetRespChan,
 			staticLength:       length,
@@ -119,6 +118,11 @@ func (w *worker) ReadOffset(ctx context.Context, category spendingCategory, offs
 		},
 		staticOffset: offset,
 	}
+}
+
+// ReadOffset is a helper method to run a ReadOffset job on a worker.
+func (w *worker) ReadOffset(ctx context.Context, category spendingCategory, offset, length uint64) ([]byte, error) {
+	jro := w.managedNewJobReadOffset(ctx, category, offset, length)
 
 	// Add the job to the queue.
 	if !w.staticJobReadQueue.callAdd(jro) {
@@ -130,7 +134,7 @@ func (w *worker) ReadOffset(ctx context.Context, category spendingCategory, offs
 	select {
 	case <-ctx.Done():
 		return nil, errors.New("Read interrupted")
-	case resp = <-readOffsetRespChan:
+	case resp = <-jro.staticResponseChan:
 	}
 	return resp.staticData, resp.staticErr
 }
