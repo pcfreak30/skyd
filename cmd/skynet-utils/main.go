@@ -6,11 +6,10 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"gitlab.com/SkynetLabs/skyd/node/api/client"
-	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"github.com/SkynetLabs/go-skynet/v2"
+	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
-	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 )
 
@@ -46,10 +45,12 @@ func printHelp() {
 	}
 }
 
-// generateAndPrintSeed will generate a new seed and print it.
-func generateAndPrintSeed() {
-	seed := generateSeed()
-	fmt.Println(seed)
+// generateAndPrintSeedPhrase will generate a new seed and print it.
+func generateAndPrintSeedPhrase() {
+	var entropy [16]byte
+	fastrand.Read(entropy[:])
+	phrase := skynet.SeedToPhrase(entropy)
+	fmt.Println(phrase)
 	os.Exit(0)
 }
 
@@ -69,7 +70,7 @@ func generateV2SkylinkFromSeed(salt string, phraseWords []string) {
 // corresponds to the provided salt and phraseWords.
 func uploadToV2Skylink(v1Skylink string, salt string, phraseWords []string) {
 	// Get the keys that we need.
-	sk, spk, dataKey := skylinkKeysFromPhraseWords(salt, phraseWords)
+	sk, _, dataKey := skylinkKeysFromPhraseWords(salt, phraseWords)
 
 	// Get the raw bytes of the v1 skylink.
 	var skylink skymodules.Skylink
@@ -88,11 +89,8 @@ func uploadToV2Skylink(v1Skylink string, salt string, phraseWords []string) {
 
 	// Create a signed registry entry containing the v1skylink and upload
 	// it using a portal.
-	srv := modules.NewRegistryValue(dataKey, linkBytes, 0, modules.RegistryTypeWithoutPubkey).Sign(sk)
-	c := client.New(client.Options{
-		Address: portal()+"/skynet",
-	})
-	err = c.RegistryUpdateWithEntry(spk, srv)
+	client := skynet.New()
+	err = client.UpdateRegistry(dataKey, linkBytes, sk)
 	if err != nil {
 		fmt.Println("Error while trying to update the registry:", err)
 		os.Exit(1)
@@ -119,51 +117,6 @@ func uploadFile(path string) {
 	os.Exit(0)
 }
 
-// portal returns the skynet portal that should be used.
-func portal() string {
-	userPortal := os.Getenv("SKYNET_PORTAL")
-	if userPortal == "" {
-		return "siasky.net"
-	}
-	return userPortal
-}
-
-// skylinkKeysFromPhraseWords returns the entropy for a given seed and salt.
-func skylinkKeysFromPhraseWords(salt string, phraseWords []string) (sk crypto.SecretKey, spk types.SiaPublicKey, dataKey crypto.Hash) {
-	// Turn the phrase words in to a phrase.
-	var phrase string
-	for i, word := range phraseWords {
-		phrase += word
-		if i != len(phraseWords)-1 {
-			phrase += " "
-		}
-	}
-
-	// Turn the phrase into entropy.
-	seed, err := readSeed(phrase)
-	if err != nil {
-		fmt.Println("Invalid seed provided:", err)
-		os.Exit(1)
-	}
-	// Use the salt to deterministically generate entropy for this specific
-	// V2 link. Add some pepper to the salt to minimize footgun potential.
-	//
-	// We want the data key to appear random, so we are going to hash a
-	// value deterministically to get that as well. We are going to use a
-	// different pepper but the same salt to get the data key.
-	saltedSeed := "v2SkylinkFromSeed" + salt + string(seed[:])
-	dataKeyBase := "v2SkylinkFromSeedDataKey" + salt + string(seed[:])
-	entropy := crypto.HashObject(saltedSeed)
-	dataKey = crypto.HashObject(dataKeyBase)
-
-	// Get the actual crypto keys.
-	sk, pk := crypto.GenerateKeyPairDeterministic(entropy)
-	spk = types.Ed25519PublicKey(pk)
-
-	// Return the secret key and the SiaPublicKey.
-	return sk, spk, dataKey
-}
-
 // main checks the args to figure out what command to run, then calls the
 // corresponding command.
 func main() {
@@ -171,7 +124,7 @@ func main() {
 	if len(args) == 2 {
 		switch args[1] {
 		case "generate-seed", "g", "s", "gs":
-			generateAndPrintSeed()
+			generateAndPrintSeedPhrase()
 		}
 	}
 	if len(args) == 3 {
