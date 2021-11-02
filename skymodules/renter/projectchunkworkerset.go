@@ -554,6 +554,17 @@ func (r *Renter) newPCWSByRoots(ctx context.Context, roots []crypto.Hash, ec sky
 		return nil, fmt.Errorf("%v roots provided, but erasure coder specifies %v pieces", len(roots), ec.NumPieces())
 	}
 
+	// Check if enough roots are known.
+	var knownRoots int
+	for _, root := range roots {
+		if root != (crypto.Hash{}) {
+			knownRoots++
+		}
+	}
+	if knownRoots < ec.MinPieces() {
+		return nil, fmt.Errorf("only %v roots are known which is smaller than the minimum of %v", knownRoots, ec.MinPieces())
+	}
+
 	// Check that the given cipher is not nil, if no encryption is required a
 	// plain text cipher key should be passed
 	if masterKey == nil {

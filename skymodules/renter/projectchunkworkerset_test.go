@@ -73,8 +73,14 @@ func testBasic(t *testing.T, wt *workerTester) {
 		}
 	}
 
+	// create PCWS with empty root. This should fail.
+	pcws, err := wt.staticRenter.newPCWSByRoots(ctx, []crypto.Hash{{}}, ptec, ptck, 0)
+	if err == nil {
+		t.Fatal("should fail")
+	}
+
 	// create PCWS
-	pcws, err := wt.staticRenter.newPCWSByRoots(ctx, []crypto.Hash{sectorRoot}, ptec, ptck, 0)
+	pcws, err = wt.staticRenter.newPCWSByRoots(ctx, []crypto.Hash{sectorRoot}, ptec, ptck, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
