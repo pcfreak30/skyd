@@ -72,7 +72,7 @@ func printHelp() {
 
 // generateAndPrintSeedPhrase will generate a new seed and print it.
 func generateAndPrintSeedPhrase() {
-	var entropy [16]byte
+	var entropy skynet.Seed
 	fastrand.Read(entropy[:])
 	phrase := skynet.SeedToPhrase(entropy)
 	fmt.Println(phrase)
@@ -94,10 +94,6 @@ func generateV2SkylinkFromSeed(salt string, phraseWords []string) {
 // uploadFile will upload a file to the user's preferred skynet portal, which
 // is detected via an environment variable. If no portal is set, siasky.net is
 // used.
-//
-// TODO: We need to update this function to verify that the skylink being
-// returned by the portal is correct. We should probably do this by extending
-// the client.
 func uploadFile(path string) {
 	client := skynet.New()
 	skylink, err := client.UploadFile(path, skynet.DefaultUploadOptions)
@@ -128,7 +124,7 @@ func uploadToV2Skylink(v1Skylink string, salt string, phraseWords []string) {
 	// Create a signed registry entry containing the v1skylink and upload
 	// it using a portal.
 	client := skynet.New()
-	err = client.OverwriteRegistry(dataKey, linkBytes, sk)
+	err = client.OverwriteRegistry(sk, dataKey, linkBytes)
 	if err != nil {
 		fmt.Println("Error while trying to update the registry:", err)
 		os.Exit(1)
