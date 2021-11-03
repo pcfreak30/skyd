@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -222,7 +221,7 @@ func main() {
 	//
 	// For more details see:
 	// https://blog.twitch.tv/en/2019/04/10/go-memory-ballast-how-i-learnt-to-stop-worrying-and-love-the-heap-26c2462549a2/
-	ballast := make([]byte, 10<<30)
+	//ballast := make([]byte, 10<<30)
 
 	// Parse cmdline flags, overwriting both the default values and the config
 	// file values.
@@ -235,5 +234,5 @@ func main() {
 	}
 
 	// Print length of the ballast to null writer to avoid compiler complaining
-	fmt.Fprintf(ioutil.Discard, fmt.Sprintf("%v", len(ballast)))
+	//fmt.Fprintf(ioutil.Discard, fmt.Sprintf("%v", len(ballast)))
 }
