@@ -85,14 +85,14 @@ type pcwsWorkerState struct {
 	//
 	// A map is used so that workers can be removed from the set in constant
 	// time as they complete their HasSector jobs.
-	unresolvedWorkers map[string]*pcwsUnresolvedWorker
+	unresolvedWorkers map[string]pcwsUnresolvedWorker
 
 	// ResolvedWorkers is an array that tracks which workers have responded to
 	// HasSector queries and which sectors are available. This array is only
 	// appended to as workers come back, meaning that chunk downloads can track
 	// internally which elements of the array they have already looked at,
 	// saving computational time when updating.
-	resolvedWorkers []*pcwsWorkerResponse
+	resolvedWorkers []pcwsWorkerResponse
 
 	// workerUpdateChans is used by download objects to block until more
 	// information about the unresolved workers is available. All of the worker
@@ -225,7 +225,7 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	// If the response contained an error, add this worker to the set of
 	// resolved workers as supporting no indices.
 	if resp.staticErr != nil {
-		ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
+		ws.resolvedWorkers = append(ws.resolvedWorkers, pcwsWorkerResponse{
 			worker: w,
 			err:    resp.staticErr,
 		})
@@ -234,7 +234,7 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 
 	// Add this worker to the set of resolved workers (even if there are no
 	// indices that the worker can fetch).
-	ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
+	ws.resolvedWorkers = append(ws.resolvedWorkers, pcwsWorkerResponse{
 		worker:       w,
 		pieceIndices: resp.staticAvailbleIndices,
 	})
@@ -252,7 +252,7 @@ func (ws *pcwsWorkerState) managedRegisterForWorkerUpdate() <-chan struct{} {
 
 // WaitForResults waits for all workers of the state to resolve up until ctx is
 // closed. Once the ctx is closed, all available responses are returned.
-func (ws *pcwsWorkerState) WaitForResults(ctx context.Context) []*pcwsWorkerResponse {
+func (ws *pcwsWorkerState) WaitForResults(ctx context.Context) []pcwsWorkerResponse {
 	for {
 		ws.mu.Lock()
 		rw := ws.resolvedWorkers
@@ -316,7 +316,7 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 	expectedResolveTime := expectedJobTime.Add(coolDownPenalty)
 
 	// Create the unresolved worker for this job.
-	uw := &pcwsUnresolvedWorker{
+	uw := pcwsUnresolvedWorker{
 		staticWorker:               w,
 		staticExpectedResolvedTime: expectedResolveTime,
 	}
@@ -388,8 +388,8 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 	// it was the cleanest thing I could come up with.
 	numWorkers := pcws.staticRenter.staticWorkerPool.callNumWorkers()
 	ws := &pcwsWorkerState{
-		unresolvedWorkers: make(map[string]*pcwsUnresolvedWorker, numWorkers),
-		resolvedWorkers:   make([]*pcwsWorkerResponse, 0, numWorkers),
+		unresolvedWorkers: make(map[string]pcwsUnresolvedWorker, numWorkers),
+		resolvedWorkers:   make([]pcwsWorkerResponse, 0, numWorkers),
 
 		staticRenter: pcws.staticRenter,
 	}

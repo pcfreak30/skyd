@@ -399,7 +399,7 @@ func TestProjectChunkWorsetSet_managedLaunchWorker(t *testing.T) {
 
 	// create PCWS worker state
 	ws := &pcwsWorkerState{
-		unresolvedWorkers: make(map[string]*pcwsUnresolvedWorker),
+		unresolvedWorkers: make(map[string]pcwsUnresolvedWorker),
 		staticRenter:      pcws.staticRenter,
 	}
 
@@ -486,17 +486,17 @@ func TestWaitForResult(t *testing.T) {
 
 	// Create a plain worker state.
 	ws := &pcwsWorkerState{
-		unresolvedWorkers: make(map[string]*pcwsUnresolvedWorker),
+		unresolvedWorkers: make(map[string]pcwsUnresolvedWorker),
 	}
 
 	// Add unresolved worker.
 	_, pk1 := crypto.GenerateKeyPair()
 	hpk1 := types.Ed25519PublicKey(pk1)
-	ws.unresolvedWorkers[hpk1.String()] = &pcwsUnresolvedWorker{}
+	ws.unresolvedWorkers[hpk1.String()] = pcwsUnresolvedWorker{}
 
 	// Wait for its result in a separate goroutine.
 	done := make(chan struct{})
-	var result []*pcwsWorkerResponse
+	var result []pcwsWorkerResponse
 	go func() {
 		result = ws.WaitForResults(context.Background())
 		close(done)
@@ -512,7 +512,7 @@ func TestWaitForResult(t *testing.T) {
 	// Move the unresolved workers to resolved.
 	ws.mu.Lock()
 	delete(ws.unresolvedWorkers, hpk1.String())
-	resolvedWorker := &pcwsWorkerResponse{err: errors.New("test")}
+	resolvedWorker := pcwsWorkerResponse{err: errors.New("test")}
 	ws.resolvedWorkers = append(ws.resolvedWorkers, resolvedWorker)
 
 	// Close the update chan.
@@ -534,7 +534,7 @@ func TestWaitForResult(t *testing.T) {
 	// Add another unresolved worker.
 	_, pk2 := crypto.GenerateKeyPair()
 	hpk2 := types.Ed25519PublicKey(pk2)
-	ws.unresolvedWorkers[hpk2.String()] = &pcwsUnresolvedWorker{}
+	ws.unresolvedWorkers[hpk2.String()] = pcwsUnresolvedWorker{}
 
 	// Use a timeout this time.
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -585,7 +585,7 @@ func newCustomTestProjectChunkWorkerSet(ec skymodules.ErasureCoder) *projectChun
 	// create PCWS manually
 	return &projectChunkWorkerSet{
 		workerState: &pcwsWorkerState{
-			unresolvedWorkers: make(map[string]*pcwsUnresolvedWorker),
+			unresolvedWorkers: make(map[string]pcwsUnresolvedWorker),
 			staticRenter:      renter,
 		},
 
