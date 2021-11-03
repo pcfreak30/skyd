@@ -677,17 +677,19 @@ func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker) {
 
 // workers returns both resolved and unresolved workers as a single slice of
 // individual workers
-func (pdc *projectDownloadChunk) workers() []*individualWorker {
+func (pdc *projectDownloadChunk) workers() []individualWorker {
 	ws := pdc.workerState
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 
-	var workers []*individualWorker
+	workers := make([]individualWorker, 0, len(ws.resolvedWorkers)+len(ws.unresolvedWorkers))
 
 	// convenience variables
 	ec := pdc.workerSet.staticErasureCoder
 	length := pdc.pieceLength
 	numPieces := ec.NumPieces()
+
+	iws := make([]individualWorker, cap(workers))
 
 	// add all resolved workers that are deemed good for downloading
 	for _, rw := range ws.resolvedWorkers {
@@ -701,7 +703,7 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 		hsq := rw.worker.staticJobHasSectorQueue
 		ldt := hsq.staticDT
 
-		iw := staticPoolIndividualWorkers.Get()
+		iw := iws[len(workers)] //staticPoolIndividualWorkers.Get()
 		iw.resolved = true
 		iw.pieceIndices = rw.pieceIndices
 		iw.onCoolDown = jrq.callOnCooldown() || hsq.callOnCooldown()
@@ -728,7 +730,7 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 		hsq := w.staticJobHasSectorQueue
 		ldt := hsq.staticDT
 
-		iw := staticPoolIndividualWorkers.Get()
+		iw := iws[len(workers)] //staticPoolIndividualWorkers.Get()
 		cost, _ := jrq.callExpectedJobCost(length).Float64()
 		iw.resolved = false
 		iw.pieceIndices = pdc.staticPieceIndices
@@ -826,11 +828,16 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	// workers to avoid needless performing gouging checks on every iteration
 	workers := pdc.workers()
 
+	refWorkers := make([]*individualWorker, 0, len(workers))
+	for i := range workers {
+		refWorkers = append(refWorkers, &workers[i])
+	}
+
 	// Once the project is done, return the workers to the pool.
 	defer func() {
-		for _, w := range workers {
-			staticPoolIndividualWorkers.Put(w)
-		}
+		//		for _, _ = range workers {
+		//			//staticPoolIndividualWorkers.Put(w)
+		//		}
 	}()
 
 	// verify we have enough workers to complete the download
@@ -849,12 +856,12 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 
 		// update the workers
 		if updated || time.Since(prevWorkerUpdate) > maxWaitUpdateWorkers {
-			pdc.updateWorkers(workers)
+			pdc.updateWorkers(refWorkers)
 			prevWorkerUpdate = time.Now()
 		}
 
 		// create a worker set and launch it
-		workerSet, err := pdc.createWorkerSet(workers)
+		workerSet, err := pdc.createWorkerSet(refWorkers)
 		if err != nil {
 			pdc.fail(err)
 			return
