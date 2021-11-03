@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/montanaflynn/stats"
+	"gitlab.com/SkynetLabs/skyd/node/api"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
 
@@ -119,6 +120,9 @@ func dl() {
 			path := paths[dir+threads]
 			numThreads := threadssCount[threads]
 
+			// Reset the overdrive stats
+			c.SkynetStatsResetOverdrive()
+
 			// Reset timer
 			start := time.Now()
 			fmt.Printf("%v downloads on %v threads started\n", dir, numThreads)
@@ -127,9 +131,16 @@ func dl() {
 				fmt.Printf("Unable to download all %v files, err: %v\n", dir, err)
 			}
 
+			// Fetch the overdrive stats
+			stats, err := c.SkynetStatsGet()
+			if err != nil {
+				fmt.Printf("Unable to fetch stats, err: %v\n", err)
+			}
+
 			// Log result
 			fmt.Printf("%v downloads on %v threads finished in %v\n", dir, numThreads, time.Since(start))
 			fmt.Println(getPercentilesString(timings))
+			fmt.Println(getOverdriveStatsString(stats))
 		}
 	}
 }
@@ -263,7 +274,13 @@ func getPercentilesString(timings stats.Float64Data) string {
 	if err != nil {
 		return err.Error()
 	}
-	return fmt.Sprintf("50p: %vms\n60p: %vms\n70p: %vms\n80p: %vms\n90p: %vms\n95p: %vms\n99p: %vms\n999p: %vms\n\n", p50, p60, p70, p80, p90, p95, p99, p999)
+	return fmt.Sprintf("\n PercentileStats:\n50p: %vms\n60p: %vms\n70p: %vms\n80p: %vms\n90p: %vms\n95p: %vms\n99p: %vms\n999p: %vms\n\n", p50, p60, p70, p80, p90, p95, p99, p999)
+}
+
+// getOverdriveStatsString takes a stats objects and returns overdrive
+// statistics.
+func getOverdriveStatsString(stats api.SkynetStatsGET) string {
+	return fmt.Sprintf("\n Overdrive Stats:\nbase sector OD%% %v OD avg %v\nfanout sector OD%% %v OD avg %v\n", stats.BaseSectorOverdrivePct, stats.BaseSectorOverdriveAvg, stats.FanoutSectorOverdrivePct, stats.FanoutSectorOverdriveAvg)
 }
 
 // getMissingFiles will fetch a map of all the files that are missing or don't

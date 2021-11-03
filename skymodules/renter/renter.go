@@ -833,6 +833,12 @@ func (r *Renter) RefreshedContract(fcid types.FileContractID) bool {
 	return r.staticHostContractor.RefreshedContract(fcid)
 }
 
+// ResetDownloadOverdriveStats resets the overdrive statistics.
+func (r *Renter) ResetDownloadOverdriveStats() {
+	r.staticBaseSectorDownloadStats.Reset()
+	r.staticFanoutSectorDownloadStats.Reset()
+}
+
 // Settings returns the Renter's current settings.
 func (r *Renter) Settings() (skymodules.RenterSettings, error) {
 	if err := r.tg.Add(); err != nil {

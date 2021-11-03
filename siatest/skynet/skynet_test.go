@@ -2493,6 +2493,27 @@ func TestSkynetDownloadStats(t *testing.T) {
 	if ss.FanoutSectorOverdrivePct == 0 {
 		t.Fatal(err, ss.FanoutSectorOverdrivePct)
 	}
+
+	// Reset the overdrive stats
+	err = r.SkynetStatsResetOverdrive()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Assert all overdrive stats are zero.
+	ss, err = r.SkynetStatsGet()
+	if ss.BaseSectorOverdriveAvg != 0 {
+		t.Fatal(err, ss.BaseSectorOverdriveAvg)
+	}
+	if ss.BaseSectorOverdrivePct != 0 {
+		t.Fatal(err, ss.BaseSectorOverdrivePct)
+	}
+	if ss.FanoutSectorOverdriveAvg != 0 {
+		t.Fatal(err, ss.FanoutSectorOverdriveAvg)
+	}
+	if ss.FanoutSectorOverdrivePct != 0 {
+		t.Fatal(err, ss.FanoutSectorOverdrivePct)
+	}
 }
 
 // TestSkynetBlocklist verifies the functionality of the Skynet blocklist.

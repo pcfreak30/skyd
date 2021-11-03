@@ -742,6 +742,12 @@ func (c *Client) SkynetStatsGet() (stats api.SkynetStatsGET, err error) {
 	return
 }
 
+// SkynetStatsResetOverdrive requests the /skynet/stats/resetoverdrive Post
+// endpoint
+func (c *Client) SkynetStatsResetOverdrive() error {
+	return c.post("/skynet/stats/resetoverdrive", "", nil)
+}
+
 // SkykeyGetByName requests the /skynet/skykey Get endpoint using the key name.
 func (c *Client) SkykeyGetByName(name string) (skykey.Skykey, error) {
 	values := url.Values{}

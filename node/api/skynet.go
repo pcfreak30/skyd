@@ -1069,6 +1069,13 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 	})
 }
 
+// skynetStatsResetOverdriveHandlerPOST handles the API call to reset the
+// renter's overdrive stats
+func (api *API) skynetStatsResetOverdriveHandlerPOST(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	api.renter.ResetDownloadOverdriveStats()
+	WriteSuccess(w)
+}
+
 // skykeyHandlerGET handles the API call to get a Skykey and its ID using its
 // name or ID.
 func (api *API) skykeyHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {

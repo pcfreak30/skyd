@@ -381,6 +381,7 @@ func TestDownloadOverdriveStats(t *testing.T) {
 	t.Run("AddDataPoint", testDownloadOverdriveStats_AddDataPoint)
 	t.Run("NumOverdriveWorkersAvg", testDownloadOverdriveStats_NumOverdriveWorkersAvg)
 	t.Run("OverdrivePct", testDownloadOverdriveStats_OverdrivePct)
+	t.Run("Reset", testDownloadOverdriveStats_Reset)
 }
 
 // testDownloadOverdriveStats_AddDataPoint is a unit test for the AddDataPoint
@@ -436,6 +437,31 @@ func testDownloadOverdriveStats_OverdrivePct(t *testing.T) {
 	stats.AddDataPoint(2)
 	stats.AddDataPoint(3)
 	if stats.OverdrivePct() != 0.75 {
+		t.Fatal("bad")
+	}
+}
+
+// testDownloadOverdriveStats_Reset is a unit test for the Reset
+// method on the DownloadOverdriveStats
+func testDownloadOverdriveStats_Reset(t *testing.T) {
+	t.Parallel()
+
+	assertZero := func(s *DownloadOverdriveStats) bool {
+		return s.OverdrivePct() == 0 && s.NumOverdriveWorkersAvg() == 0
+	}
+
+	stats := NewSectorDownloadStats()
+	if !assertZero(stats) {
+		t.Fatal("bad")
+	}
+
+	stats.AddDataPoint(1)
+	if assertZero(stats) {
+		t.Fatal("bad")
+	}
+
+	stats.Reset()
+	if !assertZero(stats) {
 		t.Fatal("bad")
 	}
 }

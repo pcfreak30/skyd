@@ -190,6 +190,16 @@ func (ds *DownloadOverdriveStats) AddDataPoint(numOverdriveWorkers uint64) {
 	}
 }
 
+// Reset resets the stats to zero.
+func (ds *DownloadOverdriveStats) Reset() {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
+	ds.total = 0
+	ds.overdrive = 0
+	ds.overdriveWorkersLaunched = 0
+}
+
 // RenterStats is a struct which tracks key metrics in a single renter. This
 // struct is intended to give a large overview / large dump of data related to
 // the renter, which can then be aggregated across a fleet of renters by a
@@ -1303,6 +1313,9 @@ type Renter interface {
 
 	// RefreshedContract checks if the contract was previously refreshed
 	RefreshedContract(fcid types.FileContractID) bool
+
+	// ResetDownloadOverdriveStats resets the overdrive statistics.
+	ResetDownloadOverdriveStats()
 
 	// SetFileStuck sets the 'stuck' status of a file.
 	SetFileStuck(siaPath SiaPath, stuck bool) error
