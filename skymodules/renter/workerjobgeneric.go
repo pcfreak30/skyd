@@ -9,6 +9,8 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+var errDiscardingCanceledJob = errors.New("callNext: skipping and discarding already canceled job")
+
 type (
 	// jobGeneric implements the basic functionality for a job.
 	jobGeneric struct {
@@ -196,7 +198,7 @@ func (jq *jobGenericQueue) callNext() workerJob {
 		// Check if the job is already canceled.
 		wj := job.Value.(workerJob)
 		if wj.staticCanceled() {
-			wj.callDiscard(errors.New("callNext: skipping and discarding already canceled job"))
+			wj.callDiscard(errDiscardingCanceledJob)
 			continue
 		}
 		return wj

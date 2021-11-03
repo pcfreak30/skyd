@@ -208,13 +208,13 @@ func (am *availabilityMetrics) updateMetrics(numPieces, numSectors, numAvailable
 // callNext overwrites the generic call next and batches a certain number of has
 // sector jobs together.
 func (jq *jobHasSectorQueue) callNext() workerJob {
-	var jobs []*jobHasSector
-
+	jobs := make([]*jobHasSector, 0, hasSectorBatchSize)
+	var next workerJob
 	for {
 		if len(jobs) >= hasSectorBatchSize {
 			break
 		}
-		next := jq.jobGenericQueue.callNext()
+		next = jq.jobGenericQueue.callNext()
 		if next == nil {
 			break
 		}
