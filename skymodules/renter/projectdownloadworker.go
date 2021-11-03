@@ -1302,6 +1302,9 @@ func (c *pcwsGougingCache) IsGouging(hpks string, pt modules.RPCPriceTable, allo
 	if numWorkers != result.staticNumWorkers {
 		return c.checkGougingAndUpdateCache(hpks, pt, allowance, numWorkers, numRoots)
 	}
+	if !reflect.DeepEqual(allowance, result.staticAllowance) {
+		return c.checkGougingAndUpdateCache(hpks, pt, allowance, numWorkers, numRoots)
+	}
 	return result.staticIsGouging
 }
 
