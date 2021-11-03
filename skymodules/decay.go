@@ -47,16 +47,16 @@ type (
 )
 
 // NewDecay returns a new decay
-func NewDecay(halfLife time.Duration) *GenericDecay {
-	return &GenericDecay{
+func NewDecay(halfLife time.Duration) GenericDecay {
+	return GenericDecay{
 		staticHalfLife: halfLife,
 		lastDecay:      time.Now(),
 	}
 }
 
 // Clone returns a clone of the decay
-func (d *GenericDecay) Clone() *GenericDecay {
-	return &GenericDecay{
+func (d *GenericDecay) Clone() GenericDecay {
+	return GenericDecay{
 		staticHalfLife:  d.staticHalfLife,
 		lastDecay:       d.lastDecay,
 		decayedLifetime: d.decayedLifetime,

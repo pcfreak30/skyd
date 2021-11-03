@@ -214,8 +214,8 @@ type (
 		staticCost               float64
 		staticDownloadLaunchTime time.Time
 		staticIdentifier         string
-		staticLookupDistribution *skymodules.Distribution
-		staticReadDistribution   *skymodules.Distribution
+		staticLookupDistribution skymodules.Distribution
+		staticReadDistribution   skymodules.Distribution
 		staticWorker             *worker
 	}
 

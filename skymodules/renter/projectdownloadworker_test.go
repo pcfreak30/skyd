@@ -385,7 +385,7 @@ func testWorkerSetCreate(t *testing.T) {
 
 		currentPiece:           0,
 		currentPieceLaunchedAt: time.Now().Add(-20 * time.Millisecond),
-		staticReadDistribution: readDT,
+		staticReadDistribution: *readDT,
 		staticIdentifier:       "launched_worker",
 		staticCost:             1,
 	}
@@ -400,7 +400,7 @@ func testWorkerSetCreate(t *testing.T) {
 		pieceIndices: []uint64{0},
 		resolved:     true,
 
-		staticReadDistribution: readDT,
+		staticReadDistribution: *readDT,
 		staticIdentifier:       "resolved_worker",
 		staticCost:             1,
 	}
@@ -1155,8 +1155,8 @@ func newTestIndivualWorker(hostPubKeyStr string, availabilityRate float64, readD
 		staticCost:               sc,
 		staticDownloadLaunchTime: time.Now(),
 		staticIdentifier:         hostPubKeyStr,
-		staticLookupDistribution: skymodules.NewDistribution(15 * time.Minute),
-		staticReadDistribution:   skymodules.NewDistribution(15 * time.Minute),
+		staticLookupDistribution: *skymodules.NewDistribution(15 * time.Minute),
+		staticReadDistribution:   *skymodules.NewDistribution(15 * time.Minute),
 		staticWorker:             w,
 	}
 	return iw

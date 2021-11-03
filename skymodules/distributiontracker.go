@@ -92,7 +92,7 @@ type (
 	// 'Clone' method.
 	Distribution struct {
 		// Decay is applied to the distribution.
-		*GenericDecay
+		GenericDecay
 
 		// Buckets that represent the distribution. The first
 		// bucketsPerStepChange buckets start at 4ms and are 4ms spaced apart.
@@ -305,15 +305,15 @@ func (d *Distribution) ChancesAfter() Chances {
 }
 
 // Clone returns a deep copy of the distribution.
-func (d *Distribution) Clone() *Distribution {
-	c := &Distribution{GenericDecay: d.GenericDecay.Clone()}
+func (d *Distribution) Clone() Distribution {
+	c := Distribution{GenericDecay: d.GenericDecay.Clone()}
 	for i, b := range d.timings {
 		c.timings[i] = b
 	}
 
 	// sanity check using reflect package, only executed in testing
 	if build.Release == "testing" {
-		if !reflect.DeepEqual(d, c) {
+		if !reflect.DeepEqual(*d, c) {
 			build.Critical("cloned distribution not equal")
 		}
 	}
@@ -343,7 +343,7 @@ func (d *Distribution) DurationForIndex(index int) time.Duration {
 
 // ExpectedDuration returns the estimated duration based upon the current
 // distribution.
-func (d *Distribution) ExpectedDuration() time.Duration {
+func (d Distribution) ExpectedDuration() time.Duration {
 	// Get the total data points.
 	total := d.DataPoints()
 	if total == 0 {
@@ -522,13 +522,13 @@ func (dt *DistributionTracker) DataPoints() []float64 {
 
 // Distribution returns the distribution at the requested index. If the given
 // index is not within bounds it returns nil.
-func (dt *DistributionTracker) Distribution(index int) *Distribution {
+func (dt *DistributionTracker) Distribution(index int) Distribution {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
 	if index < 0 || index >= len(dt.distributions) {
 		build.Critical("unexpected distribution index")
-		return nil
+		index = 0
 	}
 	return dt.distributions[index].Clone()
 }

@@ -10,6 +10,7 @@ var (
 	staticPoolUnresolvedWorkers     = newUnresolvedWorkersPool()
 	staticPoolIndividualWorkers     = newIndividualWorkerPool()
 	staticPoolJobHasSectorResponse  = newJobHasSectorResponsePool()
+	//staticPoolDistribution          = newDistributionPool()
 )
 
 type (
@@ -25,6 +26,10 @@ type (
 	jobHasSectorResponsePool struct {
 		staticPool sync.Pool
 	}
+
+//	distributionPool struct {
+//		staticPool sync.Pool
+//	}
 )
 
 func newUnresolvedWorkersPool() *unresolvedWorkersPool {
@@ -100,3 +105,21 @@ func (p *jobHasSectorResponsePool) Get() *jobHasSectorResponse {
 func (p *jobHasSectorResponsePool) Put(iw *jobHasSectorResponse) {
 	p.staticPool.Put(iw)
 }
+
+//func newDistributionPool() *distributionPool {
+//	return &distributionPool{
+//		staticPool: sync.Pool{
+//			New: func() interface{} {
+//				return &skymodules.Distribution{}
+//			},
+//		},
+//	}
+//}
+//
+//func (p *distributionPool) Get() *skymodules.Distribution {
+//	return p.staticPool.Get().(*skymodules.Distribution)
+//}
+//
+//func (p *distributionPool) Put(iw *skymodules.Distribution) {
+//	p.staticPool.Put(iw)
+//}

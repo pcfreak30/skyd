@@ -129,7 +129,7 @@ type (
 	// sector was available, every bucket holds these stats for sectors that
 	// were uploaded with a similar redundancy scheme
 	availabilityBucket struct {
-		*skymodules.GenericDecay
+		skymodules.GenericDecay
 
 		// Keeps track of the total amount of sectors that were available and
 		// the total amount of lookups that were performed. Note that a decaying
