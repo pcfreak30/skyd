@@ -8,28 +8,19 @@ import (
 var (
 	staticPoolExecuteProgramBuffers = newExecuteProgramBufferPool()
 	staticPoolUnresolvedWorkers     = newUnresolvedWorkersPool()
-	//staticPoolIndividualWorkers     = newIndividualWorkerPool()
-	staticPoolJobHasSectorResponse = newJobHasSectorResponsePool()
-	//staticPoolDistribution          = newDistributionPool()
+	staticPoolJobHasSectorResponse  = newJobHasSectorResponsePool()
 )
 
 type (
 	executeProgramBufferPool struct {
 		staticPool sync.Pool
 	}
-	//	individualWorkerPool struct {
-	//		staticPool sync.Pool
-	//	}
 	unresolvedWorkersPool struct {
 		staticPool sync.Pool
 	}
 	jobHasSectorResponsePool struct {
 		staticPool sync.Pool
 	}
-
-//	distributionPool struct {
-//		staticPool sync.Pool
-//	}
 )
 
 func newUnresolvedWorkersPool() *unresolvedWorkersPool {
@@ -70,24 +61,6 @@ func (p *executeProgramBufferPool) Put(b *bytes.Buffer) {
 	p.staticPool.Put(b)
 }
 
-//func newIndividualWorkerPool() *individualWorkerPool {
-//	return &individualWorkerPool{
-//		staticPool: sync.Pool{
-//			New: func() interface{} {
-//				return &individualWorker{}
-//			},
-//		},
-//	}
-//}
-//
-//func (p *individualWorkerPool) Get() *individualWorker {
-//	return p.staticPool.Get().(*individualWorker)
-//}
-//
-//func (p *individualWorkerPool) Put(iw *individualWorker) {
-//	p.staticPool.Put(iw)
-//}
-
 func newJobHasSectorResponsePool() *jobHasSectorResponsePool {
 	return &jobHasSectorResponsePool{
 		staticPool: sync.Pool{
@@ -105,21 +78,3 @@ func (p *jobHasSectorResponsePool) Get() *jobHasSectorResponse {
 func (p *jobHasSectorResponsePool) Put(iw *jobHasSectorResponse) {
 	p.staticPool.Put(iw)
 }
-
-//func newDistributionPool() *distributionPool {
-//	return &distributionPool{
-//		staticPool: sync.Pool{
-//			New: func() interface{} {
-//				return &skymodules.Distribution{}
-//			},
-//		},
-//	}
-//}
-//
-//func (p *distributionPool) Get() *skymodules.Distribution {
-//	return p.staticPool.Get().(*skymodules.Distribution)
-//}
-//
-//func (p *distributionPool) Put(iw *skymodules.Distribution) {
-//	p.staticPool.Put(iw)
-//}
