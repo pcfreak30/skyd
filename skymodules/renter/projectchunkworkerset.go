@@ -315,6 +315,7 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 	ctx, cancel := context.WithTimeout(pcws.staticCtx, pcwsHasSectorTimeout)
 	jhs := w.newJobHasSectorWithPostExecutionHook(ctx, responseChan, func(resp *jobHasSectorResponse) {
 		ws.managedHandleResponse(resp)
+		staticPoolJobHasSectorResponse.Put(resp)
 		cancel()
 	}, pcws.staticErasureCoder.NumPieces(), pcws.staticPieceRoots...)
 

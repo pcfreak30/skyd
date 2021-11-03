@@ -254,11 +254,10 @@ func (w *worker) newJobHasSectorWithPostExecutionHook(ctx context.Context, respo
 func (j *jobHasSector) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
 	errLaunch := w.staticTG.Launch(func() {
-		response := &jobHasSectorResponse{
-			staticErr: err,
+		response := staticPoolJobHasSectorResponse.Get()
+		response.staticErr = err
+		response.staticWorker = w
 
-			staticWorker: w,
-		}
 		j.managedCallPostExecutionHook(response)
 		select {
 		case j.staticResponseChan <- response:
@@ -331,11 +330,11 @@ func (j jobHasSectorBatch) callExecute() {
 		hsj.staticSpan.Finish()
 
 		// Create the response.
-		response := &jobHasSectorResponse{
-			staticErr:     err,
-			staticJobTime: jobTime,
-			staticWorker:  w,
-		}
+		response := staticPoolJobHasSectorResponse.Get()
+		response.staticErr = err
+		response.staticJobTime = jobTime
+		response.staticWorker = w
+
 		// If it was successful, attach the result.
 		if err == nil {
 			response.staticAvailbleIndices = availables[i]
