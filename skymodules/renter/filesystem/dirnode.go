@@ -737,22 +737,22 @@ func (n *DirNode) openDir(dirName string) (*DirNode, error) {
 	}
 	// Load the dir.
 	dirPath := filepath.Join(n.absPath(), dirName)
-	_, err := os.Stat(dirPath)
-	if os.IsNotExist(err) {
-		return nil, ErrNotExist
-	}
-	if err != nil {
-		return nil, err
-	}
-	// Make sure the metadata exists too.
-	dirMDPath := filepath.Join(dirPath, skymodules.SiaDirExtension)
-	_, err = os.Stat(dirMDPath)
-	if os.IsNotExist(err) {
-		return nil, ErrNotExist
-	}
-	if err != nil {
-		return nil, err
-	}
+	//	_, err := os.Stat(dirPath)
+	//	if os.IsNotExist(err) {
+	//		return nil, ErrNotExist
+	//	}
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	// Make sure the metadata exists too.
+	//	dirMDPath := filepath.Join(dirPath, skymodules.SiaDirExtension)
+	//	_, err = os.Stat(dirMDPath)
+	//	if os.IsNotExist(err) {
+	//		return nil, ErrNotExist
+	//	}
+	//	if err != nil {
+	//		return nil, err
+	//	}
 	// Add the dir to the opened dirs.
 	dir = &DirNode{
 		node:        newNode(n, dirPath, dirName, 0, n.staticWal, n.staticLog),
