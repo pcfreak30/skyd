@@ -274,13 +274,13 @@ func getPercentilesString(timings stats.Float64Data) string {
 	if err != nil {
 		return err.Error()
 	}
-	return fmt.Sprintf("\n PercentileStats:\n50p: %vms\n60p: %vms\n70p: %vms\n80p: %vms\n90p: %vms\n95p: %vms\n99p: %vms\n999p: %vms\n\n", p50, p60, p70, p80, p90, p95, p99, p999)
+	return fmt.Sprintf("\nPercentile stats:\n50p: %vms\n60p: %vms\n70p: %vms\n80p: %vms\n90p: %vms\n95p: %vms\n99p: %vms\n999p: %vms\n\n", p50, p60, p70, p80, p90, p95, p99, p999)
 }
 
 // getOverdriveStatsString takes a stats objects and returns overdrive
 // statistics.
 func getOverdriveStatsString(stats api.SkynetStatsGET) string {
-	return fmt.Sprintf("\n Overdrive Stats:\nbase sector OD%% %v OD avg %v\nfanout sector OD%% %v OD avg %v\n", stats.BaseSectorOverdrivePct, stats.BaseSectorOverdriveAvg, stats.FanoutSectorOverdrivePct, stats.FanoutSectorOverdriveAvg)
+	return fmt.Sprintf("\nOverdrive stats:\nBS: ODpct: %v ODavg: %v\nFS: ODpct: %v ODavg: %v\n\n", stats.BaseSectorOverdrivePct, stats.BaseSectorOverdriveAvg, stats.FanoutSectorOverdrivePct, stats.FanoutSectorOverdriveAvg)
 }
 
 // getMissingFiles will fetch a map of all the files that are missing or don't
