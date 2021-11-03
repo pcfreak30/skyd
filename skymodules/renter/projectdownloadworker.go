@@ -692,18 +692,24 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 	iws := make([]individualWorker, cap(workers))
 
 	// add all resolved workers that are deemed good for downloading
+	var ldt *skymodules.DistributionTracker
+	var rdt *skymodules.DistributionTracker
+	var jrq *jobReadQueue
+	var hsq *jobHasSectorQueue
+	var iw *individualWorker
+	var cost float64
 	for _, rw := range ws.resolvedWorkers {
 		if !isGoodForDownload(rw.worker, rw.pieceIndices) {
 			continue
 		}
 
-		jrq := rw.worker.staticJobReadQueue
-		rdt := jrq.staticStats.distributionTrackerForLength(length)
-		cost, _ := jrq.callExpectedJobCost(length).Float64()
-		hsq := rw.worker.staticJobHasSectorQueue
-		ldt := hsq.staticDT
+		jrq = rw.worker.staticJobReadQueue
+		rdt = jrq.staticStats.distributionTrackerForLength(length)
+		cost, _ = jrq.callExpectedJobCost(length).Float64()
+		hsq = rw.worker.staticJobHasSectorQueue
+		ldt = hsq.staticDT
 
-		iw := iws[len(workers)] //staticPoolIndividualWorkers.Get()
+		iw = &iws[len(workers)] //staticPoolIndividualWorkers.Get()
 		iw.resolved = true
 		iw.pieceIndices = rw.pieceIndices
 		iw.onCoolDown = jrq.callOnCooldown() || hsq.callOnCooldown()
@@ -714,7 +720,7 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 		iw.staticLookupDistribution = ldt.Distribution(0)
 		iw.staticReadDistribution = rdt.Distribution(0)
 		iw.staticWorker = rw.worker
-		workers = append(workers, &iw)
+		workers = append(workers, iw)
 	}
 
 	// add all unresolved workers that are deemed good for downloading
@@ -725,13 +731,13 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 			continue
 		}
 
-		jrq := w.staticJobReadQueue
-		rdt := jrq.staticStats.distributionTrackerForLength(length)
-		hsq := w.staticJobHasSectorQueue
-		ldt := hsq.staticDT
+		jrq = w.staticJobReadQueue
+		rdt = jrq.staticStats.distributionTrackerForLength(length)
+		hsq = w.staticJobHasSectorQueue
+		ldt = hsq.staticDT
 
-		iw := iws[len(workers)] //staticPoolIndividualWorkers.Get()
-		cost, _ := jrq.callExpectedJobCost(length).Float64()
+		iw = &iws[len(workers)] //staticPoolIndividualWorkers.Get()
+		cost, _ = jrq.callExpectedJobCost(length).Float64()
 		iw.resolved = false
 		iw.pieceIndices = pdc.staticPieceIndices
 		iw.onCoolDown = jrq.callOnCooldown() || hsq.callOnCooldown()
@@ -743,7 +749,7 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 		iw.staticLookupDistribution = ldt.Distribution(0)
 		iw.staticReadDistribution = rdt.Distribution(0)
 		iw.staticWorker = w
-		workers = append(workers, &iw)
+		workers = append(workers, iw)
 	}
 
 	return workers
