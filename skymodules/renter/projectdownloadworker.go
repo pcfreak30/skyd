@@ -698,19 +698,18 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 		hsq := rw.worker.staticJobHasSectorQueue
 		ldt := hsq.staticDT
 
-		workers = append(workers, &individualWorker{
-			resolved:     true,
-			pieceIndices: rw.pieceIndices,
-			onCoolDown:   jrq.callOnCooldown() || hsq.callOnCooldown(),
-
-			staticAvailabilityRate:   hsq.callAvailabilityRate(numPieces),
-			staticCost:               cost,
-			staticDownloadLaunchTime: time.Now(),
-			staticIdentifier:         rw.worker.staticHostPubKey.ShortString(),
-			staticLookupDistribution: ldt.Distribution(0),
-			staticReadDistribution:   rdt.Distribution(0),
-			staticWorker:             rw.worker,
-		})
+		iw := staticPoolIndividualWorkers.Get()
+		iw.resolved = true
+		iw.pieceIndices = rw.pieceIndices
+		iw.onCoolDown = jrq.callOnCooldown() || hsq.callOnCooldown()
+		iw.staticAvailabilityRate = hsq.callAvailabilityRate(numPieces)
+		iw.staticCost = cost
+		iw.staticDownloadLaunchTime = time.Now()
+		iw.staticIdentifier = rw.worker.staticHostPubKey.ShortString()
+		iw.staticLookupDistribution = ldt.Distribution(0)
+		iw.staticReadDistribution = rdt.Distribution(0)
+		iw.staticWorker = rw.worker
+		workers = append(workers, iw)
 	}
 
 	// add all unresolved workers that are deemed good for downloading
@@ -726,20 +725,20 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 		hsq := w.staticJobHasSectorQueue
 		ldt := hsq.staticDT
 
+		iw := staticPoolIndividualWorkers.Get()
 		cost, _ := jrq.callExpectedJobCost(length).Float64()
-		workers = append(workers, &individualWorker{
-			resolved:     false,
-			pieceIndices: pdc.staticPieceIndices,
-			onCoolDown:   jrq.callOnCooldown() || hsq.callOnCooldown(),
+		iw.resolved = false
+		iw.pieceIndices = pdc.staticPieceIndices
+		iw.onCoolDown = jrq.callOnCooldown() || hsq.callOnCooldown()
 
-			staticAvailabilityRate:   hsq.callAvailabilityRate(numPieces),
-			staticCost:               cost,
-			staticDownloadLaunchTime: time.Now(),
-			staticIdentifier:         w.staticHostPubKey.ShortString(),
-			staticLookupDistribution: ldt.Distribution(0),
-			staticReadDistribution:   rdt.Distribution(0),
-			staticWorker:             w,
-		})
+		iw.staticAvailabilityRate = hsq.callAvailabilityRate(numPieces)
+		iw.staticCost = cost
+		iw.staticDownloadLaunchTime = time.Now()
+		iw.staticIdentifier = w.staticHostPubKey.ShortString()
+		iw.staticLookupDistribution = ldt.Distribution(0)
+		iw.staticReadDistribution = rdt.Distribution(0)
+		iw.staticWorker = w
+		workers = append(workers, iw)
 	}
 
 	return workers

@@ -8,10 +8,14 @@ import (
 var (
 	staticPoolExecuteProgramBuffers = newExecuteProgramBufferPool()
 	staticPoolUnresolvedWorkers     = newUnresolvedWorkersPool()
+	staticPoolIndividualWorkers     = newIndividualWorkerPool()
 )
 
 type (
 	executeProgramBufferPool struct {
+		staticPool sync.Pool
+	}
+	individualWorkerPool struct {
 		staticPool sync.Pool
 	}
 	unresolvedWorkersPool struct {
@@ -55,4 +59,22 @@ func (p *executeProgramBufferPool) Get() *bytes.Buffer {
 
 func (p *executeProgramBufferPool) Put(b *bytes.Buffer) {
 	p.staticPool.Put(b)
+}
+
+func newIndividualWorkerPool() *individualWorkerPool {
+	return &individualWorkerPool{
+		staticPool: sync.Pool{
+			New: func() interface{} {
+				return &individualWorker{}
+			},
+		},
+	}
+}
+
+func (p *individualWorkerPool) Get() *individualWorker {
+	return p.staticPool.Get().(*individualWorker)
+}
+
+func (p *individualWorkerPool) Put(iw *individualWorker) {
+	p.staticPool.Put(iw)
 }
