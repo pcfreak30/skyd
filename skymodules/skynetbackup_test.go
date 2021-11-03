@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"io"
 	"io/ioutil"
-	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/fastrand"
@@ -98,25 +97,5 @@ func testBackupAndRestore(t *testing.T, baseSector []byte, fileData []byte, back
 		t.Log("original data:", fileData)
 		t.Log("backup restoredData:", restoredData)
 		t.Fatal("Data bytes not equal")
-	}
-}
-
-// TestRandomSysPath tests the RandomSysPath functions
-func TestRandomSysPath(t *testing.T) {
-	t.Parallel()
-
-	// Create a random syspath
-	path := RandomSyspath()
-	// Split into elements
-	elements := strings.Split(path, "/")
-	// There should be defaultDirDepth dirs and a filename
-	if len(elements) != defaultDirDepth+1 {
-		t.Fatal("bad", elements)
-	}
-	// Each of the dirs should be defaultDirLength
-	for i := 0; i < defaultDirDepth; i++ {
-		if len(elements[i]) != defaultDirLength {
-			t.Fatal("bad", elements[i])
-		}
 	}
 }
