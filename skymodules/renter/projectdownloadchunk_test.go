@@ -390,8 +390,8 @@ func testProjectDownloadChunkWorkers(t *testing.T) {
 	w3 := mockWorker(0)
 
 	// mock two unresolved workers
-	ws.unresolvedWorkers["w1"] = pcwsUnresolvedWorker{staticWorker: w1}
-	ws.unresolvedWorkers["w2"] = pcwsUnresolvedWorker{staticWorker: w2}
+	ws.unresolvedWorkers["w1"] = &pcwsUnresolvedWorker{staticWorker: w1}
+	ws.unresolvedWorkers["w2"] = &pcwsUnresolvedWorker{staticWorker: w2}
 
 	// assert they're returned in the worker list
 	workers = pdc.workers()

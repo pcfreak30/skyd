@@ -85,7 +85,7 @@ type pcwsWorkerState struct {
 	//
 	// A map is used so that workers can be removed from the set in constant
 	// time as they complete their HasSector jobs.
-	unresolvedWorkers map[string]pcwsUnresolvedWorker
+	unresolvedWorkers map[string]*pcwsUnresolvedWorker
 
 	// ResolvedWorkers is an array that tracks which workers have responded to
 	// HasSector queries and which sectors are available. This array is only
@@ -220,7 +220,17 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	if w == nil {
 		ws.staticRenter.staticLog.Critical("nil worker provided in resp")
 	}
-	delete(ws.unresolvedWorkers, w.staticHostPubKeyStr)
+	// Return the worker to the pool and delete it from the map.
+	uw, exists := ws.unresolvedWorkers[w.staticHostPubKeyStr]
+	if exists {
+		staticPoolUnresolvedWorkers.Put(uw)
+		delete(ws.unresolvedWorkers, w.staticHostPubKeyStr)
+	}
+
+	// If the map is empty now, release some memory.
+	if len(ws.unresolvedWorkers) == 0 {
+		ws.unresolvedWorkers = make(map[string]*pcwsUnresolvedWorker)
+	}
 
 	// If the response contained an error, add this worker to the set of
 	// resolved workers as supporting no indices.
@@ -316,10 +326,9 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 	expectedResolveTime := expectedJobTime.Add(coolDownPenalty)
 
 	// Create the unresolved worker for this job.
-	uw := pcwsUnresolvedWorker{
-		staticWorker:               w,
-		staticExpectedResolvedTime: expectedResolveTime,
-	}
+	uw := staticPoolUnresolvedWorkers.Get()
+	uw.staticWorker = w
+	uw.staticExpectedResolvedTime = expectedResolveTime
 
 	// Add the unresolved worker to the worker state. Technically this doesn't
 	// need to be wrapped in a lock, but that's not obvious from the function
@@ -388,7 +397,7 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 	// it was the cleanest thing I could come up with.
 	numWorkers := pcws.staticRenter.staticWorkerPool.callNumWorkers()
 	ws := &pcwsWorkerState{
-		unresolvedWorkers: make(map[string]pcwsUnresolvedWorker, numWorkers),
+		unresolvedWorkers: make(map[string]*pcwsUnresolvedWorker, numWorkers),
 		resolvedWorkers:   make([]pcwsWorkerResponse, 0, numWorkers),
 
 		staticRenter: pcws.staticRenter,
