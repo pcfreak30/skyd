@@ -160,28 +160,34 @@ func DistributionBucketIndexForDuration(dur time.Duration) int {
 	return index
 }
 
+var staticDistributionDurationsForBucketIndices = func() []time.Duration {
+	durations := make([]time.Duration, DistributionTrackerTotalBuckets)
+	for index := 0; index < DistributionTrackerTotalBuckets; index++ {
+		stepSize := distributionTrackerInitialStepSize
+		if index <= distributionTrackerInitialBuckets {
+			durations[index] = stepSize * time.Duration(index)
+			continue
+		}
+		prevMax := stepSize * distributionTrackerInitialBuckets
+		for i := distributionTrackerInitialBuckets; i <= DistributionTrackerTotalBuckets; i += distributionTrackerBucketsPerStepChange {
+			stepSize *= distributionTrackerStepChangeMultiple
+			if index < i+distributionTrackerBucketsPerStepChange {
+				durations[index] = stepSize*time.Duration(index-i) + prevMax
+				continue
+			}
+			prevMax *= distributionTrackerStepChangeMultiple
+		}
+	}
+	return durations
+}()
+
 // DistributionDurationForBucketIndex converts the index of a timing bucket into
 // a timing.
 func DistributionDurationForBucketIndex(index int) time.Duration {
 	if index < 0 || index > DistributionTrackerTotalBuckets-1 {
 		build.Critical("distribution duration index out of bounds:", index)
 	}
-
-	stepSize := distributionTrackerInitialStepSize
-	if index <= distributionTrackerInitialBuckets {
-		return stepSize * time.Duration(index)
-	}
-	prevMax := stepSize * distributionTrackerInitialBuckets
-	for i := distributionTrackerInitialBuckets; i <= DistributionTrackerTotalBuckets; i += distributionTrackerBucketsPerStepChange {
-		stepSize *= distributionTrackerStepChangeMultiple
-		if index < i+distributionTrackerBucketsPerStepChange {
-			return stepSize*time.Duration(index-i) + prevMax
-		}
-		prevMax *= distributionTrackerStepChangeMultiple
-	}
-
-	// The final bucket value.
-	return prevMax
+	return staticDistributionDurationsForBucketIndices[index]
 }
 
 // indexForDuration converts the given duration to a bucket index. Alongside the

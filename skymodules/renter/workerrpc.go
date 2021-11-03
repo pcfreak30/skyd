@@ -119,7 +119,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}
 
 	// write contents of the buffer to the stream
-	_, err = stream.Write(buffer.Bytes())
+	_, err = buffer.WriteTo(stream)
 	if err != nil {
 		return
 	}
