@@ -53,7 +53,7 @@ const (
 	fetchSize10mb = 10e6 // Once over 4 MB, fetch size doesn't matter, can use exact sizes.
 
 	// The total number of files of each size that we download during testing.
-	filesPerDir = 200
+	filesPerDir = 1000
 )
 
 // dl is a command that downloads skyfiles from Skynet in various sizes, ranging
