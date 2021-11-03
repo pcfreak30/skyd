@@ -386,8 +386,10 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 	// worker jobs needs to be created in the same thread that listens for the
 	// responses. Though there are a lot of concurrency patterns at play here,
 	// it was the cleanest thing I could come up with.
+	numWorkers := pcws.staticRenter.staticWorkerPool.callNumWorkers()
 	ws := &pcwsWorkerState{
-		unresolvedWorkers: make(map[string]*pcwsUnresolvedWorker),
+		unresolvedWorkers: make(map[string]*pcwsUnresolvedWorker, numWorkers),
+		resolvedWorkers:   make([]*pcwsWorkerResponse, 0, numWorkers),
 
 		staticRenter: pcws.staticRenter,
 	}
