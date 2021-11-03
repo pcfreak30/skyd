@@ -4,7 +4,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
+	"reflect"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/opentracing/opentracing-go"
@@ -12,6 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 )
 
@@ -1239,6 +1242,19 @@ func bucketIndexRange(bI int) (int, int) {
 	return bIMin, bIMax
 }
 
+type pdcGougingCache struct {
+	staticCache map[string]pdcGougingResult
+	mu          sync.Mutex
+}
+
+type pdcGougingResult struct {
+	staticAllowance skymodules.Allowance
+	staticPTID      modules.UniqueID
+	staticGood      bool
+}
+
+var staticDownloadGougingCache *pdcGougingCache
+
 // isGoodForDownload is a helper function that returns true if and only if the
 // worker meets a certain set of criteria that make it useful for downloads.
 // It's only useful if it is not on any type of cooldown, if it's async ready
@@ -1257,11 +1273,27 @@ func isGoodForDownload(w *worker, pieces []uint64) bool {
 	// workers that are price gouging are not useful
 	pt := w.staticPriceTable().staticPriceTable
 	allowance := w.staticCache().staticRenterAllowance
-	if err := checkProjectDownloadGouging(pt, allowance); err != nil {
-		return false
+
+	// Check cache.
+	// TODO: prune cache when workerpool is updated.
+	staticDownloadGougingCache.mu.Lock()
+	cachedResult := staticDownloadGougingCache.staticCache[w.staticHostPubKeyStr]
+	staticDownloadGougingCache.mu.Unlock()
+	if cachedResult.staticPTID == pt.UID && reflect.DeepEqual(cachedResult.staticAllowance, allowance) {
+		return cachedResult.staticGood
 	}
 
-	return true
+	good := checkProjectDownloadGouging(pt, allowance) == nil
+
+	staticDownloadGougingCache.mu.Lock()
+	staticDownloadGougingCache.staticCache[w.staticHostPubKeyStr] = pdcGougingResult{
+		staticAllowance: allowance,
+		staticPTID:      pt.UID,
+		staticGood:      good,
+	}
+	staticDownloadGougingCache.mu.Unlock()
+
+	return good
 }
 
 // splitResolvedUnresolved is a helper function that splits the given workers
