@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"strings"
 	"text/tabwriter"
 
 	"github.com/SkynetLabs/go-skynet/v2"
@@ -25,6 +24,8 @@ func main() {
 		switch args[1] {
 		case "upload-file", "u", "uf":
 			uploadFile(args[2])
+		case "upload-file-dry", "ud", "ufd":
+			uploadFileDry(args[2])
 		}
 	}
 	if len(args) > 3 {
@@ -52,6 +53,7 @@ func printHelp() {
 	fmt.Fprintf(w, "\tgenerate-seed\tgenerates a secure seed\n")
 	fmt.Fprintf(w, "\tgenerate-v2skylink [salt] [seed]\tgenerates a pubkey from a seed using the provided salt\n")
 	fmt.Fprintf(w, "\tupload-file [filepath]\tuploads the provided file and returns a skylink\n")
+	fmt.Fprintf(w, "\tupload-file-dry [filepath]\treturns the skylink for a file without uploading it\n")
 	err := w.Flush()
 	if err != nil {
 		fmt.Println("Error:", err)
@@ -63,6 +65,7 @@ func printHelp() {
 	fmt.Fprintf(w, "\tgenerate-seed\t(g) (s) (gs)\n")
 	fmt.Fprintf(w, "\tgenerate-v2skylink\t(p) (v2)\n")
 	fmt.Fprintf(w, "\tupload-file\t(u) (uf)\n")
+	fmt.Fprintf(w, "\tupload-file-dry\t(ud) (ufd)\n")
 	err = w.Flush()
 	if err != nil {
 		fmt.Println("Error:", err)
@@ -96,12 +99,23 @@ func generateV2SkylinkFromSeed(salt string, phraseWords []string) {
 // used.
 func uploadFile(path string) {
 	client := skynet.New()
-	skylink, err := client.UploadFile(path, skynet.DefaultUploadOptions)
+	skylink, err := client.UploadFileSecure(path)
 	if err != nil {
 		fmt.Println("Upload failed:", err)
 		os.Exit(1)
 	}
-	skylink = strings.TrimPrefix(skylink, "sia://")
+	fmt.Println(skylink)
+	os.Exit(0)
+}
+
+// uploadFileDry will fetch the skylink for the provided file, without actually
+// uploading the file.
+func uploadFileDry(path string) {
+	skylink, err := skynet.FileSkylink(path)
+	if err != nil {
+		fmt.Println("Unable to determine skylink:", err)
+		os.Exit(1)
+	}
 	fmt.Println(skylink)
 	os.Exit(0)
 }
