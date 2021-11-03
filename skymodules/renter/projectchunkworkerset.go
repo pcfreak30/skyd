@@ -294,7 +294,8 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 	cache := w.staticCache()
 	pt := w.staticPriceTable().staticPriceTable
 	numWorkers := pcws.staticRenter.staticWorkerPool.callNumWorkers()
-	err := checkPCWSGouging(pt, cache.staticRenterAllowance, numWorkers, len(pcws.staticPieceRoots))
+
+	err := staticPCWSGougingCache.IsGouging(w.staticHostPubKeyStr, pt, cache.staticRenterAllowance, numWorkers, len(pcws.staticPieceRoots))
 	if err != nil {
 		return errors.AddContext(err, fmt.Sprintf("price gouging for chunk worker set detected in worker %v", w.staticHostPubKeyStr))
 	}

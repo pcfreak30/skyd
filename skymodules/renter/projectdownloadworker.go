@@ -1250,11 +1250,102 @@ type pdcGougingCache struct {
 type pdcGougingResult struct {
 	staticAllowance skymodules.Allowance
 	staticPTID      modules.UniqueID
-	staticGood      bool
+	staticIsGouging error
+}
+
+type pcwsGougingCache struct {
+	staticCache map[string]map[int]pcwsGougingResult
+	mu          sync.Mutex
+}
+
+type pcwsGougingResult struct {
+	staticAllowance  skymodules.Allowance
+	staticNumWorkers int
+	staticPTID       modules.UniqueID
+	staticIsGouging  error
+}
+
+func (c *pcwsGougingCache) checkGougingAndUpdateCache(hpks string, pt modules.RPCPriceTable, allowance skymodules.Allowance, numWorkers, numRoots int) error {
+	err := checkPCWSGouging(pt, allowance, numWorkers, numRoots)
+
+	results, exist := staticPCWSGougingCache.staticCache[hpks]
+	if !exist {
+		results = make(map[int]pcwsGougingResult)
+		staticPCWSGougingCache.staticCache[hpks] = results
+	}
+	results[numRoots] = pcwsGougingResult{
+		staticAllowance:  allowance,
+		staticNumWorkers: numWorkers,
+		staticPTID:       pt.UID,
+		staticIsGouging:  err,
+	}
+	return err
+}
+
+// IsGouging performs the checkPCWSGouging check but will return a cached result
+// if possible.
+func (c *pcwsGougingCache) IsGouging(hpks string, pt modules.RPCPriceTable, allowance skymodules.Allowance, numWorkers, numRoots int) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	results, exist := staticPCWSGougingCache.staticCache[hpks]
+	if !exist {
+		return c.checkGougingAndUpdateCache(hpks, pt, allowance, numWorkers, numRoots)
+	}
+	result, exist := results[numRoots]
+	if !exist {
+		return c.checkGougingAndUpdateCache(hpks, pt, allowance, numWorkers, numRoots)
+	}
+	if pt.UID != result.staticPTID {
+		return c.checkGougingAndUpdateCache(hpks, pt, allowance, numWorkers, numRoots)
+	}
+	if numWorkers != result.staticNumWorkers {
+		return c.checkGougingAndUpdateCache(hpks, pt, allowance, numWorkers, numRoots)
+	}
+	return result.staticIsGouging
+}
+
+// IsGouging performs the checkProjetDownloadGouging check but will return a
+// cached result if possible.
+func (c *pdcGougingCache) IsGouging(hpks string, pt modules.RPCPriceTable, allowance skymodules.Allowance) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	cachedResult := c.staticCache[hpks]
+	if cachedResult.staticPTID == pt.UID && reflect.DeepEqual(cachedResult.staticAllowance, allowance) {
+		return cachedResult.staticIsGouging
+	}
+
+	err := checkProjectDownloadGouging(pt, allowance)
+
+	c.staticCache[hpks] = pdcGougingResult{
+		staticAllowance: allowance,
+		staticPTID:      pt.UID,
+		staticIsGouging: err,
+	}
+	return err
+}
+
+// PruneWorker removes the cached results for a given worker.
+func (c *pcwsGougingCache) PruneWorker(hpks string) {
+	c.mu.Lock()
+	delete(c.staticCache, hpks)
+	c.mu.Unlock()
+}
+
+// PruneWorker removes the cached results for a given worker.
+func (c *pdcGougingCache) PruneWorker(hpks string) {
+	c.mu.Lock()
+	delete(c.staticCache, hpks)
+	c.mu.Unlock()
 }
 
 var staticDownloadGougingCache = &pdcGougingCache{
 	staticCache: make(map[string]pdcGougingResult),
+}
+
+var staticPCWSGougingCache = &pcwsGougingCache{
+	staticCache: make(map[string]map[int]pcwsGougingResult),
 }
 
 // isGoodForDownload is a helper function that returns true if and only if the
@@ -1277,25 +1368,8 @@ func isGoodForDownload(w *worker, pieces []uint64) bool {
 	allowance := w.staticCache().staticRenterAllowance
 
 	// Check cache.
-	// TODO: prune cache when workerpool is updated.
-	staticDownloadGougingCache.mu.Lock()
-	cachedResult := staticDownloadGougingCache.staticCache[w.staticHostPubKeyStr]
-	staticDownloadGougingCache.mu.Unlock()
-	if cachedResult.staticPTID == pt.UID && reflect.DeepEqual(cachedResult.staticAllowance, allowance) {
-		return cachedResult.staticGood
-	}
-
-	good := checkProjectDownloadGouging(pt, allowance) == nil
-
-	staticDownloadGougingCache.mu.Lock()
-	staticDownloadGougingCache.staticCache[w.staticHostPubKeyStr] = pdcGougingResult{
-		staticAllowance: allowance,
-		staticPTID:      pt.UID,
-		staticGood:      good,
-	}
-	staticDownloadGougingCache.mu.Unlock()
-
-	return good
+	err := staticDownloadGougingCache.IsGouging(w.staticHostPubKeyStr, pt, allowance)
+	return err == nil
 }
 
 // splitResolvedUnresolved is a helper function that splits the given workers

@@ -137,7 +137,7 @@ func (wp *workerPool) callUpdate() {
 	}
 
 	// Remove a worker for any worker that is not in the set of new contracts.
-	for id, worker := range wp.workers {
+	for id, w := range wp.workers {
 		select {
 		case <-wp.staticRenter.tg.StopChan():
 			// Release the lock and return to prevent error of trying to close
@@ -152,9 +152,15 @@ func (wp *workerPool) callUpdate() {
 		setChanged = true
 		delete(wp.workers, id)
 
-		// Kill the worker in a goroutine. This avoids locking issues, as
-		// wp.mu is currently locked.
-		go worker.managedKill()
+		go func(w *worker) {
+			// Prune gouging cache.
+			staticDownloadGougingCache.PruneWorker(w.staticHostPubKeyStr)
+			staticPCWSGougingCache.PruneWorker(w.staticHostPubKeyStr)
+
+			// Kill the worker in a goroutine. This avoids locking issues, as
+			// wp.mu is currently locked.
+			w.managedKill()
+		}(w)
 	}
 }
 

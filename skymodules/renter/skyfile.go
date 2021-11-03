@@ -1493,7 +1493,7 @@ func (r *Renter) managedSkylinkHealth(ctx context.Context, sl skymodules.Skylink
 			// Check for gouging.
 			pt := worker.staticPriceTable().staticPriceTable
 			cache := worker.staticCache()
-			err := checkPCWSGouging(pt, cache.staticRenterAllowance, len(workers), len(roots))
+			err := staticPCWSGougingCache.IsGouging(worker.staticHostPubKeyStr, pt, cache.staticRenterAllowance, len(workers), len(roots))
 			if err != nil {
 				continue // ignore
 			}
