@@ -677,12 +677,12 @@ func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker) {
 
 // workers returns both resolved and unresolved workers as a single slice of
 // individual workers
-func (pdc *projectDownloadChunk) workers() []individualWorker {
+func (pdc *projectDownloadChunk) workers() []*individualWorker {
 	ws := pdc.workerState
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 
-	workers := make([]individualWorker, 0, len(ws.resolvedWorkers)+len(ws.unresolvedWorkers))
+	workers := make([]*individualWorker, 0, len(ws.resolvedWorkers)+len(ws.unresolvedWorkers))
 
 	// convenience variables
 	ec := pdc.workerSet.staticErasureCoder
@@ -714,7 +714,7 @@ func (pdc *projectDownloadChunk) workers() []individualWorker {
 		iw.staticLookupDistribution = ldt.Distribution(0)
 		iw.staticReadDistribution = rdt.Distribution(0)
 		iw.staticWorker = rw.worker
-		workers = append(workers, iw)
+		workers = append(workers, &iw)
 	}
 
 	// add all unresolved workers that are deemed good for downloading
@@ -743,7 +743,7 @@ func (pdc *projectDownloadChunk) workers() []individualWorker {
 		iw.staticLookupDistribution = ldt.Distribution(0)
 		iw.staticReadDistribution = rdt.Distribution(0)
 		iw.staticWorker = w
-		workers = append(workers, iw)
+		workers = append(workers, &iw)
 	}
 
 	return workers
@@ -828,11 +828,6 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	// workers to avoid needless performing gouging checks on every iteration
 	workers := pdc.workers()
 
-	refWorkers := make([]*individualWorker, 0, len(workers))
-	for i := range workers {
-		refWorkers = append(refWorkers, &workers[i])
-	}
-
 	// Once the project is done, return the workers to the pool.
 	defer func() {
 		//		for _, _ = range workers {
@@ -856,12 +851,12 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 
 		// update the workers
 		if updated || time.Since(prevWorkerUpdate) > maxWaitUpdateWorkers {
-			pdc.updateWorkers(refWorkers)
+			pdc.updateWorkers(workers)
 			prevWorkerUpdate = time.Now()
 		}
 
 		// create a worker set and launch it
-		workerSet, err := pdc.createWorkerSet(refWorkers)
+		workerSet, err := pdc.createWorkerSet(workers)
 		if err != nil {
 			pdc.fail(err)
 			return
