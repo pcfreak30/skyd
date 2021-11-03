@@ -1253,7 +1253,9 @@ type pdcGougingResult struct {
 	staticGood      bool
 }
 
-var staticDownloadGougingCache *pdcGougingCache
+var staticDownloadGougingCache = &pdcGougingCache{
+	staticCache: make(map[string]pdcGougingResult),
+}
 
 // isGoodForDownload is a helper function that returns true if and only if the
 // worker meets a certain set of criteria that make it useful for downloads.
