@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"io"
 	"io/ioutil"
-	"path/filepath"
+	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/fastrand"
@@ -101,28 +101,22 @@ func testBackupAndRestore(t *testing.T, baseSector []byte, fileData []byte, back
 	}
 }
 
-// TestSkylinkToFromSysPath tests the SkylinkToSysPath and SkylinkFromSysPath
-// functions
-func TestSkylinkToFromSysPath(t *testing.T) {
+// TestRandomSysPath tests the RandomSysPath functions
+func TestRandomSysPath(t *testing.T) {
 	t.Parallel()
-	expectedPath := filepath.Join("AA", "BE", "KWZ_wc2R9qlhYkzbG8mImFVi08kBu1nsvvwPLBtpEg")
 
-	// Test creating a path
-	path := SkylinkToSysPath(testSkylink)
-	if path != expectedPath {
-		t.Fatal("bad path:", path)
+	// Create a random syspath
+	path := RandomSyspath()
+	// Split into elements
+	elements := strings.Split(path, "/")
+	// There should be defaultDirDepth dirs and a filename
+	if len(elements) != defaultDirDepth+1 {
+		t.Fatal("bad", elements)
 	}
-
-	// Test creating the skylink
-	skylinkStr := SkylinkFromSysPath(path)
-	if testSkylink != skylinkStr {
-		t.Fatal("bad skylink string:", skylinkStr)
-	}
-
-	// Test creating the skylink from an absolute path
-	path = filepath.Join("many", "dirs", "in", "abs", "path", path)
-	skylinkStr = SkylinkFromSysPath(path)
-	if testSkylink != skylinkStr {
-		t.Fatal("bad skylink string:", skylinkStr)
+	// Each of the dirs should be defaultDirLength
+	for i := 0; i < defaultDirDepth; i++ {
+		if len(elements[i]) != defaultDirLength {
+			t.Fatal("bad", elements[i])
+		}
 	}
 }

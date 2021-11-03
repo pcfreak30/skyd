@@ -1069,7 +1069,7 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 	baseSector = append(baseSector, baseSectorExtension...)
 
 	// Create the upload parameters
-	siaPath, err := skymodules.SkynetFolder.Join(skylinkStr)
+	siaPath, err := skymodules.SkynetFolder.Join(skymodules.RandomSyspath())
 	if err != nil {
 		return skymodules.Skylink{}, errors.AddContext(err, "unable to create siapath")
 	}

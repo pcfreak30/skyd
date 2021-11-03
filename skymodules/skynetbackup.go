@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
-	"strings"
 
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
@@ -102,29 +101,16 @@ func RestoreSkylink(r io.Reader) (string, []byte, error) {
 	return skylink, baseSector, nil
 }
 
-// SkylinkFromSysPath returns a skylink string from a system path
-func SkylinkFromSysPath(path string) string {
-	// Sanitize the path
-	path = filepath.Clean(path)
-	path = filepath.ToSlash(path)
-	path = strings.TrimPrefix(path, "/")
-	path = strings.TrimSuffix(path, "/")
-
-	// Recreate the skylink by joining the last defaultDirDepth + 1 elements
-	els := strings.Split(path, "/")
-	start := len(els) - defaultDirDepth - 1
-	return strings.Join(els[start:], "")
-}
-
-// SkylinkToSysPath takes the string of a skylink and turns it into a filepath
+// RandomSyspath takes a randomly generated string and turns it into a filepath
 // that has defaultDirDepth number of directories that have names which have
 // defaultDirLength characters
-func SkylinkToSysPath(skylinkStr string) string {
-	str := skylinkStr[:defaultDirLength]
+func RandomSyspath() string {
+	randomStr := persist.RandomSuffix()
+	str := randomStr[:defaultDirLength]
 	for i := 1; i < defaultDirDepth; i++ {
-		str = filepath.Join(str, skylinkStr[defaultDirLength*i:defaultDirLength*(i+1)])
+		str = filepath.Join(str, randomStr[defaultDirLength*i:defaultDirLength*(i+1)])
 	}
-	str = filepath.Join(str, skylinkStr[defaultDirLength*defaultDirDepth:])
+	str = filepath.Join(str, randomStr[defaultDirLength*defaultDirDepth:])
 	return str
 }
 
