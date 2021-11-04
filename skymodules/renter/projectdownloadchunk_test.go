@@ -380,7 +380,7 @@ func testProjectDownloadChunkWorkers(t *testing.T) {
 
 	// assert there are no workers
 	workers := pdc.workers()
-	if len(workers) != 0 {
+	if len(*workers) != 0 {
 		t.Fatal("bad")
 	}
 
@@ -395,7 +395,7 @@ func testProjectDownloadChunkWorkers(t *testing.T) {
 
 	// assert they're returned in the worker list
 	workers = pdc.workers()
-	if len(workers) != 2 {
+	if len(*workers) != 2 {
 		t.Fatal("bad")
 	}
 
@@ -407,21 +407,21 @@ func testProjectDownloadChunkWorkers(t *testing.T) {
 
 	// assert they're returned in the worker list
 	workers = pdc.workers()
-	if len(workers) != 3 {
+	if len(*workers) != 3 {
 		t.Fatal("bad")
 	}
 
 	// clear its piece indices and assert the worker is excluded
 	ws.resolvedWorkers[0].pieceIndices = nil
 	workers = pdc.workers()
-	if len(workers) != 2 {
+	if len(*workers) != 2 {
 		t.Fatal("bad")
 	}
 
 	// mock w1 being on maintenance cooldown and assert the worker is excluded
 	w1.staticMaintenanceState.cooldownUntil = time.Now().Add(time.Minute)
 	workers = pdc.workers()
-	if len(workers) != 1 {
+	if len(*workers) != 1 {
 		t.Fatal("bad")
 	}
 }
