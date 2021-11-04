@@ -150,6 +150,8 @@ func (wp *workerPool) callUpdate() {
 			continue
 		}
 		setChanged = true
+
+		wp.workers[id] = nil // nil entry for gc before deleting it
 		delete(wp.workers, id)
 
 		go func(w *worker) {
