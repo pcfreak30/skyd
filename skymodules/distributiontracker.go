@@ -162,18 +162,19 @@ func DistributionBucketIndexForDuration(dur time.Duration) int {
 
 var staticDistributionDurationsForBucketIndices = func() []time.Duration {
 	durations := make([]time.Duration, DistributionTrackerTotalBuckets)
+LOOP:
 	for index := 0; index < DistributionTrackerTotalBuckets; index++ {
 		stepSize := distributionTrackerInitialStepSize
 		if index <= distributionTrackerInitialBuckets {
 			durations[index] = stepSize * time.Duration(index)
-			continue
+			continue LOOP
 		}
 		prevMax := stepSize * distributionTrackerInitialBuckets
 		for i := distributionTrackerInitialBuckets; i <= DistributionTrackerTotalBuckets; i += distributionTrackerBucketsPerStepChange {
 			stepSize *= distributionTrackerStepChangeMultiple
 			if index < i+distributionTrackerBucketsPerStepChange {
 				durations[index] = stepSize*time.Duration(index-i) + prevMax
-				continue
+				continue LOOP
 			}
 			prevMax *= distributionTrackerStepChangeMultiple
 		}
