@@ -727,9 +727,9 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 	for _, uw := range ws.unresolvedWorkers {
 		// exclude workers that are not useful
 		w := uw.staticWorker
-		//	if !isGoodForDownload(w, pdc.staticPieceIndices) {
-		//		continue
-		//	}
+		if !isGoodForDownload(w, pdc.staticPieceIndices) {
+			continue
+		}
 
 		jrq = w.staticJobReadQueue
 		rdt = jrq.staticStats.distributionTrackerForLength(length)
