@@ -716,7 +716,7 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 		iw.staticAvailabilityRate = hsq.callAvailabilityRate(numPieces)
 		iw.staticCost = cost
 		iw.staticDownloadLaunchTime = time.Now()
-		iw.staticIdentifier = rw.worker.staticHostPubKey.ShortString()
+		iw.staticIdentifier = rw.worker.staticHostPubKeyStr
 		iw.staticLookupDistribution = ldt.Distribution(0)
 		iw.staticReadDistribution = rdt.Distribution(0)
 		iw.staticWorker = rw.worker
@@ -745,7 +745,7 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 		iw.staticAvailabilityRate = hsq.callAvailabilityRate(numPieces)
 		iw.staticCost = cost
 		iw.staticDownloadLaunchTime = time.Now()
-		iw.staticIdentifier = w.staticHostPubKey.ShortString()
+		iw.staticIdentifier = w.staticHostPubKeyStr
 		iw.staticLookupDistribution = ldt.Distribution(0)
 		iw.staticReadDistribution = rdt.Distribution(0)
 		iw.staticWorker = w

@@ -7,12 +7,16 @@ import (
 
 var (
 	staticPoolExecuteProgramBuffers = newExecuteProgramBufferPool()
+	staticPoolProvidePaymentBuffers = newProvidePaymentBufferPool()
 	staticPoolUnresolvedWorkers     = newUnresolvedWorkersPool()
 	staticPoolJobHasSectorResponse  = newJobHasSectorResponsePool()
 )
 
 type (
 	executeProgramBufferPool struct {
+		staticPool sync.Pool
+	}
+	providePaymentBufferPool struct {
 		staticPool sync.Pool
 	}
 	unresolvedWorkersPool struct {
@@ -77,4 +81,24 @@ func (p *jobHasSectorResponsePool) Get() *jobHasSectorResponse {
 
 func (p *jobHasSectorResponsePool) Put(iw *jobHasSectorResponse) {
 	p.staticPool.Put(iw)
+}
+
+func newProvidePaymentBufferPool() *providePaymentBufferPool {
+	return &providePaymentBufferPool{
+		staticPool: sync.Pool{
+			New: func() interface{} {
+				return bytes.NewBuffer(make([]byte, 300))
+			},
+		},
+	}
+}
+
+func (p *providePaymentBufferPool) Get() *bytes.Buffer {
+	b := p.staticPool.Get().(*bytes.Buffer)
+	b.Reset()
+	return b
+}
+
+func (p *providePaymentBufferPool) Put(b *bytes.Buffer) {
+	p.staticPool.Put(b)
 }

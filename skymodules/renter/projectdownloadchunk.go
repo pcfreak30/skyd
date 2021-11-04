@@ -284,7 +284,7 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 	downloadErr := jrr.staticErr
 	metadata := jrr.staticMetadata
 	worker := metadata.staticWorker
-	workerKey := worker.staticHostPubKey.ShortString()
+	workerKey := worker.staticHostPubKeyStr
 	pieceIndex := metadata.staticPieceRootIndex
 
 	// Update the launched worker information
