@@ -239,7 +239,8 @@ func (w *worker) newJobHasSector(ctx context.Context, responseChan chan *jobHasS
 // HasSector job with a post execution hook that is executed after the response
 // is available but before sending it over the channel.
 func (w *worker) newJobHasSectorWithPostExecutionHook(ctx context.Context, responseChan chan *jobHasSectorResponse, hook func(*jobHasSectorResponse), numPieces int, roots ...crypto.Hash) *jobHasSector {
-	span, _ := opentracing.StartSpanFromContext(ctx, "HasSectorJob")
+	t := opentracing.NoopTracer{} // NOTE: disabled for performance
+	span, _ := opentracing.StartSpanFromContextWithTracer(ctx, t, "HasSectorJob")
 	return &jobHasSector{
 		staticNumPieces:         numPieces,
 		staticSectors:           roots,
