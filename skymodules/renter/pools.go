@@ -9,7 +9,6 @@ var (
 	staticPoolExecuteProgramBuffers = newExecuteProgramBufferPool()
 	staticPoolUnresolvedWorkers     = newUnresolvedWorkersPool()
 	staticPoolJobHasSectorResponse  = newJobHasSectorResponsePool()
-	staticPoolIndividualWorkers     = newIndividualWorkerPool()
 )
 
 type (
@@ -20,9 +19,6 @@ type (
 		staticPool sync.Pool
 	}
 	jobHasSectorResponsePool struct {
-		staticPool sync.Pool
-	}
-	individualWorkerPool struct {
 		staticPool sync.Pool
 	}
 )
@@ -81,28 +77,4 @@ func (p *jobHasSectorResponsePool) Get() *jobHasSectorResponse {
 
 func (p *jobHasSectorResponsePool) Put(iw *jobHasSectorResponse) {
 	p.staticPool.Put(iw)
-}
-
-func newIndividualWorkerPool() *individualWorkerPool {
-	return &individualWorkerPool{
-		staticPool: sync.Pool{
-			New: func() interface{} {
-				return nil
-			},
-		},
-	}
-}
-
-func (p *individualWorkerPool) Get() *[]individualWorker {
-	i := p.staticPool.Get()
-	if i == nil {
-		return nil
-	}
-	iws := i.(*[]individualWorker)
-	*iws = (*iws)[:cap(*iws)]
-	return iws
-}
-
-func (p *individualWorkerPool) Put(iws *[]individualWorker) {
-	p.staticPool.Put(iws)
 }

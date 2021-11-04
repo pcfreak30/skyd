@@ -677,34 +677,27 @@ func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker) {
 
 // workers returns both resolved and unresolved workers as a single slice of
 // individual workers
-func (pdc *projectDownloadChunk) workers() *[]individualWorker {
+func (pdc *projectDownloadChunk) workers() []*individualWorker {
 	ws := pdc.workerState
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
+
+	workers := make([]*individualWorker, 0, len(ws.resolvedWorkers)+len(ws.unresolvedWorkers))
 
 	// convenience variables
 	ec := pdc.workerSet.staticErasureCoder
 	length := pdc.pieceLength
 	numPieces := ec.NumPieces()
 
-	// allocate all the individual workers at once. Either by getting them
-	// from the pool or, if the resulting slice isn't big enough, by
-	// extending it. The caller should return the result to the pool.
-	neededWorkers := len(ws.resolvedWorkers) + len(ws.unresolvedWorkers)
-	iws := staticPoolIndividualWorkers.Get()
-	if iws == nil || len(*iws) < neededWorkers {
-		newIWS := make([]individualWorker, neededWorkers)
-		iws = &newIWS
-	}
-	workers := *iws
+	iws := make([]individualWorker, cap(workers))
 
 	// add all resolved workers that are deemed good for downloading
 	var ldt *skymodules.DistributionTracker
 	var rdt *skymodules.DistributionTracker
 	var jrq *jobReadQueue
 	var hsq *jobHasSectorQueue
+	var iw *individualWorker
 	var cost float64
-	nWorkers := 0
 	for _, rw := range ws.resolvedWorkers {
 		if !isGoodForDownload(rw.worker, rw.pieceIndices) {
 			continue
@@ -716,17 +709,18 @@ func (pdc *projectDownloadChunk) workers() *[]individualWorker {
 		hsq = rw.worker.staticJobHasSectorQueue
 		ldt = hsq.staticDT
 
-		workers[nWorkers].resolved = true
-		workers[nWorkers].pieceIndices = rw.pieceIndices
-		workers[nWorkers].onCoolDown = jrq.callOnCooldown() || hsq.callOnCooldown()
-		workers[nWorkers].staticAvailabilityRate = hsq.callAvailabilityRate(numPieces)
-		workers[nWorkers].staticCost = cost
-		workers[nWorkers].staticDownloadLaunchTime = time.Now()
-		workers[nWorkers].staticIdentifier = rw.worker.staticHostPubKey.ShortString()
-		workers[nWorkers].staticLookupDistribution = ldt.Distribution(0)
-		workers[nWorkers].staticReadDistribution = rdt.Distribution(0)
-		workers[nWorkers].staticWorker = rw.worker
-		nWorkers++
+		iw = &iws[len(workers)] //staticPoolIndividualWorkers.Get()
+		iw.resolved = true
+		iw.pieceIndices = rw.pieceIndices
+		iw.onCoolDown = jrq.callOnCooldown() || hsq.callOnCooldown()
+		iw.staticAvailabilityRate = hsq.callAvailabilityRate(numPieces)
+		iw.staticCost = cost
+		iw.staticDownloadLaunchTime = time.Now()
+		iw.staticIdentifier = rw.worker.staticHostPubKey.ShortString()
+		iw.staticLookupDistribution = ldt.Distribution(0)
+		iw.staticReadDistribution = rdt.Distribution(0)
+		iw.staticWorker = rw.worker
+		workers = append(workers, iw)
 	}
 
 	// add all unresolved workers that are deemed good for downloading
@@ -742,22 +736,23 @@ func (pdc *projectDownloadChunk) workers() *[]individualWorker {
 		hsq = w.staticJobHasSectorQueue
 		ldt = hsq.staticDT
 
+		iw = &iws[len(workers)] //staticPoolIndividualWorkers.Get()
 		cost, _ = jrq.callExpectedJobCost(length).Float64()
-		workers[nWorkers].resolved = false
-		workers[nWorkers].pieceIndices = pdc.staticPieceIndices
-		workers[nWorkers].onCoolDown = jrq.callOnCooldown() || hsq.callOnCooldown()
+		iw.resolved = false
+		iw.pieceIndices = pdc.staticPieceIndices
+		iw.onCoolDown = jrq.callOnCooldown() || hsq.callOnCooldown()
 
-		workers[nWorkers].staticAvailabilityRate = hsq.callAvailabilityRate(numPieces)
-		workers[nWorkers].staticCost = cost
-		workers[nWorkers].staticDownloadLaunchTime = time.Now()
-		workers[nWorkers].staticIdentifier = w.staticHostPubKey.ShortString()
-		workers[nWorkers].staticLookupDistribution = ldt.Distribution(0)
-		workers[nWorkers].staticReadDistribution = rdt.Distribution(0)
-		workers[nWorkers].staticWorker = w
-		nWorkers++
+		iw.staticAvailabilityRate = hsq.callAvailabilityRate(numPieces)
+		iw.staticCost = cost
+		iw.staticDownloadLaunchTime = time.Now()
+		iw.staticIdentifier = w.staticHostPubKey.ShortString()
+		iw.staticLookupDistribution = ldt.Distribution(0)
+		iw.staticReadDistribution = rdt.Distribution(0)
+		iw.staticWorker = w
+		workers = append(workers, iw)
 	}
-	*iws = (*iws)[:nWorkers]
-	return iws
+
+	return workers
 }
 
 // currentDownload returns the piece that was marked on the worker to download
@@ -837,17 +832,14 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 
 	// grab the workers from the pdc, every iteration we will update this set of
 	// workers to avoid needless performing gouging checks on every iteration
-	iws := pdc.workers()
+	workers := pdc.workers()
 
 	// Once the project is done, return the workers to the pool.
 	defer func() {
-		staticPoolIndividualWorkers.Put(iws)
+		//		for _, _ = range workers {
+		//			//staticPoolIndividualWorkers.Put(w)
+		//		}
 	}()
-
-	workers := make([]*individualWorker, 0, len(*iws))
-	for i := range *iws {
-		workers = append(workers, &(*iws)[i])
-	}
 
 	// verify we have enough workers to complete the download
 	if len(workers) < ec.MinPieces() {
