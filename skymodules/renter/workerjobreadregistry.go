@@ -46,7 +46,7 @@ type (
 
 		staticResponseChan chan *jobReadRegistryResponse // Channel to send a response down
 
-		*jobGeneric
+		jobGeneric
 	}
 
 	// jobReadRegistryQueue is a list of ReadRegistry jobs that have been

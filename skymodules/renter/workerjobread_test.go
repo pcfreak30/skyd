@@ -95,7 +95,7 @@ func TestJobReadMetadata(t *testing.T) {
 			staticResponseChan: responseChan,
 			staticLength:       modules.SectorSize,
 
-			jobGeneric: &jobGeneric{
+			jobGeneric: jobGeneric{
 				staticCtx:   ctx,
 				staticQueue: w.staticJobReadQueue,
 				staticMetadata: jobReadMetadata{

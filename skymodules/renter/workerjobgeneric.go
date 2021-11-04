@@ -103,8 +103,8 @@ type (
 // newJobGeneric returns an initialized jobGeneric. The queue that is associated
 // with the job should be used as the input to this function. The job will
 // cancel itself if the cancelChan is closed.
-func newJobGeneric(ctx context.Context, queue workerJobQueue, metadata interface{}) *jobGeneric {
-	return &jobGeneric{
+func newJobGeneric(ctx context.Context, queue workerJobQueue, metadata interface{}) jobGeneric {
+	return jobGeneric{
 		staticCtx:      ctx,
 		staticQueue:    queue,
 		staticMetadata: metadata,

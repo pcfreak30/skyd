@@ -24,7 +24,7 @@ import (
 // minimum viable job.
 type jobTest struct {
 	// jobGeneric implements a lot of the boilerplate job code for us.
-	*jobGeneric
+	jobGeneric
 
 	// When a job completes it will send a result down the resultChan.
 	resultChan chan *jobTestResult

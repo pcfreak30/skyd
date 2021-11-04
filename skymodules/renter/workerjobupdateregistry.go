@@ -42,7 +42,7 @@ type (
 
 		staticResponseChan chan *jobUpdateRegistryResponse // Channel to send a response down
 
-		*jobGeneric
+		jobGeneric
 	}
 
 	// jobUpdateRegistryQueue is a list of UpdateRegistry jobs that have been

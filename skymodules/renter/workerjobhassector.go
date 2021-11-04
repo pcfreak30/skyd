@@ -74,7 +74,7 @@ type (
 
 		staticSpan opentracing.Span
 
-		*jobGeneric
+		jobGeneric
 	}
 
 	// jobHasSectorBatch is a batch of has sector lookups.
