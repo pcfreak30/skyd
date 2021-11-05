@@ -5014,6 +5014,153 @@ func TestSkynetFeePaid(t *testing.T) {
 	}
 }
 
+// TestSkynetDownloadPinnedSkyfile is a custom test to verify whether a portal
+// can still download a skyfile that was uploaded on portal A, pinned on portal
+// B and then manually removed from both portal's local filesystems.
+func TestSkynetDownloadPinnedSkyfile(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create test group with two portals
+	groupParams := siatest.GroupParams{
+		Hosts:  5,
+		Miners: 1,
+	}
+	groupDir := skynetTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err = tg.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	rt := node.RenterTemplate
+	rt.CreatePortal = true
+	_, err = tg.AddNodeN(rt, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Grab both portals
+	portals := tg.Portals()
+	p1 := portals[0]
+	p2 := portals[1]
+
+	// Upload a file to portal 1
+	filename := t.Name()
+	filedata := fastrand.Bytes(100)
+	skylink, sup, _, err := p1.UploadNewSkyfileWithDataBlocking(filename, filedata, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check the file is on the filesystem
+	originalFullPath, err := skymodules.SkynetFolder.Join(sup.SiaPath.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalFile, err := p1.RenterFileRootGet(originalFullPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(originalFile.File.Skylinks) != 1 {
+		t.Fatal("expecting 1 skylink")
+	}
+	if originalFile.File.Skylinks[0] != skylink {
+		t.Fatal("skylink mismatch")
+	}
+
+	// Pin the file on portal 2
+	pinPath := skymodules.RandomSiaPath()
+	p2.SkynetSkylinkPinPost(skylink, skymodules.SkyfilePinParameters{
+		SiaPath: pinPath,
+	})
+
+	// Assert we can download the file from portal 2
+	data, err := p2.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, filedata) {
+		t.Fatal(err)
+	}
+
+	// Check the file is on the filesystem
+	pinnedFullPath, err := skymodules.SkynetFolder.Join(pinPath.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinnedFile, err := p2.RenterFileRootGet(pinnedFullPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pinnedFile.File.Skylinks) != 1 {
+		t.Fatal("expecting 1 skylink")
+	}
+	if pinnedFile.File.Skylinks[0] != skylink {
+		t.Fatal("skylink mismatch")
+	}
+
+	// Delete the file and assert it is gone
+	err = p2.RenterFileDeleteRootPost(pinnedFullPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make sure the file is no longer present.
+	_, err = p2.RenterFileRootGet(pinnedFullPath)
+	if err == nil || !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+		t.Fatal("skyfile still present after deletion")
+	}
+
+	// Assert we can download the file from both portals still
+	data, err = p1.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, filedata) {
+		t.Fatal(err)
+	}
+	data, err = p2.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, filedata) {
+		t.Fatal(err)
+	}
+
+	// Delete the original file on portal 1
+	err = p1.RenterFileDeleteRootPost(originalFullPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make sure the file is no longer present.
+	_, err = p1.RenterFileRootGet(originalFullPath)
+	if err == nil || !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+		t.Fatal("skyfile still present after deletion")
+	}
+
+	// Assert we can download the file from both portals still
+	data, err = p1.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, filedata) {
+		t.Fatal(err)
+	}
+	data, err = p2.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, filedata) {
+		t.Fatal(err)
+	}
+}
+
 // TestSkynetPinUnpin tests pinning and unpinning a skylink
 func TestSkynetPinUnpin(t *testing.T) {
 	if testing.Short() {
