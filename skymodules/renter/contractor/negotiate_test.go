@@ -49,7 +49,7 @@ func (rt *contractorTester) Close() error {
 func newContractorTester(name string) (*contractorTester, closeFn, error) {
 	// Create the skymodules.
 	testdir := build.TempDir("contractor", name)
-	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
+	g, err := gateway.New("localhost:0", false, true, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
 		return nil, nil, err
 	}

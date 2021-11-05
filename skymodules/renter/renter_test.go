@@ -254,7 +254,7 @@ func newRenterTesterNoRenter(testdir string) (*renterTester, error) {
 	}
 
 	// Create the skymodules.
-	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
+	g, err := gateway.New("localhost:0", false, true, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
 		return nil, err
 	}
