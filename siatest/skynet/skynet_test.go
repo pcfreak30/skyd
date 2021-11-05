@@ -6193,11 +6193,18 @@ func TestSkynetFailedPin(t *testing.T) {
 		t.Fatal("Download should fail")
 	}
 	// Pin should fail
+	siaPath := skymodules.RandomSiaPath()
 	spp = skymodules.SkyfilePinParameters{
-		SiaPath: skymodules.RandomSiaPath(),
+		SiaPath: siaPath,
 	}
 	err = cleanPortal.SkynetSkylinkPinPost(skylink, spp)
 	if err == nil {
 		t.Fatal("Pin should fail")
+	}
+
+	// Confirm siafile is deleted
+	_, err = cleanPortal.SkyfileGet(siaPath)
+	if err == nil || !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+		t.Fatal("unexpected error", err)
 	}
 }

@@ -1041,6 +1041,18 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 	if err != nil {
 		return errors.AddContext(err, "unable to upload large skyfile")
 	}
+
+	// Sanity Check that the fileNode created matches the layout. This is to
+	// protect against an edge case where a portal can download a basesector
+	// but none of the fanout data. In this case the fileNode is
+	// successfully created, but with no data uploaded.
+	actual := fileNode.Metadata().FileSize
+	expected := int64(layout.Filesize)
+	if actual != expected {
+		return fmt.Errorf("pin unsuccessful, filesize %v does not match layout filesize %v", actual, expected)
+	}
+
+	// Add skylink to FileNode
 	err = fileNode.AddSkylink(skylink)
 	if err != nil {
 		return errors.AddContext(err, "unable to upload skyfile fanout")
