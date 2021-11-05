@@ -36,3 +36,5 @@ require (
 )
 
 replace go.sia.tech/siad => github.com/ChrisSchinnerl/siad v1.9.9
+
+replace gitlab.com/NebulousLabs/siamux => gitlab.com/ChrisSchinnerl/siamux v1.0.0

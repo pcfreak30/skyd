@@ -834,13 +834,6 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	// workers to avoid needless performing gouging checks on every iteration
 	workers := pdc.workers()
 
-	// Once the project is done, return the workers to the pool.
-	defer func() {
-		//		for _, _ = range workers {
-		//			//staticPoolIndividualWorkers.Put(w)
-		//		}
-	}()
-
 	// verify we have enough workers to complete the download
 	if len(workers) < ec.MinPieces() {
 		pdc.fail(errors.Compose(ErrRootNotFound, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v", len(workers), ec.MinPieces()))))
