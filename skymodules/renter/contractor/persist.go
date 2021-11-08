@@ -28,12 +28,12 @@ var (
 
 // contractorPersist defines what Contractor data persists across sessions.
 type contractorPersist struct {
-	Allowance            skymodules.Allowance             `json:"allowance"`
-	BlockHeight          types.BlockHeight                `json:"blockheight"`
-	CurrentPeriod        types.BlockHeight                `json:"currentperiod"`
-	LastChange           modules.ConsensusChangeID        `json:"lastchange"`
-	RecentRecoveryChange modules.ConsensusChangeID        `json:"recentrecoverychange"`
-	OldContracts         []skymodules.RenterContract      `json:"oldcontracts"`
+	Allowance            skymodules.Allowance      `json:"allowance"`
+	BlockHeight          types.BlockHeight         `json:"blockheight"`
+	CurrentPeriod        types.BlockHeight         `json:"currentperiod"`
+	LastChange           modules.ConsensusChangeID `json:"lastchange"`
+	RecentRecoveryChange modules.ConsensusChangeID `json:"recentrecoverychange"`
+	//OldContracts         []skymodules.RenterContract      `json:"oldcontracts"`
 	DoubleSpentContracts map[string]types.BlockHeight     `json:"doublespentcontracts"`
 	PreferredHosts       []string                         `json:"preferredhosts"`
 	RecoverableContracts []skymodules.RecoverableContract `json:"recoverablecontracts"`
@@ -72,9 +72,9 @@ func (c *Contractor) persistData() contractorPersist {
 	for k, v := range c.renewedTo {
 		data.RenewedTo[k.String()] = v
 	}
-	for _, contract := range c.oldContracts {
-		data.OldContracts = append(data.OldContracts, contract)
-	}
+	//	for _, contract := range c.oldContracts {
+	//		data.OldContracts = append(data.OldContracts, contract)
+	//	}
 	for fcID, height := range c.doubleSpentContracts {
 		data.DoubleSpentContracts[fcID.String()] = height
 	}
@@ -141,9 +141,9 @@ func (c *Contractor) load() error {
 		}
 		c.renewedTo[fcid] = v
 	}
-	for _, contract := range data.OldContracts {
-		c.oldContracts[contract.ID] = contract
-	}
+	//	for _, contract := range data.OldContracts {
+	//		c.oldContracts[contract.ID] = contract
+	//	}
 	for fcIDString, height := range data.DoubleSpentContracts {
 		if err := fcid.LoadString(fcIDString); err != nil {
 			return err
@@ -207,22 +207,22 @@ func convertPersist(dir string, rl *ratelimit.RateLimit) (err error) {
 		CurrentPeriod: p.CurrentPeriod,
 		LastChange:    p.LastChange,
 	}
-	for _, c := range p.OldContracts {
-		data.OldContracts = append(data.OldContracts, skymodules.RenterContract{
-			ID:               c.ID,
-			HostPublicKey:    c.HostPublicKey,
-			StartHeight:      c.StartHeight,
-			EndHeight:        c.EndHeight(),
-			RenterFunds:      c.RenterFunds(),
-			DownloadSpending: c.DownloadSpending,
-			StorageSpending:  c.StorageSpending,
-			UploadSpending:   c.UploadSpending,
-			TotalCost:        c.TotalCost,
-			ContractFee:      c.ContractFee,
-			TxnFee:           c.TxnFee,
-			SiafundFee:       c.SiafundFee,
-		})
-	}
+	//	for _, c := range p.OldContracts {
+	//		data.OldContracts = append(data.OldContracts, skymodules.RenterContract{
+	//			ID:               c.ID,
+	//			HostPublicKey:    c.HostPublicKey,
+	//			StartHeight:      c.StartHeight,
+	//			EndHeight:        c.EndHeight(),
+	//			RenterFunds:      c.RenterFunds(),
+	//			DownloadSpending: c.DownloadSpending,
+	//			StorageSpending:  c.StorageSpending,
+	//			UploadSpending:   c.UploadSpending,
+	//			TotalCost:        c.TotalCost,
+	//			ContractFee:      c.ContractFee,
+	//			TxnFee:           c.TxnFee,
+	//			SiafundFee:       c.SiafundFee,
+	//		})
+	//	}
 	err = persist.SaveJSON(persistMeta, data, persistPath)
 	if err != nil {
 		return err
