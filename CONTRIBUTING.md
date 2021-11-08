@@ -37,7 +37,7 @@ and use the go tool.
 To build skyd on your machine, enter the following on the command line:
 
 ```bash
-# Download Skyd and its dependencies
+# Download skyd and its dependencies
 # Binaries will be installed in $GOPATH/bin
 $ go get -u gitlab.com/SkynetLabs/skyd/...
 
