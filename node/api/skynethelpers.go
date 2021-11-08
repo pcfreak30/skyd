@@ -99,28 +99,6 @@ func (wr *writeReader) Read(_ []byte) (int, error) {
 	return 0, io.EOF
 }
 
-// monetizedResponseWriter is a wrapper for a response writer. It monetizes the
-// returned bytes.
-type monetizedResponseWriter struct {
-	staticInner http.ResponseWriter
-	staticW     io.Writer
-}
-
-// Header calls the inner writers Header method.
-func (rw *monetizedResponseWriter) Header() http.Header {
-	return rw.staticInner.Header()
-}
-
-// WriteHeader calls the inner writers WriteHeader method.
-func (rw *monetizedResponseWriter) WriteHeader(statusCode int) {
-	rw.staticInner.WriteHeader(statusCode)
-}
-
-// Write writes to the underlying monetized writer.
-func (rw *monetizedResponseWriter) Write(b []byte) (int, error) {
-	return rw.staticW.Write(b)
-}
-
 // newCustomErrorWriter creates a new customErrorWriter.
 func newCustomErrorWriter(meta skymodules.SkyfileMetadata, streamer io.ReadSeeker) *customErrorWriter {
 	if meta.ErrorPages == nil {
@@ -325,7 +303,7 @@ func parseDownloadRequestParameters(req *http.Request) (*skyfileDownloadParams, 
 	}
 
 	// Parse pricePerMS.
-	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMS := skymodules.DefaultSkynetPricePerMS
 	pricePerMSStr := queryForm.Get("priceperms")
 	if pricePerMSStr != "" {
 		_, err = fmt.Sscan(pricePerMSStr, &pricePerMS)

@@ -98,7 +98,7 @@ func checkUploadSnapshotGouging(allowance skymodules.Allowance, hostSettings mod
 // channel.
 func (j *jobUploadSnapshot) callDiscard(err error) {
 	resp := &jobUploadSnapshotResponse{
-		staticErr: errors.Extend(err, ErrJobDiscarded),
+		staticErr: err,
 	}
 	w := j.staticQueue.staticWorker()
 	errLaunch := w.staticTG.Launch(func() {

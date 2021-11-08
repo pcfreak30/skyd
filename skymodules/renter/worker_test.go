@@ -200,7 +200,7 @@ func TestReadOffsetCorruptedProof(t *testing.T) {
 func TestManagedAsyncReady(t *testing.T) {
 	w := new(worker)
 	w.initJobHasSectorQueue()
-	jrs := &jobReadStats{}
+	jrs := NewJobReadStats()
 	w.initJobReadQueue(jrs)
 	w.initJobLowPrioReadQueue(jrs)
 	w.initJobReadRegistryQueue()

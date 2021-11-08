@@ -308,8 +308,10 @@ func TestPruneUnfinishedFiles(t *testing.T) {
 	}
 	t.Parallel()
 
+	t.Skip("Re-enable with deletion")
+
 	// Create renter
-	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyShortUnfinishedFilesPruneDuration{})
+	rt, err := newRenterTesterWithDependency(t.Name(), dependencies.NewDependencyUnfinishedFiles())
 	if err != nil {
 		t.Fatal(err)
 	}

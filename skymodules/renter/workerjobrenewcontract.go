@@ -53,7 +53,7 @@ func (j *jobRenew) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
 	w.staticTG.Launch(func() {
 		response := &jobRenewResponse{
-			staticErr: errors.Extend(err, ErrJobDiscarded),
+			staticErr: err,
 		}
 		select {
 		case j.staticResponseChan <- response:

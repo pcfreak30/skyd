@@ -19,6 +19,7 @@ func TestMetadataCompatCheck(t *testing.T) {
 
 	t.Run("NilMetadataToV1", testUpgradeNilMetadataToV1)
 	t.Run("V1MetadataToV2", testUpgradeV1MetadataToV2)
+	t.Run("V2MetadataToV3", testUpgradeV2MetadataToV3)
 }
 
 // testUpgradeNilMetadataToV1 tests the compat code related to upgrading from a
@@ -171,7 +172,108 @@ func testUpgradeV1MetadataToV2(t *testing.T) {
 		}
 
 		// Check the metadata
-		err = check(sf, finished, stuck, metadataVersion)
+		//
+		// Update for MetadateVersion3, all cases should now be
+		// !finished and !stuck
+		err = check(sf, false, false, metadataVersion)
+		if err != nil {
+			t.Fatal(test, err)
+		}
+	}
+}
+
+// testUpgradeV2MetadataToV3 tests the compat code related to upgrading from a
+// metadataVersion2 to metadataVersion3
+func testUpgradeV2MetadataToV3(t *testing.T) {
+	t.Parallel()
+
+	// Create siafile
+	sf := newBlankTestFile()
+
+	// check checks the metadata
+	check := func(sf *SiaFile, version [16]byte) error {
+		// Version check
+		if sf.staticMetadata.StaticVersion != version {
+			return fmt.Errorf("Wrong version, expected %v got %v", version, sf.staticMetadata.StaticVersion)
+		}
+
+		// Check Stuck
+		if sf.staticMetadata.NumStuckChunks > 0 {
+			return fmt.Errorf("File should not be stuck %v", sf.staticMetadata.NumStuckChunks)
+		}
+
+		// Check finished
+		if sf.finished() {
+			return errors.New("file should not be finished")
+		}
+		return nil
+	}
+
+	// reset resets the metadata
+	reset := func(sf *SiaFile, finished, stuck bool) {
+		// Reset version and finished flag
+		sf.staticMetadata.StaticVersion = metadataVersion2
+		sf.staticMetadata.Finished = finished
+
+		// Set the expected stuck state
+		if stuck {
+			sf.staticMetadata.NumStuckChunks = 1
+		} else {
+			sf.staticMetadata.NumStuckChunks = 0
+		}
+	}
+
+	// Define tests
+	var tests = []struct {
+		name string
+
+		finished bool
+		stuck    bool
+	}{
+		// Test for finished stuck
+		{"Finished_Stuck", true, true},
+		// Test for unfinished stuck
+		{"Unfinished_Stuck", false, true},
+		// Test for finished unstuck
+		{"Finished_Unstuck", true, false},
+		// Test for unfinished unstuck
+		{"Unfinished_Unstuck", false, false},
+	}
+
+	// Run tests
+	for _, test := range tests {
+		// Reset the metadata
+		reset(sf, test.finished, test.stuck)
+
+		// test testUpgradeV2MetadataToV3
+		err := sf.upgradeMetadataFromV2ToV3()
+		if err != nil {
+			t.Fatal(test, err)
+		}
+
+		// Check the metadata
+		err = check(sf, metadataVersion3)
+		if err != nil {
+			t.Fatal(test, err)
+		}
+
+		// Reset the metadata
+		reset(sf, test.finished, test.stuck)
+
+		// Save the metadata to disk
+		err = sf.SaveMetadata()
+		if err != nil {
+			t.Fatal(test, err)
+		}
+
+		// Reload the SiaFile from disk
+		sf, err = LoadSiaFile(sf.siaFilePath, sf.wal)
+		if err != nil {
+			t.Fatal(test, err)
+		}
+
+		// Check the metadata
+		err = check(sf, metadataVersion)
 		if err != nil {
 			t.Fatal(test, err)
 		}

@@ -1,0 +1,1 @@
+- add bandwidthlimit and delay parameters to registry subscriptions for ratelimiting users

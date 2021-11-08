@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -123,6 +124,7 @@ func TestRenterRemoteRepair(t *testing.T) {
 		{Name: "Basic", Test: testRemoteRepairBasic},
 		{Name: "ForceLegacyDownload", Test: testRemoteRepairForceLegacyDownload},
 		{Name: "FailLegacyDownload", Test: testRemoteRepairFailLegacyDownload},
+		{Name: "FailLegacyDownloadMultipleDataPieces", Test: testRemoteRepairFailLegacyDownloadMultiDataPieces},
 	}
 
 	// Run tests
@@ -1216,7 +1218,7 @@ func testPriceTablesUpdated(t *testing.T, tg *siatest.TestGroup) {
 // testRemoteRepairBasic executes testRemoteRepair with a standard renter.
 func testRemoteRepairBasic(t *testing.T, tg *siatest.TestGroup) {
 	rt := node.RenterTemplate
-	testRemoteRepair(t, tg, rt)
+	testRemoteRepair(t, tg, rt, 1)
 }
 
 // testRemoteRepairFailLegacyDownload executes testRemoteRepair while causing
@@ -1224,7 +1226,16 @@ func testRemoteRepairBasic(t *testing.T, tg *siatest.TestGroup) {
 func testRemoteRepairFailLegacyDownload(t *testing.T, tg *siatest.TestGroup) {
 	rt := node.RenterTemplate
 	rt.RenterDeps = &dependencies.DependencyFailLegacyRepairDownload{}
-	testRemoteRepair(t, tg, rt)
+	testRemoteRepair(t, tg, rt, 1)
+}
+
+// testRemoteRepairFailLegacyDownloadMultiDataPieces executes testRemoteRepair
+// while causing the legacy repair download to fail while uploading a file with
+// 2 datapieces.
+func testRemoteRepairFailLegacyDownloadMultiDataPieces(t *testing.T, tg *siatest.TestGroup) {
+	rt := node.RenterTemplate
+	rt.RenterDeps = &dependencies.DependencyFailLegacyRepairDownload{}
+	testRemoteRepair(t, tg, rt, 2)
 }
 
 // testRemoteRepairForceLegacyDownload executes testRemoteRepair while forcing
@@ -1232,14 +1243,14 @@ func testRemoteRepairFailLegacyDownload(t *testing.T, tg *siatest.TestGroup) {
 func testRemoteRepairForceLegacyDownload(t *testing.T, tg *siatest.TestGroup) {
 	rt := node.RenterTemplate
 	rt.RenterDeps = &dependencies.DependencyForceLegacyRepairDownload{}
-	testRemoteRepair(t, tg, rt)
+	testRemoteRepair(t, tg, rt, 1)
 }
 
 // testRemoteRepair tests if a renter correctly repairs a file by
 // downloading it after a host goes offline.
 //
 // This test was extended to also support testing the download cooldowns.
-func testRemoteRepair(t *testing.T, tg *siatest.TestGroup, rt node.NodeParams) {
+func testRemoteRepair(t *testing.T, tg *siatest.TestGroup, rt node.NodeParams, dataPieces uint64) {
 	// Create the renter.
 	nodes, err := tg.AddNodeN(rt, 1)
 	if err != nil {
@@ -1255,8 +1266,8 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup, rt node.NodeParams) {
 	}()
 
 	// Check that we have enough hosts for this test.
-	if len(tg.Hosts()) < 2 {
-		t.Fatal("This test requires at least 2 hosts")
+	if len(tg.Hosts()) < 3 {
+		t.Fatal("This test requires at least 3 hosts")
 	}
 
 	// Choose a filesize for the upload. To hit a wide range of cases,
@@ -1274,7 +1285,6 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup, rt node.NodeParams) {
 	t.Log("testRemoteRepair fileSize choice:", fileSize)
 
 	// Set fileSize and redundancy for upload
-	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
 	// Upload file
@@ -5443,7 +5453,7 @@ func TestRenterClean(t *testing.T) {
 	// Since it doesn't have a local file it will appear as unrecoverable if the
 	// hosts are taken down.
 	data := fastrand.Bytes(100)
-	_, _, _, rf3, err := r.UploadSkyfileCustom("skyfile", data, "", renter.SkyfileDefaultBaseChunkRedundancy, false)
+	_, sup, _, rf3, err := r.UploadSkyfileCustom("skyfile", data, "", renter.SkyfileDefaultBaseChunkRedundancy, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5452,6 +5462,14 @@ func TestRenterClean(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err = r.WaitForUploadHealth(rf3); err != nil {
+		t.Fatal(err)
+	}
+	skyfileDir, err := sup.SiaPath.Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	skyfileDir, err = skyfileDir.Rebase(skymodules.RootSiaPath(), skymodules.SkynetFolder)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -5482,7 +5500,7 @@ func TestRenterClean(t *testing.T) {
 		}
 
 		// Check for the expected SkyFiles
-		rds, err = r.RenterDirRootGet(skymodules.SkynetFolder)
+		rds, err = r.RenterDirRootGet(skyfileDir)
 		if err != nil {
 			return err
 		}
@@ -6040,6 +6058,8 @@ func TestRenterUnfinishedFiles(t *testing.T) {
 	}
 	t.Parallel()
 
+	t.Skip("Re-enable with deletion code")
+
 	// Create a group for testing
 	groupParams := siatest.GroupParams{
 		Hosts:  2,
@@ -6058,13 +6078,25 @@ func TestRenterUnfinishedFiles(t *testing.T) {
 
 	// Add renter with depenedency
 	renterParams := node.Renter(testDir)
-	renterParams.RenterDeps = &dependencies.DependencyShortUnfinishedFilesPruneDuration{}
+	renterParams.RenterDeps = dependencies.NewDependencyUnfinishedFiles()
 	_, err = tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	t.Run("WithLocalPath", func(t *testing.T) {
+		testRenterUnfinishedFileWithLocalPath(t, tg)
+	})
+	t.Run("WithoutLocalPath", func(t *testing.T) {
+		testRenterUnfinishedFileWithoutLocalPath(t, tg)
+	})
+}
+
+// testRenterUnfinishedFileWithLocalPath probes the handling of an unfinished file with a local path
+func testRenterUnfinishedFileWithLocalPath(t *testing.T, tg *siatest.TestGroup) {
+	// Grab Renter
 	r := tg.Renters()[0]
+
 	// Upload a file
 	_, rf, err := r.UploadNewFileBlocking(100, 1, 1, false)
 	if err != nil {
@@ -6106,9 +6138,7 @@ func TestRenterUnfinishedFiles(t *testing.T) {
 		t.Fatal("Redundancy is greater than 1", fi.Redundancy)
 	}
 
-	// Remove the local file. This would simulate a streaming upload
-	// failing, leaving a file without a localfile to repair from and not
-	// ever reaching 1x redundancy.
+	// Remove the local file.
 	if err := lf.Delete(); err != nil {
 		t.Fatal(err)
 	}
@@ -6120,19 +6150,50 @@ func TestRenterUnfinishedFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// File should become marked as unfinished because the repair/health
-	// loops should overwrite the localpath once the localfile cannot be
-	// accessed.
+	// Even though the repair/health loops should overwrite the localpath
+	// once the localfile cannot be accessed, the file should stay marked as
+	// finished and therefore should not be pruned.
+	time.Sleep(renter.UnfinishedFilePruneDurationTestDeps)
+
+	// Get the file info
+	fi, err = r.File(rf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fi.Finished {
+		t.Fatal("file not marked as finished")
+	}
+	if fi.Redundancy >= 1 {
+		t.Fatal("Redundancy is greater than 1", fi.Redundancy)
+	}
+}
+
+// testRenterUnfinishedFileWithoutLocalPath probes the handling of unfinished
+// files without a localpath
+func testRenterUnfinishedFileWithoutLocalPath(t *testing.T, tg *siatest.TestGroup) {
+	// Grab Renter
+	r := tg.Renters()[0]
+
+	// Upload a file that will finish.
+	data := fastrand.Bytes(100)
+	d := bytes.NewReader(data)
+	finishedSiaPath := skymodules.RandomSiaPath()
+	err := r.RenterUploadStreamPost(d, finishedSiaPath, 1, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check if the renter has the file. This is done in a build retry
+	// because the finished field is updated in updateMetadata which is
+	// called in the chunk clean up process.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		// Get the file info
-		fi, err = r.File(rf)
-		// Ignore ErrNotExist errors to avoid NDFs as the file is
-		// eventually expected to be deleted.
-		if err != nil && !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+		rf, err := r.RenterFileGet(finishedSiaPath)
+		if err != nil {
 			return err
 		}
-		if fi.Finished {
-			return errors.New("File is marked as finished")
+		// File should be finished
+		if !rf.File.Finished {
+			return errors.New("File should be finished")
 		}
 		return nil
 	})
@@ -6140,14 +6201,45 @@ func TestRenterUnfinishedFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// File should be deleted now that it is marked as unfinished
+	// Upload a file that won't finish.
+	data = fastrand.Bytes(100)
+	d = bytes.NewReader(data)
+	unfinishedSiaPath := skymodules.RandomSiaPath()
+	oneMoreThanHosts := uint64(len(tg.Hosts()) + 1)
+	err = r.RenterUploadStreamPost(d, unfinishedSiaPath, oneMoreThanHosts, oneMoreThanHosts, false)
+	if err == nil {
+		t.Fatal("Expected Upload Stream to fail for too many dp and pp")
+	}
+
+	// Check if the renter has the file
+	rf, err := r.RenterFileGet(unfinishedSiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// File should be unfinished
+	if rf.File.Finished {
+		t.Fatal("File should not be finished")
+	}
+
+	// Since the file is unfinished, the file should be pruned.
 	err = build.Retry(15, time.Second, func() error {
-		fi, err = r.File(rf)
-		if err == nil || !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
-			return fmt.Errorf("Unexpected error %v", err)
+		err = r.RenterBubblePost(skymodules.RootSiaPath(), true)
+		if err != nil {
+			return err
 		}
-		return nil
+		rf, err = r.RenterFileGet(unfinishedSiaPath)
+		if err != nil && strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+			return nil
+		}
+		return errors.New("file still exists")
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The Finished file should still be present
+	rf, err = r.RenterFileGet(finishedSiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}

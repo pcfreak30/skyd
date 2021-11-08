@@ -60,6 +60,14 @@ var (
 		ExpectedRedundancy: 3.0,                                          // default is 10/30 erasure coding
 		MaxPeriodChurn:     uint64(250e9),                                // 250 GB
 	}
+
+	// DefaultSkynetBaseCost is the default base cost applied to all downloads.
+	// The base cost protects us against very cheap (or free) workers as their
+	// cost factor doesn't weigh as much. It also directly influences the cost
+	// of an overdrive worker, the higher the base cost, the higher the cost of
+	// an overdrive.
+	DefaultSkynetBaseCost = types.SiacoinPrecision.Mul64(200).Div(types.NewCurrency64(1e12)) // 200SC / TB
+
 	// ErrHostFault indicates if an error is the host's fault.
 	ErrHostFault = errors.New("host has returned an error")
 
@@ -1263,6 +1271,11 @@ type Renter interface {
 
 	// MountInfo returns the list of currently mounted FUSE filesystems.
 	MountInfo() []MountInfo
+
+	// ParseSkyfileMetadata parses all the information from a base sector
+	// similar to skymodules.ParseSkyfileMetadata. The difference is that it
+	// can also parse a recursive base sector.
+	ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []byte, sm SkyfileMetadata, rawSM, baseSectorPayload, baseSectorExtension []byte, err error)
 
 	// NewRegistrySubscriber creates a new registry subscriber which can be
 	// used to subscribe to registry entries for updates.

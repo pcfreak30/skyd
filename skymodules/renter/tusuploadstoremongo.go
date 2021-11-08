@@ -2,6 +2,7 @@ package renter
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readconcern"
+	"go.mongodb.org/mongo-driver/mongo/readpref"
 	"go.mongodb.org/mongo-driver/mongo/writeconcern"
 	"go.sia.tech/siad/crypto"
 )
@@ -37,6 +39,10 @@ const (
 	// TusUploadsMongoCollectionName is the name of the collection within
 	// the database used to store upload info.
 	TusUploadsMongoCollectionName = "uploads"
+
+	// TusFanoutMongoCollectionName is the name of the collection within
+	// the database used to store fanout chunks.
+	TusFanoutMongoCollectionName = "fanout"
 
 	// tusLocksMongoCollectionName is the name of the collection within the
 	// database used to store locks.
@@ -65,10 +71,14 @@ type (
 		LastWrite   time.Time `bson:"lastwrite"`
 		ServerNames []string  `bson:"servernames"`
 
-		FanoutBytes []byte             `bson:"fanoutbytes"`
-		FileInfo    handler.FileInfo   `bson:"fileinfo"`
-		FileName    string             `bson:"filename"`
-		SiaPath     skymodules.SiaPath `bson:"siapath"`
+		// TODO: Remove FanoutBytes after the next deployment for a
+		// smooth transition of ongoing uploads.
+		FanoutBytes []byte `bson:"fanoutbytes"`
+
+		FanoutSequenceCounter uint64             `bson:"fanoutsequencecounter"`
+		FileInfo              handler.FileInfo   `bson:"fileinfo"`
+		FileName              string             `bson:"filename"`
+		SiaPath               skymodules.SiaPath `bson:"siapath"`
 
 		BaseChunkRedundancy uint8             `bson:"basechunkredundancy"`
 		Metadata            []byte            `bson:"metadata"`
@@ -77,6 +87,14 @@ type (
 		CipherType          crypto.CipherType `bson:"ciphertype"`
 
 		staticUploadStore *skynetTUSMongoUploadStore
+	}
+
+	// fanoutChunk describes a piece of a fanout belonging to an upload.
+	fanoutChunk struct {
+		ID             string `bson:"_id"`
+		UploadID       string `bson:"uploadid"`
+		SequenceNumber uint64 `bson:"sequencenumber"`
+		Data           []byte `bson:"data"`
 	}
 
 	// skynetMongoLock is a lock used for locking an upload.
@@ -219,13 +237,13 @@ func (us *skynetTUSMongoUploadStore) Prune(ctx context.Context, ids []string) er
 // CreateUpload creates a new upload and adds it to the store.
 func (us *skynetTUSMongoUploadStore) CreateUpload(ctx context.Context, fi handler.FileInfo, sp skymodules.SiaPath, fileName string, baseChunkRedundancy uint8, fanoutDataPieces, fanoutParityPieces int, sm []byte, ct crypto.CipherType) (skymodules.SkynetTUSUpload, error) {
 	upload := &MongoTUSUpload{
-		ID:          fi.ID,
-		Complete:    false,
-		FanoutBytes: nil,
-		FileInfo:    fi,
-		LastWrite:   time.Now().UTC(),
-		FileName:    fileName,
-		SiaPath:     sp,
+		ID:                    fi.ID,
+		Complete:              false,
+		FanoutSequenceCounter: 1,
+		FileInfo:              fi,
+		LastWrite:             time.Now().UTC(),
+		FileName:              fileName,
+		SiaPath:               sp,
 
 		BaseChunkRedundancy: baseChunkRedundancy,
 		Metadata:            sm,
@@ -286,6 +304,11 @@ func (us *skynetTUSMongoUploadStore) GetUpload(ctx context.Context, id string) (
 	return &upload, nil
 }
 
+// staticFanoutCollection returns the mongo collection for the fanout chunks.
+func (us *skynetTUSMongoUploadStore) staticFanoutCollection() *mongo.Collection {
+	return us.staticClient.Database(TusDBName).Collection(TusFanoutMongoCollectionName)
+}
+
 // staticUploadCollection returns the mongo collection for the uploads.
 func (us *skynetTUSMongoUploadStore) staticUploadCollection() *mongo.Collection {
 	return us.staticClient.Database(TusDBName).Collection(TusUploadsMongoCollectionName)
@@ -343,23 +366,68 @@ func (u *MongoTUSUpload) UploadParams(ctx context.Context) (skymodules.SkyfileUp
 // CommitWriteChunk commits writing a chunk of either a small or
 // large file with fanout.
 func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error {
-	// NOTE: This could potentially be improved to append to the fanout
-	// instead of replacing it.
-	u.FanoutBytes = append(u.FanoutBytes, fanout...)
-	return u.commitWriteChunk(ctx, bson.M{
-		"fanoutbytes": u.FanoutBytes,
-	}, newOffset, newLastWrite)
+	// COMPAT: If an upload has the 'fanoutbytes' set, we prepend the fanout
+	// with them and set them to nil in the db.
+	if len(u.FanoutBytes) > 0 {
+		newFanout := make([]byte, len(u.FanoutBytes)+len(fanout))
+		copy(newFanout, u.FanoutBytes)
+		copy(newFanout[len(u.FanoutBytes):], fanout)
+		fanout = newFanout
+	}
+	// This method writes to the db twice. Make sure that the writes happen
+	// atomically.
+	err := u.staticUploadStore.staticClient.UseSession(ctx, func(sctx mongo.SessionContext) error {
+		_, err := sctx.WithTransaction(ctx, func(sctx mongo.SessionContext) (interface{}, error) {
+			// Get the next sequence number.
+			fsc := u.FanoutSequenceCounter
+
+			// Insert the chunk.
+			fc := fanoutChunk{
+				ID:             fmt.Sprintf("%v-%v", u.ID, fsc),
+				Data:           fanout,
+				UploadID:       u.ID,
+				SequenceNumber: fsc,
+			}
+			fanouts := u.staticUploadStore.staticFanoutCollection()
+			_, err := fanouts.InsertOne(ctx, fc)
+			if err != nil {
+				// Check for duplicate key error.
+				// Reference: https://stackoverflow.com/questions/56916969/with-mongodb-go-driver-how-do-i-get-the-inner-exceptions
+				mongoErr, ok := err.(mongo.WriteException)
+				if ok && len(mongoErr.WriteErrors) > 0 && mongoErr.WriteErrors[0].Code == 11000 {
+					return nil, nil // Nothing to do. Chunk was already written before.
+				}
+				return nil, errors.AddContext(err, "failed to insert fanout chunk")
+			}
+
+			// Commit the chunk write.
+			return nil, u.commitWriteChunk(ctx, bson.M{
+				"fanoutsequencecounter": fsc + 1, // increment the sequence
+				"fanoutbytes":           nil,
+			}, newOffset, newLastWrite)
+		})
+		return err
+	})
+	if err != nil {
+		return err
+	}
+
+	// Increment the sequence number in memory if everything went well.
+	u.FanoutSequenceCounter++
+	u.FanoutBytes = nil
+	return nil
 }
 
 // commitWriteChunk commits a chunk write and also applies the updates provided
 // by update.
 func (u *MongoTUSUpload) commitWriteChunk(ctx context.Context, set bson.M, newOffset int64, newLastWrite time.Time) error {
+	// First, try to update the db. That way, we don't need to revert the
+	// in-memory state if writing to the database fails.
 	uploads := u.staticUploadStore.staticUploadCollection()
-	u.FileInfo.Offset = newOffset
-	u.LastWrite = newLastWrite
-	set["fileinfo"] = u.FileInfo
-	set["lastwrite"] = u.LastWrite.UTC()
-	set["servernames"] = u.ServerNames
+	newFileInfo := u.FileInfo
+	newFileInfo.Offset = newOffset
+	set["fileinfo"] = newFileInfo
+	set["lastwrite"] = newLastWrite.UTC()
 	update := bson.M{
 		"$set": set,
 	}
@@ -367,6 +435,12 @@ func (u *MongoTUSUpload) commitWriteChunk(ctx context.Context, set bson.M, newOf
 	if errors.Contains(result.Err(), mongo.ErrNoDocuments) {
 		return os.ErrNotExist // return os.ErrNotExist for TUS
 	}
+	if err := result.Err(); err != nil {
+		return err
+	}
+	// Then update the in-memory state.
+	u.FileInfo = newFileInfo
+	u.LastWrite = newLastWrite
 	return result.Err()
 }
 
@@ -376,30 +450,72 @@ func (u *MongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodu
 		return ErrUploadFinished
 	}
 	uploads := u.staticUploadStore.staticUploadCollection()
-	u.Complete = true
-	u.FileInfo.Offset = u.FileInfo.Size
-	u.FileInfo.MetaData["Skylink"] = skylink.String()
-	u.LastWrite = time.Now()
+
+	// First, try to update the db. That way, we don't need to revert the
+	// in-memory state if writing to the database fails.
+	newComplete := true
+	newFileInfo := u.FileInfo
+	newFileInfo.Offset = newFileInfo.Size
+	newFileInfo.MetaData["Skylink"] = skylink.String()
 	result := uploads.FindOneAndUpdate(ctx, bson.M{"_id": u.FileInfo.ID}, bson.M{
 		"$set": bson.M{
-			"complete": u.Complete,
-			"fileinfo": u.FileInfo,
-		},
-		// Clean up some space.
-		"$unset": bson.M{
-			"fanoutbytes": "",
+			"complete": newComplete,
+			"fileinfo": newFileInfo,
 		},
 	})
 	if errors.Contains(result.Err(), mongo.ErrNoDocuments) {
 		return os.ErrNotExist // return os.ErrNotExist for TUS
 	}
-	return result.Err()
+	if err := result.Err(); err != nil {
+		return result.Err()
+	}
+
+	// Then update the in-memory state.
+	u.Complete = newComplete
+	u.FileInfo = newFileInfo
+	u.LastWrite = time.Now()
+	u.FanoutBytes = nil
+
+	// Remove the fanout chunks.
+	fanout := u.staticUploadStore.staticFanoutCollection()
+	_, err := fanout.DeleteMany(ctx, bson.M{"uploadid": u.ID})
+	return err
 }
 
 // Fanout returns the fanout of the upload. Should only be
 // called once it's done uploading.
 func (u *MongoTUSUpload) Fanout(ctx context.Context) ([]byte, error) {
-	return u.FanoutBytes, nil
+	fanouts := u.staticUploadStore.staticFanoutCollection()
+
+	// Find all chunks which belong to the upload and sort them by sequence
+	// number.
+	cursor, err := fanouts.Find(ctx, bson.M{
+		"uploadid": u.ID,
+	}, options.Find().SetSort(bson.M{
+		"sequencenumber": 1, // '1' == ascending order
+	}))
+	if err != nil {
+		return nil, err
+	}
+
+	var fanout []byte
+	expectedSequence := uint64(1) // starts at 1
+	for cursor.Next(ctx) {
+		var fanoutChunk fanoutChunk
+		if err := cursor.Decode(&fanoutChunk); err != nil {
+			build.Critical("Fanout: failed to decode fanout chunk", err)
+			return nil, err
+		}
+		// Sanity check that the sequence is complete.
+		if fanoutChunk.SequenceNumber != expectedSequence {
+			err := fmt.Errorf("Fanout: unexpected sequence number %v != %v", fanoutChunk.SequenceNumber, expectedSequence)
+			build.Critical(err)
+			return nil, err
+		}
+		fanout = append(fanout, fanoutChunk.Data...)
+		expectedSequence++
+	}
+	return fanout, nil
 }
 
 // SkyfileMetadata returns the metadata of the upload. Should
@@ -426,6 +542,7 @@ func newSkynetTUSMongoUploadStore(ctx context.Context, uri, portalName string, c
 		ApplyURI(uri).
 		SetAuth(creds).
 		SetReadConcern(readconcern.Local()).
+		SetReadPreference(readpref.Nearest()).
 		SetWriteConcern(writeconcern.New(writeconcern.W(1)))
 
 	client, err := mongo.Connect(ctx, opts)
@@ -451,6 +568,16 @@ func newSkynetTUSMongoUploadStore(ctx context.Context, uri, portalName string, c
 		{Keys: bson.M{"servernames": 1}},
 	}
 	_, err = us.staticUploadCollection().Indexes().CreateMany(ctx, indexes)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create the indices for the fanout collection.
+	indexes = []mongo.IndexModel{
+		{Keys: bson.M{"upoadid": 1}},
+		{Keys: bson.M{"sequencenumber": 1}},
+	}
+	_, err = us.staticFanoutCollection().Indexes().CreateMany(ctx, indexes)
 	if err != nil {
 		return nil, err
 	}

@@ -1,0 +1,1 @@
+- Update handling of compat code for unfinished files.

@@ -7,6 +7,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
+	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -18,7 +19,10 @@ var (
 	errWrongMetadataVersion = errors.New("wrong metadata version")
 
 	// metadataVersion is the current version of the siafile Metadata
-	metadataVersion = metadataVersion2
+	metadataVersion = metadataVersion3
+
+	// metadataVersion3 is the third version of the siafile Metadata
+	metadataVersion3 = [16]byte{3}
 
 	// metadataVersion2 is the second version of the siafile Metadata
 	metadataVersion2 = [16]byte{2}
@@ -170,6 +174,14 @@ func (sf *SiaFile) metadataCompatCheck() error {
 		}
 	}
 
+	// Check for version 2 updates.
+	if sf.staticMetadata.StaticVersion == metadataVersion2 {
+		err := sf.upgradeMetadataFromV2ToV3()
+		if err != nil {
+			return err
+		}
+	}
+
 	// Check for current version
 	if sf.staticMetadata.StaticVersion != metadataVersion {
 		return errWrongMetadataVersion
@@ -187,6 +199,12 @@ func (sf *SiaFile) metadataCompatCheck() error {
 // upgradeMetadataFromNilToV1 upgrades an uninitialized metadata version to
 // version 1 with the corresponding compat code
 func (sf *SiaFile) upgradeMetadataFromNilToV1() {
+	// Sanity Check
+	if sf.staticMetadata.StaticVersion != nilMetadataVesion {
+		build.Critical("upgradeMetadataFromNilToV1 called with non nil metadata")
+		return
+	}
+
 	// COMPATv137 legacy files might not have a unique id.
 	if sf.staticMetadata.UniqueID == "" {
 		sf.staticMetadata.UniqueID = uniqueID()
@@ -210,6 +228,13 @@ func (sf *SiaFile) upgradeMetadataFromNilToV1() {
 // upgradeMetadataFromV1ToV2 upgrades a version 1 metadata to a version 2 with
 // the corresponding compat code
 func (sf *SiaFile) upgradeMetadataFromV1ToV2() error {
+	// Sanity Check
+	if sf.staticMetadata.StaticVersion != metadataVersion1 {
+		err := errors.New("upgradeMetadataFromV1ToV2 called with non version 1 metadata")
+		build.Critical(err)
+		return err
+	}
+
 	// Stuck vs Unfinished files compatibility check.
 	//
 	// Before unfinished files were introduced a file might have been marked
@@ -242,5 +267,40 @@ func (sf *SiaFile) upgradeMetadataFromV1ToV2() error {
 
 	// Update the version now that we have completed the compat updates
 	sf.staticMetadata.StaticVersion = metadataVersion2
+	return nil
+}
+
+// upgradeMetadataFromV2ToV3 upgrades a version 2 metadata to a version 3 with
+// the corresponding compat code
+func (sf *SiaFile) upgradeMetadataFromV2ToV3() error {
+	// Sanity Check
+	if sf.staticMetadata.StaticVersion != metadataVersion2 {
+		err := errors.New("upgradeMetadataFromV2ToV3 called with non version 2 metadata")
+		build.Critical(err)
+		return err
+	}
+
+	// Unfinished files update.
+	//
+	// The original intent of instituting the unfinished files was to do a
+	// full reset of the filesystem and let the health loop work through
+	// updating the state of the files.
+
+	// Reset the Finished state.
+	sf.staticMetadata.Finished = false
+
+	// Get the file's stuck status
+	stuck := sf.numStuckChunks() > 0
+
+	// If the File is stuck, reset the stuck status
+	if stuck {
+		err := sf.setAllStuck(false)
+		if err != nil {
+			return errors.AddContext(err, "unable to reset stuck status")
+		}
+	}
+
+	// Update the version now that we have completed the compat updates
+	sf.staticMetadata.StaticVersion = metadataVersion3
 	return nil
 }

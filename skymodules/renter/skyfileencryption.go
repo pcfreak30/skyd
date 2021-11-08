@@ -143,6 +143,11 @@ func encryptBaseSectorWithSkykey(baseSector []byte, plaintextLayout skymodules.S
 	if err != nil {
 		return errors.AddContext(err, "Unable to get baseSector cipherkey")
 	}
+
+	// Encrypt the base sector. This is calling DecryptBytesInPlace because
+	// we only allow the stream cipher ChaCha for which encryption and
+	// decryption are the same thing since its just xoring the data with a
+	// keystream.
 	_, err = ck.DecryptBytesInPlace(baseSector, 0)
 	if err != nil {
 		return errors.New("Error decrypting baseSector for download")
