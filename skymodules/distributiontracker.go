@@ -100,8 +100,9 @@ type (
 		// spaced 64ms apart, the spacings multiplying by 4 every 48 buckets.
 		// The final bucket is just over an hour, anything over will be put into
 		// that bucket as well.
-		total   float64
-		timings [numBuckets]float64
+		total                     float64
+		timings                   [numBuckets]float64
+		expectedDurationNominator float64
 	}
 
 	// DistributionTracker will track the performance distribution of a series
@@ -137,6 +138,16 @@ type (
 	// Chances is a helper type that represent a distribition's chance array
 	Chances [DistributionTrackerTotalBuckets]float64
 )
+
+func (d *Distribution) setTiming(i int, t float64) {
+	d.total -= d.timings[i]
+	d.expectedDurationNominator -= d.timings[i] * float64(DistributionDurationForBucketIndex(i))
+
+	d.timings[i] = t
+
+	d.total += d.timings[i]
+	d.expectedDurationNominator += d.timings[i] * float64(DistributionDurationForBucketIndex(i))
+}
 
 // Persist returns a PersistedDistributionTracker for the DistributionTracker by
 // copying all of its buckets.
@@ -232,10 +243,12 @@ func indexForDuration(duration time.Duration) (int, float64) {
 // addDecay will decay the data in the distribution.
 func (d *Distribution) addDecay() {
 	d.Decay(func(decay float64) {
-		d.total = 0 // recompute
+		d.total = 0
+		d.expectedDurationNominator = 0
 		for i := 0; i < len(d.timings); i++ {
 			d.timings[i] *= decay
 			d.total += d.timings[i]
+			d.expectedDurationNominator += d.timings[i] * float64(DistributionDurationForBucketIndex(i))
 		}
 	})
 }
@@ -254,8 +267,7 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 	index, _ := indexForDuration(dur)
 
 	// Add the datapoint
-	d.timings[index]++
-	d.total++
+	d.setTiming(index, d.timings[index]+1)
 }
 
 // ChanceAfter returns the chance we find a data point after the given duration.
@@ -312,9 +324,10 @@ func (d *Distribution) ChancesAfter() Chances {
 // Clone returns a deep copy of the distribution.
 func (d *Distribution) Clone() Distribution {
 	c := Distribution{
-		GenericDecay: d.GenericDecay.Clone(),
-		total:        d.total,
-		timings:      d.timings,
+		GenericDecay:              d.GenericDecay.Clone(),
+		total:                     d.total,
+		expectedDurationNominator: d.expectedDurationNominator,
+		timings:                   d.timings,
 	}
 
 	// sanity check using reflect package, only executed in testing
@@ -354,12 +367,7 @@ func (d Distribution) ExpectedDuration() time.Duration {
 
 	// Across all buckets, multiply the pct chance times the bucket's duration.
 	// The sum is the expected duration.
-	var expected float64
-	for i := 0; i < len(d.timings); i++ {
-		pct := d.timings[i] / total
-		expected += pct * float64(DistributionDurationForBucketIndex(i))
-	}
-	return time.Duration(expected)
+	return time.Duration(d.expectedDurationNominator) / time.Duration(total)
 }
 
 // MergeWith merges the given distribution according to a certain weight.
@@ -379,9 +387,11 @@ func (d *Distribution) MergeWith(other *Distribution, weight float64) {
 	// loop all other timings and append them taking into account the given
 	// weight
 	d.total = 0
+	d.expectedDurationNominator = 0
 	for bi, b := range other.timings {
 		d.timings[bi] += b * weight
 		d.total += d.timings[bi]
+		d.expectedDurationNominator += d.timings[bi] * float64(DistributionDurationForBucketIndex(bi))
 	}
 }
 
@@ -438,9 +448,7 @@ func (d *Distribution) Shift(dur time.Duration) {
 
 	// Calculate the fraction we want to keep and update the bucket
 	keep := (1 - fraction) * value
-	d.total -= d.timings[index]
-	d.timings[index] = keep
-	d.total += d.timings[index]
+	d.setTiming(index, keep)
 
 	// If we're at index 0 we are done because there's no buckets preceding it.
 	if index == 0 {
@@ -452,9 +460,7 @@ func (d *Distribution) Shift(dur time.Duration) {
 	remainder := fraction * value
 	smear := remainder / float64(index)
 	for i := 0; i < index; i++ {
-		d.total -= d.timings[i]
-		d.timings[i] = smear
-		d.total += d.timings[i]
+		d.setTiming(i, smear)
 	}
 }
 
@@ -484,8 +490,7 @@ func (dt *DistributionTracker) Load(tracker PersistedDistributionTracker) error 
 	}
 	for i := range tracker.Distributions {
 		for j := range dt.distributions[i].timings {
-			dt.distributions[i].timings[j] = tracker.Distributions[i].Timings[j]
-			dt.distributions[i].total += dt.distributions[i].timings[j]
+			dt.distributions[i].setTiming(j, tracker.Distributions[i].Timings[j])
 		}
 	}
 	return nil

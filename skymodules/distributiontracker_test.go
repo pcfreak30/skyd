@@ -368,11 +368,31 @@ func testDistributionChanceAfterShift(t *testing.T) {
 	if chanceAfter != 0.5 {
 		t.Fatal("bad", chanceAfter)
 	}
+	if d.total != 20 {
+		t.Error("bad", d.total, 20)
+	}
+	var denom float64
+	for i, timing := range d.timings {
+		denom += timing * float64(DistributionDurationForBucketIndex(i))
+	}
+	if d.expectedDurationNominator != denom {
+		t.Error("bad", d.expectedDurationNominator, denom)
+	}
 
 	d.Shift(100 * time.Millisecond)
 	chanceAfter = d.ChanceAfter(100 * time.Millisecond)
 	if chanceAfter != 0 {
 		t.Fatal("bad", chanceAfter)
+	}
+	if d.total != 0 {
+		t.Error("bad", d.total, 0)
+	}
+	denom = 0
+	for i, timing := range d.timings {
+		denom += timing * float64(DistributionDurationForBucketIndex(i))
+	}
+	if d.expectedDurationNominator != denom {
+		t.Error("bad", d.expectedDurationNominator, denom)
 	}
 }
 
@@ -400,6 +420,12 @@ func testDistributionClone(t *testing.T) {
 		t.Fatal("bad")
 	}
 	if c.lastDecay != d.lastDecay {
+		t.Fatal("bad")
+	}
+	if c.total != d.total {
+		t.Fatal("bad")
+	}
+	if c.expectedDurationNominator != d.expectedDurationNominator {
 		t.Fatal("bad")
 	}
 
