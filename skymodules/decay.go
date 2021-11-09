@@ -19,7 +19,7 @@ const (
 	// because it is infrequent enough that the float point precision can still
 	// provide strong accuracy, yet frequent enough that a value which has not
 	// been decayed recently is still also an accurate value.
-	decayFrequencyDenom = 100
+	decayFrequencyDenom = 15
 )
 
 type (

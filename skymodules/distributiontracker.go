@@ -311,9 +311,10 @@ func (d *Distribution) ChancesAfter() Chances {
 
 // Clone returns a deep copy of the distribution.
 func (d *Distribution) Clone() Distribution {
-	c := Distribution{GenericDecay: d.GenericDecay.Clone(), total: d.total}
-	for i, b := range d.timings {
-		c.timings[i] = b
+	c := Distribution{
+		GenericDecay: d.GenericDecay.Clone(),
+		total:        d.total,
+		timings:      d.timings,
 	}
 
 	// sanity check using reflect package, only executed in testing
