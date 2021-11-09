@@ -644,7 +644,7 @@ func (cf coinflips) chanceSum() float64 {
 // creating an individualWorker involves some cpu intensive steps, like gouging.
 // By updating them, rather than recreating them, we avoid doing these
 // computations in every iteration of the download algorithm.
-func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker) {
+func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker) []*individualWorker {
 	ws := pdc.workerState
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
@@ -656,11 +656,18 @@ func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker) {
 	}
 
 	// loop over all workers and update the resolved status and piece indices
-	for _, w := range workers {
+	for i := 0; i < len(workers); i++ {
+		w := workers[i]
+
 		pieceIndices, resolved := resolved[w.staticWorker.staticHostPubKeyStr]
 		if !w.isResolved() && resolved {
 			w.resolved = true
 			w.pieceIndices = pieceIndices
+			if len(w.pieceIndices) == 0 {
+				workers[i], workers[len(workers)-1] = workers[len(workers)-1], workers[i]
+				i--
+				continue
+			}
 		}
 
 		// check whether the worker is on cooldown
@@ -671,6 +678,7 @@ func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker) {
 		// recalculate the distributions
 		w.recalculateDistributionChances()
 	}
+	return workers
 }
 
 // workers returns both resolved and unresolved workers as a single slice of
@@ -848,7 +856,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 
 		// update the workers
 		if updated || time.Since(prevWorkerUpdate) > maxWaitUpdateWorkers {
-			pdc.updateWorkers(workers)
+			workers = pdc.updateWorkers(workers)
 			prevWorkerUpdate = time.Now()
 		}
 
@@ -1206,20 +1214,6 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 		w.markPieceForDownload(pieceIndex)
 	}
 
-	// filter out all workers without pieces before sorting.
-	workersLeft := 0
-	for i := range workers {
-		for _, pieceIndex := range workers[i].pieces(pdc) {
-			if pdc.piecesInfo[pieceIndex].downloaded {
-				continue
-			}
-			workers[workersLeft] = workers[i]
-			workersLeft++
-			break // worker is potentially useful
-		}
-	}
-	workers = workers[:workersLeft]
-
 	// sort the workers by percentage chance they complete after the current
 	// bucket duration, essentially sorting them from most to least likely
 	sdw := ds.sortedDownloadWorkers
@@ -1230,11 +1224,6 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 		})
 	}
 	sort.Sort(sdw)
-	//	sort.Slice(sdw, func(i, j int) bool {
-	//		chanceI := sdw[i].completeChance
-	//		chanceJ := sdw[j].completeChance
-	//		return chanceI > chanceJ
-	//	})
 
 	// loop over the workers and try to add them
 	for _, sw := range sdw {

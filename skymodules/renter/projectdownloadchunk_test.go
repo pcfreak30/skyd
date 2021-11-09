@@ -89,6 +89,7 @@ func testProjectDownloadChunkHandleJobResponse(t *testing.T) {
 			staticPieceRootIndex:      1,
 			staticSectorRoot:          crypto.MerkleRoot(pieces[1]),
 			staticWorker:              worker,
+			staticWorkerIdentifier:    workerKey,
 		},
 	}
 	pdc.handleJobReadResponse(success)
@@ -123,9 +124,10 @@ func testProjectDownloadChunkHandleJobResponse(t *testing.T) {
 		staticErr:     errors.New("read failed"),
 		staticJobTime: time.Duration(1),
 		staticMetadata: jobReadMetadata{
-			staticPieceRootIndex: 2,
-			staticSectorRoot:     empty,
-			staticWorker:         worker,
+			staticPieceRootIndex:   2,
+			staticSectorRoot:       empty,
+			staticWorker:           worker,
+			staticWorkerIdentifier: workerKey,
 		},
 	})
 
