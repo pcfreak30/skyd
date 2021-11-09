@@ -236,6 +236,53 @@ type (
 	coinflips []float64
 )
 
+type bufferedDownloadState struct {
+	mostLikely            []downloadWorker
+	lessLikely            []downloadWorker
+	pieces                map[uint64]struct{}
+	added                 map[uint32]struct{}
+	sortedDownloadWorkers sortedDownloadWorkers
+}
+
+func (ds *bufferedDownloadState) Reset() {
+	ds.mostLikely = ds.mostLikely[:0]
+	ds.lessLikely = ds.lessLikely[:0]
+	ds.sortedDownloadWorkers = ds.sortedDownloadWorkers[:0]
+	for k := range ds.pieces {
+		delete(ds.pieces, k)
+	}
+	for k := range ds.added {
+		delete(ds.added, k)
+	}
+}
+
+type sortedDownloadWorker struct {
+	originalIndex  int
+	completeChance float64
+}
+
+type sortedDownloadWorkers []sortedDownloadWorker
+
+func (sdw sortedDownloadWorkers) Len() int { return len(sdw) }
+func (sdw sortedDownloadWorkers) Less(i, j int) bool {
+	return sdw[i].completeChance > sdw[j].completeChance
+}
+func (sdw sortedDownloadWorkers) Swap(i, j int) {
+	sdw[i], sdw[j] = sdw[j], sdw[i]
+}
+
+type sortedIndividualWorkers []*individualWorker
+
+func (siw sortedIndividualWorkers) Len() int { return len(siw) }
+func (siw sortedIndividualWorkers) Less(i, j int) bool {
+	eRTI := siw[i].cachedCompleteChance
+	eRTJ := siw[j].cachedCompleteChance
+	return eRTI > eRTJ
+}
+func (siw sortedIndividualWorkers) Swap(i, j int) {
+	siw[i], siw[j] = siw[j], siw[i]
+}
+
 // NewChimeraWorker returns a new chimera worker object.
 func NewChimeraWorker(workers []*individualWorker, identifier uint32) *chimeraWorker {
 	// calculate the average cost and average (weighted) complete chance
@@ -898,41 +945,6 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	}
 }
 
-type bufferedDownloadState struct {
-	mostLikely            []downloadWorker
-	lessLikely            []downloadWorker
-	pieces                map[uint64]struct{}
-	added                 map[uint32]struct{}
-	sortedDownloadWorkers sortedDownloadWorkers
-}
-
-func (ds *bufferedDownloadState) Reset() {
-	ds.mostLikely = ds.mostLikely[:0]
-	ds.lessLikely = ds.lessLikely[:0]
-	ds.sortedDownloadWorkers = ds.sortedDownloadWorkers[:0]
-	for k := range ds.pieces {
-		delete(ds.pieces, k)
-	}
-	for k := range ds.added {
-		delete(ds.added, k)
-	}
-}
-
-type sortedDownloadWorker struct {
-	originalIndex  int
-	completeChance float64
-}
-
-type sortedDownloadWorkers []sortedDownloadWorker
-
-func (sdw sortedDownloadWorkers) Len() int { return len(sdw) }
-func (sdw sortedDownloadWorkers) Less(i, j int) bool {
-	return sdw[i].completeChance > sdw[j].completeChance
-}
-func (sdw sortedDownloadWorkers) Swap(i, j int) {
-	sdw[i], sdw[j] = sdw[j], sdw[i]
-}
-
 // createWorkerSet tries to create a worker set from the pdc's resolved and
 // unresolved workers, the maximum amount of overdrive workers in the set is
 // defined by the given 'maxOverdriveWorkers' argument.
@@ -1135,11 +1147,7 @@ func addCostPenalty(jobTime time.Duration, jobCost, pricePerMS types.Currency) t
 // buildChimeraWorkers turns a list of individual workers into chimera workers.
 func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*individualWorker, lowestChimeraIdentifier uint32) []downloadWorker {
 	// sort workers by chance they complete
-	sort.Slice(unresolvedWorkers, func(i, j int) bool {
-		eRTI := unresolvedWorkers[i].cachedCompleteChance
-		eRTJ := unresolvedWorkers[j].cachedCompleteChance
-		return eRTI > eRTJ
-	})
+	sort.Sort(sortedIndividualWorkers(unresolvedWorkers))
 
 	// create an array that will hold all chimera workers
 	chimeras := make([]downloadWorker, 0, len(unresolvedWorkers))
