@@ -147,6 +147,13 @@ func (d *Distribution) setTiming(i int, t float64) {
 
 	d.total += d.timings[i]
 	d.expectedDurationNominator += d.timings[i] * float64(DistributionDurationForBucketIndex(i))
+
+	if d.total < 0 {
+		build.Critical(fmt.Sprintf("d.total < 0: %v, %v %v", d.total, i, t))
+	}
+	if d.expectedDurationNominator < 0 {
+		build.Critical(fmt.Sprintf("d.expectedDurationNominator < 0: %v, %v %v", d.expectedDurationNominator, i, t))
+	}
 }
 
 // Persist returns a PersistedDistributionTracker for the DistributionTracker by
