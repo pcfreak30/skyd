@@ -140,7 +140,7 @@ type (
 )
 
 func (d *Distribution) setTiming(i int, t float64) {
-	fmt.Println("setTiming", i, t)
+	before := *d
 	d.total -= d.timings[i]
 	d.expectedDurationNominator -= d.timings[i] * float64(DistributionDurationForBucketIndex(i))
 
@@ -153,6 +153,13 @@ func (d *Distribution) setTiming(i int, t float64) {
 		build.Critical(fmt.Sprintf("d.total < 0: %v, %v %v", d.total, i, t))
 	}
 	if d.expectedDurationNominator < 0 {
+		fmt.Println("*******************")
+		fmt.Println("i", i)
+		fmt.Println("t", t)
+		fmt.Println("ti", before.timings[i])
+		fmt.Println("res", before.timings[i]*float64(DistributionDurationForBucketIndex(i)))
+		fmt.Println("d", before.timings)
+		fmt.Println("*******************")
 		build.Critical(fmt.Sprintf("d.expectedDurationNominator < 0: %v, %v %v", d.expectedDurationNominator, i, t))
 	}
 }
@@ -445,7 +452,6 @@ func (d *Distribution) PStat(p float64) time.Duration {
 // buckets, we smear the fractionalised value over the buckets preceding the
 // bucket that corresponds with the given duration.
 func (d *Distribution) Shift(dur time.Duration) {
-	fmt.Println("shift", dur)
 	// Check for negative inputs.
 	if dur < 0 {
 		build.Critical("cannot call Shift with negative duration")
