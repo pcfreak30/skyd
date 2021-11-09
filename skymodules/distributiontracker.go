@@ -153,13 +153,15 @@ func (d *Distribution) setTiming(i int, t float64) {
 		build.Critical(fmt.Sprintf("d.total < 0: %v, %v %v", d.total, i, t))
 	}
 	if d.expectedDurationNominator < 0 {
-		fmt.Println("*******************")
-		fmt.Println("i", i)
-		fmt.Println("t", t)
-		fmt.Println("ti", before.timings[i])
-		fmt.Println("res", before.timings[i]*float64(DistributionDurationForBucketIndex(i)))
-		fmt.Println("d", before.timings)
-		fmt.Println("*******************")
+		msg := ""
+		msg += "*******************\n"
+		msg += fmt.Sprint("i", i) + "\n"
+		msg += fmt.Sprint("t", t) + "\n"
+		msg += fmt.Sprint("ti", before.timings[i]) + "\n"
+		msg += fmt.Sprint("res", before.timings[i]*float64(DistributionDurationForBucketIndex(i))) + "\n"
+		msg += fmt.Sprint("d", before.timings) + "\n"
+		msg += "*******************\n"
+		fmt.Println(msg)
 		build.Critical(fmt.Sprintf("d.expectedDurationNominator < 0: %v, %v %v", d.expectedDurationNominator, i, t))
 	}
 }
@@ -258,7 +260,6 @@ func indexForDuration(duration time.Duration) (int, float64) {
 // addDecay will decay the data in the distribution.
 func (d *Distribution) addDecay() {
 	d.Decay(func(decay float64) {
-		fmt.Println("addDecay")
 		d.total = 0
 		d.expectedDurationNominator = 0
 		for i := 0; i < len(d.timings); i++ {
