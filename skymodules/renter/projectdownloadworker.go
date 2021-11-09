@@ -907,6 +907,11 @@ func (ds *bufferedDownloadState) Reset() {
 	}
 }
 
+type sortedDownloadWorker struct {
+	originalIndex  int
+	completeChance float64
+}
+
 // createWorkerSet tries to create a worker set from the pdc's resolved and
 // unresolved workers, the maximum amount of overdrive workers in the set is
 // defined by the given 'maxOverdriveWorkers' argument.
@@ -1190,14 +1195,20 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 
 	// sort the workers by percentage chance they complete after the current
 	// bucket duration, essentially sorting them from most to least likely
-	sort.Slice(workers, func(i, j int) bool {
-		chanceI := workers[i].completeChanceCached()
-		chanceJ := workers[j].completeChanceCached()
+	sdw := make([]sortedDownloadWorker, len(workers))
+	for i := range workers {
+		sdw[0].originalIndex = i
+		sdw[0].completeChance = workers[i].completeChanceCached()
+	}
+	sort.Slice(sdw, func(i, j int) bool {
+		chanceI := sdw[i].completeChance
+		chanceJ := sdw[j].completeChance
 		return chanceI > chanceJ
 	})
 
 	// loop over the workers and try to add them
-	for _, w := range workers {
+	for _, sw := range sdw {
+		w := workers[sw.originalIndex]
 		// workers that have in-progress downloads are re-added as long as we
 		// don't already have a worker for the piece they are downloading
 		currPiece, launched, completed := pdc.currentDownload(w)
@@ -1230,7 +1241,8 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 	// array with the remainder of the workers, still ensuring a worker is only
 	// used once, this time we don't assert the piece indices are unique as this
 	// makes it possible to overdrive on the same piece
-	for _, w := range workers {
+	for _, sw := range sdw {
+		w := workers[sw.originalIndex]
 		_, added := added[w.identifier()]
 		if added {
 			continue
