@@ -100,6 +100,7 @@ type (
 		// spaced 64ms apart, the spacings multiplying by 4 every 48 buckets.
 		// The final bucket is just over an hour, anything over will be put into
 		// that bucket as well.
+		total   float64
 		timings [numBuckets]float64
 	}
 
@@ -231,8 +232,10 @@ func indexForDuration(duration time.Duration) (int, float64) {
 // addDecay will decay the data in the distribution.
 func (d *Distribution) addDecay() {
 	d.Decay(func(decay float64) {
+		d.total = 0 // recompute
 		for i := 0; i < len(d.timings); i++ {
 			d.timings[i] *= decay
+			d.total += d.timings[i]
 		}
 	})
 }
@@ -252,6 +255,7 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 
 	// Add the datapoint
 	d.timings[index]++
+	d.total++
 }
 
 // ChanceAfter returns the chance we find a data point after the given duration.
@@ -307,7 +311,7 @@ func (d *Distribution) ChancesAfter() Chances {
 
 // Clone returns a deep copy of the distribution.
 func (d *Distribution) Clone() Distribution {
-	c := Distribution{GenericDecay: d.GenericDecay.Clone()}
+	c := Distribution{GenericDecay: d.GenericDecay.Clone(), total: d.total}
 	for i, b := range d.timings {
 		c.timings[i] = b
 	}
@@ -329,12 +333,7 @@ func (d *Distribution) DataPoints() float64 {
 	// datapoint was added, decay should be applied so that the rates are
 	// correct.
 	d.addDecay()
-
-	var total float64
-	for i := 0; i < len(d.timings); i++ {
-		total += d.timings[i]
-	}
-	return total
+	return d.total
 }
 
 // DurationForIndex converts the index of a bucket into a duration.
@@ -378,8 +377,10 @@ func (d *Distribution) MergeWith(other *Distribution, weight float64) {
 
 	// loop all other timings and append them taking into account the given
 	// weight
+	d.total = 0
 	for bi, b := range other.timings {
 		d.timings[bi] += b * weight
+		d.total += d.timings[bi]
 	}
 }
 
@@ -400,10 +401,7 @@ func (d *Distribution) PStat(p float64) time.Duration {
 	}
 
 	// Get the total.
-	var total float64
-	for i := 0; i < len(d.timings); i++ {
-		total += d.timings[i]
-	}
+	total := d.DataPoints()
 	if total == 0 {
 		// No data collected, just return the worst case.
 		return DistributionDurationForBucketIndex(DistributionTrackerTotalBuckets - 1)
@@ -439,7 +437,9 @@ func (d *Distribution) Shift(dur time.Duration) {
 
 	// Calculate the fraction we want to keep and update the bucket
 	keep := (1 - fraction) * value
+	d.total -= d.timings[index]
 	d.timings[index] = keep
+	d.total += d.timings[index]
 
 	// If we're at index 0 we are done because there's no buckets preceding it.
 	if index == 0 {
@@ -451,7 +451,9 @@ func (d *Distribution) Shift(dur time.Duration) {
 	remainder := fraction * value
 	smear := remainder / float64(index)
 	for i := 0; i < index; i++ {
+		d.total -= d.timings[i]
 		d.timings[i] = smear
+		d.total += d.timings[i]
 	}
 }
 
@@ -482,6 +484,7 @@ func (dt *DistributionTracker) Load(tracker PersistedDistributionTracker) error 
 	for i := range tracker.Distributions {
 		for j := range dt.distributions[i].timings {
 			dt.distributions[i].timings[j] = tracker.Distributions[i].Timings[j]
+			dt.distributions[i].total += dt.distributions[i].timings[j]
 		}
 	}
 	return nil
