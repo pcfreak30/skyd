@@ -30,6 +30,28 @@ func TestDistributionTracker(t *testing.T) {
 	t.Run("Shift", testDistributionShift)
 }
 
+func TestFoo(t *testing.T) {
+	d := NewDistribution(time.Second * 5)
+
+	d.AddDataPoint(time.Millisecond)
+	d.AddDataPoint(4 * time.Millisecond)
+
+	for i := 0; i < 100; i++ {
+		for i := 0; i < numBuckets; i++ {
+			d.AddDataPoint(DistributionDurationForBucketIndex(i))
+		}
+
+		d.lastDecay = time.Now().Add(-time.Second * 5)
+
+		d2 := d.Clone()
+		d2.Shift(time.Millisecond * 100)
+		d2.ExpectedDuration()
+		d = &d2
+
+		d.ChancesAfter()
+	}
+}
+
 // testDistributionBucketing will check that the distribution is placing timings
 // into the right buckets and then reporting the right timings in the pstats.
 func testDistributionBucketing(t *testing.T) {

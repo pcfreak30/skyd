@@ -140,6 +140,7 @@ type (
 )
 
 func (d *Distribution) setTiming(i int, t float64) {
+	fmt.Println("setTiming", i, t)
 	d.total -= d.timings[i]
 	d.expectedDurationNominator -= d.timings[i] * float64(DistributionDurationForBucketIndex(i))
 
@@ -250,6 +251,7 @@ func indexForDuration(duration time.Duration) (int, float64) {
 // addDecay will decay the data in the distribution.
 func (d *Distribution) addDecay() {
 	d.Decay(func(decay float64) {
+		fmt.Println("addDecay")
 		d.total = 0
 		d.expectedDurationNominator = 0
 		for i := 0; i < len(d.timings); i++ {
@@ -443,6 +445,7 @@ func (d *Distribution) PStat(p float64) time.Duration {
 // buckets, we smear the fractionalised value over the buckets preceding the
 // bucket that corresponds with the given duration.
 func (d *Distribution) Shift(dur time.Duration) {
+	fmt.Println("shift", dur)
 	// Check for negative inputs.
 	if dur < 0 {
 		build.Critical("cannot call Shift with negative duration")
