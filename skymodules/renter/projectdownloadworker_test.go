@@ -1046,6 +1046,7 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 	iw1.pieceIndices = append(iw1.pieceIndices, 2)
 
 	// assert it's now in the less likely set
+	workers = []downloadWorker{iw1, cw1, cw2}
 	_, lessLikely = pdc.splitMostlikelyLessLikely(workers, workersNeeded, newTestDownloadState())
 	if len(lessLikely) != 1 {
 		t.Fatal("bad")

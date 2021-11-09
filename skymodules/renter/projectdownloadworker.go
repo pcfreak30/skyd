@@ -1206,6 +1206,20 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 		w.markPieceForDownload(pieceIndex)
 	}
 
+	// filter out all workers without pieces before sorting.
+	workersLeft := 0
+	for i := range workers {
+		for _, pieceIndex := range workers[i].pieces(pdc) {
+			if pdc.piecesInfo[pieceIndex].downloaded {
+				continue
+			}
+			workers[workersLeft] = workers[i]
+			workersLeft++
+			break // worker is potentially useful
+		}
+	}
+	workers = workers[:workersLeft]
+
 	// sort the workers by percentage chance they complete after the current
 	// bucket duration, essentially sorting them from most to least likely
 	sdw := ds.sortedDownloadWorkers
