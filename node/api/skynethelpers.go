@@ -24,6 +24,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 )
 
@@ -708,6 +709,18 @@ func handleSkynetError(w http.ResponseWriter, prefix string, err error) {
 		return
 	}
 	if errors.Contains(err, renter.ErrInvalidSkylinkVersion) {
+		WriteError(w, httpErr, http.StatusBadRequest)
+		return
+	}
+	if errors.Contains(err, modules.ErrLowerRevNum) {
+		WriteError(w, httpErr, http.StatusBadRequest)
+		return
+	}
+	if errors.Contains(err, modules.ErrInsufficientWork) {
+		WriteError(w, httpErr, http.StatusBadRequest)
+		return
+	}
+	if errors.Contains(err, modules.ErrSameRevNum) {
 		WriteError(w, httpErr, http.StatusBadRequest)
 		return
 	}
