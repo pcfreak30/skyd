@@ -1197,8 +1197,8 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 	// bucket duration, essentially sorting them from most to least likely
 	sdw := make([]sortedDownloadWorker, len(workers))
 	for i := range workers {
-		sdw[0].originalIndex = i
-		sdw[0].completeChance = workers[i].completeChanceCached()
+		sdw[i].originalIndex = i
+		sdw[i].completeChance = workers[i].completeChanceCached()
 	}
 	sort.Slice(sdw, func(i, j int) bool {
 		chanceI := sdw[i].completeChance
