@@ -665,6 +665,7 @@ func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker) []*i
 			w.pieceIndices = pieceIndices
 			if len(w.pieceIndices) == 0 {
 				workers[i], workers[len(workers)-1] = workers[len(workers)-1], workers[i]
+				workers = workers[:len(workers)-1]
 				i--
 				continue
 			}
