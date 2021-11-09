@@ -66,7 +66,7 @@ type (
 
 		// workerProgress keeps track what pieces are launched, and what pieces
 		// were completed for every worker that was launched
-		workerProgress map[string]workerProgress
+		workerProgress map[uint32]workerProgress
 
 		// piecesInfo contains a list of piece info objects for every possible
 		// piece, it keeps tracks how many workers can download the piece and
@@ -283,8 +283,7 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 	// Grab the metadata from the response
 	downloadErr := jrr.staticErr
 	metadata := jrr.staticMetadata
-	worker := metadata.staticWorker
-	workerKey := worker.staticHostPubKeyStr
+	workerKey := metadata.staticWorkerIdentifier
 	pieceIndex := metadata.staticPieceRootIndex
 
 	// Update the launched worker information
@@ -474,6 +473,7 @@ func (pdc *projectDownloadChunk) launchWorker(worker *individualWorker, pieceInd
 	sectorRoot := pdc.workerSet.staticPieceRoots[pieceIndex]
 	jobMetadata := jobReadMetadata{
 		staticWorker:              w,
+		staticWorkerIdentifier:    workerKey,
 		staticSectorRoot:          sectorRoot,
 		staticSpendingCategory:    categoryDownload,
 		staticPieceRootIndex:      pieceIndex,

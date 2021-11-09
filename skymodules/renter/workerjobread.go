@@ -106,7 +106,8 @@ type (
 		// but might also be used for snapshots for example
 		staticSpendingCategory spendingCategory
 
-		staticWorker *worker
+		staticWorker           *worker
+		staticWorkerIdentifier uint32
 	}
 )
 

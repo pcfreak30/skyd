@@ -14,17 +14,27 @@ import (
 	"go.sia.tech/siad/types"
 )
 
+func newTestDownloadState() *bufferedDownloadState {
+	return &bufferedDownloadState{
+		pieces: make(map[uint64]struct{}),
+		added:  make(map[uint32]struct{}),
+	}
+}
+
 // TestChimeraWorker verifies the NewChimeraWorker constructor.
 func TestChimeraWorker(t *testing.T) {
 	t.Parallel()
 
 	// newIndividualWorker is a helper function that creates a test worker
+	numWorkers := uint32(0)
 	newIndividualWorker := func(complete, avail, cost float64) *individualWorker {
+		numWorkers++
 		return &individualWorker{
 			resolved:               false,
 			cachedCompleteChance:   complete,
 			staticAvailabilityRate: avail,
 			staticCost:             cost,
+			staticIdentifier:       numWorkers,
 		}
 	}
 
@@ -36,14 +46,15 @@ func TestChimeraWorker(t *testing.T) {
 		newIndividualWorker(.3, .5, .7),
 		newIndividualWorker(.4, .5, .8),
 	}
-	cw := NewChimeraWorker(workers)
+	numWorkers++
+	cw := NewChimeraWorker(workers, numWorkers)
 	if cw.staticChanceComplete != .125 {
 		t.Fatal("bad", cw.staticChanceComplete)
 	}
 	if cw.staticCost != .65 {
 		t.Fatal("bad", cw.staticCost)
 	}
-	if cw.staticIdentifier == "" {
+	if cw.staticIdentifier == 0 {
 		t.Fatal("bad", cw.staticIdentifier)
 	}
 }
@@ -212,8 +223,8 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 	}
 
 	// create some workers
-	iw1 := newTestIndivualWorker("w1", 1, 10*time.Millisecond, []uint64{1})
-	iw2 := newTestIndivualWorker("w2", 1, 10*time.Millisecond, []uint64{2})
+	iw1 := newTestIndivualWorker("w1", 1, 1, 10*time.Millisecond, []uint64{1})
+	iw2 := newTestIndivualWorker("w2", 2, 1, 10*time.Millisecond, []uint64{2})
 
 	// have w1 and w2 download p1 and p2
 	iw1.markPieceForDownload(1)
@@ -239,7 +250,7 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 	}
 
 	// create w3 without pieces
-	iw3 := newTestIndivualWorker("w3", 1, 10*time.Millisecond, []uint64{})
+	iw3 := newTestIndivualWorker("w3", 3, 1, 10*time.Millisecond, []uint64{})
 
 	// assert the cheaper set is nil (candidate has no pieces)
 	if ws.cheaperSetFromCandidate(iw3) != nil {
@@ -274,7 +285,7 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 	ws = cheaperSet
 
 	// create w4 with all pieces
-	iw4 := newTestIndivualWorker("w4", 1, 10*time.Millisecond, []uint64{1, 3})
+	iw4 := newTestIndivualWorker("w4", 4, 1, 10*time.Millisecond, []uint64{1, 3})
 
 	// make w4 more expensive
 	updateReadCostWithFactor(iw4, 40) // 40SC
@@ -302,7 +313,7 @@ func testWorkerSetCheaperSetFromCandidate(t *testing.T) {
 	ws = cheaperSet
 
 	// create w5 capable of resolving p1, but make it more expensive
-	iw5 := newTestIndivualWorker("w5", .1, 10*time.Millisecond, []uint64{1})
+	iw5 := newTestIndivualWorker("w5", 5, .1, 10*time.Millisecond, []uint64{1})
 	updateReadCostWithFactor(iw5, 50) // 50SC
 
 	// assert the cheaper set is nil (candidate is more expensive)
@@ -342,9 +353,9 @@ func testWorkerSetClone(t *testing.T) {
 	t.Parallel()
 
 	// create some workers
-	iw1 := newTestIndivualWorker("w1", 0, 0, nil)
-	iw2 := newTestIndivualWorker("w2", 0, 0, nil)
-	iw3 := newTestIndivualWorker("w3", 0, 0, nil)
+	iw1 := newTestIndivualWorker("w1", 1, 0, 0, nil)
+	iw2 := newTestIndivualWorker("w2", 2, 0, 0, nil)
+	iw3 := newTestIndivualWorker("w3", 3, 0, 0, nil)
 
 	// build a worker set
 	ws := &workerSet{
@@ -379,6 +390,7 @@ func testWorkerSetCreate(t *testing.T) {
 	readDT.AddDataPoint(30 * time.Millisecond)
 	readDT.AddDataPoint(40 * time.Millisecond)
 	readDT.AddDataPoint(60 * time.Millisecond)
+	launchedWorkerIdentifier := uint32(1)
 	lw := &individualWorker{
 		pieceIndices: []uint64{0},
 		resolved:     true,
@@ -386,7 +398,7 @@ func testWorkerSetCreate(t *testing.T) {
 		currentPiece:           0,
 		currentPieceLaunchedAt: time.Now().Add(-20 * time.Millisecond),
 		staticReadDistribution: *readDT,
-		staticIdentifier:       "launched_worker",
+		staticIdentifier:       launchedWorkerIdentifier,
 		staticCost:             1,
 	}
 
@@ -396,12 +408,13 @@ func testWorkerSetCreate(t *testing.T) {
 	readDT.AddDataPoint(30 * time.Millisecond)
 	readDT.AddDataPoint(40 * time.Millisecond)
 	readDT.AddDataPoint(60 * time.Millisecond)
+	resolvedWorkerIdentifier := uint32(2)
 	rw := &individualWorker{
 		pieceIndices: []uint64{0},
 		resolved:     true,
 
 		staticReadDistribution: *readDT,
-		staticIdentifier:       "resolved_worker",
+		staticIdentifier:       resolvedWorkerIdentifier,
 		staticCost:             1,
 	}
 
@@ -424,30 +437,30 @@ func testWorkerSetCreate(t *testing.T) {
 
 	// create a worker set
 	workers := []*individualWorker{lw, rw}
-	ws, _ := pdc.createWorkerSetInner(workers, minPieces, numOD, bI, bDur)
+	ws, _ := pdc.createWorkerSetInner(workers, minPieces, numOD, bI, bDur, newTestDownloadState())
 	if ws == nil || len(ws.workers) != 1 {
 		t.Fatal("unexpected")
 	}
 
 	// assert the launched worker got selected
 	selected := ws.workers[0]
-	if selected.identifier() != "launched_worker" {
+	if selected.identifier() != launchedWorkerIdentifier {
 		t.Fatal("unexpected", selected.identifier())
 	}
 
 	// assert the resolved worker was selected as most likely, proving that the
 	// launched worker beat it because it's cheaper
 	dlw := pdc.buildDownloadWorkers(workers)
-	mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(dlw, workersNeeded)
+	mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(dlw, workersNeeded, newTestDownloadState())
 	if len(mostLikely) != 1 || len(lessLikely) != 1 {
 		t.Fatal("unexpected")
 	}
-	if mostLikely[0].identifier() != "resolved_worker" || lessLikely[0].identifier() != "launched_worker" {
+	if mostLikely[0].identifier() != resolvedWorkerIdentifier || lessLikely[0].identifier() != launchedWorkerIdentifier {
 		t.Fatal("unexpected")
 	}
 
 	// now bump the overdrive workers, and assert both workers are in the set
-	ws, _ = pdc.createWorkerSetInner(workers, minPieces, numOD+1, bI, bDur)
+	ws, _ = pdc.createWorkerSetInner(workers, minPieces, numOD+1, bI, bDur, newTestDownloadState())
 	if ws == nil || len(ws.workers) != 2 {
 		t.Fatal("unexpected", ws)
 	}
@@ -463,11 +476,11 @@ func testWorkerSetGreaterThanHalf(t *testing.T) {
 	distributionTotalBuckets := skymodules.DistributionTrackerTotalBuckets
 
 	// create some workers
-	iw1 := newTestIndivualWorker("w1", 0, 0, nil)
-	iw2 := newTestIndivualWorker("w2", 0, 0, nil)
-	iw3 := newTestIndivualWorker("w3", 0, 0, nil)
-	iw4 := newTestIndivualWorker("w4", 0, 0, nil)
-	iw5 := newTestIndivualWorker("w5", 0, 0, nil)
+	iw1 := newTestIndivualWorker("w1", 1, 0, 0, nil)
+	iw2 := newTestIndivualWorker("w2", 2, 0, 0, nil)
+	iw3 := newTestIndivualWorker("w3", 3, 0, 0, nil)
+	iw4 := newTestIndivualWorker("w4", 4, 0, 0, nil)
+	iw5 := newTestIndivualWorker("w5", 5, 0, 0, nil)
 
 	// populate their distributions in a way that the output of the distribution
 	// becomes predictable by adding a single datapoint to every bucket
@@ -831,8 +844,10 @@ func TestBuildChimeraWorkers(t *testing.T) {
 	t.Parallel()
 
 	// newIndividualWorker wraps newTestIndivualWorker
+	numWorkers := uint32(0)
 	newIndividualWorker := func(availabilityRate float64) *individualWorker {
-		iw := newTestIndivualWorker("w", availabilityRate, 0, []uint64{0})
+		numWorkers++
+		iw := newTestIndivualWorker("w", numWorkers, availabilityRate, 0, []uint64{0})
 		iw.resolved = false
 		return iw
 	}
@@ -842,7 +857,8 @@ func TestBuildChimeraWorkers(t *testing.T) {
 	pdc := newTestProjectDownloadChunk(pcws, nil)
 
 	// empty case
-	chimeras := pdc.buildChimeraWorkers([]*individualWorker{})
+	numWorkers++
+	chimeras := pdc.buildChimeraWorkers([]*individualWorker{}, numWorkers)
 	if len(chimeras) != 0 {
 		t.Fatal("bad")
 	}
@@ -855,7 +871,8 @@ func TestBuildChimeraWorkers(t *testing.T) {
 	}
 
 	// check we still don't have a full chimera
-	chimeras = pdc.buildChimeraWorkers(workers)
+	numWorkers++
+	chimeras = pdc.buildChimeraWorkers(workers, numWorkers)
 	if len(chimeras) != 0 {
 		t.Fatal("bad")
 	}
@@ -874,7 +891,8 @@ func TestBuildChimeraWorkers(t *testing.T) {
 	)
 
 	// assert we have two chimeras
-	chimeras = pdc.buildChimeraWorkers(workers)
+	numWorkers++
+	chimeras = pdc.buildChimeraWorkers(workers, numWorkers)
 	if len(chimeras) != 2 {
 		t.Fatal("bad", len(chimeras))
 	}
@@ -886,8 +904,10 @@ func TestBuildDownloadWorkers(t *testing.T) {
 	t.Parallel()
 
 	// newIndividualWorker wraps newTestIndivualWorker
+	numWorkers := uint32(0)
 	newIndividualWorker := func(availabilityRate float64, resolved bool) *individualWorker {
-		iw := newTestIndivualWorker("w", availabilityRate, 0, []uint64{0})
+		numWorkers++
+		iw := newTestIndivualWorker("w", numWorkers, availabilityRate, 0, []uint64{0})
 		iw.cachedCompleteChance = .1
 		iw.resolved = resolved
 		return iw
@@ -988,9 +1008,9 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 	worker.staticHostPubKey = spk
 
 	// we will have 3 workers, one resolved one and two chimeras
-	iw1 := &individualWorker{staticIdentifier: "iw1"}
-	cw1 := NewChimeraWorker(nil)
-	cw2 := NewChimeraWorker(nil)
+	iw1 := &individualWorker{staticIdentifier: 1}
+	cw1 := NewChimeraWorker(nil, 2)
+	cw2 := NewChimeraWorker(nil, 3)
 
 	// mock the chance afters, make sure the chimeras have a higher chance,
 	// meaning they are more likely to end up in the most likely set
@@ -1005,7 +1025,7 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 
 	// split the workers in most likely and less likely
 	workers := []downloadWorker{iw1, cw1, cw2}
-	mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(workers, workersNeeded)
+	mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(workers, workersNeeded, newTestDownloadState())
 
 	// expect the most likely to consist of the 2 chimeras
 	if len(mostLikely) != workersNeeded {
@@ -1026,7 +1046,7 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 	iw1.pieceIndices = append(iw1.pieceIndices, 2)
 
 	// assert it's now in the less likely set
-	_, lessLikely = pdc.splitMostlikelyLessLikely(workers, workersNeeded)
+	_, lessLikely = pdc.splitMostlikelyLessLikely(workers, workersNeeded, newTestDownloadState())
 	if len(lessLikely) != 1 {
 		t.Fatal("bad")
 	}
@@ -1039,7 +1059,7 @@ func TestSplitMostLikelyLessLikely(t *testing.T) {
 	pdc.staticPieceIndices = []uint64{0}
 
 	// assert most likely and less likely
-	mostLikely, lessLikely = pdc.splitMostlikelyLessLikely(workers, workersNeeded)
+	mostLikely, lessLikely = pdc.splitMostlikelyLessLikely(workers, workersNeeded, newTestDownloadState())
 	if len(mostLikely) != 2 {
 		t.Fatal("bad")
 	}
@@ -1144,7 +1164,7 @@ func TestIsGoodForDownload(t *testing.T) {
 
 // newTestIndivualWorker is a helper function that returns an individualWorker
 // for testing purposes.
-func newTestIndivualWorker(hostPubKeyStr string, availabilityRate float64, readDuration time.Duration, pieceIndices []uint64) *individualWorker {
+func newTestIndivualWorker(hostPubKeyStr string, identifier uint32, availabilityRate float64, readDuration time.Duration, pieceIndices []uint64) *individualWorker {
 	w := mockWorker(readDuration)
 	w.staticHostPubKeyStr = hostPubKeyStr
 
@@ -1154,7 +1174,7 @@ func newTestIndivualWorker(hostPubKeyStr string, availabilityRate float64, readD
 		staticAvailabilityRate:   availabilityRate,
 		staticCost:               sc,
 		staticDownloadLaunchTime: time.Now(),
-		staticIdentifier:         hostPubKeyStr,
+		staticIdentifier:         identifier,
 		staticLookupDistribution: *skymodules.NewDistribution(15 * time.Minute),
 		staticReadDistribution:   *skymodules.NewDistribution(15 * time.Minute),
 		staticWorker:             w,

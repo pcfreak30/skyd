@@ -70,7 +70,7 @@ func testProjectDownloadChunkHandleJobResponse(t *testing.T) {
 	worker := new(worker)
 
 	// mock state after launching a worker
-	workerKey := worker.staticHostPubKey.ShortString()
+	workerKey := uint32(1)
 	pdc.workerProgress[workerKey] = workerProgress{
 		completedPieces: make(completedPieces),
 		launchedPieces:  make(launchedPieces),
@@ -314,7 +314,7 @@ func testProjectDownloadChunkLaunchWorker(t *testing.T) {
 
 	// mock a worker, ensure the readqueue returns a non zero time estimate
 	worker := mockWorker(100 * time.Millisecond)
-	workerIdentifier := worker.staticHostPubKey.ShortString()
+	workerIdentifier := uint32(1)
 	workerHostPubKeyStr := worker.staticHostPubKeyStr
 
 	// create pdc
@@ -637,7 +637,7 @@ func newTestProjectDownloadChunk(pcws *projectChunkWorkerSet, responseChan chan 
 		piecesInfo: make([]pieceInfo, ec.NumPieces()),
 		piecesData: make([][]byte, ec.NumPieces()),
 
-		workerProgress: make(map[string]workerProgress),
+		workerProgress: make(map[uint32]workerProgress),
 
 		downloadResponseChan: responseChan,
 		workerSet:            pcws,

@@ -1,7 +1,6 @@
 package renter
 
 import (
-	"encoding/hex"
 	"fmt"
 	"math"
 	"reflect"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/modules"
@@ -133,7 +131,7 @@ type (
 
 		// identifier returns a unique identifier for the download worker, this
 		// identifier can be used as a key when mapping the download worker
-		identifier() string
+		identifier() uint32
 
 		// markPieceForDownload allows specifying what piece to download for
 		// this worker in the case the worker resolved multiple pieces
@@ -162,7 +160,7 @@ type (
 		staticCost float64
 
 		// staticIdentifier uniquely identifies the chimera worker
-		staticIdentifier string
+		staticIdentifier uint32
 	}
 
 	// individualWorker represents a single worker object, both resolved and
@@ -213,7 +211,7 @@ type (
 		staticAvailabilityRate   float64
 		staticCost               float64
 		staticDownloadLaunchTime time.Time
-		staticIdentifier         string
+		staticIdentifier         uint32
 		staticLookupDistribution skymodules.Distribution
 		staticReadDistribution   skymodules.Distribution
 		staticWorker             *worker
@@ -239,7 +237,7 @@ type (
 )
 
 // NewChimeraWorker returns a new chimera worker object.
-func NewChimeraWorker(workers []*individualWorker) *chimeraWorker {
+func NewChimeraWorker(workers []*individualWorker, identifier uint32) *chimeraWorker {
 	// calculate the average cost and average (weighted) complete chance
 	var totalCompleteChance float64
 	var totalCost float64
@@ -260,7 +258,7 @@ func NewChimeraWorker(workers []*individualWorker) *chimeraWorker {
 	return &chimeraWorker{
 		staticChanceComplete: avgChance,
 		staticCost:           avgCost,
-		staticIdentifier:     hex.EncodeToString(fastrand.Bytes(16)),
+		staticIdentifier:     identifier,
 	}
 }
 
@@ -284,7 +282,7 @@ func (cw *chimeraWorker) getPieceForDownload() uint64 {
 }
 
 // identifier returns a unqiue identifier for this worker.
-func (cw *chimeraWorker) identifier() string {
+func (cw *chimeraWorker) identifier() uint32 {
 	return cw.staticIdentifier
 }
 
@@ -388,7 +386,7 @@ func (iw *individualWorker) getPieceForDownload() uint64 {
 
 // identifier returns a unqiue identifier for this worker, for an individual
 // worker this is equal to the short string version of the worker's host pubkey.
-func (iw *individualWorker) identifier() string {
+func (iw *individualWorker) identifier() uint32 {
 	return iw.staticIdentifier
 }
 
@@ -460,7 +458,7 @@ func (ws *workerSet) cheaperSetFromCandidate(candidate downloadWorker) *workerSe
 	pdc := ws.staticPDC
 
 	// build two maps for fast lookups
-	originalIndexMap := make(map[string]int)
+	originalIndexMap := make(map[uint32]int)
 	piecesToIndexMap := make(map[uint64]int)
 	for i, w := range ws.workers {
 		originalIndexMap[w.identifier()] = i
@@ -716,7 +714,7 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 		iw.staticAvailabilityRate = hsq.callAvailabilityRate(numPieces)
 		iw.staticCost = cost
 		iw.staticDownloadLaunchTime = time.Now()
-		iw.staticIdentifier = rw.worker.staticHostPubKeyStr
+		iw.staticIdentifier = uint32(len(workers))
 		iw.staticLookupDistribution = ldt.Distribution(0)
 		iw.staticReadDistribution = rdt.Distribution(0)
 		iw.staticWorker = rw.worker
@@ -745,7 +743,7 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 		iw.staticAvailabilityRate = hsq.callAvailabilityRate(numPieces)
 		iw.staticCost = cost
 		iw.staticDownloadLaunchTime = time.Now()
-		iw.staticIdentifier = w.staticHostPubKeyStr
+		iw.staticIdentifier = uint32(len(workers))
 		iw.staticLookupDistribution = ldt.Distribution(0)
 		iw.staticReadDistribution = rdt.Distribution(0)
 		iw.staticWorker = w
@@ -891,6 +889,24 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	}
 }
 
+type bufferedDownloadState struct {
+	mostLikely []downloadWorker
+	lessLikely []downloadWorker
+	pieces     map[uint64]struct{}
+	added      map[uint32]struct{}
+}
+
+func (ds *bufferedDownloadState) Reset() {
+	ds.mostLikely = ds.mostLikely[:0]
+	ds.lessLikely = ds.lessLikely[:0]
+	for k := range ds.pieces {
+		delete(ds.pieces, k)
+	}
+	for k := range ds.added {
+		delete(ds.added, k)
+	}
+}
+
 // createWorkerSet tries to create a worker set from the pdc's resolved and
 // unresolved workers, the maximum amount of overdrive workers in the set is
 // defined by the given 'maxOverdriveWorkers' argument.
@@ -914,6 +930,15 @@ func (pdc *projectDownloadChunk) createWorkerSet(workers []*individualWorker) (*
 		numOverdrive = 1
 	}
 
+	// Allocate some memory outside of the loop to reduce the number of
+	// allocations within.
+	bds := &bufferedDownloadState{
+		mostLikely: make([]downloadWorker, 0, maxOverdriveWorkers+minPieces),
+		lessLikely: make([]downloadWorker, 0, len(workers)),
+		pieces:     make(map[uint64]struct{}, pdc.workerSet.staticErasureCoder.NumPieces()),
+		added:      make(map[uint32]struct{}, len(workers)),
+	}
+
 	// approximate the bucket index by iterating over all bucket indices using a
 	// step size greater than 1, once we've found the best set, we range over
 	// bI-stepsize|bi+stepSize to find the best bucket index
@@ -922,7 +947,7 @@ OUTER:
 		for bI = 0; bI < skymodules.DistributionTrackerTotalBuckets; bI += bucketIndexScanStep {
 			// create the worker set
 			bDur := skymodules.DistributionDurationForBucketIndex(bI)
-			mostLikelySet, escape := pdc.createWorkerSetInner(workers, minPieces, numOverdrive, bI, bDur)
+			mostLikelySet, escape := pdc.createWorkerSetInner(workers, minPieces, numOverdrive, bI, bDur, bds)
 			if escape {
 				break OUTER
 			}
@@ -957,7 +982,7 @@ OUTER:
 	for bI = bIMin; bI < bIMax; bI++ {
 		// create the worker set
 		bDur := skymodules.DistributionDurationForBucketIndex(bI)
-		mostLikelySet, escape := pdc.createWorkerSetInner(workers, minPieces, numOverdrive, bI, bDur)
+		mostLikelySet, escape := pdc.createWorkerSetInner(workers, minPieces, numOverdrive, bI, bDur, bds)
 		if escape {
 			break
 		}
@@ -988,7 +1013,7 @@ OUTER:
 // account the given amount of workers and overdrive workers, but also the given
 // bucket duration. It returns a workerset, and a boolean that indicates whether
 // we want to break out of the (outer) loop that surrounds this function call.
-func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorker, minPieces, numOverdrive, bI int, bDur time.Duration) (*workerSet, bool) {
+func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorker, minPieces, numOverdrive, bI int, bDur time.Duration, ds *bufferedDownloadState) (*workerSet, bool) {
 	workersNeeded := minPieces + numOverdrive
 
 	// recalculate the complete chance at given index
@@ -1000,7 +1025,7 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 	downloadWorkers := pdc.buildDownloadWorkers(workers)
 
 	// divide the workers in most likely and less likely
-	mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(downloadWorkers, workersNeeded)
+	mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(downloadWorkers, workersNeeded, ds)
 
 	// if there aren't even likely workers, escape early
 	if len(mostLikely) == 0 {
@@ -1081,7 +1106,7 @@ func addCostPenalty(jobTime time.Duration, jobCost, pricePerMS types.Currency) t
 }
 
 // buildChimeraWorkers turns a list of individual workers into chimera workers.
-func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*individualWorker) []downloadWorker {
+func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*individualWorker, lowestChimeraIdentifier uint32) []downloadWorker {
 	// sort workers by chance they complete
 	sort.Slice(unresolvedWorkers, func(i, j int) bool {
 		eRTI := unresolvedWorkers[i].cachedCompleteChance
@@ -1101,7 +1126,8 @@ func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*indivi
 		currAvail += unresolvedWorkers[curr].staticAvailabilityRate
 		if currAvail >= chimeraAvailabilityRateThreshold {
 			end := curr + 1
-			chimera := NewChimeraWorker(unresolvedWorkers[start:end])
+			chimera := NewChimeraWorker(unresolvedWorkers[start:end], lowestChimeraIdentifier)
+			lowestChimeraIdentifier++
 			chimeras = append(chimeras, chimera)
 
 			// reset loop state
@@ -1124,7 +1150,7 @@ func (pdc *projectDownloadChunk) buildDownloadWorkers(workers []*individualWorke
 	downloadWorkers = append(downloadWorkers, resolvedWorkers...)
 
 	// the unresolved workers are used to build chimeras with
-	chimeraWorkers := pdc.buildChimeraWorkers(unresolvedWorkers)
+	chimeraWorkers := pdc.buildChimeraWorkers(unresolvedWorkers, uint32(len(workers)))
 	return append(downloadWorkers, chimeraWorkers...)
 }
 
@@ -1134,23 +1160,19 @@ func (pdc *projectDownloadChunk) buildDownloadWorkers(workers []*individualWorke
 // workers but also takes into account an amount of overdrive workers). This
 // method will split the given workers array in a list of most likely workers,
 // and a list of less likely workers.
-func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWorker, workersNeeded int) ([]downloadWorker, []downloadWorker) {
-	// calculate the initial capacity of the less likely array
-	var lessLikelyCap int
-	if len(workers) > workersNeeded {
-		lessLikelyCap = len(workers) - workersNeeded
-	}
+func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWorker, workersNeeded int, ds *bufferedDownloadState) ([]downloadWorker, []downloadWorker) {
+	// reset the buffered state
+	ds.Reset()
 
 	// prepare two slices that hold the workers which are most likely and the
 	// ones that are less likely
-	mostLikely := make([]downloadWorker, 0, workersNeeded)
-	lessLikely := make([]downloadWorker, 0, lessLikelyCap)
+	mostLikely := ds.mostLikely
+	lessLikely := ds.lessLikely
 
 	// define some state variables to ensure we select workers in a way the
 	// pieces are unique and we are not using a worker twice
-	numPieces := pdc.workerSet.staticErasureCoder.NumPieces()
-	pieces := make(map[uint64]struct{}, numPieces)
-	added := make(map[string]struct{}, len(workers))
+	pieces := ds.pieces
+	added := ds.added
 
 	// add worker is a helper function that adds a worker to either the most
 	// likely or less likely worker array and updates our state variables
