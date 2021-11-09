@@ -890,15 +890,17 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 }
 
 type bufferedDownloadState struct {
-	mostLikely []downloadWorker
-	lessLikely []downloadWorker
-	pieces     map[uint64]struct{}
-	added      map[uint32]struct{}
+	mostLikely            []downloadWorker
+	lessLikely            []downloadWorker
+	pieces                map[uint64]struct{}
+	added                 map[uint32]struct{}
+	sortedDownloadWorkers sortedDownloadWorkers
 }
 
 func (ds *bufferedDownloadState) Reset() {
 	ds.mostLikely = ds.mostLikely[:0]
 	ds.lessLikely = ds.lessLikely[:0]
+	ds.sortedDownloadWorkers = ds.sortedDownloadWorkers[:0]
 	for k := range ds.pieces {
 		delete(ds.pieces, k)
 	}
@@ -910,6 +912,16 @@ func (ds *bufferedDownloadState) Reset() {
 type sortedDownloadWorker struct {
 	originalIndex  int
 	completeChance float64
+}
+
+type sortedDownloadWorkers []sortedDownloadWorker
+
+func (sdw sortedDownloadWorkers) Len() int { return len(sdw) }
+func (sdw sortedDownloadWorkers) Less(i, j int) bool {
+	return sdw[i].completeChance > sdw[j].completeChance
+}
+func (sdw sortedDownloadWorkers) Swap(i, j int) {
+	sdw[i], sdw[j] = sdw[j], sdw[i]
 }
 
 // createWorkerSet tries to create a worker set from the pdc's resolved and
@@ -938,10 +950,11 @@ func (pdc *projectDownloadChunk) createWorkerSet(workers []*individualWorker) (*
 	// Allocate some memory outside of the loop to reduce the number of
 	// allocations within.
 	bds := &bufferedDownloadState{
-		mostLikely: make([]downloadWorker, 0, maxOverdriveWorkers+minPieces),
-		lessLikely: make([]downloadWorker, 0, len(workers)),
-		pieces:     make(map[uint64]struct{}, pdc.workerSet.staticErasureCoder.NumPieces()),
-		added:      make(map[uint32]struct{}, len(workers)),
+		mostLikely:            make([]downloadWorker, 0, maxOverdriveWorkers+minPieces),
+		lessLikely:            make([]downloadWorker, 0, len(workers)),
+		pieces:                make(map[uint64]struct{}, pdc.workerSet.staticErasureCoder.NumPieces()),
+		added:                 make(map[uint32]struct{}, len(workers)),
+		sortedDownloadWorkers: make([]sortedDownloadWorker, 0, len(workers)),
 	}
 
 	// approximate the bucket index by iterating over all bucket indices using a
@@ -1195,16 +1208,19 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 
 	// sort the workers by percentage chance they complete after the current
 	// bucket duration, essentially sorting them from most to least likely
-	sdw := make([]sortedDownloadWorker, len(workers))
+	sdw := ds.sortedDownloadWorkers
 	for i := range workers {
-		sdw[i].originalIndex = i
-		sdw[i].completeChance = workers[i].completeChanceCached()
+		sdw = append(sdw, sortedDownloadWorker{
+			originalIndex:  i,
+			completeChance: workers[i].completeChanceCached(),
+		})
 	}
-	sort.Slice(sdw, func(i, j int) bool {
-		chanceI := sdw[i].completeChance
-		chanceJ := sdw[j].completeChance
-		return chanceI > chanceJ
-	})
+	sort.Sort(sdw)
+	//	sort.Slice(sdw, func(i, j int) bool {
+	//		chanceI := sdw[i].completeChance
+	//		chanceJ := sdw[j].completeChance
+	//		return chanceI > chanceJ
+	//	})
 
 	// loop over the workers and try to add them
 	for _, sw := range sdw {
