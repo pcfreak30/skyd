@@ -212,7 +212,7 @@ func DistributionDurationForBucketIndex(index int) time.Duration {
 // bucket at index 0, and the given duration included 25% of that bucket.
 func indexForDuration(duration time.Duration) (int, float64) {
 	if duration < 0 {
-		build.Critical("negative duration")
+		build.Critical(fmt.Sprintf("negative duration %v", duration))
 		return -1, 0
 	}
 
