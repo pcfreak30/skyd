@@ -367,7 +367,7 @@ func (d Distribution) ExpectedDuration() time.Duration {
 
 	// Across all buckets, multiply the pct chance times the bucket's duration.
 	// The sum is the expected duration.
-	return time.Duration(d.expectedDurationNominator) / time.Duration(total)
+	return time.Duration(d.expectedDurationNominator / total)
 }
 
 // MergeWith merges the given distribution according to a certain weight.
