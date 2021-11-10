@@ -173,7 +173,7 @@ func (r *Renter) DumpDistribution() {
 		charts.YAxisOpts{Type: "value"},
 	)
 	barChart.AddXAxis(xAxis)
-	barChart.AddYAxis("dur", rrsTimings[:maxIndex])
+	barChart.AddYAxis("datapoints", rrsTimings[:maxIndex])
 	printChart(barChart, "regread")
 
 	// REGISTRY WRITE
@@ -187,7 +187,7 @@ func (r *Renter) DumpDistribution() {
 		charts.YAxisOpts{Type: "value"},
 	)
 	barChart.AddXAxis(xAxis)
-	barChart.AddYAxis("dur", wrsTimings[:maxIndex])
+	barChart.AddYAxis("datapoints", wrsTimings[:maxIndex])
 	printChart(barChart, "regwrite")
 
 	// STREAMBUFFER
@@ -201,7 +201,7 @@ func (r *Renter) DumpDistribution() {
 		charts.YAxisOpts{Type: "value"},
 	)
 	barChart.AddXAxis(xAxis)
-	barChart.AddYAxis("dur", sbsTimings[:maxIndex])
+	barChart.AddYAxis("datapoints", sbsTimings[:maxIndex])
 	printChart(barChart, "streambuffer")
 
 	// BASE SECTOR UPLOAD
@@ -215,7 +215,7 @@ func (r *Renter) DumpDistribution() {
 		charts.YAxisOpts{Type: "value"},
 	)
 	barChart.AddXAxis(xAxis)
-	barChart.AddYAxis("dur", bsusTimings[:maxIndex])
+	barChart.AddYAxis("datapoints", bsusTimings[:maxIndex])
 	printChart(barChart, "basesector")
 
 	// CHUNK UPLOAD
@@ -229,7 +229,7 @@ func (r *Renter) DumpDistribution() {
 		charts.YAxisOpts{Type: "value"},
 	)
 	barChart.AddXAxis(xAxis)
-	barChart.AddYAxis("dur", cusTimings[:maxIndex])
+	barChart.AddYAxis("datapoints", cusTimings[:maxIndex])
 	printChart(barChart, "chunkupload")
 
 	// FETCH ALL WORKERS
@@ -256,7 +256,7 @@ func (r *Renter) DumpDistribution() {
 	)
 	barChart.AddXAxis(xAxis)
 	timings := aggregate.Timings()
-	barChart.AddYAxis("dur", timings[:maxIndex])
+	barChart.AddYAxis("datapoints", timings[:maxIndex])
 	printChart(barChart, "hassector")
 
 	// RS
@@ -275,35 +275,35 @@ func (r *Renter) DumpDistribution() {
 
 	barChart = charts.NewBar()
 	barChart.SetGlobalOptions(
-		charts.TitleOpts{Title: "HS DT 64kb"},
+		charts.TitleOpts{Title: "RS DT 64kb"},
 		charts.XAxisOpts{Type: "category"},
 		charts.YAxisOpts{Type: "value"},
 	)
 	barChart.AddXAxis(xAxis)
 	timings64kb := aggregate64kb.Timings()
-	barChart.AddYAxis("dur", timings64kb[:maxIndex])
+	barChart.AddYAxis("datapoints", timings64kb[:maxIndex])
 	printChart(barChart, "readsector64kb")
 
 	barChart = charts.NewBar()
 	barChart.SetGlobalOptions(
-		charts.TitleOpts{Title: "HS DT 1m"},
+		charts.TitleOpts{Title: "RS DT 1m"},
 		charts.XAxisOpts{Type: "category"},
 		charts.YAxisOpts{Type: "value"},
 	)
 	barChart.AddXAxis(xAxis)
 	timings1m := aggregate1m.Timings()
-	barChart.AddYAxis("dur", timings1m[:maxIndex])
+	barChart.AddYAxis("datapoints", timings1m[:maxIndex])
 	printChart(barChart, "readsector1m")
 
 	barChart = charts.NewBar()
 	barChart.SetGlobalOptions(
-		charts.TitleOpts{Title: "HS DT 4m"},
+		charts.TitleOpts{Title: "RS DT 4m"},
 		charts.XAxisOpts{Type: "category"},
 		charts.YAxisOpts{Type: "value"},
 	)
 	barChart.AddXAxis(xAxis)
 	timings4m := aggregate64kb.Timings()
-	barChart.AddYAxis("dur", timings4m[:maxIndex])
+	barChart.AddYAxis("datapoints", timings4m[:maxIndex])
 	printChart(barChart, "readsector4m")
 }
 
