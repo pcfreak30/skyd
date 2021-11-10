@@ -237,6 +237,7 @@ type (
 )
 
 type bufferedDownloadState struct {
+	downloadWorkers       []downloadWorker
 	mostLikely            []downloadWorker
 	lessLikely            []downloadWorker
 	pieces                map[uint64]struct{}
@@ -245,6 +246,7 @@ type bufferedDownloadState struct {
 }
 
 func (ds *bufferedDownloadState) Reset() {
+	ds.downloadWorkers = ds.downloadWorkers[:0]
 	ds.mostLikely = ds.mostLikely[:0]
 	ds.lessLikely = ds.lessLikely[:0]
 	ds.sortedDownloadWorkers = ds.sortedDownloadWorkers[:0]
@@ -971,6 +973,7 @@ func (pdc *projectDownloadChunk) createWorkerSet(workers []*individualWorker) (*
 	// Allocate some memory outside of the loop to reduce the number of
 	// allocations within.
 	bds := &bufferedDownloadState{
+		downloadWorkers:       make([]downloadWorker, 0, len(workers)),
 		mostLikely:            make([]downloadWorker, 0, maxOverdriveWorkers+minPieces),
 		lessLikely:            make([]downloadWorker, 0, len(workers)),
 		pieces:                make(map[uint64]struct{}, pdc.workerSet.staticErasureCoder.NumPieces()),
@@ -1053,6 +1056,9 @@ OUTER:
 // bucket duration. It returns a workerset, and a boolean that indicates whether
 // we want to break out of the (outer) loop that surrounds this function call.
 func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorker, minPieces, numOverdrive, bI int, bDur time.Duration, ds *bufferedDownloadState) (*workerSet, bool) {
+	// reset the buffered state
+	ds.Reset()
+
 	workersNeeded := minPieces + numOverdrive
 
 	// recalculate the complete chance at given index
@@ -1061,7 +1067,7 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 	}
 
 	// build the download workers
-	downloadWorkers := pdc.buildDownloadWorkers(workers)
+	downloadWorkers := pdc.buildDownloadWorkers(workers, ds)
 
 	// divide the workers in most likely and less likely
 	mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(downloadWorkers, workersNeeded, ds)
@@ -1175,14 +1181,16 @@ func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*indivi
 
 // buildDownloadWorkers is a helper function that takes a list of individual
 // workers and turns them into download workers.
-func (pdc *projectDownloadChunk) buildDownloadWorkers(workers []*individualWorker) []downloadWorker {
+func (pdc *projectDownloadChunk) buildDownloadWorkers(workers []*individualWorker, ds *bufferedDownloadState) []downloadWorker {
 	// create an array of download workers
-	downloadWorkers := make([]downloadWorker, 0, len(workers))
+	downloadWorkers := ds.downloadWorkers
 
 	// split the workers into resolved and unresolved workers, the resolved
 	// workers can be added directly to the array of download workers
 	resolvedWorkers, unresolvedWorkers := splitResolvedUnresolved(workers)
-	downloadWorkers = append(downloadWorkers, resolvedWorkers...)
+	for _, rw := range resolvedWorkers {
+		downloadWorkers = append(downloadWorkers, rw)
+	}
 
 	// the unresolved workers are used to build chimeras with
 	chimeraWorkers := pdc.buildChimeraWorkers(unresolvedWorkers, uint32(len(workers)))
@@ -1196,9 +1204,6 @@ func (pdc *projectDownloadChunk) buildDownloadWorkers(workers []*individualWorke
 // method will split the given workers array in a list of most likely workers,
 // and a list of less likely workers.
 func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWorker, workersNeeded int, ds *bufferedDownloadState) ([]downloadWorker, []downloadWorker) {
-	// reset the buffered state
-	ds.Reset()
-
 	// prepare two slices that hold the workers which are most likely and the
 	// ones that are less likely
 	mostLikely := ds.mostLikely
@@ -1438,24 +1443,33 @@ func isGoodForDownload(w *worker, pieces []uint64) bool {
 	return err == nil
 }
 
+// partitionWorkers partitions a slice of workers in-place.
+func partitionWorkers(iws []*individualWorker, isLeft func(i int) bool) (left, right []*individualWorker) {
+	i := 0
+	j := len(iws) - 1
+
+	for i <= j {
+		if !isLeft(i) {
+			iws[i], iws[j] = iws[j], iws[i]
+			j--
+			continue
+		} else {
+			i++
+		}
+	}
+	return iws[:i], iws[i:]
+}
+
 // splitResolvedUnresolved is a helper function that splits the given workers
 // into resolved and unresolved worker arrays. Note that if the worker is on a
 // cooldown we exclude it from the returned workers list.
-func splitResolvedUnresolved(workers []*individualWorker) ([]downloadWorker, []*individualWorker) {
-	resolvedWorkers := make([]downloadWorker, 0, len(workers))
-	unresolvedWorkers := make([]*individualWorker, 0, len(workers))
-
-	for _, w := range workers {
-		if w.isOnCooldown() {
-			continue
-		}
-
-		if w.isResolved() {
-			resolvedWorkers = append(resolvedWorkers, w)
-		} else {
-			unresolvedWorkers = append(unresolvedWorkers, w)
-		}
-	}
-
+func splitResolvedUnresolved(workers []*individualWorker) ([]*individualWorker, []*individualWorker) {
+	// filter out the workers on cooldown first.
+	notOnCooldown, _ := partitionWorkers(workers, func(i int) bool {
+		return !workers[i].isOnCooldown()
+	})
+	resolvedWorkers, unresolvedWorkers := partitionWorkers(notOnCooldown, func(i int) bool {
+		return workers[i].isResolved()
+	})
 	return resolvedWorkers, unresolvedWorkers
 }

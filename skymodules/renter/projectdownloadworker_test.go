@@ -450,7 +450,7 @@ func testWorkerSetCreate(t *testing.T) {
 
 	// assert the resolved worker was selected as most likely, proving that the
 	// launched worker beat it because it's cheaper
-	dlw := pdc.buildDownloadWorkers(workers)
+	dlw := pdc.buildDownloadWorkers(workers, newTestDownloadState())
 	mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(dlw, workersNeeded, newTestDownloadState())
 	if len(mostLikely) != 1 || len(lessLikely) != 1 {
 		t.Fatal("unexpected")
@@ -918,7 +918,7 @@ func TestBuildDownloadWorkers(t *testing.T) {
 	pdc := newTestProjectDownloadChunk(pcws, nil)
 
 	// empty case
-	downloadWorkers := pdc.buildDownloadWorkers([]*individualWorker{})
+	downloadWorkers := pdc.buildDownloadWorkers([]*individualWorker{}, newTestDownloadState())
 	if len(downloadWorkers) != 0 {
 		t.Fatal("bad")
 	}
@@ -932,7 +932,7 @@ func TestBuildDownloadWorkers(t *testing.T) {
 	}
 
 	// assert we still don't have a chimera
-	downloadWorkers = pdc.buildDownloadWorkers(workers)
+	downloadWorkers = pdc.buildDownloadWorkers(workers, newTestDownloadState())
 	if len(downloadWorkers) != 0 {
 		t.Fatal("bad")
 	}
@@ -951,7 +951,7 @@ func TestBuildDownloadWorkers(t *testing.T) {
 	)
 
 	// assert we have two download workers, both chimera workers
-	downloadWorkers = pdc.buildDownloadWorkers(workers)
+	downloadWorkers = pdc.buildDownloadWorkers(workers, newTestDownloadState())
 	if len(downloadWorkers) != 2 {
 		t.Fatal("bad", len(downloadWorkers))
 	}
@@ -969,9 +969,10 @@ func TestBuildDownloadWorkers(t *testing.T) {
 		newIndividualWorker(0.9, false),
 		newIndividualWorker(0.5, false),
 		newIndividualWorker(0.6, false),
+		newIndividualWorker(0.6, false),
 	)
 
-	downloadWorkers = pdc.buildDownloadWorkers(workers)
+	downloadWorkers = pdc.buildDownloadWorkers(workers, newTestDownloadState())
 	if len(downloadWorkers) != 5 {
 		t.Fatal("bad", len(downloadWorkers))
 	}
@@ -1181,4 +1182,64 @@ func newTestIndivualWorker(hostPubKeyStr string, identifier uint32, availability
 		staticWorker:             w,
 	}
 	return iw
+}
+
+// TestPartitionWorkers is a unit test for partitionWorkers.
+func TestPartitionWorkers(t *testing.T) {
+	w1 := &individualWorker{cachedCompleteChance: 0.1, staticIdentifier: 1}
+	w2 := &individualWorker{cachedCompleteChance: 0.2, staticIdentifier: 2}
+	w3 := &individualWorker{cachedCompleteChance: 0.3, staticIdentifier: 3}
+	w4 := &individualWorker{cachedCompleteChance: 0.4, staticIdentifier: 4}
+	w5 := &individualWorker{cachedCompleteChance: 0.5, staticIdentifier: 5}
+
+	// Partition all workers with a chance of <= 0.3 to the left and the
+	// others to the right.
+	iws := []*individualWorker{w1, w2, w3, w4, w5}
+	left, right := partitionWorkers(iws, func(i int) bool { return iws[i].cachedCompleteChance <= 0.3 })
+
+	expectedLeft := []*individualWorker{w1, w2, w3}
+	expectedRight := []*individualWorker{w5, w4}
+	for i := range left {
+		if left[i] != expectedLeft[i] {
+			t.Fatal("wrong left", i)
+		}
+	}
+	for i := range right {
+		if right[i] != expectedRight[i] {
+			t.Fatal("wrong right", i)
+		}
+	}
+
+	// iws will be a bit scrambled at the end since the algorithm only
+	// partitions but doesn't preserve the order.
+	expectedIWS := []*individualWorker{w1, w2, w3, w5, w4}
+	for i := range iws {
+		if iws[i] != expectedIWS[i] {
+			t.Fatal("wrong iws", i)
+		}
+	}
+
+	// Partition the right partition again using <0.5 this time.
+	left, right = partitionWorkers(right, func(i int) bool { return right[i].cachedCompleteChance < 0.5 })
+
+	expectedLeft = []*individualWorker{w4}
+	expectedRight = []*individualWorker{w5}
+	for i := range left {
+		if left[i] != expectedLeft[i] {
+			t.Fatal("wrong left", i)
+		}
+	}
+	for i := range right {
+		if right[i] != expectedRight[i] {
+			t.Fatal("wrong right", i)
+		}
+	}
+
+	// Since all of that happened in place, iws should be sorted again.
+	expectedIWS = []*individualWorker{w1, w2, w3, w4, w5}
+	for i := range iws {
+		if iws[i] != expectedIWS[i] {
+			t.Fatal("wrong iws", i)
+		}
+	}
 }
