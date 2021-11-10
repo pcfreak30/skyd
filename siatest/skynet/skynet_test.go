@@ -5180,7 +5180,7 @@ func TestSkynetPinUnpin(t *testing.T) {
 	// Add portals with custom dependency
 	rt := node.RenterTemplate
 	rt.CreatePortal = true
-	deps := &dependencies.DependencySkipUnpinRequest{}
+	deps := dependencies.NewDependencySkipUnpinRequest()
 	rt.RenterDeps = deps
 	_, err = tg.AddNodeN(rt, 2)
 	if err != nil {
@@ -5202,7 +5202,7 @@ func TestSkynetPinUnpin(t *testing.T) {
 }
 
 // testSkynetPinUnpin tests pinning and unpinning a skylink
-func testSkynetPinUnpin(t *testing.T, p1, p2 *siatest.TestNode, fileSize uint64, deps *dependencies.DependencySkipUnpinRequest) {
+func testSkynetPinUnpin(t *testing.T, p1, p2 *siatest.TestNode, fileSize uint64, deps *dependencies.DependencyWithDisableAndEnable) {
 	// Define helper function for checking the number of files
 	fileCheck := func(p1Expected, p2Expected uint64) error {
 		return build.Retry(100, 100*time.Millisecond, func() error {
@@ -6244,5 +6244,93 @@ func testRecursiveBaseSector(t *testing.T, tg *siatest.TestGroup) {
 	extensionSize := int64(8392)
 	if f1.File.Size() != int64(modules.SectorSize)+extensionSize {
 		t.Fatal("wrong size", f1.File.Size())
+	}
+}
+
+// TestSkynetFailedPin is a regression test that catches an edge case in the pin
+// code where the Pin is successful even if the portal is unable to download the
+// skylink.
+func TestSkynetFailedPin(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create test group
+	testDir := skynetTestDir(t.Name())
+	groupParams := siatest.GroupParams{
+		Hosts:   3,
+		Portals: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Grab clean portals
+	cleanPortal := tg.Portals()[0]
+
+	// Add a portal with a dependency to not upload the fanout
+	rt := node.RenterTemplate
+	rt.CreatePortal = true
+	deps := dependencies.NewDependencyDoNotUploadFanout()
+	rt.RenterDeps = deps
+	nodes, err := tg.AddNodes(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Grab dependency portal
+	depPortal := nodes[0]
+	deps.Disable()
+
+	// Upload large file to depPortal and download and pin on clean portal
+	skylink, _, _, err := depPortal.UploadNewSkyfileBlocking("largeFile", 2*modules.SectorSize, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = cleanPortal.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spp := skymodules.SkyfilePinParameters{
+		SiaPath: skymodules.RandomSiaPath(),
+	}
+	err = cleanPortal.SkynetSkylinkPinPost(skylink, spp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload a large file that doesn't get it's fanout uploaded
+	deps.Enable()
+	skylink, _, _, err = depPortal.UploadNewSkyfileBlocking("badLargeFile", 2*modules.SectorSize, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Download should fail
+	_, err = cleanPortal.SkynetSkylinkGet(skylink)
+	if err == nil {
+		t.Fatal("Download should fail")
+	}
+	// Pin should fail
+	siaPath := skymodules.RandomSiaPath()
+	spp = skymodules.SkyfilePinParameters{
+		SiaPath: siaPath,
+	}
+	err = cleanPortal.SkynetSkylinkPinPost(skylink, spp)
+	if err == nil {
+		t.Fatal("Pin should fail")
+	}
+
+	// Confirm siafile is deleted
+	_, err = cleanPortal.SkyfileGet(siaPath)
+	if err == nil || !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+		t.Fatal("unexpected error", err)
 	}
 }
