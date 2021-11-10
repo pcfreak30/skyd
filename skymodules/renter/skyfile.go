@@ -680,7 +680,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(ctx context.Context, sup skymodul
 
 	// Wrap the reader in a FanoutChunkReader.
 	cr := NewFanoutChunkReader(fileReader, fileNode.ErasureCode(), onlyOnePieceNeeded, fileNode.MasterKey())
-	if sup.DryRun {
+	if sup.DryRun || r.staticDeps.Disrupt("DoNotUploadFanout") {
 		// In case of a dry-run we don't want to perform the actual upload,
 		// instead we create a filenode that contains all of the data pieces and
 		// their merkle roots.
@@ -885,8 +885,8 @@ func (r *Renter) managedDownloadSkylink(ctx context.Context, link skymodules.Sky
 
 // PinSkylink will fetch the file associated with the Skylink, and then pin all
 // necessary content to maintain that Skylink.
-func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUploadParameters, timeout time.Duration, pricePerMS types.Currency) error {
-	err := r.tg.Add()
+func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUploadParameters, timeout time.Duration, pricePerMS types.Currency) (err error) {
+	err = r.tg.Add()
 	if err != nil {
 		return err
 	}
@@ -994,6 +994,29 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 	if layout.FanoutSize == 0 {
 		return nil
 	}
+
+	// If there was an error, try and delete the file that was created
+	defer func() {
+		if err != nil {
+			// Delete skyfile
+			deleteErr := r.DeleteFile(lup.SiaPath)
+			// Don't bother returning an error if the file doesn't exist
+			if !errors.Contains(deleteErr, filesystem.ErrNotExist) {
+				err = errors.Compose(err, deleteErr)
+			}
+
+			// Delete extended file
+			extendedSiaPath, pathErr := lup.SiaPath.AddSuffixStr(skymodules.ExtendedSuffix)
+			if pathErr == nil {
+				deleteErr = r.DeleteFile(extendedSiaPath)
+				// Don't bother returning an error if the file doesn't exist
+				if !errors.Contains(deleteErr, filesystem.ErrNotExist) {
+					err = errors.Compose(err, deleteErr)
+				}
+			}
+		}
+	}()
+
 	// Create the erasure coder to use when uploading the file bulk.
 	fup.ErasureCode, err = skymodules.NewRSSubCode(int(layout.FanoutDataPieces), int(layout.FanoutParityPieces), crypto.SegmentSize)
 	if err != nil {
@@ -1018,6 +1041,18 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 	if err != nil {
 		return errors.AddContext(err, "unable to upload large skyfile")
 	}
+
+	// Sanity Check that the fileNode created matches the layout. This is to
+	// protect against an edge case where a portal can download a basesector
+	// but none of the fanout data. In this case the fileNode is
+	// successfully created, but with no data uploaded.
+	actual := fileNode.Metadata().FileSize
+	expected := int64(layout.Filesize)
+	if actual != expected {
+		return fmt.Errorf("pin unsuccessful, filesize %v does not match layout filesize %v", actual, expected)
+	}
+
+	// Add skylink to FileNode
 	err = fileNode.AddSkylink(skylink)
 	if err != nil {
 		return errors.AddContext(err, "unable to upload skyfile fanout")
@@ -1069,13 +1104,9 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 	baseSector = append(baseSector, baseSectorExtension...)
 
 	// Create the upload parameters
-	siaPath, err := skymodules.SkynetFolder.Join(skylinkStr)
-	if err != nil {
-		return skymodules.Skylink{}, errors.AddContext(err, "unable to create siapath")
-	}
 	sup := skymodules.SkyfileUploadParameters{
 		BaseChunkRedundancy: sl.FanoutDataPieces + sl.FanoutParityPieces,
-		SiaPath:             siaPath,
+		SiaPath:             skymodules.RandomSkynetFilePath(),
 
 		// Set filename and mode
 		Filename: sm.Filename,

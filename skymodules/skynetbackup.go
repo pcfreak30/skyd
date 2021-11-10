@@ -8,8 +8,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"path/filepath"
-	"strings"
 
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
@@ -23,14 +21,6 @@ const (
 	// This is the size of the encoded persist.Metadata and a skylink so the size
 	// should be constant.
 	backupHeaderSize = 92
-
-	// defaultDirDepth is the number of directories created when turning a skylink
-	// into a filepath.
-	defaultDirDepth = 2
-
-	// defaultDirLength is the character length of the directory name when turning
-	// a skylink into a filepath.
-	defaultDirLength = 2
 
 	// MetadataHeader defines the header for the backup
 	MetadataHeader = "Skyfile Backup\n"
@@ -100,32 +90,6 @@ func RestoreSkylink(r io.Reader) (string, []byte, error) {
 
 	// Return information needs to restore the Skyfile by re-uploading
 	return skylink, baseSector, nil
-}
-
-// SkylinkFromSysPath returns a skylink string from a system path
-func SkylinkFromSysPath(path string) string {
-	// Sanitize the path
-	path = filepath.Clean(path)
-	path = filepath.ToSlash(path)
-	path = strings.TrimPrefix(path, "/")
-	path = strings.TrimSuffix(path, "/")
-
-	// Recreate the skylink by joining the last defaultDirDepth + 1 elements
-	els := strings.Split(path, "/")
-	start := len(els) - defaultDirDepth - 1
-	return strings.Join(els[start:], "")
-}
-
-// SkylinkToSysPath takes the string of a skylink and turns it into a filepath
-// that has defaultDirDepth number of directories that have names which have
-// defaultDirLength characters
-func SkylinkToSysPath(skylinkStr string) string {
-	str := skylinkStr[:defaultDirLength]
-	for i := 1; i < defaultDirDepth; i++ {
-		str = filepath.Join(str, skylinkStr[defaultDirLength*i:defaultDirLength*(i+1)])
-	}
-	str = filepath.Join(str, skylinkStr[defaultDirLength*defaultDirDepth:])
-	return str
 }
 
 // readBackupHeader reads the header from the backup and returns the skylink
