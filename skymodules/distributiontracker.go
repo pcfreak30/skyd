@@ -141,6 +141,7 @@ type (
 
 func (d *Distribution) setTiming(i int, t float64) {
 	before := *d
+	nomBefore := d.expectedDurationNominator
 	d.total -= d.timings[i]
 	d.expectedDurationNominator -= d.timings[i] * float64(DistributionDurationForBucketIndex(i))
 
@@ -157,12 +158,13 @@ func (d *Distribution) setTiming(i int, t float64) {
 		msg += "*******************\n"
 		msg += fmt.Sprint("i", i) + "\n"
 		msg += fmt.Sprint("t", t) + "\n"
+		msg += fmt.Sprint("nominator", nomBefore) + "\n"
 		msg += fmt.Sprint("ti", before.timings[i]) + "\n"
 		msg += fmt.Sprint("res", before.timings[i]*float64(DistributionDurationForBucketIndex(i))) + "\n"
 		msg += fmt.Sprint("d", before.timings) + "\n"
 		msg += "*******************\n"
-		fmt.Println(msg)
-		build.Critical(fmt.Sprintf("d.expectedDurationNominator < 0: %v, %v %v", d.expectedDurationNominator, i, t))
+		build.Critical(fmt.Sprintf("d.expectedDurationNominator < 0: %v, %v %v %v\n", d.expectedDurationNominator, i, t, msg))
+		d.expectedDurationNominator = 0
 	}
 }
 
