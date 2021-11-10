@@ -1338,6 +1338,10 @@ func (api *API) registryMultiHandlerPOST(w http.ResponseWriter, req *http.Reques
 	}
 	WriteSuccess(w)
 }
+func (api *API) dumpdtHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	api.renter.DumpDistribution()
+	WriteSuccess(w)
+}
 
 // registryHandlerGET handles the GET calls to /skynet/registry.
 func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {

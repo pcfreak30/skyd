@@ -136,6 +136,7 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/skynet/registry", RequirePassword(api.registryHandlerPOST, requiredPassword))
 		router.POST("/skynet/registrymulti", RequirePassword(api.registryMultiHandlerPOST, requiredPassword))
 		router.GET("/skynet/registry", api.registryHandlerGET)
+		router.POST("/skynet/dumpdt", api.dumpdtHandlerPOST)
 		router.GET("/skynet/registry/hosts", api.skynetHostsForRegistryUpdateGET)
 		router.GET("/skynet/registry/subscription", api.skynetRegistrySubscriptionHandler)
 		router.GET("/skynet/resolve/:skylink", api.skylinkResolveGET)

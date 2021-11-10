@@ -14,11 +14,16 @@ package renter
 import (
 	"container/heap"
 	"context"
+	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/go-echarts/go-echarts/charts"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 )
 
 // downloadChunkHeap is a heap that is sorted first by file priority, then by
@@ -134,6 +139,52 @@ func (r *Renter) managedAddChunkToDownloadHeap(udc *unfinishedDownloadChunk) {
 
 	// Put the chunk into the chunk heap.
 	r.staticDownloadHeap.managedPush(udc)
+}
+
+// DumpDistribution dumps the merged distribution as a bar chart
+func (r *Renter) DumpDistribution() {
+	workers := r.staticWorkerPool.callWorkers()
+	fmt.Println("NUM WORKERS", len(workers))
+	jhsq := workers[0].staticJobHasSectorQueue
+	halfLife := jhsq.staticDT.Distribution(0).HalfLife()
+	aggregate := skymodules.NewDistribution(halfLife)
+	for _, w := range workers {
+		dt := w.staticJobHasSectorQueue.staticDT.Distribution(0)
+		aggregate.MergeWith(dt, 1)
+	}
+
+	barChart := charts.NewBar()
+	barChart.SetGlobalOptions(
+		charts.XAxisOpts{Type: "category"},
+		charts.YAxisOpts{Type: "value"},
+		// charts.XAxisOpts{Type: "category", SplitArea: charts.SplitAreaOpts{Show: true}},
+		// charts.VisualMapOpts{Calculable: true, Max: 10, Min: 0,
+		//     InRange: charts.VMInRange{Color: []string{"#50a3ba", "#eac736", "#d94e5d"}}},
+	)
+
+	xAxis := make([]string, 400)
+	for i := 0; i < 400; i++ {
+		xAxis[i] = skymodules.DistributionDurationForBucketIndex(i).String()
+	}
+	barChart.AddXAxis(xAxis)
+
+	timings := aggregate.Timings()
+	// yAxis := make([][2]interface{}, 25)
+	// for i := 0; i < 25; i++ {
+	// 	yAxis[i] = [2]interface{}{xAxis[i], timings[i]}
+	// }
+	fmt.Println(timings)
+	barChart.AddYAxis("timings", timings)
+
+	// Where the magic happens
+	f, err := ioutil.TempFile("", "dtbarchart.*.html")
+	if err != nil {
+		panic(err)
+	}
+	err = barChart.Render(f)
+	if err != nil {
+		panic(err)
+	}
 }
 
 // managedBlockUntilOnline will block until the renter is online. The renter

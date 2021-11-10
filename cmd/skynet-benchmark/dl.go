@@ -132,6 +132,12 @@ func dl() {
 			fmt.Println(getPercentilesString(timings))
 		}
 	}
+
+	err = c.SkynetDumpDT()
+	if err != nil {
+		fmt.Printf("Unable to dump the DTs, err:%v", err)
+		return
+	}
 }
 
 // downloadFileSet will download all of the files of the expected fetch size in

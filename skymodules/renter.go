@@ -1206,6 +1206,9 @@ type RegistrySubscriber interface {
 type Renter interface {
 	modules.Alerter
 
+	// DumpDistribution dumps the merged distribution as a bar chart
+	DumpDistribution()
+
 	// ActiveHosts provides the list of hosts that the renter is selecting,
 	// sorted by preference.
 	ActiveHosts() ([]HostDBEntry, error)

@@ -315,6 +315,10 @@ func (d *Distribution) Clone() *Distribution {
 	return c
 }
 
+func (d *Distribution) Timings() [400]float64 {
+	return d.timings
+}
+
 // DataPoints returns the total number of data points contained within the
 // distribution.
 func (d *Distribution) DataPoints() float64 {

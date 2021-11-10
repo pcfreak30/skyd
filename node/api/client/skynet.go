@@ -73,6 +73,11 @@ func (c *Client) SkynetBaseSectorGet(skylink string) (io.ReadCloser, error) {
 	return reader, err
 }
 
+// SkynetDumpDT dumps the DTs
+func (c *Client) SkynetDumpDT() error {
+	return c.post("/skynet/dumpdt", "", nil)
+}
+
 // SkynetDownloadByRootGet uses the /skynet/root endpoint to fetch a reader of
 // a sector.
 func (c *Client) SkynetDownloadByRootGet(root crypto.Hash, offset, length uint64, timeout time.Duration) (io.ReadCloser, error) {
