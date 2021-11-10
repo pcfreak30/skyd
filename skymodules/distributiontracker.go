@@ -148,13 +148,6 @@ func (d *Distribution) setTiming(i int, t float64) {
 
 	d.total += d.timings[i]
 	d.expectedDurationNominator += d.timings[i] * uint64(DistributionDurationForBucketIndex(i))
-
-	if d.total < 0 {
-		build.Critical(fmt.Sprintf("d.total < 0: %v", d.total))
-	}
-	if d.expectedDurationNominator < 0 {
-		build.Critical(fmt.Sprintf("d.expectedDurationNominator < 0: %v", d.expectedDurationNominator))
-	}
 }
 
 // Persist returns a PersistedDistributionTracker for the DistributionTracker by
@@ -440,12 +433,9 @@ func (d *Distribution) PStat(p float64) time.Duration {
 	return DistributionDurationForBucketIndex(index)
 }
 
-// Shift shifts the distribution by a certain duration. The shift operation will
-// essentially ignore all data points up until the duration with which we're
-// shifting. If that duration does not perfectly align with the distribution's
-// buckets, we smear the fractionalised value over the buckets preceding the
-// bucket that corresponds with the given duration.
-func (d *Distribution) Shift(dur time.Duration) {
+// shift returns the information required for a shifting of the distribution
+// without actually shifting.
+func (d *Distribution) shift(dur time.Duration) (index int, keep float64, smear float64) {
 	// Check for negative inputs.
 	if dur < 0 {
 		build.Critical("cannot call Shift with negative duration")
@@ -457,18 +447,58 @@ func (d *Distribution) Shift(dur time.Duration) {
 	value := float64(d.timings[index])
 
 	// Calculate the fraction we want to keep and update the bucket
-	keep := (1 - fraction) * value
-	d.setTiming(index, keep)
-
-	// If we're at index 0 we are done because there's no buckets preceding it.
-	if index == 0 {
-		return
-	}
+	keep = (1 - fraction) * value
 
 	// Otherwise we calculate the remainder and smear it over all buckets
 	// up until we reach index.
 	remainder := fraction * value
-	smear := remainder / float64(index)
+	smear = remainder / float64(index)
+	return
+}
+
+// ExpectedDurationWithShift is similar to ExpectedDuration but it assumes a
+// shift before computing the expected value. The shift is not applied though.
+// That makes it faster than cloning the distribution, shifting it and then
+// calling ExpectedDuration on the copy.
+func (d *Distribution) ExpectedDurationWithShift(dur time.Duration) time.Duration {
+	index, keep, smear := d.shift(dur)
+
+	var total float64
+	var durationNominator float64
+
+	// Everything before index would be equal to smear.
+	for i := 0; i < index && smear > 0; i++ {
+		total += smear
+		durationNominator += (smear * float64(DistributionDurationForBucketIndex(i)))
+	}
+
+	// At index, the value is 'keep'.
+	total += keep
+	durationNominator += (keep * float64(DistributionDurationForBucketIndex(index)))
+
+	// After index we got the same values as before.
+	for i := index + 1; i < len(d.timings); i++ {
+		total += float64(d.timings[i])
+		durationNominator += float64(d.timings[i]) * float64(DistributionDurationForBucketIndex(i))
+	}
+	return time.Duration(durationNominator / total)
+}
+
+// Shift shifts the distribution by a certain duration. The shift operation will
+// essentially ignore all data points up until the duration with which we're
+// shifting. If that duration does not perfectly align with the distribution's
+// buckets, we smear the fractionalised value over the buckets preceding the
+// bucket that corresponds with the given duration.
+func (d *Distribution) Shift(dur time.Duration) {
+	index, keep, smear := d.shift(dur)
+
+	// Set the timing at 'index' to keep.
+	d.setTiming(index, keep)
+	// If we're at index 0 we are done because there's no buckets preceding it.
+	if index == 0 {
+		return
+	}
+	// Otherwise set the smear.
 	for i := 0; i < index; i++ {
 		d.setTiming(i, smear)
 	}
