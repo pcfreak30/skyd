@@ -3,7 +3,6 @@ package client
 import (
 	"encoding/hex"
 	"fmt"
-	"math"
 	"net/http"
 	"net/url"
 	"time"
@@ -21,7 +20,7 @@ import (
 // BeginRegistrySubscription starts a new subscription.
 func (c *Client) BeginRegistrySubscription(notifyFunc func(skymodules.RegistryEntry), closeHandler func(_ int, _ string) error) (*RegistrySubscription, error) {
 	// Subscribe without limits.
-	return c.BeginRegistrySubscriptionCustom(math.MaxUint64, 0, notifyFunc, closeHandler)
+	return c.BeginRegistrySubscriptionCustom(0, 0, notifyFunc, closeHandler)
 }
 
 // BeginRegistrySubscriptionCustom starts a new subscription with custom params.
