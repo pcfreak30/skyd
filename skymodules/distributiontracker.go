@@ -140,43 +140,41 @@ type (
 )
 
 func (d *Distribution) setTiming(i int, t float64) {
-	before := *d
-	nomBefore := d.expectedDurationNominator
-	tBefore := d.total
 	d.total -= d.timings[i]
-	t1 := d.timings[i]
+	fmt.Println("exp", d.expectedDurationNominator)
+	fmt.Println("exp2", float64(DistributionDurationForBucketIndex(i)))
 	d.expectedDurationNominator -= d.timings[i] * float64(DistributionDurationForBucketIndex(i))
+	fmt.Println("res1", d.timings[i]*float64(DistributionDurationForBucketIndex(i)))
 
 	d.timings[i] = t
-	t2 := d.timings[i]
 
 	d.total += d.timings[i]
-	tAfter := d.total
 	d.expectedDurationNominator += d.timings[i] * float64(DistributionDurationForBucketIndex(i))
+	fmt.Println("res2", d.timings[i]*float64(DistributionDurationForBucketIndex(i)))
 
 	if d.total < 0 {
-		msg := ""
-		msg += "*******************\n"
-		msg += fmt.Sprint("tBefore", tBefore) + "\n"
-		msg += fmt.Sprint("t1", t1) + "\n"
-		msg += fmt.Sprint("t2", t2) + "\n"
-		msg += fmt.Sprint("tAfter", tAfter) + "\n"
-		msg += "*******************\n"
-		build.Critical(fmt.Sprintf("d.total < 0: %v, %v %v, \n %v", d.total, i, t, msg))
+		//	msg := ""
+		//	msg += "*******************\n"
+		//	msg += fmt.Sprint("tBefore", tBefore) + "\n"
+		//	msg += fmt.Sprint("t1", t1) + "\n"
+		//	msg += fmt.Sprint("t2", t2) + "\n"
+		//	msg += fmt.Sprint("tAfter", tAfter) + "\n"
+		//	msg += "*******************\n"
+		//	build.Critical(fmt.Sprintf("d.total < 0: %v, %v %v, \n %v", d.total, i, t, msg))
 		d.total = 0
 	}
 	if d.expectedDurationNominator < 0 {
-		msg := ""
-		msg += "*******************\n"
-		msg += fmt.Sprint("i", i) + "\n"
-		msg += fmt.Sprint("t", t) + "\n"
-		msg += fmt.Sprint("nominator", nomBefore) + "\n"
-		msg += fmt.Sprint("ti", before.timings[i]) + "\n"
-		msg += fmt.Sprint("res1", before.timings[i]*float64(DistributionDurationForBucketIndex(i))) + "\n"
-		msg += fmt.Sprint("res2", d.timings[i]*float64(DistributionDurationForBucketIndex(i))) + "\n"
-		msg += fmt.Sprint("d", before.timings) + "\n"
-		msg += "*******************\n"
-		build.Critical(fmt.Sprintf("d.expectedDurationNominator < 0: %v, %v %v \n %v", d.expectedDurationNominator, i, t, msg))
+		//	msg := ""
+		//	msg += "*******************\n"
+		//	msg += fmt.Sprint("i", i) + "\n"
+		//	msg += fmt.Sprint("t", t) + "\n"
+		//	msg += fmt.Sprint("nominator", nomBefore) + "\n"
+		//	msg += fmt.Sprint("ti", before.timings[i]) + "\n"
+		//	msg += fmt.Sprint("res1", before.timings[i]*float64(DistributionDurationForBucketIndex(i))) + "\n"
+		//	msg += fmt.Sprint("res2", d.timings[i]*float64(DistributionDurationForBucketIndex(i))) + "\n"
+		//	msg += fmt.Sprint("d", before.timings) + "\n"
+		//	msg += "*******************\n"
+		//	build.Critical(fmt.Sprintf("d.expectedDurationNominator < 0: %v, %v %v \n %v", d.expectedDurationNominator, i, t, msg))
 		d.expectedDurationNominator = 0
 	}
 }

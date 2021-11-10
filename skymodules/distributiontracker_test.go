@@ -33,9 +33,21 @@ func TestDistributionTracker(t *testing.T) {
 func TestFoo(t *testing.T) {
 	d := NewDistribution(time.Second * 5)
 
-	d.expectedDurationNominator = 7.332446589452534e08
+	bi := 34
+	d.expectedDurationNominator = 1.0792935983106709e08
+	d.timings[bi] = 0.7935982340519643
+	d.total = d.timings[bi]
 
-	d.setTiming(79, 0)
+	t.Log(float64(DistributionDurationForBucketIndex(bi)))
+
+	d.setTiming(bi, 0)
+
+	if d.expectedDurationNominator < 0 {
+		t.Fatal(d.expectedDurationNominator)
+	}
+	if d.total < 0 {
+		t.Fatal(d.total)
+	}
 }
 
 // testDistributionBucketing will check that the distribution is placing timings
