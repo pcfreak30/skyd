@@ -386,10 +386,9 @@ func (iw *individualWorker) recalculateDistributionChances() {
 	// if the worker is not resolved yet, we want to always shift the lookup dt
 	// and use that to recalculate the expected duration index
 	if !iw.isResolved() {
-		indexForDur := skymodules.DistributionBucketIndexForDuration
 		shift := time.Since(iw.staticDownloadLaunchTime)
 		ed := iw.staticLookupDistribution.ExpectedDurationWithShift(shift)
-		iw.cachedLookupIndex = indexForDur(ed)
+		iw.cachedLookupIndex = skymodules.DistributionBucketIndexForDuration(ed)
 	}
 }
 

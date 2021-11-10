@@ -481,6 +481,10 @@ func (d *Distribution) ExpectedDurationWithShift(dur time.Duration) time.Duratio
 		total += float64(d.timings[i])
 		durationNominator += float64(d.timings[i]) * float64(DistributionDurationForBucketIndex(i))
 	}
+	// No data collected, just return the worst case.
+	if total == 0 {
+		return DistributionDurationForBucketIndex(DistributionTrackerTotalBuckets - 1)
+	}
 	return time.Duration(durationNominator / total)
 }
 
