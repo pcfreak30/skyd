@@ -143,12 +143,103 @@ func (r *Renter) managedAddChunkToDownloadHeap(udc *unfinishedDownloadChunk) {
 
 // DumpDistribution dumps the merged distribution as a bar chart
 func (r *Renter) DumpDistribution() {
+	printChart := func(b *charts.Bar, name string) {
+		f, err := ioutil.TempFile("", fmt.Sprintf("%v.*.html", name))
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("dumped file at", f.Name())
+		err = b.Render(f)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	// x-axis
+	maxIndex := 222
+	xAxis := make([]string, maxIndex)
+	for i := 0; i < maxIndex; i++ {
+		xAxis[i] = skymodules.DistributionDurationForBucketIndex(i).String()
+	}
+
+	// REGISTRY READ
+	rrs := r.staticRegistryReadStats
+	rrsDT := rrs.Distribution(0)
+	rrsTimings := rrsDT.Timings()
+	barChart := charts.NewBar()
+	barChart.SetGlobalOptions(
+		charts.TitleOpts{Title: "RegistryReadStats DT"},
+		charts.XAxisOpts{Type: "category"},
+		charts.YAxisOpts{Type: "value"},
+	)
+	barChart.AddXAxis(xAxis)
+	barChart.AddYAxis("dur", rrsTimings[:maxIndex])
+	printChart(barChart, "regread")
+
+	// REGISTRY WRITE
+	wrs := r.staticRegWriteStats
+	wrsDT := wrs.Distribution(0)
+	wrsTimings := wrsDT.Timings()
+	barChart = charts.NewBar()
+	barChart.SetGlobalOptions(
+		charts.TitleOpts{Title: "RegistryWriteStats DT"},
+		charts.XAxisOpts{Type: "category"},
+		charts.YAxisOpts{Type: "value"},
+	)
+	barChart.AddXAxis(xAxis)
+	barChart.AddYAxis("dur", wrsTimings[:maxIndex])
+	printChart(barChart, "regwrite")
+
+	// STREAMBUFFER
+	sbs := r.staticStreamBufferStats
+	sbsDT := sbs.Distribution(0)
+	sbsTimings := sbsDT.Timings()
+	barChart = charts.NewBar()
+	barChart.SetGlobalOptions(
+		charts.TitleOpts{Title: "StreamBufferStats DT"},
+		charts.XAxisOpts{Type: "category"},
+		charts.YAxisOpts{Type: "value"},
+	)
+	barChart.AddXAxis(xAxis)
+	barChart.AddYAxis("dur", sbsTimings[:maxIndex])
+	printChart(barChart, "streambuffer")
+
+	// BASE SECTOR UPLOAD
+	bsus := r.staticBaseSectorUploadStats
+	bsusDT := bsus.Distribution(0)
+	bsusTimings := bsusDT.Timings()
+	barChart = charts.NewBar()
+	barChart.SetGlobalOptions(
+		charts.TitleOpts{Title: "BaseSectorUpload DT"},
+		charts.XAxisOpts{Type: "category"},
+		charts.YAxisOpts{Type: "value"},
+	)
+	barChart.AddXAxis(xAxis)
+	barChart.AddYAxis("dur", bsusTimings[:maxIndex])
+	printChart(barChart, "basesector")
+
+	// CHUNK UPLOAD
+	cus := r.staticChunkUploadStats
+	cusDT := cus.Distribution(0)
+	cusTimings := cusDT.Timings()
+	barChart = charts.NewBar()
+	barChart.SetGlobalOptions(
+		charts.TitleOpts{Title: "ChunkUpload DT"},
+		charts.XAxisOpts{Type: "category"},
+		charts.YAxisOpts{Type: "value"},
+	)
+	barChart.AddXAxis(xAxis)
+	barChart.AddYAxis("dur", cusTimings[:maxIndex])
+	printChart(barChart, "chunkupload")
+
+	// FETCH ALL WORKERS
 	workers := r.staticWorkerPool.callWorkers()
 	if len(workers) == 0 {
 		return
 	}
-
 	fmt.Println("NUM WORKERS", len(workers))
+
+	// HS
 	jhsq := workers[0].staticJobHasSectorQueue
 	halfLife := jhsq.staticDT.Distribution(0).HalfLife()
 	aggregate := skymodules.NewDistribution(halfLife)
@@ -157,35 +248,63 @@ func (r *Renter) DumpDistribution() {
 		aggregate.MergeWith(dt, 1)
 	}
 
-	barChart := charts.NewBar()
+	barChart = charts.NewBar()
 	barChart.SetGlobalOptions(
+		charts.TitleOpts{Title: "HS DT"},
 		charts.XAxisOpts{Type: "category"},
 		charts.YAxisOpts{Type: "value"},
-		// charts.XAxisOpts{Type: "category", SplitArea: charts.SplitAreaOpts{Show: true}},
-		// charts.VisualMapOpts{Calculable: true, Max: 10, Min: 0,
-		//     InRange: charts.VMInRange{Color: []string{"#50a3ba", "#eac736", "#d94e5d"}}},
 	)
-
-	maxIndex := 222
-	xAxis := make([]string, maxIndex)
-	for i := 0; i < maxIndex; i++ {
-		xAxis[i] = skymodules.DistributionDurationForBucketIndex(i).String()
-	}
 	barChart.AddXAxis(xAxis)
-
 	timings := aggregate.Timings()
-	barChart.AddYAxis("timings", timings[:maxIndex])
+	barChart.AddYAxis("dur", timings[:maxIndex])
+	printChart(barChart, "hassector")
 
-	// Where the magic happens
-	f, err := ioutil.TempFile("", "dtbarchart.*.html")
-	if err != nil {
-		panic(err)
+	// RS
+	aggregate64kb := skymodules.NewDistribution(halfLife)
+	aggregate1m := skymodules.NewDistribution(halfLife)
+	aggregate4m := skymodules.NewDistribution(halfLife)
+	for _, w := range workers {
+		rsq64kb := w.staticJobReadQueue.staticStats.staticDT64k.Distribution(0)
+		rsq1m := w.staticJobReadQueue.staticStats.staticDT1m.Distribution(0)
+		rsq4m := w.staticJobReadQueue.staticStats.staticDT4m.Distribution(0)
+
+		aggregate64kb.MergeWith(rsq64kb, 1)
+		aggregate1m.MergeWith(rsq1m, 1)
+		aggregate4m.MergeWith(rsq4m, 1)
 	}
-	fmt.Println("dumped file at", f.Name())
-	err = barChart.Render(f)
-	if err != nil {
-		panic(err)
-	}
+
+	barChart = charts.NewBar()
+	barChart.SetGlobalOptions(
+		charts.TitleOpts{Title: "HS DT 64kb"},
+		charts.XAxisOpts{Type: "category"},
+		charts.YAxisOpts{Type: "value"},
+	)
+	barChart.AddXAxis(xAxis)
+	timings64kb := aggregate64kb.Timings()
+	barChart.AddYAxis("dur", timings64kb[:maxIndex])
+	printChart(barChart, "readsector64kb")
+
+	barChart = charts.NewBar()
+	barChart.SetGlobalOptions(
+		charts.TitleOpts{Title: "HS DT 1m"},
+		charts.XAxisOpts{Type: "category"},
+		charts.YAxisOpts{Type: "value"},
+	)
+	barChart.AddXAxis(xAxis)
+	timings1m := aggregate1m.Timings()
+	barChart.AddYAxis("dur", timings1m[:maxIndex])
+	printChart(barChart, "readsector1m")
+
+	barChart = charts.NewBar()
+	barChart.SetGlobalOptions(
+		charts.TitleOpts{Title: "HS DT 4m"},
+		charts.XAxisOpts{Type: "category"},
+		charts.YAxisOpts{Type: "value"},
+	)
+	barChart.AddXAxis(xAxis)
+	timings4m := aggregate64kb.Timings()
+	barChart.AddYAxis("dur", timings4m[:maxIndex])
+	printChart(barChart, "readsector4m")
 }
 
 // managedBlockUntilOnline will block until the renter is online. The renter
