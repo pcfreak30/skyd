@@ -833,10 +833,16 @@ func (r *Renter) RefreshedContract(fcid types.FileContractID) bool {
 	return r.staticHostContractor.RefreshedContract(fcid)
 }
 
-// ResetDownloadOverdriveStats resets the overdrive statistics.
-func (r *Renter) ResetDownloadOverdriveStats() {
-	r.staticBaseSectorDownloadStats.Reset()
-	r.staticFanoutSectorDownloadStats.Reset()
+// ResetStats resets the renter stats.
+func (r *Renter) ResetStats(statsType types.Specifier) error {
+	switch statsType {
+	case skymodules.OverdriveStats:
+		r.staticBaseSectorDownloadStats.Reset()
+		r.staticFanoutSectorDownloadStats.Reset()
+		return nil
+	default:
+		return fmt.Errorf("invalid stats type '%v', the only supported type is '%v'", statsType, skymodules.OverdriveStats)
+	}
 }
 
 // Settings returns the Renter's current settings.

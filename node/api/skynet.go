@@ -1075,10 +1075,15 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 	})
 }
 
-// skynetStatsResetOverdriveHandlerPOST handles the API call to reset the
-// renter's overdrive stats
-func (api *API) skynetStatsResetOverdriveHandlerPOST(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	api.renter.ResetDownloadOverdriveStats()
+// skynetResetStatsHandlerPOST handles the API call to renter's reset stats
+// endpoint.
+func (api *API) skynetResetStatsHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	statsType := req.FormValue("statsType")
+	err := api.renter.ResetStats(types.NewSpecifier(statsType))
+	if err != nil {
+		WriteError(w, Error{"failed to reset stats: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
 	WriteSuccess(w)
 }
 

@@ -145,6 +145,10 @@ type DownloadOverdriveStats struct {
 	mu sync.Mutex
 }
 
+// OverdriveStats specifies the download overdrive statistics. This includes
+// both the base sector and fanout over drive stats.
+var OverdriveStats = types.NewSpecifier("OverdriveStats")
+
 // NewSectorDownloadStats returns a new DownloadOverdriveStats object.
 func NewSectorDownloadStats() *DownloadOverdriveStats {
 	return &DownloadOverdriveStats{}
@@ -1297,6 +1301,10 @@ type Renter interface {
 	// Performance returns performance information about the renter.
 	Performance() (RenterPerformance, error)
 
+	// ResetStats allows resetting the renter stats. A specifier can be passed
+	// in to specify what to reset.
+	ResetStats(types.Specifier) error
+
 	// PeriodSpending returns the amount spent on contracts in the current
 	// billing period.
 	PeriodSpending() (ContractorSpending, error)
@@ -1313,9 +1321,6 @@ type Renter interface {
 
 	// RefreshedContract checks if the contract was previously refreshed
 	RefreshedContract(fcid types.FileContractID) bool
-
-	// ResetDownloadOverdriveStats resets the overdrive statistics.
-	ResetDownloadOverdriveStats()
 
 	// SetFileStuck sets the 'stuck' status of a file.
 	SetFileStuck(siaPath SiaPath, stuck bool) error

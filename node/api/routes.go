@@ -145,7 +145,7 @@ func (api *API) buildHTTPRoutes() {
 		router.HEAD("/skynet/skylink/*skylink", api.skynetSkylinkHandlerGET)
 		router.POST("/skynet/skyfile/*siapath", RequirePassword(api.skynetSkyfileHandlerPOST, requiredPassword))
 		router.GET("/skynet/stats", api.skynetStatsHandlerGET)
-		router.POST("/skynet/stats/resetoverdrive", RequirePassword(api.skynetStatsResetOverdriveHandlerPOST, requiredPassword))
+		router.POST("/skynet/stats/reset", RequirePassword(api.skynetResetStatsHandlerPOST, requiredPassword))
 		router.POST("/skynet/unpin/:skylink", RequirePassword(api.skynetSkylinkUnpinHandlerPOST, requiredPassword))
 		router.GET("/skynet/health/skylink/:skylink", api.skynetSkylinkHealthGET)
 
