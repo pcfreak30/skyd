@@ -125,7 +125,7 @@ func TestSkynetSuiteTwo(t *testing.T) {
 // downloading the resulting skylinks.
 func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
-
+	defer r.SkynetDumpDT()
 	// Create some data to upload as a skyfile.
 	data := fastrand.Bytes(100 + siatest.Fuzz())
 	// Need it to be a reader.

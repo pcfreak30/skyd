@@ -144,6 +144,10 @@ func (r *Renter) managedAddChunkToDownloadHeap(udc *unfinishedDownloadChunk) {
 // DumpDistribution dumps the merged distribution as a bar chart
 func (r *Renter) DumpDistribution() {
 	workers := r.staticWorkerPool.callWorkers()
+	if len(workers) == 0 {
+		return
+	}
+
 	fmt.Println("NUM WORKERS", len(workers))
 	jhsq := workers[0].staticJobHasSectorQueue
 	halfLife := jhsq.staticDT.Distribution(0).HalfLife()
@@ -162,25 +166,22 @@ func (r *Renter) DumpDistribution() {
 		//     InRange: charts.VMInRange{Color: []string{"#50a3ba", "#eac736", "#d94e5d"}}},
 	)
 
-	xAxis := make([]string, 400)
-	for i := 0; i < 400; i++ {
+	maxIndex := 222
+	xAxis := make([]string, maxIndex)
+	for i := 0; i < maxIndex; i++ {
 		xAxis[i] = skymodules.DistributionDurationForBucketIndex(i).String()
 	}
 	barChart.AddXAxis(xAxis)
 
 	timings := aggregate.Timings()
-	// yAxis := make([][2]interface{}, 25)
-	// for i := 0; i < 25; i++ {
-	// 	yAxis[i] = [2]interface{}{xAxis[i], timings[i]}
-	// }
-	fmt.Println(timings)
-	barChart.AddYAxis("timings", timings)
+	barChart.AddYAxis("timings", timings[:maxIndex])
 
 	// Where the magic happens
 	f, err := ioutil.TempFile("", "dtbarchart.*.html")
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("dumped file at", f.Name())
 	err = barChart.Render(f)
 	if err != nil {
 		panic(err)
