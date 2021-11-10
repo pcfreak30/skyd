@@ -22,6 +22,7 @@ package skymodules
 
 import (
 	"fmt"
+	"math"
 	"reflect"
 	"sync"
 	"time"
@@ -100,9 +101,9 @@ type (
 		// spaced 64ms apart, the spacings multiplying by 4 every 48 buckets.
 		// The final bucket is just over an hour, anything over will be put into
 		// that bucket as well.
-		total                     float64
-		timings                   [numBuckets]float64
-		expectedDurationNominator float64
+		total                     uint64
+		timings                   [numBuckets]uint64
+		expectedDurationNominator uint64
 	}
 
 	// DistributionTracker will track the performance distribution of a series
@@ -141,12 +142,12 @@ type (
 
 func (d *Distribution) setTiming(i int, t float64) {
 	d.total -= d.timings[i]
-	d.expectedDurationNominator -= d.timings[i] * float64(DistributionDurationForBucketIndex(i))
+	d.expectedDurationNominator -= d.timings[i] * uint64(DistributionDurationForBucketIndex(i))
 
-	d.timings[i] = t
+	d.timings[i] = uint64(math.Round(t))
 
 	d.total += d.timings[i]
-	d.expectedDurationNominator += d.timings[i] * float64(DistributionDurationForBucketIndex(i))
+	d.expectedDurationNominator += d.timings[i] * uint64(DistributionDurationForBucketIndex(i))
 
 	if d.total < 0 {
 		//	msg := ""
@@ -157,7 +158,7 @@ func (d *Distribution) setTiming(i int, t float64) {
 		//	msg += fmt.Sprint("tAfter", tAfter) + "\n"
 		//	msg += "*******************\n"
 		//	build.Critical(fmt.Sprintf("d.total < 0: %v, %v %v, \n %v", d.total, i, t, msg))
-		d.total = 0
+		//d.total = 0
 	}
 	if d.expectedDurationNominator < 0 {
 		//	msg := ""
@@ -171,7 +172,7 @@ func (d *Distribution) setTiming(i int, t float64) {
 		//	msg += fmt.Sprint("d", before.timings) + "\n"
 		//	msg += "*******************\n"
 		//	build.Critical(fmt.Sprintf("d.expectedDurationNominator < 0: %v, %v %v \n %v", d.expectedDurationNominator, i, t, msg))
-		d.expectedDurationNominator = 0
+		//d.expectedDurationNominator = 0
 	}
 }
 
@@ -182,9 +183,11 @@ func (dt *DistributionTracker) Persist() PersistedDistributionTracker {
 	defer dt.mu.Unlock()
 	distributions := make([]PersistedDistribution, 0, len(dt.distributions))
 	for _, d := range dt.distributions {
-		distributions = append(distributions, PersistedDistribution{
-			Timings: d.timings,
-		})
+		pd := PersistedDistribution{}
+		for i := range pd.Timings {
+			pd.Timings[i] = float64(d.timings[i])
+		}
+		distributions = append(distributions, pd)
 	}
 	return PersistedDistributionTracker{
 		Distributions: distributions,
@@ -272,9 +275,9 @@ func (d *Distribution) addDecay() {
 		d.total = 0
 		d.expectedDurationNominator = 0
 		for i := 0; i < len(d.timings); i++ {
-			d.timings[i] *= decay
+			d.timings[i] = uint64(math.Round(float64(d.timings[i]) * decay))
 			d.total += d.timings[i]
-			d.expectedDurationNominator += d.timings[i] * float64(DistributionDurationForBucketIndex(i))
+			d.expectedDurationNominator += d.timings[i] * uint64(DistributionDurationForBucketIndex(i))
 		}
 	})
 }
@@ -293,7 +296,7 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 	index, _ := indexForDuration(dur)
 
 	// Add the datapoint
-	d.setTiming(index, d.timings[index]+1)
+	d.setTiming(index, float64(d.timings[index]+1))
 }
 
 // ChanceAfter returns the chance we find a data point after the given duration.
@@ -314,14 +317,14 @@ func (d *Distribution) ChanceAfter(dur time.Duration) float64 {
 	count := float64(0)
 	index, fraction := indexForDuration(dur)
 	for i := 0; i < index; i++ {
-		count += d.timings[i]
+		count += float64(d.timings[i])
 	}
 
 	// Add the fraction of the data points in the bucket at index.
-	count += fraction * d.timings[index]
+	count += fraction * float64(d.timings[index])
 
 	// Calculate the chance
-	chance := count / total
+	chance := count / float64(total)
 	return chance
 }
 
@@ -340,8 +343,8 @@ func (d *Distribution) ChancesAfter() Chances {
 	// Loop over every bucket once and calculate the chance at that bucket
 	count := float64(0)
 	for i := 0; i < DistributionTrackerTotalBuckets; i++ {
-		chances[i] = count / total
-		count += d.timings[i]
+		chances[i] = count / float64(total)
+		count += float64(d.timings[i])
 	}
 
 	return chances
@@ -373,7 +376,7 @@ func (d *Distribution) DataPoints() float64 {
 	// datapoint was added, decay should be applied so that the rates are
 	// correct.
 	d.addDecay()
-	return d.total
+	return float64(d.total)
 }
 
 // DurationForIndex converts the index of a bucket into a duration.
@@ -393,7 +396,7 @@ func (d Distribution) ExpectedDuration() time.Duration {
 
 	// Across all buckets, multiply the pct chance times the bucket's duration.
 	// The sum is the expected duration.
-	return time.Duration(d.expectedDurationNominator / total)
+	return time.Duration(float64(d.expectedDurationNominator) / total)
 }
 
 // MergeWith merges the given distribution according to a certain weight.
@@ -415,9 +418,9 @@ func (d *Distribution) MergeWith(other *Distribution, weight float64) {
 	d.total = 0
 	d.expectedDurationNominator = 0
 	for bi, b := range other.timings {
-		d.timings[bi] += b * weight
+		d.timings[bi] += uint64(math.Round(float64(b) * weight))
 		d.total += d.timings[bi]
-		d.expectedDurationNominator += d.timings[bi] * float64(DistributionDurationForBucketIndex(bi))
+		d.expectedDurationNominator += d.timings[bi] * uint64(DistributionDurationForBucketIndex(bi))
 	}
 }
 
@@ -447,8 +450,8 @@ func (d *Distribution) PStat(p float64) time.Duration {
 	// Count up until we reach p.
 	var run float64
 	var index int
-	for run/total < p && index < DistributionTrackerTotalBuckets-1 {
-		run += d.timings[index]
+	for run/float64(total) < p && index < DistributionTrackerTotalBuckets-1 {
+		run += float64(d.timings[index])
 		index++
 	}
 
@@ -470,7 +473,7 @@ func (d *Distribution) Shift(dur time.Duration) {
 
 	// Get the value at index
 	index, fraction := indexForDuration(dur)
-	value := d.timings[index]
+	value := float64(d.timings[index])
 
 	// Calculate the fraction we want to keep and update the bucket
 	keep := (1 - fraction) * value
@@ -516,7 +519,7 @@ func (dt *DistributionTracker) Load(tracker PersistedDistributionTracker) error 
 	}
 	for i := range tracker.Distributions {
 		for j := range dt.distributions[i].timings {
-			dt.distributions[i].setTiming(j, tracker.Distributions[i].Timings[j])
+			dt.distributions[i].setTiming(j, float64(tracker.Distributions[i].Timings[j]))
 		}
 	}
 	return nil
@@ -551,7 +554,7 @@ func (dt *DistributionTracker) DataPoints() []float64 {
 
 	var totals []float64
 	for _, d := range dt.distributions {
-		totals = append(totals, d.DataPoints())
+		totals = append(totals, float64(d.DataPoints()))
 	}
 	return totals
 }

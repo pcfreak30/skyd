@@ -34,9 +34,11 @@ func TestFoo(t *testing.T) {
 	d := NewDistribution(time.Second * 5)
 
 	bi := 34
-	d.expectedDurationNominator = 1.0792935983106709e08
-	d.timings[bi] = 0.7935982340519643
-	d.total = d.timings[bi]
+	d.setTiming(bi, 0.7935982340519643)
+	d.lastDecay = d.lastDecay.Add(-time.Second * 5)
+	d.addDecay()
+	//d.expectedDurationNominator = 1.0792935983106709e08
+	t.Log(d.expectedDurationNominator)
 
 	t.Log(float64(DistributionDurationForBucketIndex(bi)))
 
@@ -391,9 +393,9 @@ func testDistributionChanceAfterShift(t *testing.T) {
 	if d.total != 20 {
 		t.Error("bad", d.total, 20)
 	}
-	var denom float64
+	var denom uint64
 	for i, timing := range d.timings {
-		denom += timing * float64(DistributionDurationForBucketIndex(i))
+		denom += timing * uint64(DistributionDurationForBucketIndex(i))
 	}
 	if d.expectedDurationNominator != denom {
 		t.Error("bad", d.expectedDurationNominator, denom)
@@ -409,7 +411,7 @@ func testDistributionChanceAfterShift(t *testing.T) {
 	}
 	denom = 0
 	for i, timing := range d.timings {
-		denom += timing * float64(DistributionDurationForBucketIndex(i))
+		denom += timing * uint64(DistributionDurationForBucketIndex(i))
 	}
 	if d.expectedDurationNominator != denom {
 		t.Error("bad", d.expectedDurationNominator, denom)
@@ -477,11 +479,11 @@ func testDistributionDecay(t *testing.T) {
 	// decay operation should trigger every minute.
 	d := NewDistribution(time.Minute * 100)
 	totalPoints := func() float64 {
-		var total float64
+		var total uint64
 		for i := 0; i < len(d.timings); i++ {
 			total += d.timings[i]
 		}
-		return total
+		return float64(total)
 	}
 
 	// Add 500 data points.
@@ -529,11 +531,11 @@ func testDistributionDecayedLifetime(t *testing.T) {
 	// decay operation should trigger every three minutes.
 	d := NewDistribution(time.Minute * 300)
 	totalPoints := func() float64 {
-		var total float64
+		var total uint64
 		for i := 0; i < len(d.timings); i++ {
 			total += d.timings[i]
 		}
-		return total
+		return float64(total)
 	}
 
 	// Do 10k steps, each step advancing one minute. Every third step should
