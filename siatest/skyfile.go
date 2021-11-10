@@ -73,6 +73,15 @@ func (tn *TestNode) NewSkylinkV2FromString(sl string) (SkylinkV2, error) {
 	return tn.NewSkylinkV2(skylink)
 }
 
+// SkyfileGet is a helper to request the Skyfile.
+func (tn *TestNode) SkyfileGet(sp skymodules.SiaPath) (api.RenterFile, error) {
+	rootPath, err := skymodules.SkynetFolder.Join(sp.String())
+	if err != nil {
+		return api.RenterFile{}, err
+	}
+	return tn.RenterFileRootGet(rootPath)
+}
+
 // UploadNewSkyfileWithDataBlocking attempts to upload a skyfile with given
 // data. After it has successfully performed the upload, it will verify the file
 // can be downloaded using its Skylink. Returns the skylink, the parameters used

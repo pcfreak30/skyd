@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"io"
 	"io/ioutil"
-	"path/filepath"
 	"testing"
 
 	"gitlab.com/NebulousLabs/fastrand"
@@ -98,31 +97,5 @@ func testBackupAndRestore(t *testing.T, baseSector []byte, fileData []byte, back
 		t.Log("original data:", fileData)
 		t.Log("backup restoredData:", restoredData)
 		t.Fatal("Data bytes not equal")
-	}
-}
-
-// TestSkylinkToFromSysPath tests the SkylinkToSysPath and SkylinkFromSysPath
-// functions
-func TestSkylinkToFromSysPath(t *testing.T) {
-	t.Parallel()
-	expectedPath := filepath.Join("AA", "BE", "KWZ_wc2R9qlhYkzbG8mImFVi08kBu1nsvvwPLBtpEg")
-
-	// Test creating a path
-	path := SkylinkToSysPath(testSkylink)
-	if path != expectedPath {
-		t.Fatal("bad path:", path)
-	}
-
-	// Test creating the skylink
-	skylinkStr := SkylinkFromSysPath(path)
-	if testSkylink != skylinkStr {
-		t.Fatal("bad skylink string:", skylinkStr)
-	}
-
-	// Test creating the skylink from an absolute path
-	path = filepath.Join("many", "dirs", "in", "abs", "path", path)
-	skylinkStr = SkylinkFromSysPath(path)
-	if testSkylink != skylinkStr {
-		t.Fatal("bad skylink string:", skylinkStr)
 	}
 }

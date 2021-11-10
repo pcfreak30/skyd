@@ -41,6 +41,12 @@ const (
 	// high timeouts.
 	MaxSkynetRequestTimeout = 15 * time.Minute
 
+	// RegistrySubscriptionNotificationSize is the estimated bandwidth
+	// involved when receiving a subscription notification from the hosts on
+	// the network. It's a result of the size of a single notification and
+	// the expected number of hosts on the network getting updated.
+	RegistrySubscriptionNotificationSize = 1 << 16 // 64 kib
+
 	// SkynetDisableForceHeader allows disabling the force-update feature.
 	SkynetDisableForceHeader = "Skynet-Disable-Force"
 
@@ -59,10 +65,6 @@ const (
 	// SkynetSkylinkHeader is a string representation of the base64 encoded
 	// v1 Skylink that was served.
 	SkynetSkylinkHeader = "Skynet-Skylink"
-
-	// SkynetRequestedSkylinkHeader is a string representation of the base64 encoded
-	// Skylink that was requested.
-	SkynetRequestedSkylinkHeader = "Skynet-Requested-Skylink"
 )
 
 type (
@@ -585,7 +587,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		build.Critical("skylink attached in skynet-skylink header is not v1")
 	}
 	w.Header().Set(SkynetSkylinkHeader, streamer.Skylink().String())
-	w.Header().Set(SkynetRequestedSkylinkHeader, params.skylink.String())
 
 	// Set the ETag response header
 	//
@@ -1508,7 +1509,6 @@ func (api *API) skylinkResolveGET(w http.ResponseWriter, req *http.Request, ps h
 		build.Critical("skylink attached in skynet-skylink header is not v1")
 	}
 	w.Header().Set(SkynetSkylinkHeader, slV1.String())
-	w.Header().Set(SkynetRequestedSkylinkHeader, sl.String())
 
 	// Send response.
 	WriteJSON(w, SkylinkResolveGET{
@@ -1583,7 +1583,6 @@ func (api *API) skynetMetadataHandlerGET(w http.ResponseWriter, req *http.Reques
 		build.Critical("skylink attached in skynet-skylink header is not v1")
 	}
 	w.Header().Set(SkynetSkylinkHeader, resolvedLink.String())
-	w.Header().Set(SkynetRequestedSkylinkHeader, skylink.String())
 
 	// Attach proof.
 	err = attachRegistryEntryProof(w, srvs)

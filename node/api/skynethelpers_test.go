@@ -98,6 +98,18 @@ func TestHandleSkynetError(t *testing.T) {
 			statusCode: http.StatusRequestTimeout,
 		},
 		{
+			err:        modules.ErrLowerRevNum,
+			statusCode: http.StatusBadRequest,
+		},
+		{
+			err:        modules.ErrInsufficientWork,
+			statusCode: http.StatusBadRequest,
+		},
+		{
+			err:        modules.ErrSameRevNum,
+			statusCode: http.StatusBadRequest,
+		},
+		{
 			err:        errors.New("other"),
 			statusCode: http.StatusInternalServerError,
 		},

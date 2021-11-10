@@ -1,0 +1,1 @@
+- Fix bug in pin code where a skyfile could be pinned without error even if the download is failing.

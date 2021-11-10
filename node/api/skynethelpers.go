@@ -24,6 +24,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 	"go.sia.tech/siad/crypto"
+	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 )
 
@@ -97,28 +98,6 @@ type writeReader struct {
 func (wr *writeReader) Read(_ []byte) (int, error) {
 	build.Critical("Read method of the writeReader is not intended to be used")
 	return 0, io.EOF
-}
-
-// monetizedResponseWriter is a wrapper for a response writer. It monetizes the
-// returned bytes.
-type monetizedResponseWriter struct {
-	staticInner http.ResponseWriter
-	staticW     io.Writer
-}
-
-// Header calls the inner writers Header method.
-func (rw *monetizedResponseWriter) Header() http.Header {
-	return rw.staticInner.Header()
-}
-
-// WriteHeader calls the inner writers WriteHeader method.
-func (rw *monetizedResponseWriter) WriteHeader(statusCode int) {
-	rw.staticInner.WriteHeader(statusCode)
-}
-
-// Write writes to the underlying monetized writer.
-func (rw *monetizedResponseWriter) Write(b []byte) (int, error) {
-	return rw.staticW.Write(b)
 }
 
 // newCustomErrorWriter creates a new customErrorWriter.
@@ -730,6 +709,18 @@ func handleSkynetError(w http.ResponseWriter, prefix string, err error) {
 		return
 	}
 	if errors.Contains(err, renter.ErrInvalidSkylinkVersion) {
+		WriteError(w, httpErr, http.StatusBadRequest)
+		return
+	}
+	if errors.Contains(err, modules.ErrLowerRevNum) {
+		WriteError(w, httpErr, http.StatusBadRequest)
+		return
+	}
+	if errors.Contains(err, modules.ErrInsufficientWork) {
+		WriteError(w, httpErr, http.StatusBadRequest)
+		return
+	}
+	if errors.Contains(err, modules.ErrSameRevNum) {
 		WriteError(w, httpErr, http.StatusBadRequest)
 		return
 	}
