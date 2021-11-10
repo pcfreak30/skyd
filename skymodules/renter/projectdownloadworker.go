@@ -1433,6 +1433,10 @@ func isGoodForDownload(w *worker, pieces []uint64) bool {
 		return false
 	}
 
+	if w.staticHostPubKey.Key[23] > 128 {
+		return false
+	}
+
 	// workers that are price gouging are not useful
 	pt := w.staticPriceTable().staticPriceTable
 	allowance := w.staticCache().staticRenterAllowance
