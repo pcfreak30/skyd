@@ -22,7 +22,6 @@ package skymodules
 
 import (
 	"fmt"
-	"math"
 	"reflect"
 	"sync"
 	"time"
@@ -101,9 +100,9 @@ type (
 		// spaced 64ms apart, the spacings multiplying by 4 every 48 buckets.
 		// The final bucket is just over an hour, anything over will be put into
 		// that bucket as well.
-		total                     uint64
-		timings                   [numBuckets]uint64
-		expectedDurationNominator uint64
+		total                     float64
+		timings                   [numBuckets]float64
+		expectedDurationNominator float64
 	}
 
 	// DistributionTracker will track the performance distribution of a series
@@ -142,12 +141,19 @@ type (
 
 func (d *Distribution) setTiming(i int, t float64) {
 	d.total -= d.timings[i]
-	d.expectedDurationNominator -= d.timings[i] * uint64(DistributionDurationForBucketIndex(i))
+	d.expectedDurationNominator -= d.timings[i] * float64(DistributionDurationForBucketIndex(i))
 
-	d.timings[i] = uint64(math.Round(t))
+	d.timings[i] = t
 
 	d.total += d.timings[i]
-	d.expectedDurationNominator += d.timings[i] * uint64(DistributionDurationForBucketIndex(i))
+	d.expectedDurationNominator += d.timings[i] * float64(DistributionDurationForBucketIndex(i))
+
+	if d.total < 0 {
+		d.total = 0
+	}
+	if d.expectedDurationNominator < 0 {
+		d.expectedDurationNominator = 0
+	}
 }
 
 // Persist returns a PersistedDistributionTracker for the DistributionTracker by
@@ -249,9 +255,9 @@ func (d *Distribution) addDecay() {
 		d.total = 0
 		d.expectedDurationNominator = 0
 		for i := 0; i < len(d.timings); i++ {
-			d.timings[i] = uint64(math.Round(float64(d.timings[i]) * decay))
+			d.timings[i] = d.timings[i] * decay
 			d.total += d.timings[i]
-			d.expectedDurationNominator += d.timings[i] * uint64(DistributionDurationForBucketIndex(i))
+			d.expectedDurationNominator += d.timings[i] * float64(DistributionDurationForBucketIndex(i))
 		}
 	})
 }
@@ -392,9 +398,9 @@ func (d *Distribution) MergeWith(other *Distribution, weight float64) {
 	d.total = 0
 	d.expectedDurationNominator = 0
 	for bi, b := range other.timings {
-		d.timings[bi] += uint64(math.Round(float64(b) * weight))
+		d.timings[bi] += b * weight
 		d.total += d.timings[bi]
-		d.expectedDurationNominator += d.timings[bi] * uint64(DistributionDurationForBucketIndex(bi))
+		d.expectedDurationNominator += d.timings[bi] * float64(DistributionDurationForBucketIndex(bi))
 	}
 }
 
@@ -534,7 +540,7 @@ func (dt *DistributionTracker) Load(tracker PersistedDistributionTracker) error 
 	}
 	for i := range tracker.Distributions {
 		for j := range dt.distributions[i].timings {
-			dt.distributions[i].setTiming(j, float64(tracker.Distributions[i].Timings[j]))
+			dt.distributions[i].setTiming(j, tracker.Distributions[i].Timings[j])
 		}
 	}
 	return nil

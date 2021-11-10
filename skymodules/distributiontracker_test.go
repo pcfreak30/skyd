@@ -393,9 +393,9 @@ func testDistributionChanceAfterShift(t *testing.T) {
 	if d.total != 20 {
 		t.Error("bad", d.total, 20)
 	}
-	var denom uint64
+	var denom float64
 	for i, timing := range d.timings {
-		denom += timing * uint64(DistributionDurationForBucketIndex(i))
+		denom += timing * float64(DistributionDurationForBucketIndex(i))
 	}
 	if d.expectedDurationNominator != denom {
 		t.Error("bad", d.expectedDurationNominator, denom)
@@ -411,7 +411,7 @@ func testDistributionChanceAfterShift(t *testing.T) {
 	}
 	denom = 0
 	for i, timing := range d.timings {
-		denom += timing * uint64(DistributionDurationForBucketIndex(i))
+		denom += timing * float64(DistributionDurationForBucketIndex(i))
 	}
 	if d.expectedDurationNominator != denom {
 		t.Error("bad", d.expectedDurationNominator, denom)
@@ -479,7 +479,7 @@ func testDistributionDecay(t *testing.T) {
 	// decay operation should trigger every minute.
 	d := NewDistribution(time.Minute * 100)
 	totalPoints := func() float64 {
-		var total uint64
+		var total float64
 		for i := 0; i < len(d.timings); i++ {
 			total += d.timings[i]
 		}
@@ -531,7 +531,7 @@ func testDistributionDecayedLifetime(t *testing.T) {
 	// decay operation should trigger every three minutes.
 	d := NewDistribution(time.Minute * 300)
 	totalPoints := func() float64 {
-		var total uint64
+		var total float64
 		for i := 0; i < len(d.timings); i++ {
 			total += d.timings[i]
 		}
@@ -1024,10 +1024,10 @@ func testDistributionShift(t *testing.T) {
 	}
 
 	// compare the expected chance with the actual chance, allow for some
-	// floating point precision errors up until 1e-9
+	// floating point precision errors up until 1e-3
 	for i := 1; i < 200; i++ {
 		chance = smear * float64(i) / d.DataPoints()
-		if math.Abs(chance-d.ChanceAfter(DistributionDurationForBucketIndex(i))) > 1e-9 {
+		if math.Abs(chance-d.ChanceAfter(DistributionDurationForBucketIndex(i))) > 1e-3 {
 			t.Fatal("bad", i, chance, d.ChanceAfter(DistributionDurationForBucketIndex(i)))
 		}
 	}
