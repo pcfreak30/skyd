@@ -172,7 +172,8 @@ func (d *Distribution) setTiming(i int, t float64) {
 		msg += fmt.Sprint("t", t) + "\n"
 		msg += fmt.Sprint("nominator", nomBefore) + "\n"
 		msg += fmt.Sprint("ti", before.timings[i]) + "\n"
-		msg += fmt.Sprint("res", before.timings[i]*float64(DistributionDurationForBucketIndex(i))) + "\n"
+		msg += fmt.Sprint("res1", before.timings[i]*float64(DistributionDurationForBucketIndex(i))) + "\n"
+		msg += fmt.Sprint("res2", d.timings[i]*float64(DistributionDurationForBucketIndex(i))) + "\n"
 		msg += fmt.Sprint("d", before.timings) + "\n"
 		msg += "*******************\n"
 		build.Critical(fmt.Sprintf("d.expectedDurationNominator < 0: %v, %v %v \n %v", d.expectedDurationNominator, i, t, msg))
