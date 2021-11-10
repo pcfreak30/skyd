@@ -141,16 +141,12 @@ type (
 
 func (d *Distribution) setTiming(i int, t float64) {
 	d.total -= d.timings[i]
-	fmt.Println("exp", d.expectedDurationNominator)
-	fmt.Println("exp2", float64(DistributionDurationForBucketIndex(i)))
 	d.expectedDurationNominator -= d.timings[i] * float64(DistributionDurationForBucketIndex(i))
-	fmt.Println("res1", d.timings[i]*float64(DistributionDurationForBucketIndex(i)))
 
 	d.timings[i] = t
 
 	d.total += d.timings[i]
 	d.expectedDurationNominator += d.timings[i] * float64(DistributionDurationForBucketIndex(i))
-	fmt.Println("res2", d.timings[i]*float64(DistributionDurationForBucketIndex(i)))
 
 	if d.total < 0 {
 		//	msg := ""
