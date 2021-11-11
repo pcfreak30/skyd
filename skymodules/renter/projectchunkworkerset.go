@@ -326,7 +326,7 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 			!errors.Contains(resp.staticErr, errDiscardingCanceledJob) &&
 			!errors.Contains(resp.staticErr, errOnMaintenanceCooldown) &&
 			!strings.Contains(resp.staticErr.Error(), "closed pipe") {
-			fmt.Println("lookup failed", resp.staticErr)
+			//fmt.Println("lookup failed", resp.staticErr)
 		}
 		ws.managedHandleResponse(resp)
 		staticPoolJobHasSectorResponse.Put(resp)
