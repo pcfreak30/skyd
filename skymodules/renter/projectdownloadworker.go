@@ -917,7 +917,9 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	updates := 0
 	responses := 0
 	responseErr := 0
+	iterations := 0
 	for {
+		iterations++
 		// update the pieces
 		updated := pdc.updatePieces()
 
@@ -951,7 +953,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			responses++
 			pdc.handleJobReadResponse(jrr)
 		case <-pdc.ctx.Done():
-			fmt.Println("timeout", launches, actualLaunches, updates, responses, responseErr, len(workers))
+			fmt.Println("timeout", launches, actualLaunches, updates, responses, responseErr, len(workers), iterations)
 			pdc.fail(errors.New("download timed out"))
 			return
 		}
