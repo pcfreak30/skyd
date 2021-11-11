@@ -316,7 +316,7 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 	ctx, cancel := context.WithTimeout(pcws.staticCtx, pcwsHasSectorTimeout)
 	jhs := w.newJobHasSectorWithPostExecutionHook(ctx, responseChan, func(resp *jobHasSectorResponse) {
 		if resp.staticErr != nil {
-			fmt.Println("lookup failed", err)
+			fmt.Println("lookup failed", resp.staticErr)
 		}
 		ws.managedHandleResponse(resp)
 		staticPoolJobHasSectorResponse.Put(resp)
