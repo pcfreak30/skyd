@@ -839,7 +839,7 @@ func (pdc *projectDownloadChunk) currentDownload(w downloadWorker) (uint64, bool
 // launchWorkerSet will range over the workers in the given worker set and will
 // try to launch every worker that has not yet been launched and is ready to
 // launch.
-func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) {
+func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) (n int) {
 	// convenience variables
 	minPieces := pdc.workerSet.staticErasureCoder.MinPieces()
 
@@ -872,8 +872,10 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) {
 					"wsIndex", ws.staticBucketIndex,
 				)
 			}
+			n++
 		}
 	}
+	return
 }
 
 // threadedLaunchProjectDownload performs the main download loop, every
@@ -900,6 +902,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	prevWorkerUpdate := time.Now()
 
 	launches := 0
+	actualLaunches := 0
 	updates := 0
 	responses := 0
 	responseErr := 0
@@ -921,7 +924,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		}
 		if workerSet != nil {
 			launches++
-			pdc.launchWorkerSet(workerSet)
+			actualLaunches += pdc.launchWorkerSet(workerSet)
 		}
 
 		// iterate
@@ -933,11 +936,11 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			workerUpdateChan = ws.managedRegisterForWorkerUpdate()
 			updates++
 		case jrr := <-pdc.workerResponseChan:
-			pdc.handleJobReadResponse(jrr)
 			responseErr++
 			responses++
+			pdc.handleJobReadResponse(jrr)
 		case <-pdc.ctx.Done():
-			fmt.Println("timeout", launches, updates, responses, responseErr)
+			fmt.Println("timeout", launches, actualLaunches, updates, responses, responseErr)
 			pdc.fail(errors.New("download timed out"))
 			return
 		}
