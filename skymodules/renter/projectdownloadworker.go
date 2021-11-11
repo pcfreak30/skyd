@@ -897,6 +897,17 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		return
 	}
 
+	// Allocate some memory outside of the loop to reduce the number of
+	// allocations within.
+	ds := &bufferedDownloadState{
+		downloadWorkers:       make([]downloadWorker, 0, len(workers)),
+		mostLikely:            make([]downloadWorker, 0, maxOverdriveWorkers+pdc.workerSet.staticErasureCoder.MinPieces()),
+		lessLikely:            make([]downloadWorker, 0, len(workers)),
+		pieces:                make(map[uint64]struct{}, pdc.workerSet.staticErasureCoder.NumPieces()),
+		added:                 make(map[uint32]struct{}, len(workers)),
+		sortedDownloadWorkers: make([]sortedDownloadWorker, 0, len(workers)),
+	}
+
 	// register for a worker update chan
 	workerUpdateChan := ws.managedRegisterForWorkerUpdate()
 	prevWorkerUpdate := time.Now()
@@ -917,7 +928,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		}
 
 		// create a worker set and launch it
-		workerSet, err := pdc.createWorkerSet(workers)
+		workerSet, err := pdc.createWorkerSet(workers, ds)
 		if err != nil {
 			pdc.fail(err)
 			return
@@ -961,7 +972,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 // createWorkerSet tries to create a worker set from the pdc's resolved and
 // unresolved workers, the maximum amount of overdrive workers in the set is
 // defined by the given 'maxOverdriveWorkers' argument.
-func (pdc *projectDownloadChunk) createWorkerSet(workers []*individualWorker) (*workerSet, error) {
+func (pdc *projectDownloadChunk) createWorkerSet(workers []*individualWorker, ds *bufferedDownloadState) (*workerSet, error) {
 	// can't create a workerset without download workers
 	if len(workers) == 0 {
 		return nil, nil
@@ -981,17 +992,6 @@ func (pdc *projectDownloadChunk) createWorkerSet(workers []*individualWorker) (*
 		numOverdrive = 1
 	}
 
-	// Allocate some memory outside of the loop to reduce the number of
-	// allocations within.
-	bds := &bufferedDownloadState{
-		downloadWorkers:       make([]downloadWorker, 0, len(workers)),
-		mostLikely:            make([]downloadWorker, 0, maxOverdriveWorkers+minPieces),
-		lessLikely:            make([]downloadWorker, 0, len(workers)),
-		pieces:                make(map[uint64]struct{}, pdc.workerSet.staticErasureCoder.NumPieces()),
-		added:                 make(map[uint32]struct{}, len(workers)),
-		sortedDownloadWorkers: make([]sortedDownloadWorker, 0, len(workers)),
-	}
-
 	// approximate the bucket index by iterating over all bucket indices using a
 	// step size greater than 1, once we've found the best set, we range over
 	// bI-stepsize|bi+stepSize to find the best bucket index
@@ -1000,7 +1000,7 @@ OUTER:
 		for bI = 0; bI < skymodules.DistributionTrackerTotalBuckets; bI += bucketIndexScanStep {
 			// create the worker set
 			bDur := skymodules.DistributionDurationForBucketIndex(bI)
-			mostLikelySet, escape := pdc.createWorkerSetInner(workers, minPieces, numOverdrive, bI, bDur, bds)
+			mostLikelySet, escape := pdc.createWorkerSetInner(workers, minPieces, numOverdrive, bI, bDur, ds)
 			if escape {
 				break OUTER
 			}
@@ -1035,7 +1035,7 @@ OUTER:
 	for bI = bIMin; bI < bIMax; bI++ {
 		// create the worker set
 		bDur := skymodules.DistributionDurationForBucketIndex(bI)
-		mostLikelySet, escape := pdc.createWorkerSetInner(workers, minPieces, numOverdrive, bI, bDur, bds)
+		mostLikelySet, escape := pdc.createWorkerSetInner(workers, minPieces, numOverdrive, bI, bDur, ds)
 		if escape {
 			break
 		}
