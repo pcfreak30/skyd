@@ -3,6 +3,7 @@ package renter
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -318,7 +319,8 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 		if resp.staticErr != nil &&
 			!errors.Contains(resp.staticErr, errDiscardingCanceledJob) &&
 			!errors.Contains(resp.staticErr, errInvalidPriceTable) &&
-			!errors.Contains(resp.staticErr, errOnMaintenanceCooldown) {
+			!errors.Contains(resp.staticErr, errOnMaintenanceCooldown) &&
+			!strings.Contains(resp.staticErr.Error(), "closed pipe") {
 			fmt.Println("lookup failed", resp.staticErr)
 		}
 		ws.managedHandleResponse(resp)
