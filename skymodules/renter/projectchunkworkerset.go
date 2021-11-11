@@ -317,7 +317,8 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 	jhs := w.newJobHasSectorWithPostExecutionHook(ctx, responseChan, func(resp *jobHasSectorResponse) {
 		if resp.staticErr != nil &&
 			!errors.Contains(resp.staticErr, errDiscardingCanceledJob) &&
-			!errors.Contains(resp.staticErr, errInvalidPriceTable) {
+			!errors.Contains(resp.staticErr, errInvalidPriceTable) &&
+			!errors.Contains(resp.staticErr, errOnMaintenanceCooldown) {
 			fmt.Println("lookup failed", resp.staticErr)
 		}
 		ws.managedHandleResponse(resp)
