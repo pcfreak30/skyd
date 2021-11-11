@@ -899,7 +899,8 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	workerUpdateChan := ws.managedRegisterForWorkerUpdate()
 	prevWorkerUpdate := time.Now()
 
-	fmt.Println("workers:", len(workers))
+	launches := 0
+	updates := 0
 	for {
 		// update the pieces
 		updated := pdc.updatePieces()
@@ -917,6 +918,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			return
 		}
 		if workerSet != nil {
+			launches++
 			pdc.launchWorkerSet(workerSet)
 		}
 
@@ -927,9 +929,11 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		case <-workerUpdateChan:
 			// replace the worker update channel
 			workerUpdateChan = ws.managedRegisterForWorkerUpdate()
+			updates++
 		case jrr := <-pdc.workerResponseChan:
 			pdc.handleJobReadResponse(jrr)
 		case <-pdc.ctx.Done():
+			fmt.Println("timeout", launches, updates)
 			pdc.fail(errors.New("download timed out"))
 			return
 		}
