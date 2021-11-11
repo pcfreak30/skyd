@@ -899,6 +899,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	workerUpdateChan := ws.managedRegisterForWorkerUpdate()
 	prevWorkerUpdate := time.Now()
 
+	fmt.Println("workers:", len(workers))
 	for {
 		// update the pieces
 		updated := pdc.updatePieces()
