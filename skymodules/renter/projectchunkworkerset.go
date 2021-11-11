@@ -315,7 +315,9 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 	// Create and launch the job.
 	ctx, cancel := context.WithTimeout(pcws.staticCtx, pcwsHasSectorTimeout)
 	jhs := w.newJobHasSectorWithPostExecutionHook(ctx, responseChan, func(resp *jobHasSectorResponse) {
-		if resp.staticErr != nil {
+		if resp.staticErr != nil &&
+			!errors.Contains(resp.staticErr, errDiscardingCanceledJob) &&
+			!errors.Contains(resp.staticErr, errInvalidPriceTable) {
 			fmt.Println("lookup failed", resp.staticErr)
 		}
 		ws.managedHandleResponse(resp)
