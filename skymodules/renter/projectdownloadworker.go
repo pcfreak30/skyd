@@ -945,9 +945,9 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		if workerSet != nil {
 			launches++
 			launched, i, totalLaunched := pdc.launchWorkerSet(workerSet)
-			launches += launched
-			indi += i
-			totalL += totalLaunched
+			actualLaunches += launched
+			indi = i
+			totalL = totalLaunched
 		}
 
 		if time.Since(s) > time.Minute && time.Since(lastPrint) > 5*time.Second {
