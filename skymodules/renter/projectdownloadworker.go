@@ -1161,12 +1161,13 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 	// improvements listed at the top of this file.
 	if !mostLikelySet.chanceGreaterThanHalf() {
 		if bI == skymodules.DistributionTrackerTotalBuckets-1 {
-			pdc.Println("chances", bI, numOverdrive, len(downloadWorkers), len(workers))
+			pdc.Println("chances", bI, numOverdrive, len(downloadWorkers), len(workers), pdc.uid)
 			for i, w := range append(mostLikely, lessLikely...) {
 				c := w.completeChanceCached()
 				pdc.Println("  i:", i, c)
 				iw, ok := w.(*individualWorker)
 				if ok {
+					pdc.Println("resolved", iw.resolved)
 					pdc.Println(i, iw.staticReadDistribution.DataPoints())
 					pdc.Println(i, iw.cachedReadDTChances)
 					pdc.Println(i, iw.cachedLookupIndex)
