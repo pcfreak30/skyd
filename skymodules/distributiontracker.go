@@ -317,6 +317,7 @@ func (d *Distribution) ChancesAfter() Chances {
 	// Get the total data points.
 	total := d.DataPoints()
 	if total == 0 {
+		chances[len(chances)-1] = 1
 		return chances
 	}
 

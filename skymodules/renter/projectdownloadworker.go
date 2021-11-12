@@ -1160,7 +1160,7 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 		pdc.Println("chances", bI, numOverdrive, len(downloadWorkers), len(workers))
 		for i, w := range append(mostLikely, lessLikely...) {
 			c := w.completeChanceCached()
-			pdc.Println("  i:", c)
+			pdc.Println("  i:", i, c)
 			iw, ok := w.(*individualWorker)
 			if ok {
 				pdc.Println(i, iw.cachedReadDTChances)
