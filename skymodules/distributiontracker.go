@@ -317,6 +317,8 @@ func (d *Distribution) ChancesAfter() Chances {
 	// Get the total data points.
 	total := d.DataPoints()
 	if total == 0 {
+		// If there are not datapoints, we set the last index to 1 to
+		// make sure the chances still add up to 100%.
 		chances[len(chances)-1] = 1
 		return chances
 	}

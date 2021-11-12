@@ -1157,17 +1157,22 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 	// and calculating how often we run a bad worker set is part of the download
 	// improvements listed at the top of this file.
 	if !mostLikelySet.chanceGreaterThanHalf() {
-		pdc.Println("chances", bI, numOverdrive, len(downloadWorkers), len(workers))
-		for i, w := range append(mostLikely, lessLikely...) {
-			c := w.completeChanceCached()
-			pdc.Println("  i:", i, c)
-			iw, ok := w.(*individualWorker)
-			if ok {
-				pdc.Println(i, iw.cachedReadDTChances)
-				pdc.Println(i, iw.cachedLookupIndex)
+		if bI == skymodules.DistributionTrackerTotalBuckets-1 {
+			pdc.Println("chances", bI, numOverdrive, len(downloadWorkers), len(workers))
+			for i, w := range append(mostLikely, lessLikely...) {
+				c := w.completeChanceCached()
+				pdc.Println("  i:", i, c)
+				iw, ok := w.(*individualWorker)
+				if ok {
+					pdc.Println(i, iw.staticReadDistribution.DataPoints())
+					pdc.Println(i, iw.cachedReadDTChances)
+					pdc.Println(i, iw.cachedLookupIndex)
+				} else {
+					pdc.Println(i, "chimera")
+				}
 			}
+			pdc.Println("chanceNotGreaterThanHalf", true, mostLikelySet.staticNumOverdrive)
 		}
-		pdc.Println("chanceNotGreaterThanHalf", true, mostLikelySet.staticNumOverdrive)
 		return nil, false
 	}
 
