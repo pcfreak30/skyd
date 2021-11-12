@@ -793,7 +793,7 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	s := time.Now()
 	streamer, err := r.managedDownloadSkylink(ctx, link, timeout, pricePerMS)
 	if errors.Contains(err, ErrProjectTimedOut) {
-		fmt.Println("timed out after", time.Since(s))
+		fmt.Println("timed out after", time.Since(s), timeout)
 		span.LogKV("timeout", timeout)
 		span.SetTag("timeout", true)
 		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
