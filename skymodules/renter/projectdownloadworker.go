@@ -979,20 +979,20 @@ workersBefore: %v
 			responseErr++
 			responses++
 			pdc.handleJobReadResponse(jrr)
-		case <-pdc.ctx.Done():
-			fmt.Printf(`
-time: %v
-launches: %v
-actualLaunches: %v
-updates: %v
-responses: %v
-responseErrs: %v
-iterations: %v
-workersAfter: %v
-workersBefore: %v
-`, time.Since(s), launches, actualLaunches, updates, responses, responseErr, iterations, len(workers), workersBefore)
-			pdc.fail(ErrProjectTimedOut)
-			return
+			//		case <-pdc.ctx.Done():
+			//			fmt.Printf(`
+			//time: %v
+			//launches: %v
+			//actualLaunches: %v
+			//updates: %v
+			//responses: %v
+			//responseErrs: %v
+			//iterations: %v
+			//workersAfter: %v
+			//workersBefore: %v
+			//`, time.Since(s), launches, actualLaunches, updates, responses, responseErr, iterations, len(workers), workersBefore)
+			//			pdc.fail(ErrProjectTimedOut)
+			//			return
 		}
 
 		// check whether the download is completed
