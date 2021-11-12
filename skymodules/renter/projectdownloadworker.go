@@ -1273,9 +1273,6 @@ func (pdc *projectDownloadChunk) buildDownloadWorkers(workers []*individualWorke
 
 	// the unresolved workers are used to build chimeras with
 	chimeraWorkers := pdc.buildChimeraWorkers(unresolvedWorkers, uint32(len(workers)))
-	if len(resolvedWorkers) > 0 {
-		pdc.Println("resolved", len(resolvedWorkers), pdc.uid)
-	}
 	return append(downloadWorkers, chimeraWorkers...)
 }
 
