@@ -1134,7 +1134,7 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 		pdc.Println("mostLikely", len(mostLikely))
 		return nil, true
 	}
-	pdc.Println("mostLikely", len(mostLikely))
+	pdc.Println("mostLikely", len(mostLikely), len(lessLikely))
 
 	// build the most likely set
 	mostLikelySet := &workerSet{
@@ -1158,14 +1158,13 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 	// improvements listed at the top of this file.
 	if !mostLikelySet.chanceGreaterThanHalf() {
 		pdc.Println("chances")
-		for i := range mostLikely {
+		for i := range append(mostLikely, lessLikely...) {
 			c := mostLikely[i].completeChanceCached()
 			pdc.Println("  i:", c)
 		}
 		pdc.Println("chanceNotGreaterThanHalf", true, mostLikelySet.staticNumOverdrive)
 		return nil, false
 	}
-	pdc.Println("chanceNotGreaterThanHalf", false)
 
 	// now loop the less likely workers and try and swap them with the
 	// most expensive workers in the most likely set
