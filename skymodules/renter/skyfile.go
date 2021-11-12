@@ -885,6 +885,7 @@ func (r *Renter) managedDownloadSkylink(ctx context.Context, link skymodules.Sky
 		}
 		fmt.Println("link", link)
 	}()
+	defer close(done)
 	// Create the data source and add it to the stream buffer set.
 	dataSource, err := r.managedSkylinkDataSource(ctx, link, pricePerMS)
 	if err != nil {
