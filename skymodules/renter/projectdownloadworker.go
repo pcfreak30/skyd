@@ -1162,11 +1162,14 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 			for _, ll := range lessLikely {
 				lessLikelyChance += ll.completeChanceCached()
 			}
-			if lessLikelyChance > 0.5 {
+			if lessLikelyChance == 0.0 {
 				pdc.Println("chances", bI, numOverdrive, len(downloadWorkers), len(workers))
-				for _, w := range append(mostLikely, lessLikely...) {
-					c := w.completeChanceCached()
-					pdc.Println("  i:", c)
+				for i, w := range append(mostLikely, lessLikely...) {
+					iw, ok := w.(*individualWorker)
+					if ok {
+						pdc.Println(i, iw.cachedReadDTChances)
+						pdc.Println(i, iw.cachedLookupIndex)
+					}
 				}
 				pdc.Println("chanceNotGreaterThanHalf", false, mostLikelySet.staticNumOverdrive)
 				return nil, false
