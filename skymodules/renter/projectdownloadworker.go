@@ -1160,6 +1160,12 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 		if bI == skymodules.DistributionTrackerTotalBuckets-1 {
 			for _, ll := range lessLikely {
 				if ll.completeChanceCached() > 0 {
+					pdc.Println("chances", bI, numOverdrive, len(downloadWorkers), len(workers))
+					for _, w := range append(mostLikely, lessLikely...) {
+						c := w.completeChanceCached()
+						pdc.Println("  i:", c)
+					}
+					pdc.Println("chanceNotGreaterThanHalf", false, mostLikelySet.staticNumOverdrive)
 					return nil, false
 				}
 			}
