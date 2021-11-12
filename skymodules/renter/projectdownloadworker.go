@@ -1036,7 +1036,10 @@ func (pdc *projectDownloadChunk) createWorkerSet(workers []*individualWorker, ds
 	// bI-stepsize|bi+stepSize to find the best bucket index
 OUTER:
 	for ; numOverdrive <= maxOverdriveWorkers; numOverdrive++ {
-		for bI = 0; bI < skymodules.DistributionTrackerTotalBuckets; bI += bucketIndexScanStep {
+		for bI = 0; bI <= skymodules.DistributionTrackerTotalBuckets; bI += bucketIndexScanStep {
+			if bI == skymodules.DistributionTrackerTotalBuckets {
+				bI--
+			}
 			// create the worker set
 			bDur := skymodules.DistributionDurationForBucketIndex(bI)
 			mostLikelySet, escape := pdc.createWorkerSetInner(workers, minPieces, numOverdrive, bI, bDur, ds)
