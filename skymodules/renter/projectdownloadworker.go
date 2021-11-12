@@ -1100,6 +1100,13 @@ OUTER:
 	return bestSet, nil
 }
 
+func (pdc *projectDownloadChunk) Println(i ...interface{}) (int, error) {
+	if time.Since(pdc.creation) > time.Minute {
+		return fmt.Println(i...)
+	}
+	return 0, nil
+}
+
 // createWorkerSetInner is the inner loop that is called by createWorkerSet, it
 // tries to create a worker set from the given list of workers, taking into
 // account the given amount of workers and overdrive workers, but also the given
@@ -1124,8 +1131,10 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 
 	// if there aren't even likely workers, escape early
 	if len(mostLikely) == 0 {
+		pdc.Println("mostLikely", len(mostLikely))
 		return nil, true
 	}
+	pdc.Println("mostLikely", len(mostLikely))
 
 	// build the most likely set
 	mostLikelySet := &workerSet{
@@ -1148,6 +1157,7 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 	// and calculating how often we run a bad worker set is part of the download
 	// improvements listed at the top of this file.
 	if !mostLikelySet.chanceGreaterThanHalf() {
+		pdc.Println("chanceNotGreaterThanHalf", len(mostLikely))
 		return nil, false
 	}
 

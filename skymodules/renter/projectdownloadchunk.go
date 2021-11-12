@@ -102,6 +102,7 @@ type (
 		// Debug helpers
 		uid             [8]byte
 		launchedWorkers []*launchedWorkerInfo
+		creation        time.Time
 	}
 
 	// pieceInfo is a helper struct that contains how many workers have the

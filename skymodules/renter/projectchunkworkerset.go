@@ -553,6 +553,7 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		downloadResponseChan: make(chan *downloadResponse, 1),
 		workerSet:            pcws,
 		workerState:          ws,
+		creation:             time.Now(),
 	}
 
 	// Set debug variables on the pdc
