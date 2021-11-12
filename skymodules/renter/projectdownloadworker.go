@@ -839,7 +839,7 @@ func (pdc *projectDownloadChunk) currentDownload(w downloadWorker) (uint64, bool
 // launchWorkerSet will range over the workers in the given worker set and will
 // try to launch every worker that has not yet been launched and is ready to
 // launch.
-func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) (n, indi, l int) {
+func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) {
 	// convenience variables
 	minPieces := pdc.workerSet.staticErasureCoder.MinPieces()
 
@@ -848,14 +848,12 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) (n, indi, l int)
 		// continue if the worker is a chimera worker
 		iw, ok := w.(*individualWorker)
 		if !ok {
-			indi++
 			continue
 		}
 
 		// continue if the worker is already launched
 		piece, isLaunched, _ := pdc.currentDownload(w)
 		if isLaunched {
-			l++
 			continue
 		}
 
@@ -874,7 +872,6 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) (n, indi, l int)
 					"wsIndex", ws.staticBucketIndex,
 				)
 			}
-			n++
 		}
 	}
 	return
@@ -885,7 +882,6 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) (n, indi, l int)
 // and launch every worker that can be launched from that set. Every iteration
 // we check whether the download was finished.
 func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
-	s := time.Now()
 	// grab some variables
 	ws := pdc.workerState
 	ec := pdc.workerSet.staticErasureCoder
@@ -915,18 +911,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	workerUpdateChan := ws.managedRegisterForWorkerUpdate()
 	prevWorkerUpdate := time.Now()
 
-	launches := 0
-	actualLaunches := 0
-	updates := 0
-	responses := 0
-	responseErr := 0
-	iterations := 0
-	workersBefore := len(workers)
-	lastPrint := time.Now()
-	indi := 0
-	totalL := 0
 	for {
-		iterations++
 		// update the pieces
 		updated := pdc.updatePieces()
 
@@ -943,28 +928,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			return
 		}
 		if workerSet != nil {
-			launches++
-			launched, i, totalLaunched := pdc.launchWorkerSet(workerSet)
-			actualLaunches += launched
-			indi = i
-			totalL = totalLaunched
-		}
-
-		if time.Since(s) > time.Minute && time.Since(lastPrint) > 5*time.Second {
-			lastPrint = time.Now()
-			fmt.Printf(`
-time: %v
-launches: %v
-chimeras: %v
-actualLaunches: %v
-totalLaunches: %v
-updates: %v
-responses: %v
-responseErrs: %v
-iterations: %v
-workersAfter: %v
-workersBefore: %v
-`, time.Since(s), launches, indi, actualLaunches, totalL, updates, responses, responseErr, iterations, len(workers), workersBefore)
+			pdc.launchWorkerSet(workerSet)
 		}
 
 		// iterate
@@ -974,25 +938,11 @@ workersBefore: %v
 		case <-workerUpdateChan:
 			// replace the worker update channel
 			workerUpdateChan = ws.managedRegisterForWorkerUpdate()
-			updates++
 		case jrr := <-pdc.workerResponseChan:
-			responseErr++
-			responses++
 			pdc.handleJobReadResponse(jrr)
-			//		case <-pdc.ctx.Done():
-			//			fmt.Printf(`
-			//time: %v
-			//launches: %v
-			//actualLaunches: %v
-			//updates: %v
-			//responses: %v
-			//responseErrs: %v
-			//iterations: %v
-			//workersAfter: %v
-			//workersBefore: %v
-			//`, time.Since(s), launches, actualLaunches, updates, responses, responseErr, iterations, len(workers), workersBefore)
-			//			pdc.fail(ErrProjectTimedOut)
-			//			return
+		case <-pdc.ctx.Done():
+			pdc.fail(ErrProjectTimedOut)
+			return
 		}
 
 		// check whether the download is completed
@@ -1160,23 +1110,6 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 	// and calculating how often we run a bad worker set is part of the download
 	// improvements listed at the top of this file.
 	if !mostLikelySet.chanceGreaterThanHalf() {
-		if bI == skymodules.DistributionTrackerTotalBuckets-1 {
-			//		pdc.Println("chances", bI, numOverdrive, len(downloadWorkers), len(workers), pdc.uid)
-			//		for i, w := range append(mostLikely, lessLikely...) {
-			//			c := w.completeChanceCached()
-			//			pdc.Println("  i:", i, c)
-			//			iw, ok := w.(*individualWorker)
-			//			if ok {
-			//				pdc.Println("resolved", iw.resolved)
-			//				pdc.Println(i, iw.staticReadDistribution.DataPoints())
-			//				pdc.Println(i, iw.cachedReadDTChances)
-			//				pdc.Println(i, iw.cachedLookupIndex)
-			//			} else {
-			//				pdc.Println(i, "chimera")
-			//			}
-			//		}
-			//		pdc.Println("chanceNotGreaterThanHalf", true, mostLikelySet.staticNumOverdrive)
-		}
 		return nil, false
 	}
 
