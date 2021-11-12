@@ -765,9 +765,6 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	}
 	defer r.tg.Done()
 
-	// TODO: remove
-	timeout = time.Hour
-
 	// Create a context
 	ctx := r.tg.StopCtx()
 	if timeout > 0 {
