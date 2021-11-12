@@ -966,7 +966,7 @@ iterations: %v
 workersAfter: %v
 workersBefore: %v
 `, time.Since(s), launches, actualLaunches, updates, responses, responseErr, iterations, len(workers), workersBefore)
-			pdc.fail(errors.New("download timed out"))
+			pdc.fail(ErrProjectTimedOut)
 			return
 		}
 
