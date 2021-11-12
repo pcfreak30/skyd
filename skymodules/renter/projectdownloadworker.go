@@ -920,6 +920,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	responseErr := 0
 	iterations := 0
 	workersBefore := len(workers)
+	lastPrint := time.Now()
 	for {
 		iterations++
 		// update the pieces
@@ -940,6 +941,21 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		if workerSet != nil {
 			launches++
 			actualLaunches += pdc.launchWorkerSet(workerSet)
+		}
+
+		if time.Since(s) > time.Minute && time.Since(lastPrint) > 5*time.Second {
+			lastPrint = time.Now()
+			fmt.Printf(`
+time: %v
+launches: %v
+actualLaunches: %v
+updates: %v
+responses: %v
+responseErrs: %v
+iterations: %v
+workersAfter: %v
+workersBefore: %v
+`, time.Since(s), launches, actualLaunches, updates, responses, responseErr, iterations, len(workers), workersBefore)
 		}
 
 		// iterate
