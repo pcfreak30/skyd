@@ -72,7 +72,7 @@ const (
 	// This works more or less in a binary search fashion where we try and
 	// quickly approximate the bucket index, and then scan -12|+12 buckets
 	// before and after the index we found.
-	bucketIndexScanStep = 20
+	bucketIndexScanStep = 10
 
 	// chimeraAvailabilityRateThreshold defines the number that must be reached
 	// when composing a chimera from unresolved workers. If the sum of the
