@@ -839,7 +839,7 @@ func (pdc *projectDownloadChunk) currentDownload(w downloadWorker) (uint64, bool
 // launchWorkerSet will range over the workers in the given worker set and will
 // try to launch every worker that has not yet been launched and is ready to
 // launch.
-func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) (n int) {
+func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) (n, indi, l int) {
 	// convenience variables
 	minPieces := pdc.workerSet.staticErasureCoder.MinPieces()
 
@@ -848,12 +848,14 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) (n int) {
 		// continue if the worker is a chimera worker
 		iw, ok := w.(*individualWorker)
 		if !ok {
+			indi++
 			continue
 		}
 
 		// continue if the worker is already launched
 		piece, isLaunched, _ := pdc.currentDownload(w)
 		if isLaunched {
+			l++
 			continue
 		}
 
@@ -921,6 +923,8 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 	iterations := 0
 	workersBefore := len(workers)
 	lastPrint := time.Now()
+	indi := 0
+	totalL := 0
 	for {
 		iterations++
 		// update the pieces
@@ -940,7 +944,10 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		}
 		if workerSet != nil {
 			launches++
-			actualLaunches += pdc.launchWorkerSet(workerSet)
+			launched, i, totalLaunched := pdc.launchWorkerSet(workerSet)
+			launches += launched
+			indi += i
+			totalL += totalLaunched
 		}
 
 		if time.Since(s) > time.Minute && time.Since(lastPrint) > 5*time.Second {
@@ -948,14 +955,16 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 			fmt.Printf(`
 time: %v
 launches: %v
+chimeras: %v
 actualLaunches: %v
+totalLaunches: %v
 updates: %v
 responses: %v
 responseErrs: %v
 iterations: %v
 workersAfter: %v
 workersBefore: %v
-`, time.Since(s), launches, actualLaunches, updates, responses, responseErr, iterations, len(workers), workersBefore)
+`, time.Since(s), launches, indi, actualLaunches, totalL, updates, responses, responseErr, iterations, len(workers), workersBefore)
 		}
 
 		// iterate
