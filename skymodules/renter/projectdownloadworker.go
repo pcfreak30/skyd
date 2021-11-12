@@ -1158,8 +1158,8 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 	// improvements listed at the top of this file.
 	if !mostLikelySet.chanceGreaterThanHalf() {
 		pdc.Println("chances")
-		for i := range append(mostLikely, lessLikely...) {
-			c := mostLikely[i].completeChanceCached()
+		for _, w := range append(mostLikely, lessLikely...) {
+			c := w.completeChanceCached()
 			pdc.Println("  i:", c)
 		}
 		pdc.Println("chanceNotGreaterThanHalf", true, mostLikelySet.staticNumOverdrive)
