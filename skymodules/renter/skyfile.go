@@ -765,6 +765,9 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 	}
 	defer r.tg.Done()
 
+	// TODO: remove
+	timeout = time.Hour
+
 	// Create a context
 	ctx := r.tg.StopCtx()
 	if timeout > 0 {
@@ -772,9 +775,6 @@ func (r *Renter) DownloadSkylink(link skymodules.Skylink, timeout time.Duration,
 		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
 		defer cancel()
 	}
-
-	// TODO: remove
-	timeout = time.Hour
 
 	// Create a new span.
 	span := opentracing.StartSpan("DownloadSkylink")
