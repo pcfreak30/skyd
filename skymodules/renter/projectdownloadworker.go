@@ -1131,10 +1131,10 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 
 	// if there aren't even likely workers, escape early
 	if len(mostLikely) == 0 {
-		pdc.Println("mostLikely", len(mostLikely))
+		//pdc.Println("mostLikely", len(mostLikely))
 		return nil, true
 	}
-	pdc.Println("mostLikely", len(mostLikely), len(lessLikely))
+	//pdc.Println("mostLikely", len(mostLikely), len(lessLikely))
 
 	// build the most likely set
 	mostLikelySet := &workerSet{
@@ -1165,12 +1165,12 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 			}
 		}
 
-		//	pdc.Println("chances", bI, numOverdrive, len(downloadWorkers), len(workers))
-		//	for _, w := range append(mostLikely, lessLikely...) {
-		//		c := w.completeChanceCached()
-		//		pdc.Println("  i:", c)
-		//	}
-		//	pdc.Println("chanceNotGreaterThanHalf", true, mostLikelySet.staticNumOverdrive)
+		pdc.Println("chances", bI, numOverdrive, len(downloadWorkers), len(workers))
+		for _, w := range append(mostLikely, lessLikely...) {
+			c := w.completeChanceCached()
+			pdc.Println("  i:", c)
+		}
+		pdc.Println("chanceNotGreaterThanHalf", true, mostLikelySet.staticNumOverdrive)
 		//return nil, false
 	}
 
