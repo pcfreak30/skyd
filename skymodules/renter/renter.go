@@ -317,11 +317,10 @@ type Renter struct {
 
 // Close closes the Renter and its dependencies
 func (r *Renter) Close() error {
-	// TODO: Is this check needed?
-	if r == nil {
-		return nil
-	}
-
+	// Flush the dir update batcher on shutdown. We do this here since we
+	// want to finish it before actually closing the tg. Otherwise the
+	// flushing process might get interrupted.
+	r.staticDirUpdateBatcher.callFlush()
 	return errors.Compose(r.tg.Stop(), r.staticHostDB.Close(), r.staticHostContractor.Close(), r.staticSkynetBlocklist.Close(), r.staticSkynetPortals.Close())
 }
 
