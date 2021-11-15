@@ -66,6 +66,10 @@ func (r *Renter) managedUpdateDirMetadata(siaPath skymodules.SiaPath) error {
 	// until the root directory is updated
 	if siaPath.IsRoot() {
 		if skymodules.NeedsRepair(metadata.AggregateHealth) {
+			//	err = r.managedPushUnexploredDirectory(siaPath)
+			//	if err != nil {
+			//		return errors.AddContext(err, "failed to push unexplored directory")
+			//	}
 			select {
 			case r.staticUploadHeap.repairNeeded <- struct{}{}:
 				fmt.Println("managedUpdateDirMetadata")
