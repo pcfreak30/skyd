@@ -421,6 +421,7 @@ func (r *Renter) threadedStuckFileLoop() {
 		// upload heap
 		select {
 		case r.staticUploadHeap.repairNeeded <- struct{}{}:
+			fmt.Println("stuck chunks")
 		default:
 		}
 

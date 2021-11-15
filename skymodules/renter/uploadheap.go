@@ -1354,7 +1354,7 @@ func (r *Renter) managedRepairLoop() error {
 	// smallRepairs or heap drops below minUploadHeapSize for larger repairs, or
 	// until the total amount of time spent in one repair iteration has elapsed.
 	for r.staticUploadHeap.managedLen() >= minUploadHeapSize || smallRepair || time.Now().After(repairBreakTime) {
-		fmt.Println("HeapSize", r.staticUploadHeap.managedLen())
+		r.staticRepairLog.Println("HeapSize", r.staticUploadHeap.managedLen())
 		select {
 		case <-r.tg.StopChan():
 			// Return if the renter has shut down.
