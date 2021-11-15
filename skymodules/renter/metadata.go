@@ -403,7 +403,7 @@ func (r *Renter) managedCachedFileMetadata(siaPath skymodules.SiaPath) (bubbledS
 			LastHealthCheckTime: md.LastHealthCheckTime,
 			ModTime:             md.ModTime,
 			NumSkylinks:         uint64(len(md.Skylinks)),
-			NumStuckChunks:      md.CachedNumStuckChunks,
+			NumStuckChunks:      md.NumStuckChunks,
 			OnDisk:              onDisk,
 			Redundancy:          md.CachedRedundancy,
 			RepairBytes:         md.CachedRepairBytes,

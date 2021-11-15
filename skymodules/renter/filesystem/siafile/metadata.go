@@ -82,7 +82,6 @@ type (
 		CachedRepairBytes    uint64            `json:"cachedrepairbytes"`
 		CachedUserRedundancy float64           `json:"cacheduserredundancy"`
 		CachedHealth         float64           `json:"cachedhealth"`
-		CachedNumStuckChunks uint64            `json:"cachednumstuckchunks"`
 		CachedStuckBytes     uint64            `json:"cachedstuckbytes"`
 		CachedStuckHealth    float64           `json:"cachedstuckhealth"`
 		CachedExpiration     types.BlockHeight `json:"cachedexpiration"`
@@ -329,7 +328,6 @@ func (md Metadata) backup() (b Metadata) {
 	b.CachedRedundancy = md.CachedRedundancy
 	b.CachedUserRedundancy = md.CachedUserRedundancy
 	b.CachedHealth = md.CachedHealth
-	b.CachedNumStuckChunks = md.CachedNumStuckChunks
 	b.CachedStuckHealth = md.CachedStuckHealth
 	b.CachedExpiration = md.CachedExpiration
 	b.CachedUploadedBytes = md.CachedUploadedBytes
@@ -379,7 +377,6 @@ func (md *Metadata) restore(b Metadata) {
 	md.CachedRedundancy = b.CachedRedundancy
 	md.CachedUserRedundancy = b.CachedUserRedundancy
 	md.CachedHealth = b.CachedHealth
-	md.CachedNumStuckChunks = b.CachedNumStuckChunks
 	md.CachedStuckHealth = b.CachedStuckHealth
 	md.CachedExpiration = b.CachedExpiration
 	md.CachedUploadedBytes = b.CachedUploadedBytes
