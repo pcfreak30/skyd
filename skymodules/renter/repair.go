@@ -306,7 +306,7 @@ func (r *Renter) managedStuckFile(dirSiaPath skymodules.SiaPath) (siapath skymod
 
 		// Check if stuck
 		if numStuckChunks == 0 {
-			fmt.Println("no stuck")
+			fmt.Println("no stuck", sp)
 			continue
 		}
 		fmt.Println("stuck")

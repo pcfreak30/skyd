@@ -270,7 +270,7 @@ func (r *Renter) callCalculateDirectoryMetadata(siaPath skymodules.SiaPath) (sia
 				metadata.SkynetFiles++
 			}
 			if metadata.NumStuckChunks > 0 || metadata.StuckSize > 0 {
-				fmt.Println("stuck", metadata.NumStuckChunks, metadata.StuckSize)
+				fmt.Println("stuck", metadata.NumStuckChunks, metadata.StuckSize, fileSiaPath)
 			}
 		} else if len(dirMetadatas) > 0 {
 			// Get next dir's metadata.
