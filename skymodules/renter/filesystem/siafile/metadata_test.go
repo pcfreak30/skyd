@@ -67,7 +67,6 @@ func TestBackupRestoreMetadata(t *testing.T) {
 		sf.staticMetadata.Finished = fastrand.Intn(2) == 0
 		sf.staticMetadata.LastHealthCheckTime = time.Now()
 		sf.staticMetadata.NumStuckChunks = fastrand.Uint64n(100)
-		sf.staticMetadata.StuckHealth = float64(fastrand.Intn(100))
 		sf.staticMetadata.Mode = os.FileMode(fastrand.Intn(100))
 		sf.staticMetadata.UserID = int32(fastrand.Intn(100))
 		sf.staticMetadata.GroupID = int32(fastrand.Intn(100))
