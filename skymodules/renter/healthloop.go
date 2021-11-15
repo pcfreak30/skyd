@@ -438,6 +438,7 @@ func (r *Renter) threadedHealthLoop() {
 		case <-time.After(sleepTime):
 		case <-r.tg.StopChan():
 			return
+		default:
 		}
 
 		// Process the next directory. We don't retry on error, we just move on
