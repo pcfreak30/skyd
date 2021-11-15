@@ -711,12 +711,12 @@ func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker) []*i
 		if !w.isResolved() && resolved {
 			w.resolved = true
 			w.pieceIndices = pieceIndices
-			//	if len(w.pieceIndices) == 0 {
-			//		workers[i], workers[len(workers)-1] = workers[len(workers)-1], workers[i]
-			//		workers = workers[:len(workers)-1]
-			//		i--
-			//		continue
-			//	}
+			if len(w.pieceIndices) == 0 {
+				workers[i], workers[len(workers)-1] = workers[len(workers)-1], workers[i]
+				workers = workers[:len(workers)-1]
+				i--
+				continue
+			}
 		}
 
 		// check whether the worker is on cooldown
@@ -1477,10 +1477,10 @@ func partitionWorkers(iws []*individualWorker, isLeft func(i int) bool) (left, r
 // cooldown we exclude it from the returned workers list.
 func splitResolvedUnresolved(workers []*individualWorker) ([]*individualWorker, []*individualWorker) {
 	// filter out the workers on cooldown first.
-	notOnCooldown, _ := partitionWorkers(workers, func(i int) bool {
-		return !workers[i].isOnCooldown()
-	})
-	resolvedWorkers, unresolvedWorkers := partitionWorkers(notOnCooldown, func(i int) bool {
+	//	notOnCooldown, _ := partitionWorkers(workers, func(i int) bool {
+	//		return !workers[i].isOnCooldown()
+	//	})
+	resolvedWorkers, unresolvedWorkers := partitionWorkers(workers, func(i int) bool {
 		return workers[i].isResolved()
 	})
 	return resolvedWorkers, unresolvedWorkers
