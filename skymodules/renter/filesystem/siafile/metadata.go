@@ -112,7 +112,6 @@ type (
 		LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
 		NumStuckChunks      uint64    `json:"numstuckchunks"`
 		StuckHealth         float64   `json:"stuckhealth"`
-		StuckBytes          uint64    `json:"stuckbytes"`
 
 		// File ownership/permission fields.
 		Mode    os.FileMode `json:"mode"`    // unix filemode of the sia file - uint32
@@ -332,7 +331,6 @@ func (md Metadata) backup() (b Metadata) {
 	b.Finished = md.Finished
 	b.LastHealthCheckTime = md.LastHealthCheckTime
 	b.NumStuckChunks = md.NumStuckChunks
-	b.StuckBytes = md.StuckBytes
 	b.StuckHealth = md.StuckHealth
 	b.Mode = md.Mode
 	b.UserID = md.UserID
@@ -378,7 +376,6 @@ func (md *Metadata) restore(b Metadata) {
 	md.Finished = b.Finished
 	md.LastHealthCheckTime = b.LastHealthCheckTime
 	md.NumStuckChunks = b.NumStuckChunks
-	md.StuckBytes = b.StuckBytes
 	md.StuckHealth = b.StuckHealth
 	md.Mode = b.Mode
 	md.UserID = b.UserID
