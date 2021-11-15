@@ -199,7 +199,6 @@ func (dirFinder *healthLoopDirFinder) loadNextDir() error {
 	}
 	dirFinder.totalFiles = metadata.AggregateNumFiles
 	dirFinder.leastRecentCheck = metadata.AggregateLastHealthCheckTime
-	dirFinder.renter.staticLog.Println("HEALTH LOOP VERBOSE: least checked", siaPath)
 
 	// Run a loop that will continually descend into child directories until it
 	// discovers the directory with the least recent health check time.
@@ -234,6 +233,7 @@ func (dirFinder *healthLoopDirFinder) loadNextDir() error {
 		}
 	}
 
+	dirFinder.renter.staticLog.Println("HEALTH LOOP VERBOSE: least checked", siaPath)
 	dirFinder.filesInNextDir = metadata.NumFiles
 	dirFinder.nextDir = siaPath
 	return nil
@@ -301,8 +301,8 @@ func (dirFinder *healthLoopDirFinder) sleepDurationBeforeNextDir() time.Duration
 	// To compensate for that, we track how much time we spend in system
 	// scan per cylce and subtract that from the numerator of the above
 	// described equation.
-	desiredSleepPerScan := TargetHealthCheckFrequency - dirFinder.estimatedSystemScanDuration
-	sleepTime := desiredSleepPerScan * time.Duration(dirFinder.filesInNextDir) / time.Duration(dirFinder.totalFiles)
+	desiredSleepPerScan := float64(TargetHealthCheckFrequency - dirFinder.estimatedSystemScanDuration)
+	sleepTime := time.Duration(desiredSleepPerScan * float64(dirFinder.filesInNextDir) / float64(dirFinder.totalFiles))
 	// If we are behind schedule, we compress the sleep time
 	// proportionally to how far behind schedule we are.
 	if timeSinceLRC > TargetHealthCheckFrequency {
@@ -440,6 +440,7 @@ func (r *Renter) threadedHealthLoop() {
 		case <-time.After(sleepTime):
 		case <-r.tg.StopChan():
 			return
+		default:
 		}
 
 		// Process the next directory. We don't retry on error, we just move on
