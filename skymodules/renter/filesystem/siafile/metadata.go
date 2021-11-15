@@ -109,11 +109,9 @@ type (
 		//
 		// StuckHealth is the worst health of any of the file's stuck chunks
 		Finished            bool      `json:"finished"`
-		Health              float64   `json:"health"`
 		LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
 		NumStuckChunks      uint64    `json:"numstuckchunks"`
 		Redundancy          float64   `json:"redundancy"`
-		RepairBytes         uint64    `json:"repairbytes"`
 		StuckHealth         float64   `json:"stuckhealth"`
 		StuckBytes          uint64    `json:"stuckbytes"`
 
@@ -333,10 +331,8 @@ func (md Metadata) backup() (b Metadata) {
 	b.CachedUploadedBytes = md.CachedUploadedBytes
 	b.CachedUploadProgress = md.CachedUploadProgress
 	b.Finished = md.Finished
-	b.Health = md.Health
 	b.LastHealthCheckTime = md.LastHealthCheckTime
 	b.NumStuckChunks = md.NumStuckChunks
-	b.RepairBytes = md.RepairBytes
 	b.StuckBytes = md.StuckBytes
 	b.Redundancy = md.Redundancy
 	b.StuckHealth = md.StuckHealth
@@ -382,10 +378,8 @@ func (md *Metadata) restore(b Metadata) {
 	md.CachedUploadedBytes = b.CachedUploadedBytes
 	md.CachedUploadProgress = b.CachedUploadProgress
 	md.Finished = b.Finished
-	md.Health = b.Health
 	md.LastHealthCheckTime = b.LastHealthCheckTime
 	md.NumStuckChunks = b.NumStuckChunks
-	md.RepairBytes = b.RepairBytes
 	md.StuckBytes = b.StuckBytes
 	md.Redundancy = b.Redundancy
 	md.StuckHealth = b.StuckHealth
