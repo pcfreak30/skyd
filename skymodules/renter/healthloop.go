@@ -303,7 +303,7 @@ func (dirFinder *healthLoopDirFinder) sleepDurationBeforeNextDir() time.Duration
 	dirFinder.renter.staticLog.Println("HEALTH LOOP VERBOSE: estimated system scan duration", dirFinder.estimatedSystemScanDuration)
 	desiredSleepPerScan := TargetHealthCheckFrequency - dirFinder.estimatedSystemScanDuration
 	dirFinder.renter.staticLog.Println("HEALTH LOOP VERBOSE: desired sleep per scan", desiredSleepPerScan)
-	sleepTime := desiredSleepPerScan * time.Duration(float64(dirFinder.filesInNextDir)/float64(dirFinder.totalFiles))
+	sleepTime := time.Duration(float64(desiredSleepPerScan) * float64(dirFinder.filesInNextDir) / float64(dirFinder.totalFiles))
 	// If we are behind schedule, we compress the sleep time
 	// proportionally to how far behind schedule we are.
 	if timeSinceLRC > TargetHealthCheckFrequency {
