@@ -3,7 +3,6 @@ package renter
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -313,21 +312,9 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 		wms.mu.Unlock()
 	}
 
-	// Don't bother scheduling a job if the worker doesn't have a valid
-	// price table.
-	if wpt := w.staticPriceTable(); !wpt.staticValid() {
-		return errInvalidPriceTable
-	}
-
 	// Create and launch the job.
 	ctx, cancel := context.WithTimeout(pcws.staticCtx, pcwsHasSectorTimeout)
 	jhs := w.newJobHasSectorWithPostExecutionHook(ctx, responseChan, func(resp *jobHasSectorResponse) {
-		if resp.staticErr != nil &&
-			!errors.Contains(resp.staticErr, errDiscardingCanceledJob) &&
-			!errors.Contains(resp.staticErr, errOnMaintenanceCooldown) &&
-			!strings.Contains(resp.staticErr.Error(), "closed pipe") {
-			//fmt.Println("lookup failed", resp.staticErr)
-		}
 		ws.managedHandleResponse(resp)
 		staticPoolJobHasSectorResponse.Put(resp)
 		cancel()
