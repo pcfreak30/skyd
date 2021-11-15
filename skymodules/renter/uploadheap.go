@@ -1468,6 +1468,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		// Return if the renter has shut down.
 		select {
 		case <-r.tg.StopChan():
+			fmt.Println("done")
 			return
 		default:
 		}
@@ -1475,12 +1476,14 @@ func (r *Renter) threadedUploadAndRepair() {
 		// Wait until the contractor is synced.
 		if !r.managedBlockUntilSynced() {
 			// The renter shut down before the contract was synced.
+			fmt.Println("synced")
 			return
 		}
 
 		// Wait until the renter is online to proceed. This function will return
 		// 'false' if the renter has shut down before being online.
 		if !r.managedBlockUntilOnline() {
+			fmt.Println("online")
 			return
 		}
 
@@ -1490,6 +1493,7 @@ func (r *Renter) threadedUploadAndRepair() {
 			// Block until the repair process is restarted
 			select {
 			case <-r.tg.StopChan():
+				fmt.Println("done2")
 				return
 			case <-r.staticUploadHeap.pauseChan:
 				r.staticRepairLog.Println("Repairs and Uploads have been resumed")
@@ -1506,8 +1510,10 @@ func (r *Renter) threadedUploadAndRepair() {
 				r.staticRepairLog.Println("WARN: there was an error pushing an unexplored root directory onto the directory heap:", err)
 			}
 			if err != nil {
+				fmt.Println("err", err)
 				select {
 				case <-time.After(uploadAndRepairErrorSleepDuration):
+					fmt.Println("uploadAndRepairErrorSleepDuration")
 				case <-r.tg.StopChan():
 					return
 				}
@@ -1566,6 +1572,7 @@ func (r *Renter) threadedUploadAndRepair() {
 			case <-r.staticUploadHeap.repairNeeded:
 				r.staticRepairLog.Println("repair loop triggered by repair needed channel")
 			case <-r.tg.StopChan():
+				fmt.Println("done3")
 				return
 			}
 
@@ -1580,6 +1587,7 @@ func (r *Renter) threadedUploadAndRepair() {
 
 			// Continue here to force the code to re-check for backups, to
 			// re-block until it's online, and to refresh the worker pool.
+			fmt.Println("continue")
 			continue
 		}
 
