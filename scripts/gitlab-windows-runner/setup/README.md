@@ -15,7 +15,7 @@ Easiest way is to use TDM-GCC.
 
 Gitlab registration token is needed to pair the new runner with Gitlab repository and its CI/CD.
 
-- Open [Sia repo > Settings > CI/CD](https://gitlab.com/NebulousLabs/Sia/-/settings/ci_cd)
+- Open [Sia repo > Settings > CI/CD](https://gitlab.com/SkynetLabs/skyd/-/settings/ci_cd)
 - Navigate to `Runners`
 - Find: "Use the following registration token during setup:" 
 - Copy displayed registration token

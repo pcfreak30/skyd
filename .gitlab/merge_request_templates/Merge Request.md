@@ -1,5 +1,5 @@
 # MERGE REQUEST
-[MR Guidelines](https://gitlab.com/NebulousLabs/Sia/-/blob/master/doc/Merge%20Requests.md)
+[MR Guidelines](https://gitlab.com/SkynetLabs/skyd/-/blob/master/doc/Merge%20Requests.md)
 ## Overview
 
 ## Example for Visual Changes
