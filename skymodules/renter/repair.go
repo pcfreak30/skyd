@@ -306,8 +306,10 @@ func (r *Renter) managedStuckFile(dirSiaPath skymodules.SiaPath) (siapath skymod
 
 		// Check if stuck
 		if numStuckChunks == 0 {
+			fmt.Println("no stuck")
 			continue
 		}
+		fmt.Println("stuck")
 
 		// Decrement rand and check if we have decremented fully
 		rand = rand - numStuckChunks
