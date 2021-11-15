@@ -1335,6 +1335,9 @@ func (r *Renter) managedRefreshHostsAndWorkers() map[string]struct{} {
 // loop will continue until the renter stops, there are no more chunks, or the
 // number of chunks in the uploadheap has dropped below the minUploadHeapSize
 func (r *Renter) managedRepairLoop() error {
+	s := time.Now()
+	r.staticRepairLog.Println("managedRepairLoop start")
+	defer r.staticRepairLog.Println("managedRepairLoop end", time.Since(s))
 	// smallRepair indicates whether or not the repair loop should process all
 	// of the chunks in the heap instead of just processing down to the minimum
 	// heap size. We want to process all of the chunks if the rest of the
@@ -1351,6 +1354,7 @@ func (r *Renter) managedRepairLoop() error {
 	// smallRepairs or heap drops below minUploadHeapSize for larger repairs, or
 	// until the total amount of time spent in one repair iteration has elapsed.
 	for r.staticUploadHeap.managedLen() >= minUploadHeapSize || smallRepair || time.Now().After(repairBreakTime) {
+		fmt.Println("HeapSize", r.staticUploadHeap.managedLen())
 		select {
 		case <-r.tg.StopChan():
 			// Return if the renter has shut down.
@@ -1557,9 +1561,9 @@ func (r *Renter) threadedUploadAndRepair() {
 			// upload or there is a repair that is needed.
 			select {
 			case <-r.staticUploadHeap.newUploads:
-				r.staticRepairLog.Debugln("repair loop triggered by new upload channel")
+				r.staticRepairLog.Println("repair loop triggered by new upload channel")
 			case <-r.staticUploadHeap.repairNeeded:
-				r.staticRepairLog.Debugln("repair loop triggered by repair needed channel")
+				r.staticRepairLog.Println("repair loop triggered by repair needed channel")
 			case <-r.tg.StopChan():
 				return
 			}
