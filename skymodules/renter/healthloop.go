@@ -199,6 +199,7 @@ func (dirFinder *healthLoopDirFinder) loadNextDir() error {
 	}
 	dirFinder.totalFiles = metadata.AggregateNumFiles
 	dirFinder.leastRecentCheck = metadata.AggregateLastHealthCheckTime
+	dirFinder.renter.staticLog.Println("HEALTH LOOP VERBOSE: least checked", siaPath)
 
 	// Run a loop that will continually descend into child directories until it
 	// discovers the directory with the least recent health check time.
@@ -275,6 +276,7 @@ func (dirFinder *healthLoopDirFinder) sleepDurationBeforeNextDir() time.Duration
 	urgent := timeSinceLRC > urgentHealthCheckFrequency
 	slowScanTime := dirFinder.estimatedSystemScanDuration >= TargetHealthCheckFrequency
 	manualCheckActive := dirFinder.manualCheckTime.After(lrc)
+	dirFinder.renter.staticLog.Println("HEALTH LOOP VERBOSE: time since lrc", timeSinceLRC)
 	// If a manual check is currently active, or if the condition of the
 	// file health is urgent, or if the amount of time it takes to scan the
 	// filesystem is longer than the target health interval, do not try to
