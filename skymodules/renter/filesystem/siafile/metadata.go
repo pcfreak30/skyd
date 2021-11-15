@@ -111,7 +111,6 @@ type (
 		Finished            bool      `json:"finished"`
 		LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
 		NumStuckChunks      uint64    `json:"numstuckchunks"`
-		Redundancy          float64   `json:"redundancy"`
 		StuckHealth         float64   `json:"stuckhealth"`
 		StuckBytes          uint64    `json:"stuckbytes"`
 
@@ -334,7 +333,6 @@ func (md Metadata) backup() (b Metadata) {
 	b.LastHealthCheckTime = md.LastHealthCheckTime
 	b.NumStuckChunks = md.NumStuckChunks
 	b.StuckBytes = md.StuckBytes
-	b.Redundancy = md.Redundancy
 	b.StuckHealth = md.StuckHealth
 	b.Mode = md.Mode
 	b.UserID = md.UserID
@@ -381,7 +379,6 @@ func (md *Metadata) restore(b Metadata) {
 	md.LastHealthCheckTime = b.LastHealthCheckTime
 	md.NumStuckChunks = b.NumStuckChunks
 	md.StuckBytes = b.StuckBytes
-	md.Redundancy = b.Redundancy
 	md.StuckHealth = b.StuckHealth
 	md.Mode = b.Mode
 	md.UserID = b.UserID
