@@ -711,12 +711,12 @@ func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker) []*i
 		if !w.isResolved() && resolved {
 			w.resolved = true
 			w.pieceIndices = pieceIndices
-			if len(w.pieceIndices) == 0 {
-				workers[i], workers[len(workers)-1] = workers[len(workers)-1], workers[i]
-				workers = workers[:len(workers)-1]
-				i--
-				continue
-			}
+			//	if len(w.pieceIndices) == 0 {
+			//		workers[i], workers[len(workers)-1] = workers[len(workers)-1], workers[i]
+			//		workers = workers[:len(workers)-1]
+			//		i--
+			//		continue
+			//	}
 		}
 
 		// check whether the worker is on cooldown
