@@ -762,7 +762,6 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) error {
 	offline, goodForRenew, _, _ := r.callRenterContractsAndUtilities()
 	consecutiveDirHeapFailures := 0
 	for r.staticUploadHeap.managedLen() < maxUploadHeapChunks && r.staticDirectoryHeap.managedLen() > 0 {
-		fmt.Println("managedAddChunksToHeap")
 		select {
 		case <-r.tg.StopChan():
 			return errors.New("renter shutdown before we could finish adding chunks to heap")
