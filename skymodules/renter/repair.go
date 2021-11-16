@@ -321,6 +321,8 @@ func (r *Renter) managedStuckFile(dirSiaPath skymodules.SiaPath) (siapath skymod
 		// between the file metadata and the directory metadata. Queue an update
 		// on the directory's metadata so this doesn't happen again.
 		r.staticDirUpdateBatcher.callQueueDirUpdate(dirSiaPath)
+		r.staticDirUpdateBatcher.callFlush() // wait to avoid spinning
+
 		return skymodules.SiaPath{}, errors.New("no files selected from directory " + dirSiaPath.String())
 	}
 	return siapath, nil
