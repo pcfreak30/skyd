@@ -80,10 +80,13 @@ func (queue *notificationQueue) Pop() *queuedNotification {
 
 // skynetRegistrySubscriptionHandler handles websocket subscriptions to the registry.
 func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	fmt.Println("skynetRegistrySubscriptionHandler start")
+	defer fmt.Println("skynetRegistrySubscriptionHandler done")
 	// Upgrade connection to use websocket.
 	c, err := upgrader.Upgrade(w, req, nil)
 	if err != nil {
 		handleSkynetError(w, "failed to upgrade connection to websocket connection", err)
+		fmt.Println(err)
 		return
 	}
 	defer c.Close()
@@ -92,11 +95,13 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 	bandwidthLimitStr := req.FormValue("bandwidthlimit")
 	if bandwidthLimitStr == "" {
 		WriteError(w, Error{"bandwidthlimit param not specified"}, http.StatusBadRequest)
+		fmt.Println("bandwidthlimit not specified")
 		return
 	}
 	notificationDelayStr := req.FormValue("notificationdelay")
 	if notificationDelayStr == "" {
 		WriteError(w, Error{"notificationdelay param not specified"}, http.StatusBadRequest)
+		fmt.Println("notificationdelay not specified")
 		return
 	}
 
@@ -105,12 +110,14 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 	_, err = fmt.Sscan(bandwidthLimitStr, &bandwidthLimit)
 	if err != nil {
 		WriteError(w, Error{"failed to parse bandwidthlimit" + err.Error()}, http.StatusBadRequest)
+		fmt.Println("parse1", err)
 		return
 	}
 	var notificationDelayMS uint64
 	_, err = fmt.Sscan(notificationDelayStr, &notificationDelayMS)
 	if err != nil {
 		WriteError(w, Error{"failed to parse notificationdelay" + err.Error()}, http.StatusBadRequest)
+		fmt.Println("parse2", err)
 		return
 	}
 	notificationDelay := time.Millisecond * time.Duration(notificationDelayMS)
@@ -160,6 +167,7 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 		for {
 			select {
 			case <-req.Context().Done():
+				fmt.Println("shutdown1")
 				return
 			case <-wakeChan:
 			}
@@ -174,6 +182,7 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 			// Sleep until the notification time.
 			select {
 			case <-req.Context().Done():
+				fmt.Println("shutdown2")
 				return
 			case <-time.After(time.Until(next.staticNotifyTime)):
 			}
@@ -189,6 +198,7 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 			})
 			if err != nil {
 				msg := fmt.Sprintf("failed to notify client: %v", err)
+				fmt.Println("send err", err)
 				_ = c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseAbnormalClosure, msg))
 			}
 		}
@@ -210,11 +220,13 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 	for {
 		err = c.ReadJSON(&r)
 		if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+			fmt.Println("close err", err)
 			return // client closed connection gracefully
 		}
 		if err != nil {
 			msg := fmt.Sprintf("failed to read JSON request: %v", err)
 			_ = c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseAbnormalClosure, msg))
+			fmt.Println("failed to read request", err)
 			return
 		}
 		switch r.Action {
@@ -226,6 +238,7 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 					// but try a graceful close anyway.
 					msg := fmt.Sprintf("failed to notify client: %v", err)
 					_ = c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseAbnormalClosure, msg))
+					fmt.Println("broken connection", err)
 					return // connection is broken, nothing we can do
 				}
 			}
