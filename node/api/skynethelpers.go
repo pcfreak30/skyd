@@ -247,6 +247,18 @@ func parseRegistryTimeout(queryForm url.Values) (time.Duration, error) {
 	return time.Duration(timeoutInt) * time.Second, nil
 }
 
+// parseStatsType parses a stats type as string to a specifier. This method
+// ensures we never call types.NewSpecifier with invalid (API) input as that
+// will panic on runtime.
+func parseStatsType(statsType string) (types.Specifier, error) {
+	switch statsType {
+	case "OverdriveStats":
+		return skymodules.OverdriveStats, nil
+	default:
+		return types.Specifier{}, errors.New("invalid statsType")
+	}
+}
+
 // parseDownloadRequestParameters is a helper function that parses all of the
 // query parameters from a download request
 func parseDownloadRequestParameters(req *http.Request) (*skyfileDownloadParams, error) {

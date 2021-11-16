@@ -135,6 +135,7 @@ func TestSkynetHelpers(t *testing.T) {
 	t.Run("ParseSkylinkURL", testParseSkylinkURL)
 	t.Run("ParseUploadRequestParameters", testParseUploadRequestParameters)
 	t.Run("ParseDownloadRequestParameters", testParseDownloadRequestParameters)
+	t.Run("ParseStatsType", testParseStatsType)
 }
 
 // testBuildETag verifies the functionality of the buildETag helper function
@@ -837,6 +838,24 @@ func testParseDownloadRequestParameters(t *testing.T) {
 			t.Log("Test Case: ", rt)
 			t.Fatalf("Expected error '%v' but got '%v'", rt.err, err)
 		}
+	}
+}
+
+// testParseStatsType is a unit test that validates the stats type parser.
+func testParseStatsType(t *testing.T) {
+	t.Parallel()
+
+	statsType, err := parseStatsType("OverdriveStats")
+	if err != nil {
+		t.Fatal("bad")
+	}
+	if statsType != skymodules.OverdriveStats {
+		t.Fatal("bad")
+	}
+
+	_, err = parseStatsType("InvalidStatsTypeBecauseItsTooLong")
+	if err == nil {
+		t.Fatal("bad")
 	}
 }
 
