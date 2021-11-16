@@ -800,6 +800,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) error {
 			r.staticRepairLog.Debugln("no more chunks added to the upload heap because directory popped is healthy")
 			return nil
 		}
+		fmt.Println("pop", dir.staticSiaPath, dir.aggregateHealth, dir.aggregateRemoteHealth)
 
 		// Add chunks from the directory to the uploadHeap.
 		r.managedBuildChunkHeap(dir.staticSiaPath, hosts, targetUnstuckChunks, offline, goodForRenew)
@@ -809,6 +810,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) error {
 		if heapLen == prevHeapLen {
 			// If no chunks were added from this directory then just continue as
 			// this could be due to a slight delay in the metadata being updated
+			fmt.Println("no chunks added", heapLen, prevHeapLen)
 			continue
 		}
 		chunksAdded := heapLen - prevHeapLen
