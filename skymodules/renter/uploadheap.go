@@ -800,6 +800,11 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) error {
 			return nil
 		}
 
+		// The dir needs repairing. So we queue an update. Even if we
+		// don't end up adding chunks, we want to update the health
+		// because there is a reason we ended up with that dir.
+		r.staticDirUpdateBatcher.callQueueDirUpdate(dir.staticSiaPath)
+
 		// Add chunks from the directory to the uploadHeap.
 		r.managedBuildChunkHeap(dir.staticSiaPath, hosts, targetUnstuckChunks, offline, goodForRenew)
 
@@ -814,7 +819,6 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) error {
 		prevHeapLen = heapLen
 
 		// Since we added chunks from this directory, track the siaPath
-		r.staticDirUpdateBatcher.callQueueDirUpdate(dir.staticSiaPath)
 		r.staticRepairLog.Printf("Added %v chunks from %s to the repair heap", chunksAdded, dir.staticSiaPath) // TODO: Tag log
 	}
 
