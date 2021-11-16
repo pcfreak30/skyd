@@ -268,6 +268,7 @@ func (r *Renter) managedNextExploredDirectory() (*directory, error) {
 		}
 		d.mu.Unlock()
 		if explored {
+			fmt.Println("pop", d.staticSiaPath, d.aggregateHealth, d.aggregateRemoteHealth)
 			return d, nil
 		}
 
