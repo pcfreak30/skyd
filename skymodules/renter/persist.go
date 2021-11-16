@@ -86,7 +86,7 @@ var (
 	// distributionTrackerDumpInterval defines the interval the renter uses for
 	// dumping certain distribution trackers of interest.
 	distributionTrackerDumpInterval = build.Select(build.Var{
-		Dev:      time.Minute,
+		Dev:      time.Hour,
 		Standard: time.Hour,
 		Testing:  time.Minute,
 	}).(time.Duration)
@@ -119,7 +119,7 @@ func (r *Renter) saveSync() error {
 	return persist.SaveJSON(settingsMetadata, r.persist, filepath.Join(r.persistDir, PersistFilename))
 }
 
-// threadedDistributionTrackerDump periodically appends a series of distribution
+// threadedDistributionTrackerDump periodically prints a series of distribution
 // tracker dumps (as JSON) to a log file. By doing so we keep a historical
 // record of certain distributions of interest.
 func (r *Renter) threadedDistributionTrackerDump() {

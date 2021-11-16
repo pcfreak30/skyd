@@ -308,10 +308,10 @@ type Renter struct {
 	persistDir                   string
 	mu                           *siasync.RWMutex
 	staticDeps                   skymodules.SkydDependencies
+	staticDistributionTrackerLog *persist.Logger
 	staticLog                    *persist.Logger
 	staticMux                    *siamux.SiaMux
 	staticRepairLog              *persist.Logger
-	staticDistributionTrackerLog *persist.Logger
 	staticWAL                    *writeaheadlog.WAL
 	tg                           threadgroup.ThreadGroup
 }
