@@ -1283,6 +1283,13 @@ func (r *Renter) UploadSkyfile(ctx context.Context, sup skymodules.SkyfileUpload
 		return skymodules.Skylink{}, errors.New("SkyfileUploadFail")
 	}
 
+	// After uploading the file we queue a bubble for the new files on disk.
+	dirPath, err := sup.SiaPath.Dir()
+	if err != nil {
+		r.staticLog.Println("UploadSkyfile: failed to get path of path's parent folder", err)
+	}
+	r.staticDirUpdateBatcher.callQueueDirUpdate(dirPath)
+
 	// Check if skylink is blocked
 	blocked, err := r.managedIsBlocked(ctx, skylink)
 	if err != nil {

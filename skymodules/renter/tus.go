@@ -251,6 +251,19 @@ func (u *ongoingTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.
 		return 0, errors.AddContext(err, "failed to get fileinfo")
 	}
 
+	// Fetch the upload params.
+	sup, up, err := u.staticUpload.UploadParams(ctx)
+	if err != nil {
+		return 0, errors.AddContext(err, "failed to fetch upload params")
+	}
+
+	// Make sure to queue a bubble for the new chunk at the end.
+	dir, err := up.SiaPath.Dir()
+	if err != nil {
+		return 0, errors.AddContext(err, "failed to get parent folder's siapath")
+	}
+	u.staticUploader.staticRenter.staticDirUpdateBatcher.callQueueDirUpdate(dir)
+
 	// If the offset is 0, we try to determine if the upload is large or small.
 	var isSmall bool
 	if offset == 0 {
@@ -264,10 +277,6 @@ func (u *ongoingTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.
 		// large upload to receive a fanout.
 		if isSmall && !fi.IsPartial {
 			// Finish the small upload.
-			sup, _, err := u.staticUpload.UploadParams(ctx)
-			if err != nil {
-				return 0, errors.AddContext(err, "failed to fetch upload params")
-			}
 			smBytes, err := u.staticUpload.SkyfileMetadata(ctx)
 			if err != nil {
 				return 0, errors.AddContext(err, "failed to fetch smBytes")
@@ -296,10 +305,6 @@ func (u *ongoingTUSUpload) WriteChunk(ctx context.Context, offset int64, src io.
 	// Upload is a large upload - we need a filenode for the fanout. If it
 	// doesn't exist yet, create it.
 	if u.fileNode == nil {
-		_, up, err := u.staticUpload.UploadParams(ctx)
-		if err != nil {
-			return 0, err
-		}
 		u.fileNode, err = uploader.staticRenter.managedInitUploadStream(up)
 		if err != nil {
 			return 0, err
