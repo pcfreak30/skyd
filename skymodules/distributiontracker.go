@@ -573,19 +573,26 @@ func (dt *DistributionTracker) Distribution(index int) *Distribution {
 // MergeWith merges the given all distributions from the given distribution
 // tracker with our distributions, according to a certain weight.
 func (dt *DistributionTracker) MergeWith(other *DistributionTracker, weight float64) {
+	other.mu.Lock()
+	oNumDis := len(other.distributions)
+	other.mu.Unlock()
+
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
 	// sanity check the given distribution tracker has the same config
-	if len(dt.distributions) != len(other.distributions) {
+	if len(dt.distributions) != oNumDis {
 		build.Critical("can only merge with same-config dts")
 	}
 	for i, d := range dt.distributions {
-		if d.staticHalfLife != other.distributions[i].staticHalfLife {
+		if d.staticHalfLife != other.Distribution(i).staticHalfLife {
 			build.Critical("can only merge with same-config dts")
 		}
 	}
 
 	// perform the merge
 	for i, d := range dt.distributions {
-		d.MergeWith(other.distributions[i], weight)
+		d.MergeWith(other.Distribution(i), weight)
 	}
 }
 
