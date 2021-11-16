@@ -796,11 +796,9 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) error {
 		// return
 		heapHealth, _ := dir.managedHeapHealth()
 		if !skymodules.NeedsRepair(heapHealth) {
-			fmt.Println("dir doesn't need repair")
 			r.staticRepairLog.Debugln("no more chunks added to the upload heap because directory popped is healthy")
 			return nil
 		}
-		fmt.Println("pop", dir.staticSiaPath, dir.aggregateHealth, dir.aggregateRemoteHealth)
 
 		// The dir needs repairing. So we queue an update. Even if we
 		// don't end up adding chunks, we want to update the health
@@ -815,7 +813,6 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) error {
 		if heapLen == prevHeapLen {
 			// If no chunks were added from this directory then just continue as
 			// this could be due to a slight delay in the metadata being updated
-			fmt.Println("no chunks added", heapLen, prevHeapLen)
 			continue
 		}
 		chunksAdded := heapLen - prevHeapLen
@@ -1342,9 +1339,6 @@ func (r *Renter) managedRefreshHostsAndWorkers() map[string]struct{} {
 // loop will continue until the renter stops, there are no more chunks, or the
 // number of chunks in the uploadheap has dropped below the minUploadHeapSize
 func (r *Renter) managedRepairLoop() error {
-	s := time.Now()
-	r.staticRepairLog.Println("managedRepairLoop start")
-	defer r.staticRepairLog.Println("managedRepairLoop end", time.Since(s))
 	// smallRepair indicates whether or not the repair loop should process all
 	// of the chunks in the heap instead of just processing down to the minimum
 	// heap size. We want to process all of the chunks if the rest of the
@@ -1361,7 +1355,6 @@ func (r *Renter) managedRepairLoop() error {
 	// smallRepairs or heap drops below minUploadHeapSize for larger repairs, or
 	// until the total amount of time spent in one repair iteration has elapsed.
 	for r.staticUploadHeap.managedLen() >= minUploadHeapSize || smallRepair || time.Now().After(repairBreakTime) {
-		r.staticRepairLog.Println("HeapSize", r.staticUploadHeap.managedLen())
 		select {
 		case <-r.tg.StopChan():
 			// Return if the renter has shut down.
@@ -1474,7 +1467,6 @@ func (r *Renter) threadedUploadAndRepair() {
 		// Return if the renter has shut down.
 		select {
 		case <-r.tg.StopChan():
-			fmt.Println("done")
 			return
 		default:
 		}
@@ -1482,14 +1474,12 @@ func (r *Renter) threadedUploadAndRepair() {
 		// Wait until the contractor is synced.
 		if !r.managedBlockUntilSynced() {
 			// The renter shut down before the contract was synced.
-			fmt.Println("synced")
 			return
 		}
 
 		// Wait until the renter is online to proceed. This function will return
 		// 'false' if the renter has shut down before being online.
 		if !r.managedBlockUntilOnline() {
-			fmt.Println("online")
 			return
 		}
 
@@ -1499,7 +1489,6 @@ func (r *Renter) threadedUploadAndRepair() {
 			// Block until the repair process is restarted
 			select {
 			case <-r.tg.StopChan():
-				fmt.Println("done2")
 				return
 			case <-r.staticUploadHeap.pauseChan:
 				r.staticRepairLog.Println("Repairs and Uploads have been resumed")
@@ -1516,10 +1505,8 @@ func (r *Renter) threadedUploadAndRepair() {
 				r.staticRepairLog.Println("WARN: there was an error pushing an unexplored root directory onto the directory heap:", err)
 			}
 			if err != nil {
-				fmt.Println("err", err)
 				select {
 				case <-time.After(uploadAndRepairErrorSleepDuration):
-					fmt.Println("uploadAndRepairErrorSleepDuration")
 				case <-r.tg.StopChan():
 					return
 				}
@@ -1574,11 +1561,10 @@ func (r *Renter) threadedUploadAndRepair() {
 			// upload or there is a repair that is needed.
 			select {
 			case <-r.staticUploadHeap.newUploads:
-				r.staticRepairLog.Println("repair loop triggered by new upload channel")
+				r.staticRepairLog.Debugln("repair loop triggered by new upload channel")
 			case <-r.staticUploadHeap.repairNeeded:
-				r.staticRepairLog.Println("repair loop triggered by repair needed channel")
+				r.staticRepairLog.Debugln("repair loop triggered by repair needed channel")
 			case <-r.tg.StopChan():
-				fmt.Println("done3")
 				return
 			}
 
@@ -1593,7 +1579,6 @@ func (r *Renter) threadedUploadAndRepair() {
 
 			// Continue here to force the code to re-check for backups, to
 			// re-block until it's online, and to refresh the worker pool.
-			fmt.Println("continue")
 			continue
 		}
 

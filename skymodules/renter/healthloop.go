@@ -233,7 +233,6 @@ func (dirFinder *healthLoopDirFinder) loadNextDir() error {
 		}
 	}
 
-	dirFinder.renter.staticLog.Println("HEALTH LOOP VERBOSE: least checked", siaPath)
 	dirFinder.filesInNextDir = metadata.NumFiles
 	dirFinder.nextDir = siaPath
 	return nil
@@ -276,7 +275,6 @@ func (dirFinder *healthLoopDirFinder) sleepDurationBeforeNextDir() time.Duration
 	urgent := timeSinceLRC > urgentHealthCheckFrequency
 	slowScanTime := dirFinder.estimatedSystemScanDuration >= TargetHealthCheckFrequency
 	manualCheckActive := dirFinder.manualCheckTime.After(lrc)
-	dirFinder.renter.staticLog.Println("HEALTH LOOP VERBOSE: time since lrc", timeSinceLRC)
 	// If a manual check is currently active, or if the condition of the
 	// file health is urgent, or if the amount of time it takes to scan the
 	// filesystem is longer than the target health interval, do not try to
@@ -301,8 +299,8 @@ func (dirFinder *healthLoopDirFinder) sleepDurationBeforeNextDir() time.Duration
 	// To compensate for that, we track how much time we spend in system
 	// scan per cylce and subtract that from the numerator of the above
 	// described equation.
-	desiredSleepPerScan := float64(TargetHealthCheckFrequency - dirFinder.estimatedSystemScanDuration)
-	sleepTime := time.Duration(desiredSleepPerScan * float64(dirFinder.filesInNextDir) / float64(dirFinder.totalFiles))
+	desiredSleepPerScan := TargetHealthCheckFrequency - dirFinder.estimatedSystemScanDuration
+	sleepTime := desiredSleepPerScan * time.Duration(dirFinder.filesInNextDir) / time.Duration(dirFinder.totalFiles)
 	// If we are behind schedule, we compress the sleep time
 	// proportionally to how far behind schedule we are.
 	if timeSinceLRC > TargetHealthCheckFrequency {
@@ -440,7 +438,6 @@ func (r *Renter) threadedHealthLoop() {
 		case <-time.After(sleepTime):
 		case <-r.tg.StopChan():
 			return
-		default:
 		}
 
 		// Process the next directory. We don't retry on error, we just move on

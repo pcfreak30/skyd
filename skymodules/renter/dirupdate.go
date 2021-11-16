@@ -68,7 +68,6 @@ func (r *Renter) managedUpdateDirMetadata(siaPath skymodules.SiaPath) error {
 		if skymodules.NeedsRepair(metadata.AggregateHealth) {
 			select {
 			case r.staticUploadHeap.repairNeeded <- struct{}{}:
-				fmt.Println("managedUpdateDirMetadata")
 			default:
 			}
 		}

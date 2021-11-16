@@ -306,10 +306,8 @@ func (r *Renter) managedStuckFile(dirSiaPath skymodules.SiaPath) (siapath skymod
 
 		// Check if stuck
 		if numStuckChunks == 0 {
-			fmt.Println("no stuck", sp)
 			continue
 		}
-		fmt.Println("stuck")
 
 		// Decrement rand and check if we have decremented fully
 		rand = rand - numStuckChunks
@@ -425,7 +423,6 @@ func (r *Renter) threadedStuckFileLoop() {
 		// upload heap
 		select {
 		case r.staticUploadHeap.repairNeeded <- struct{}{}:
-			fmt.Println("stuck chunks")
 		default:
 		}
 
