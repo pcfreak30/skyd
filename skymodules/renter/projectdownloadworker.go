@@ -195,6 +195,12 @@ type (
 		pieceIndices []uint64
 		resolved     bool
 
+		// onCoolDown is a flag that indicates whether this worker's HS or RS
+		// queues are on cooldown, a worker with a queue on cooldown is not
+		// necessarily discounted as not useful for downloading, instead it's
+		// marked as on cooldown and only used if it comes off of cooldown
+		onCoolDown bool
+
 		// currentPiece is the piece that was marked by the download algorithm
 		// as the piece to download next, this is used to ensure that workers
 		// in the worker are not selected for duplicate piece indices.
@@ -439,8 +445,7 @@ func (iw *individualWorker) isLaunched() bool {
 
 // isOnCooldown returns whether this individual worker is on cooldown.
 func (iw *individualWorker) isOnCooldown() bool {
-	w := iw.staticWorker
-	return w.staticJobReadQueue.callOnCooldown() || w.staticJobHasSectorQueue.callOnCooldown() || w.managedOnMaintenanceCooldown()
+	return iw.onCoolDown
 }
 
 // isResolved returns whether this individual worker has resolved.
@@ -714,6 +719,11 @@ func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker) []*i
 			}
 		}
 
+		// check whether the worker is on cooldown
+		hsq := w.staticWorker.staticJobHasSectorQueue
+		rjq := w.staticWorker.staticJobReadQueue
+		w.onCoolDown = hsq.callOnCooldown() || rjq.callOnCooldown()
+
 		// recalculate the distributions
 		w.recalculateDistributionChances()
 	}
@@ -757,6 +767,7 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 		iw = &iws[len(workers)] //staticPoolIndividualWorkers.Get()
 		iw.resolved = true
 		iw.pieceIndices = rw.pieceIndices
+		iw.onCoolDown = jrq.callOnCooldown() || hsq.callOnCooldown()
 		iw.staticAvailabilityRate = hsq.callAvailabilityRate(numPieces)
 		iw.staticCost = cost
 		iw.staticDownloadLaunchTime = time.Now()
@@ -784,6 +795,7 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 		cost, _ = jrq.callExpectedJobCost(length).Float64()
 		iw.resolved = false
 		iw.pieceIndices = pdc.staticPieceIndices
+		iw.onCoolDown = jrq.callOnCooldown() || hsq.callOnCooldown()
 
 		iw.staticAvailabilityRate = hsq.callAvailabilityRate(numPieces)
 		iw.staticCost = cost
@@ -1464,11 +1476,11 @@ func partitionWorkers(iws []*individualWorker, isLeft func(i int) bool) (left, r
 // into resolved and unresolved worker arrays. Note that if the worker is on a
 // cooldown we exclude it from the returned workers list.
 func splitResolvedUnresolved(workers []*individualWorker) ([]*individualWorker, []*individualWorker) {
-	// filter out the useless workers first.
-	notOnCooldown, _ := partitionWorkers(workers, func(i int) bool {
-		return !workers[i].isOnCooldown() || !workers[i].staticWorker.managedAsyncReady()
-	})
-	resolvedWorkers, unresolvedWorkers := partitionWorkers(notOnCooldown, func(i int) bool {
+	// filter out the workers on cooldown first.
+	//	notOnCooldown, _ := partitionWorkers(workers, func(i int) bool {
+	//		return !workers[i].isOnCooldown()
+	//	})
+	resolvedWorkers, unresolvedWorkers := partitionWorkers(workers, func(i int) bool {
 		return workers[i].isResolved()
 	})
 	return resolvedWorkers, unresolvedWorkers
