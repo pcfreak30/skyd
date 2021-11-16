@@ -796,6 +796,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) error {
 		// return
 		heapHealth, _ := dir.managedHeapHealth()
 		if !skymodules.NeedsRepair(heapHealth) {
+			fmt.Println("dir doesn't need repair")
 			r.staticRepairLog.Debugln("no more chunks added to the upload heap because directory popped is healthy")
 			return nil
 		}
