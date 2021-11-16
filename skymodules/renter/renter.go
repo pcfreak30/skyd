@@ -304,15 +304,16 @@ type Renter struct {
 	staticWorkerPool                   *workerPool
 
 	// Utilities
-	persist         persistence
-	persistDir      string
-	mu              *siasync.RWMutex
-	staticDeps      skymodules.SkydDependencies
-	staticLog       *persist.Logger
-	staticMux       *siamux.SiaMux
-	staticRepairLog *persist.Logger
-	staticWAL       *writeaheadlog.WAL
-	tg              threadgroup.ThreadGroup
+	persist                      persistence
+	persistDir                   string
+	mu                           *siasync.RWMutex
+	staticDeps                   skymodules.SkydDependencies
+	staticLog                    *persist.Logger
+	staticMux                    *siamux.SiaMux
+	staticRepairLog              *persist.Logger
+	staticDistributionTrackerLog *persist.Logger
+	staticWAL                    *writeaheadlog.WAL
+	tg                           threadgroup.ThreadGroup
 }
 
 // Close closes the Renter and its dependencies
@@ -1160,6 +1161,13 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	if err := r.tg.AfterStop(r.staticRepairLog.Close); err != nil {
 		return nil, err
 	}
+	r.staticDistributionTrackerLog, err = persist.NewFileLogger(filepath.Join(r.persistDir, distributionsLogFile))
+	if err != nil {
+		return nil, err
+	}
+	if err := r.tg.AfterStop(r.staticDistributionTrackerLog.Close); err != nil {
+		return nil, err
+	}
 
 	// Initialize the dirUpdateBatcher.
 	r.staticDirUpdateBatcher, err = r.newDirUpdateBatcher()
@@ -1228,6 +1236,9 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 	// Launch the stat persisting thread.
 	go r.threadedStatsPersister()
+
+	// Launch the distribution tracker dump thread.
+	go r.threadedDistributionTrackerDump()
 
 	// Spin up background threads which are not depending on the renter being
 	// up-to-date with consensus.

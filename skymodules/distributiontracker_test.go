@@ -1,6 +1,7 @@
 package skymodules
 
 import (
+	"encoding/json"
 	"math"
 	"testing"
 	"time"
@@ -26,7 +27,9 @@ func TestDistributionTracker(t *testing.T) {
 	t.Run("ExpectedDuration", testDistributionExpectedDuration)
 	t.Run("FullTestLong", testDistributionTrackerFullTestLong)
 	t.Run("Helpers", testDistributionHelpers)
-	t.Run("MergeWith", testDistributionMergeWith)
+	t.Run("JsonDump", testDistributionTrackerJsonDump)
+	t.Run("DistributionMergeWith", testDistributionMergeWith)
+	t.Run("DistributionTrackerMergeWith", testDistributionTrackerMergeWith)
 	t.Run("Shift", testDistributionShift)
 }
 
@@ -846,6 +849,50 @@ func testDistributionMergeWith(t *testing.T) {
 	}
 }
 
+// testDistributionTrackerMergeWith verifies the 'MergeWith' method on the
+// distribution tracker.
+func testDistributionTrackerMergeWith(t *testing.T) {
+	t.Parallel()
+
+	dt := NewDistributionTrackerStandard()
+	other := NewDistributionTrackerStandard()
+
+	// add a datapoint to every bucket
+	for i := 0; i < 400; i++ {
+		dt.AddDataPoint(DistributionDurationForBucketIndex(i))
+	}
+
+	// grab the expected duration of the first distribution
+	beforeDT0 := dt.Distribution(0).ExpectedDuration()
+	beforeDT1 := dt.Distribution(1).ExpectedDuration()
+	beforeDT2 := dt.Distribution(2).ExpectedDuration()
+
+	// merge with 1 weight, assert the expected dur did not change because
+	// 'other' has no datapoints
+	dt.MergeWith(other, 1)
+	if dt.Distribution(0).ExpectedDuration() != beforeDT0 ||
+		dt.Distribution(1).ExpectedDuration() != beforeDT1 ||
+		dt.Distribution(2).ExpectedDuration() != beforeDT2 {
+		t.Fatal("bad")
+	}
+
+	// add some datapoints and merge again, assert the expected duration changed
+	for i := 0; i < 100; i++ {
+		other.AddDataPoint(DistributionDurationForBucketIndex(i))
+	}
+	dt.MergeWith(other, 1)
+	if dt.Distribution(0).ExpectedDuration() == beforeDT0 ||
+		dt.Distribution(1).ExpectedDuration() == beforeDT1 ||
+		dt.Distribution(2).ExpectedDuration() == beforeDT2 {
+		t.Fatal("bad")
+	}
+
+	// NOTE: we only assert the underlying distributions change after merging
+	// the distribution tracker with another non-empty distribution tracker as
+	// the actual merge results are covered by the unit test that verifies the
+	// functionality of the 'MergeWith' method on the distribution
+}
+
 // testDistributionShift verifies the 'Shift' method on the distribution.
 func testDistributionShift(t *testing.T) {
 	t.Parallel()
@@ -1039,5 +1086,48 @@ func testDistributionHelpers(t *testing.T) {
 	index, fraction = indexForDuration(time.Hour + 10*time.Minute)
 	if index != 399 || fraction != 1 {
 		t.Error("bad", index, fraction)
+	}
+}
+
+// testDistributionTrackerJsonDump is a small unit test that verifies the
+// functionality of the JsonDump method on the distribution tracker
+func testDistributionTrackerJsonDump(t *testing.T) {
+	t.Parallel()
+
+	// create a standard DT
+	dt := NewDistributionTrackerStandard()
+
+	// add a datapoint to every bucket
+	for i := 0; i < 400; i++ {
+		dt.AddDataPoint(DistributionDurationForBucketIndex(i))
+	}
+
+	jsonStr, err := dt.JsonDump("some name")
+	if err != nil {
+		t.Fatal("bad")
+	}
+
+	dtDump := DistributionTrackerJsonDump{}
+	err = json.Unmarshal([]byte(jsonStr), &dtDump)
+	if err != nil {
+		t.Fatal("bad")
+	}
+
+	if dtDump.Name != "some name" {
+		t.Fatal("bad")
+	}
+	if dtDump.Timestamp == 0 {
+		t.Fatal("bad")
+	}
+	if len(dtDump.Distributions) != len(dt.distributions) {
+		t.Fatal("bad")
+	}
+	for i, d := range dt.distributions {
+		if dtDump.Distributions[i].HalfLife != d.staticHalfLife {
+			t.Fatal("bad")
+		}
+		if dtDump.Distributions[i].Timings != d.timings {
+			t.Fatal("bad")
+		}
 	}
 }

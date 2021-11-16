@@ -21,6 +21,7 @@ package skymodules
 // that wouldn't be possible with generic values.
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"sync"
@@ -121,6 +122,21 @@ type (
 		DataPoints []float64
 	}
 
+	// DistributionJsonDump contains the information about a distribution that
+	// is periodically written to a log file on disk.
+	DistributionJsonDump struct {
+		HalfLife time.Duration       `json:"halflife"`
+		Timings  [numBuckets]float64 `json:"timings"`
+	}
+
+	// DistributionTrackerJsonDump contains a bunch of distribution dumps which
+	// are periodically written to a log file on disk
+	DistributionTrackerJsonDump struct {
+		Name          string                 `json:"name"`
+		Timestamp     uint64                 `json:"timestamp"`
+		Distributions []DistributionJsonDump `json:"distributions"`
+	}
+
 	// PersistedDistribution contains the information about a distribution
 	// that is persisted to disk.
 	PersistedDistribution struct {
@@ -136,6 +152,33 @@ type (
 	// Chances is a helper type that represent a distribition's chance array
 	Chances [DistributionTrackerTotalBuckets]float64
 )
+
+// JsonDump takes a name, identifying this distribution tracker, and returns the
+// json string representation of a DistributionTrackerJsonDump for the
+// DistributionTracker.
+func (dt *DistributionTracker) JsonDump(name string) (string, error) {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	distributions := make([]DistributionJsonDump, 0, len(dt.distributions))
+	for _, d := range dt.distributions {
+		distributions = append(distributions, DistributionJsonDump{
+			HalfLife: d.HalfLife(),
+			Timings:  d.timings,
+		})
+	}
+
+	jsonBytes, err := json.Marshal(DistributionTrackerJsonDump{
+		Name:          name,
+		Timestamp:     uint64(time.Now().Unix()),
+		Distributions: distributions,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonBytes), nil
+}
 
 // Persist returns a PersistedDistributionTracker for the DistributionTracker by
 // copying all of its buckets.
@@ -527,6 +570,25 @@ func (dt *DistributionTracker) Distribution(index int) *Distribution {
 	return dt.distributions[index].Clone()
 }
 
+// MergeWith merges the given all distributions from the given distribution
+// tracker with our distributions, according to a certain weight.
+func (dt *DistributionTracker) MergeWith(other *DistributionTracker, weight float64) {
+	// sanity check the given distribution tracker has the same config
+	if len(dt.distributions) != len(other.distributions) {
+		build.Critical("can only merge with same-config dts")
+	}
+	for i, d := range dt.distributions {
+		if d.staticHalfLife != other.distributions[i].staticHalfLife {
+			build.Critical("can only merge with same-config dts")
+		}
+	}
+
+	// perform the merge
+	for i, d := range dt.distributions {
+		d.MergeWith(other.distributions[i], weight)
+	}
+}
+
 // Stats returns a full suite of statistics about the distributions in the
 // tracker.
 func (dt *DistributionTracker) Stats() *DistributionTrackerStats {
@@ -553,5 +615,18 @@ func NewDistributionTrackerStandard() *DistributionTracker {
 			NewDistribution(24 * time.Hour),
 			NewDistribution(30 * 24 * time.Hour),
 		},
+	}
+}
+
+// NewDistributionTrackerFrom returns a distribution tracker that is completely
+// empty, copying the configuration of the given distribution tracker. It will
+// have the same amount of distributions, using the same half life.
+func NewDistributionTrackerFrom(dt *DistributionTracker) *DistributionTracker {
+	distributions := make([]*Distribution, len(dt.distributions))
+	for i, d := range dt.distributions {
+		distributions[i] = NewDistribution(d.staticHalfLife)
+	}
+	return &DistributionTracker{
+		distributions: distributions,
 	}
 }

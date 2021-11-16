@@ -27,8 +27,21 @@ type PersistedStats struct {
 	StreamBufferStats     skymodules.PersistedDistributionTracker `json:"streambufferstats"`
 }
 
+// DistributionTrackerIdentifier is a small helper type that contains a
+// distribution tracker alongside a name field that identifies what the
+// distribution tracker represents.
+type DistributionTrackerIdentifier struct {
+	Name                string
+	DistributionTracker *skymodules.DistributionTracker
+}
+
 const (
-	logFile       = skymodules.RenterDir + ".log"
+	logFile = skymodules.RenterDir + ".log"
+
+	// distributionsLogFile contains periodic dumps of certain distribution
+	// trackers of interest
+	distributionsLogFile = "distributions.log"
+
 	repairLogFile = "repair.log"
 	// PersistFilename is the filename to be used when persisting renter
 	// information to a JSON file
@@ -70,6 +83,14 @@ var (
 		Testing:  2 * time.Second,
 	}).(time.Duration)
 
+	// distributionTrackerDumpInterval defines the interval the renter uses for
+	// dumping certain distribution trackers of interest.
+	distributionTrackerDumpInterval = build.Select(build.Var{
+		Dev:      time.Minute,
+		Standard: time.Hour,
+		Testing:  time.Minute,
+	}).(time.Duration)
+
 	// statsMetadata is the metadata used when persisting the renter stats.
 	statsMetadata = persist.Metadata{
 		Header:  "Stats",
@@ -96,6 +117,75 @@ type (
 // saveSync stores the current renter data to disk and then syncs to disk.
 func (r *Renter) saveSync() error {
 	return persist.SaveJSON(settingsMetadata, r.persist, filepath.Join(r.persistDir, PersistFilename))
+}
+
+// threadedDistributionTrackerDump periodically appends a series of distribution
+// tracker dumps (as JSON) to a log file. By doing so we keep a historical
+// record of certain distributions of interest.
+func (r *Renter) threadedDistributionTrackerDump() {
+	if err := r.tg.Add(); err != nil {
+		return
+	}
+	defer r.tg.Done()
+
+	ticker := time.NewTicker(distributionTrackerDumpInterval)
+	for {
+		dts := []DistributionTrackerIdentifier{
+			{"RegistryRead", r.staticRegistryReadStats},
+			{"RegistryWrite", r.staticRegWriteStats},
+			{"BaseSectorUpload", r.staticBaseSectorUploadStats},
+			{"ChunkUpload", r.staticChunkUploadStats},
+			{"StreamBuffer", r.staticStreamBufferStats},
+		}
+
+		// for worker specific DTs we log a merged DT, which is simply a
+		// combination of the DT for every worker
+		workers := r.staticWorkerPool.callWorkers()
+		if len(workers) > 0 {
+			// create empty dts for all read queue dts
+			jrqs := workers[0].staticJobReadQueue.staticStats
+			jrqDT64k := skymodules.NewDistributionTrackerFrom(jrqs.staticDT64k)
+			jrqDT1m := skymodules.NewDistributionTrackerFrom(jrqs.staticDT1m)
+			jrqDT4m := skymodules.NewDistributionTrackerFrom(jrqs.staticDT4m)
+
+			// create an empty dt for the has sector queue dt
+			hsqDT := skymodules.NewDistributionTrackerFrom(workers[0].staticJobHasSectorQueue.staticDT)
+
+			// loop all workers and merge the dts into one
+			for _, w := range workers {
+				jrq := w.staticJobReadQueue
+				jrqDT64k.MergeWith(jrq.staticStats.staticDT64k, 1)
+				jrqDT1m.MergeWith(jrq.staticStats.staticDT1m, 1)
+				jrqDT4m.MergeWith(jrq.staticStats.staticDT4m, 1)
+				hsqDT.MergeWith(w.staticJobHasSectorQueue.staticDT, 1)
+			}
+
+			// append them to the dts we want to dump
+			dts = append(dts,
+				DistributionTrackerIdentifier{"ReadSector 64kb", jrqDT64k},
+				DistributionTrackerIdentifier{"ReadSector 1m", jrqDT1m},
+				DistributionTrackerIdentifier{"ReadSector 4m", jrqDT4m},
+				DistributionTrackerIdentifier{"HasSector", hsqDT},
+			)
+		}
+
+		// loop over all distribution trackers log a JSON dump per distribution
+		for _, dt := range dts {
+			json, err := dt.DistributionTracker.JsonDump(dt.Name)
+			if err != nil {
+				r.staticLog.Printf("failed to get json dump for distribution tracker '%v', error: %v", dt.Name, err)
+				continue
+			}
+			r.staticDistributionTrackerLog.Println(json)
+		}
+
+		// Sleep
+		select {
+		case <-r.tg.StopCtx().Done():
+			return // shutdown
+		case <-ticker.C:
+		}
+	}
 }
 
 // threadedStatsPersister periodically persists the renter's collected stats.
