@@ -14,7 +14,7 @@ type (
 	// subscriptionManager is the interface of the subscriptionManager that is
 	// notified whenever any worker receives an update for a subscribed value.
 	subscriptionManager interface {
-		Notify(...modules.RPCRegistrySubscriptionNotificationEntryUpdate)
+		Notify(hpk types.SiaPublicKey, toSubscribe []modules.RPCRegistrySubscriptionRequest, notifications ...modules.RPCRegistrySubscriptionNotificationEntryUpdate)
 	}
 
 	// registrySubscriptionManager is the renter's global subscription manager.
@@ -22,6 +22,7 @@ type (
 	registrySubscriptionManager struct {
 		staticRenter               *Renter
 		staticSubscriptionsChanged chan struct{}
+		cutoffWorkers              []*worker
 
 		subscriptions map[modules.RegistryEntryID]*renterSubscription
 		subscribers   map[subscriberID]*renterSubscriber
@@ -34,7 +35,10 @@ type (
 		staticSPK   types.SiaPublicKey
 		staticTweak crypto.Hash
 
-		latestValue *skymodules.RegistryEntry
+		latestValue     *skymodules.RegistryEntry
+		cutoffWorkers   map[string]*worker
+		cutoffThreshold int
+
 		subscribers map[subscriberID]struct{}
 	}
 
@@ -66,10 +70,12 @@ func newSubscriptionManager(renter *Renter) *registrySubscriptionManager {
 // Notify implements subscriptionManager. It is called by workers whenever they
 // receive a new value from a host. The manager will then forward the value to
 // potential subscribers if necessary.
-func (sm *registrySubscriptionManager) Notify(notifications ...modules.RPCRegistrySubscriptionNotificationEntryUpdate) {
+func (sm *registrySubscriptionManager) Notify(hpk types.SiaPublicKey, toSubscribe []modules.RPCRegistrySubscriptionRequest, notifications ...modules.RPCRegistrySubscriptionNotificationEntryUpdate) {
 	changedSubs := make(map[modules.RegistryEntryID]*renterSubscription)
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
+
+	// Collect the subscriptions which changed and need to be notified.
 	for _, notification := range notifications {
 		eid := modules.DeriveRegistryEntryID(notification.PubKey, notification.Entry.Tweak)
 
@@ -86,6 +92,25 @@ func (sm *registrySubscriptionManager) Notify(notifications ...modules.RPCRegist
 			sub.latestValue = &srv
 			changedSubs[eid] = sub
 			continue
+		}
+	}
+
+	// Go through the subscriptions the worker started and remove the worker
+	// from it.
+	for _, ts := range toSubscribe {
+		eid := modules.DeriveRegistryEntryID(ts.PubKey, ts.Tweak)
+		sub, exists := sm.subscriptions[eid]
+		if !exists {
+			continue
+		}
+		aboveThresholdBefore := len(sub.cutoffWorkers) > sub.cutoffThreshold
+		delete(sub.cutoffWorkers, hpk.String())
+		aboveThresholdAfter := len(sub.cutoffWorkers) > sub.cutoffThreshold
+
+		// If the subscription reached the threshold we include it in
+		// the changed subs even if the latest value is still nil.
+		if !aboveThresholdBefore && aboveThresholdAfter {
+			changedSubs[eid] = sub
 		}
 	}
 
@@ -175,15 +200,19 @@ func (sm *registrySubscriptionManager) NewSubscriber(notifyFunc func(skymodules.
 func (rs *renterSubscriber) managedSubscribe(spk types.SiaPublicKey, tweak crypto.Hash) *skymodules.RegistryEntry {
 	sm := rs.staticSubscriptionManager
 	eid := modules.DeriveRegistryEntryID(spk, tweak)
+	r := rs.staticSubscriptionManager.staticRenter
 
 	// Check if the subscription exists already. If not, create it.
+	cutoffWorkers := regReadCutoffWorkers(r.staticWorkerPool.callWorkers(), minCutoffWorkers)
 	sm.mu.Lock()
 	sub, subExists := sm.subscriptions[eid]
 	if !subExists {
 		sub = &renterSubscription{
-			staticSPK:   spk,
-			staticTweak: tweak,
-			subscribers: make(map[subscriberID]struct{}),
+			cutoffWorkers:   cutoffWorkers,
+			cutoffThreshold: int(float64(len(cutoffWorkers)) * minAwaitedCutoffWorkersPercentage),
+			staticSPK:       spk,
+			staticTweak:     tweak,
+			subscribers:     make(map[subscriberID]struct{}),
 		}
 		sm.subscriptions[eid] = sub
 	}

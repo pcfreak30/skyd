@@ -238,7 +238,8 @@ func testSubscriptionManagerNotify(t *testing.T, r *Renter) {
 	srv3.Sign(sk)
 
 	// Notify the manager of this pair before subscribing.
-	sm.Notify(modules.RPCRegistrySubscriptionNotificationEntryUpdate{
+	var hpk types.SiaPublicKey
+	sm.Notify(hpk, nil, modules.RPCRegistrySubscriptionNotificationEntryUpdate{
 		Entry:  srv1.SignedRegistryValue,
 		PubKey: spk,
 	})
@@ -261,7 +262,7 @@ func testSubscriptionManagerNotify(t *testing.T, r *Renter) {
 	}
 
 	// Notify the manager again after subscribing.
-	sm.Notify(modules.RPCRegistrySubscriptionNotificationEntryUpdate{
+	sm.Notify(hpk, nil, modules.RPCRegistrySubscriptionNotificationEntryUpdate{
 		Entry:  srv1.SignedRegistryValue,
 		PubKey: spk,
 	})
@@ -284,7 +285,7 @@ func testSubscriptionManagerNotify(t *testing.T, r *Renter) {
 	}
 
 	// Notify the manager of the same entry again.
-	sm.Notify(modules.RPCRegistrySubscriptionNotificationEntryUpdate{
+	sm.Notify(hpk, nil, modules.RPCRegistrySubscriptionNotificationEntryUpdate{
 		Entry:  srv1.SignedRegistryValue,
 		PubKey: spk,
 	})
@@ -307,7 +308,7 @@ func testSubscriptionManagerNotify(t *testing.T, r *Renter) {
 	}
 
 	// Notify the manager of a higher revision entry.
-	sm.Notify(modules.RPCRegistrySubscriptionNotificationEntryUpdate{
+	sm.Notify(hpk, nil, modules.RPCRegistrySubscriptionNotificationEntryUpdate{
 		Entry:  srv2.SignedRegistryValue,
 		PubKey: spk,
 	})
@@ -332,7 +333,7 @@ func testSubscriptionManagerNotify(t *testing.T, r *Renter) {
 	// Notify the manager of a higher revision entry but make the notification
 	// function fail.
 	notifyErr = errors.New("failure")
-	sm.Notify(modules.RPCRegistrySubscriptionNotificationEntryUpdate{
+	sm.Notify(hpk, nil, modules.RPCRegistrySubscriptionNotificationEntryUpdate{
 		Entry:  srv3.SignedRegistryValue,
 		PubKey: spk,
 	})
@@ -375,6 +376,7 @@ func testSubscriptionManagerNotify(t *testing.T, r *Renter) {
 // in the subscription manager is sound and we don't have any race conditions.
 func testSubscriptionManagerSubscribeUnsubscribeParallel(t *testing.T, r *Renter) {
 	sm := newSubscriptionManager(r)
+	var hpk types.SiaPublicKey
 
 	// Declare a helper type.
 	type request struct {
@@ -416,7 +418,7 @@ func testSubscriptionManagerSubscribeUnsubscribeParallel(t *testing.T, r *Renter
 				requests[i].srv = requests[i].srv.Sign(requests[i].staticSK)
 				requests[i].mu.Unlock()
 
-				sm.Notify(modules.RPCRegistrySubscriptionNotificationEntryUpdate{
+				sm.Notify(hpk, nil, modules.RPCRegistrySubscriptionNotificationEntryUpdate{
 					PubKey: requests[i].staticSPK,
 					Entry:  requests[i].srv,
 				})

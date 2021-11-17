@@ -55,7 +55,7 @@ func newTestSubscriptionManager() *testSubscriptionManager {
 
 // Notify implements the subscriptionManager interface. Every notification is
 // tracked.
-func (sm *testSubscriptionManager) Notify(rvs ...modules.RPCRegistrySubscriptionNotificationEntryUpdate) {
+func (sm *testSubscriptionManager) Notify(_ types.SiaPublicKey, _ []modules.RPCRegistrySubscriptionRequest, rvs ...modules.RPCRegistrySubscriptionNotificationEntryUpdate) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 

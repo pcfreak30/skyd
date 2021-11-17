@@ -226,7 +226,12 @@ func (nh *notificationHandler) managedHandleRegistryEntry(stream siamux.Stream, 
 	// Update the subscription.
 	sub.latestRV = &sneu.Entry
 	subInfo.mu.Unlock()
-	subInfo.staticManager.Notify(sneu)
+	subInfo.staticManager.Notify(w.staticHostPubKey, []modules.RPCRegistrySubscriptionRequest{
+		{
+			PubKey: sneu.PubKey,
+			Tweak:  sneu.Entry.Tweak,
+		},
+	}, sneu)
 	return nil
 }
 
@@ -586,7 +591,7 @@ func (w *worker) managedSubscribeToRVs(stream siamux.Stream, toSubscribe []modul
 	}
 	subInfo.mu.Unlock()
 	// Tell the subscription manager.
-	subInfo.staticManager.Notify(rvs...)
+	subInfo.staticManager.Notify(w.staticHostPubKey, toSubscribe, rvs...)
 	return nil
 }
 
