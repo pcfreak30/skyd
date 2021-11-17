@@ -20,7 +20,8 @@ type (
 	// registrySubscriptionManager is the renter's global subscription manager.
 	// It manages the subscriptions across workers and notifies subscribers.
 	registrySubscriptionManager struct {
-		staticRenter *Renter
+		staticRenter               *Renter
+		staticSubscriptionsChanged chan struct{}
 
 		subscriptions map[modules.RegistryEntryID]*renterSubscription
 		subscribers   map[subscriberID]*renterSubscriber
@@ -55,9 +56,10 @@ type (
 // newSubscriptionManager creates a new subscription manager.
 func newSubscriptionManager(renter *Renter) *registrySubscriptionManager {
 	return &registrySubscriptionManager{
-		staticRenter:  renter,
-		subscriptions: make(map[modules.RegistryEntryID]*renterSubscription),
-		subscribers:   make(map[subscriberID]*renterSubscriber),
+		staticRenter:               renter,
+		staticSubscriptionsChanged: make(chan struct{}, 1),
+		subscriptions:              make(map[modules.RegistryEntryID]*renterSubscription),
+		subscribers:                make(map[subscriberID]*renterSubscriber),
 	}
 }
 
@@ -215,12 +217,13 @@ func (rs *renterSubscriber) managedSubscribe(spk types.SiaPublicKey, tweak crypt
 		sm.mu.Unlock()
 		return latestValue
 	}
-
 	// Otherwise, update the workers. They will notify us as soon as a value
 	// becomes availeble.
-	requests := sm.buildSubscriptionRequests()
+	select {
+	case sm.staticSubscriptionsChanged <- struct{}{}:
+	default:
+	}
 	sm.mu.Unlock()
-	sm.managedUpdateWorkersWithRequests(requests)
 	return nil
 }
 
@@ -291,6 +294,7 @@ func (sm *registrySubscriptionManager) threadedUpdateWorkers() {
 		case <-r.tg.StopChan():
 			return
 		case <-poolChanged:
+		case <-sm.staticSubscriptionsChanged:
 		}
 		sm.managedUpdateWorkers()
 		poolChanged = r.staticWorkerPool.callChangeChan()
@@ -303,12 +307,6 @@ func (sm *registrySubscriptionManager) managedUpdateWorkers() {
 	sm.mu.Lock()
 	requests := sm.buildSubscriptionRequests()
 	sm.mu.Unlock()
-	sm.managedUpdateWorkersWithRequests(requests)
-}
-
-// managedUpdateWorkersWithRequests updates all workers with the given requests.
-func (sm *registrySubscriptionManager) managedUpdateWorkersWithRequests(requests []modules.RPCRegistrySubscriptionRequest) {
-	// Update workers.
 	for _, w := range sm.staticRenter.staticWorkerPool.callWorkers() {
 		w.UpdateSubscriptions(requests...)
 	}
