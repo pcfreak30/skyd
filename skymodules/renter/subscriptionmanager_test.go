@@ -55,12 +55,17 @@ func testSubscriptionManagerSubscribeUnsubscribe(t *testing.T, r *Renter) {
 	tweak := srv.Tweak
 	eid := modules.DeriveRegistryEntryID(spk, tweak)
 
+	cutoffWorkers := regReadCutoffWorkers(r.staticWorkerPool.callWorkers(), minCutoffWorkers)
+	cutoffThreshold := int(float64(len(cutoffWorkers)) * minAwaitedCutoffWorkersPercentage)
+
 	// Declare the expected renterSubscription.
 	expectedRS := &renterSubscription{
-		latestValue: nil,
-		staticSPK:   spk,
-		staticTweak: tweak,
-		subscribers: make(map[subscriberID]struct{}),
+		latestValue:     nil,
+		staticSPK:       spk,
+		staticTweak:     tweak,
+		subscribers:     make(map[subscriberID]struct{}),
+		cutoffWorkers:   cutoffWorkers,
+		cutoffThreshold: cutoffThreshold,
 	}
 	var expectedSRV *skymodules.RegistryEntry
 
