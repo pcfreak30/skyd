@@ -34,7 +34,6 @@ const (
 )
 
 const (
-	RegistrySubscriptionResponseTypeError = "error"
 	// RegistrySubscriptionResponseTypeNotification is the type for a
 	// response that notifies the subscriber of an update to one of their
 	// subscriptions.
@@ -46,13 +45,13 @@ const (
 )
 
 type (
-	// RegistrySubscriptionResponse is the datatype defining the response the server
-	// sends to a client.
+	// RegistrySubscriptionResponseCommon foo
 	RegistrySubscriptionResponseCommon struct {
 		// Mandatory fields. These always need to be set for every response.
 		ResponseType string `json:"responsetype"`
 	}
 
+	// RegistrySubscriptionResponseNotification foo
 	RegistrySubscriptionResponseNotification struct {
 		RegistrySubscriptionResponseCommon
 
@@ -64,12 +63,14 @@ type (
 		Type      modules.RegistryEntryType `json:"type"`
 	}
 
+	// RegistrySubscriptionResponseSubscriptions foo
 	RegistrySubscriptionResponseSubscriptions struct {
 		RegistrySubscriptionResponseCommon
 
 		Subscriptions []string `json:"subscriptions"`
 	}
 
+	// RegistrySubscriptionResponseError foo
 	RegistrySubscriptionResponseError struct {
 		Error string `json:"error"`
 	}
