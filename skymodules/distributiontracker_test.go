@@ -858,7 +858,7 @@ func testDistributionTrackerMergeWith(t *testing.T) {
 	other := NewDistributionTrackerStandard()
 
 	// add a datapoint to every bucket
-	for i := 0; i < 400; i++ {
+	for i := 0; i < DistributionTrackerTotalBuckets; i++ {
 		dt.AddDataPoint(DistributionDurationForBucketIndex(i))
 	}
 
@@ -1098,36 +1098,36 @@ func testDistributionTrackerJsonDump(t *testing.T) {
 	dt := NewDistributionTrackerStandard()
 
 	// add a datapoint to every bucket
-	for i := 0; i < 400; i++ {
+	for i := 0; i < DistributionTrackerTotalBuckets; i++ {
 		dt.AddDataPoint(DistributionDurationForBucketIndex(i))
 	}
 
 	jsonStr, err := dt.JsonDump("some name")
 	if err != nil {
-		t.Fatal("bad")
+		t.Fatal("failed to get json dump", err)
 	}
 
 	dtDump := DistributionTrackerJsonDump{}
 	err = json.Unmarshal([]byte(jsonStr), &dtDump)
 	if err != nil {
-		t.Fatal("bad")
+		t.Fatal("failed to unmarshal json", err)
 	}
 
 	if dtDump.Name != "some name" {
-		t.Fatal("bad")
+		t.Fatal("unexpected name", dtDump.Name)
 	}
 	if dtDump.Timestamp == 0 {
-		t.Fatal("bad")
+		t.Fatal("unexpected timestamp", dtDump.Timestamp)
 	}
 	if len(dtDump.Distributions) != len(dt.distributions) {
-		t.Fatal("bad")
+		t.Fatal("unexpected number of distributions", len(dtDump.Distributions))
 	}
 	for i, d := range dt.distributions {
 		if dtDump.Distributions[i].HalfLife != d.staticHalfLife {
-			t.Fatal("bad")
+			t.Fatal("unexpected halflife", dtDump.Distributions[i].HalfLife)
 		}
 		if dtDump.Distributions[i].Timings != d.timings {
-			t.Fatal("bad")
+			t.Fatal("unexpected timings", dtDump.Distributions[i].Timings)
 		}
 	}
 }

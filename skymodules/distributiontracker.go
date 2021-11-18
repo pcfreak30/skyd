@@ -573,27 +573,43 @@ func (dt *DistributionTracker) Distribution(index int) *Distribution {
 // MergeWith merges the given all distributions from the given distribution
 // tracker with our distributions, according to a certain weight.
 func (dt *DistributionTracker) MergeWith(other *DistributionTracker, weight float64) {
+	// sanity check the given distribution tracker has the same length
+	if dt.NumDistributions() != other.NumDistributions() {
+		build.Critical("can only merge with same-config dts")
+	}
+
+	// clone the distributions of the other DT to avoid holding multiple locks
+	// at the same time
+	others := make([]*Distribution, 0)
 	other.mu.Lock()
-	oNumDis := len(other.distributions)
+	for _, d := range other.distributions {
+		others = append(others, d.Clone())
+	}
 	other.mu.Unlock()
 
+	// lock the DT
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
-	// sanity check the given distribution tracker has the same config
-	if len(dt.distributions) != oNumDis {
-		build.Critical("can only merge with same-config dts")
-	}
+	// sanity check the half life
 	for i, d := range dt.distributions {
-		if d.staticHalfLife != other.Distribution(i).staticHalfLife {
+		if d.staticHalfLife != others[i].staticHalfLife {
 			build.Critical("can only merge with same-config dts")
 		}
 	}
 
 	// perform the merge
 	for i, d := range dt.distributions {
-		d.MergeWith(other.Distribution(i), weight)
+		d.MergeWith(others[i], weight)
 	}
+}
+
+// NumDistributions returns the number of distributions in this distribution
+// tracker.
+func (dt *DistributionTracker) NumDistributions() int {
+	dt.mu.Lock()
+	dt.mu.Unlock()
+	return len(dt.distributions)
 }
 
 // Stats returns a full suite of statistics about the distributions in the
