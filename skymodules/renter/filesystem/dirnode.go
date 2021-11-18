@@ -575,6 +575,7 @@ func (n *DirNode) managedInfo(siaPath skymodules.SiaPath) (skymodules.DirectoryI
 		AggregateMinRedundancy:       metadata.AggregateMinRedundancy,
 		AggregateMostRecentModTime:   metadata.AggregateModTime,
 		AggregateNumFiles:            metadata.AggregateNumFiles,
+		AggregateNumLostFiles:        metadata.AggregateNumLostFiles,
 		AggregateNumStuckChunks:      metadata.AggregateNumStuckChunks,
 		AggregateNumSubDirs:          metadata.AggregateNumSubDirs,
 		AggregateNumUnfinishedFiles:  metadata.AggregateNumUnfinishedFiles,
