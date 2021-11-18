@@ -64,6 +64,8 @@ type RegistrySubscriptionResponse struct {
 	Subscriptions []string `json:"subscriptions,omitempty"`
 }
 
+// ParseRegistryEntry tries to parse a RegistryEntry from the response. It will
+// fail if the response doesn't have the 'notification' type.
 func (rsr *RegistrySubscriptionResponse) ParseRegistryEntry() (skymodules.RegistryEntry, error) {
 	// Check error.
 	if rsr.Error != "" {
@@ -98,6 +100,8 @@ func (rsr *RegistrySubscriptionResponse) ParseRegistryEntry() (skymodules.Regist
 	return skymodules.NewRegistryEntry(pubKey, srv), nil
 }
 
+// ParseSubscriptions tries to parse the subscriptions from the response. It
+// will fail if the response doesn't have the 'subscriptions' type.
 func (rsr *RegistrySubscriptionResponse) ParseSubscriptions() ([]modules.RegistryEntryID, error) {
 	// Check error.
 	if rsr.Error != "" {
