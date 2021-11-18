@@ -34,7 +34,3 @@ require (
 	golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2
 	golang.org/x/net v0.0.0-20210410081132-afb366fc7cd1
 )
-
-replace go.sia.tech/siad => github.com/ChrisSchinnerl/siad v1.9.9
-
-replace gitlab.com/NebulousLabs/siamux => gitlab.com/ChrisSchinnerl/siamux v1.0.0

@@ -646,6 +646,9 @@ func (w *worker) managedRefillAccount() {
 	if w.staticBalanceTarget.Cmp(balance) > 0 {
 		amount = w.staticBalanceTarget.Sub(balance)
 	}
+	if amount.IsZero() {
+		return // nothing to do
+	}
 	pt := w.staticPriceTable().staticPriceTable
 
 	// If the target amount is larger than the remaining money, adjust the

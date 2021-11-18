@@ -1,13 +1,16 @@
 package contractor
 
 import (
+	"errors"
+
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/types"
 )
 
 // watchdogPersist defines what watchdog data persists across sessions.
 type watchdogPersist struct {
-	Contracts map[string]fileContractStatusPersist `json:"contracts"`
-	//ArchivedContracts map[string]skymodules.ContractWatchStatus `json:"archivedcontracts"`
+	Contracts         map[string]fileContractStatusPersist      `json:"contracts"`
+	ArchivedContracts map[string]skymodules.ContractWatchStatus `json:"archivedcontracts"`
 }
 
 // fileContractStatusPersist defines what information from fileContractStatus is persisted.
@@ -55,15 +58,15 @@ func (w *watchdog) callPersistData() watchdogPersist {
 	defer w.mu.Unlock()
 
 	data := watchdogPersist{
-		Contracts: make(map[string]fileContractStatusPersist),
-		//ArchivedContracts: make(map[string]skymodules.ContractWatchStatus),
+		Contracts:         make(map[string]fileContractStatusPersist),
+		ArchivedContracts: make(map[string]skymodules.ContractWatchStatus),
 	}
 	for fcID, contractData := range w.contracts {
 		data.Contracts[fcID.String()] = contractData.persistData()
 	}
-	//	for fcID, archivedData := range w.archivedContracts {
-	//		data.ArchivedContracts[fcID.String()] = archivedData
-	//	}
+	for fcID, archivedData := range w.archivedContracts {
+		data.ArchivedContracts[fcID.String()] = archivedData
+	}
 
 	return data
 }
@@ -106,17 +109,17 @@ func newWatchdogFromPersist(contractor *Contractor, persistData watchdogPersist)
 		}
 	}
 
-	//	for fcIDString, data := range persistData.ArchivedContracts {
-	//		if err := fcID.LoadString(fcIDString); err != nil {
-	//			return nil, err
-	//		}
-	//		if _, ok := w.contracts[fcID]; ok {
-	//			return nil, errors.New("(watchdog) archived contract still in regular contracts map")
-	//		}
-	//
-	//		// Add persisted contract data to the watchdog.
-	//		w.archivedContracts[fcID] = data
-	//	}
+	for fcIDString, data := range persistData.ArchivedContracts {
+		if err := fcID.LoadString(fcIDString); err != nil {
+			return nil, err
+		}
+		if _, ok := w.contracts[fcID]; ok {
+			return nil, errors.New("(watchdog) archived contract still in regular contracts map")
+		}
+
+		// Add persisted contract data to the watchdog.
+		w.archivedContracts[fcID] = data
+	}
 
 	return w, nil
 }
