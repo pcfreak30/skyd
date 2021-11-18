@@ -107,10 +107,15 @@ func (sm *registrySubscriptionManager) Notify(hpk types.SiaPublicKey, toSubscrib
 		delete(sub.cutoffWorkers, hpk.String())
 		aboveThresholdAfter := len(sub.cutoffWorkers) > sub.cutoffThreshold
 
-		// If the subscription reached the threshold we include it in
-		// the changed subs even if the latest value is still nil.
-		if !aboveThresholdBefore && aboveThresholdAfter {
+		// If the subscription reached the threshold and the latest
+		// value is still nil, we set an empty entry as a placeholder to
+		// notifiy subscribers of the fact that this entry is missing on
+		// the network.
+		if sub.latestValue == nil && aboveThresholdBefore && !aboveThresholdAfter {
+			emptyEntry := skymodules.NewRegistryEntry(ts.PubKey, modules.NewSignedRegistryValue(ts.Tweak, nil, 0, crypto.Signature{}, modules.RegistryTypeInvalid))
+			sub.latestValue = &emptyEntry
 			changedSubs[eid] = sub
+			sub.cutoffWorkers = make(map[string]*worker) // free some memory
 		}
 	}
 
@@ -136,6 +141,18 @@ func (rs *renterSubscriber) Close() error {
 // Subscribe subscribes the subscriber to an entry.
 func (rs *renterSubscriber) Subscribe(spk types.SiaPublicKey, tweak crypto.Hash) *skymodules.RegistryEntry {
 	return rs.managedSubscribe(spk, tweak)
+}
+
+// Subscribe subscribes the subscriber to an entry.
+func (rs *renterSubscriber) Subscriptions() []modules.RegistryEntryID {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+
+	subscriptions := make([]modules.RegistryEntryID, 0, len(rs.subscriptions))
+	for eid := range rs.subscriptions {
+		subscriptions = append(subscriptions, eid)
+	}
+	return subscriptions
 }
 
 // Unsubscribe unsubscribes the subscriber from an entry.
@@ -344,8 +361,8 @@ func (sm *registrySubscriptionManager) managedUpdateWorkers() {
 // moreRecentSRV returns true if srv1 should be replaced by the more recent
 // srv2.
 func moreRecentSRV(srv1, srv2 *skymodules.RegistryEntry) bool {
-	// If the latest value is nil, update it.
-	if srv1 == nil {
+	// If the latest value is nil or an invalid entry, update it.
+	if srv1 == nil || srv1.Type == modules.RegistryTypeInvalid {
 		return true
 	}
 	// If the latest value has a lower revision number, update it.

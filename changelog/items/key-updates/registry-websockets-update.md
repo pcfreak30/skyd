@@ -1,0 +1,2 @@
+- update registry subscription endpoint to return a notification when the entry doesn't exist
+- update registry subscription endpoint to allow for requesting the number of active subscriptions

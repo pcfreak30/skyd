@@ -1197,6 +1197,10 @@ type RegistrySubscriber interface {
 	// Subscribe subscribes to a new entry.
 	Subscribe(spk types.SiaPublicKey, tweak crypto.Hash) *RegistryEntry
 
+	// Subscriptions returns the currently active subscriptions of the
+	// subscriber.
+	Subscriptions() []modules.RegistryEntryID
+
 	// Unsubscribe unsubscribes from an entry.
 	Unsubscribe(eid modules.RegistryEntryID)
 }

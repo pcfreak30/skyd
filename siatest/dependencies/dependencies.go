@@ -10,6 +10,11 @@ import (
 )
 
 type (
+	// DependencyRegistryReadOnlyFromCache will fail a call tot
+	// managedReadRegistry unless the entry is served from the cache.
+	DependencyRegistryReadOnlyFromCache struct {
+		skymodules.SkynetDependencies
+	}
 	// DependencyForceLegacyRepairDownload forces the remote repair download
 	// to use the legacy download for both stuck and not stuck repairs. If
 	// that fails, it won't fall back to the skynet download.
@@ -430,6 +435,11 @@ func (d *DependencyDisableWorker) Disrupt(s string) bool {
 		return true
 	}
 	return false
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyRegistryReadOnlyFromCache) Disrupt(s string) bool {
+	return s == "ReadRegistryCacheOnly"
 }
 
 // Disrupt returns true if the correct string is provided.

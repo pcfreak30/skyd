@@ -5923,6 +5923,9 @@ func TestRegistrySubscription(t *testing.T) {
 	t.Run("Delays", func(t *testing.T) {
 		testRegistrySubscriptionDelays(t, p)
 	})
+	t.Run("NonExistent", func(t *testing.T) {
+		testRegistrySubscriptionNonExistent(t, tg)
+	})
 }
 
 // testRegistrySubscriptionBasic tests the basic case of subscribing to
@@ -5931,13 +5934,32 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 	// Collect notifications in a slice.
 	var notifications []skymodules.RegistryEntry
 	var notificationMu sync.Mutex
-	notifyFunc := func(entry skymodules.RegistryEntry) {
-		if err := entry.Verify(); err != nil {
-			t.Fatal("failed to verify entry", err)
+	var subscriptions [][]modules.RegistryEntryID
+	var subscriptionsMu sync.Mutex
+	notifyFunc := func(resp api.RegistrySubscriptionResponse) {
+		switch resp.ResponseType {
+		case api.RegistrySubscriptionResponseTypeNotification:
+			entry, err := resp.ParseRegistryEntry()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := entry.Verify(); err != nil {
+				t.Fatal("failed to verify entry", err)
+			}
+			notificationMu.Lock()
+			defer notificationMu.Unlock()
+			notifications = append(notifications, entry)
+		case api.RegistrySubscriptionResponseTypeSubscriptions:
+			subs, err := resp.ParseSubscriptions()
+			if err != nil {
+				t.Fatal(err)
+			}
+			subscriptionsMu.Lock()
+			defer subscriptionsMu.Unlock()
+			subscriptions = append(subscriptions, subs)
+		default:
+			t.Fatal("unknown")
 		}
-		notificationMu.Lock()
-		defer notificationMu.Unlock()
-		notifications = append(notifications, entry)
 	}
 
 	// Start the subscription.
@@ -5967,6 +5989,13 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	eid := modules.DeriveRegistryEntryID(spk, tweak)
+
+	// Get the subscriptions before subscribing.
+	err = subscription.Subscriptions()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Subscribe to that entry.
 	err = subscription.Subscribe(spk, srv1.Tweak)
@@ -5974,12 +6003,23 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 		t.Fatal(err)
 	}
 
-	// There should be 1 notification now.
+	// Get the subscriptions after subscribing.
+	err = subscription.Subscriptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be 1 notification now and 2 subscriptions responses.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		notificationMu.Lock()
 		defer notificationMu.Unlock()
 		if len(notifications) != 1 {
-			return fmt.Errorf("notifications: %v != %v", len(notifications), 2)
+			return fmt.Errorf("notifications: %v != %v", len(notifications), 1)
+		}
+		subscriptionsMu.Lock()
+		defer subscriptionsMu.Unlock()
+		if len(subscriptions) != 2 {
+			return fmt.Errorf("subscriptions: %v != %v", len(subscriptions), 2)
 		}
 		return nil
 	})
@@ -5993,12 +6033,23 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 		t.Fatal(err)
 	}
 
-	// There should be 2 notifications now.
+	// Get the subscriptions after subscribing.
+	err = subscription.Subscriptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be 2 notifications now and 3 subscription resposnes.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		notificationMu.Lock()
 		defer notificationMu.Unlock()
-		if len(notifications) != 1 {
+		if len(notifications) != 2 {
 			return fmt.Errorf("notifications: %v != %v", len(notifications), 2)
+		}
+		subscriptionsMu.Lock()
+		defer subscriptionsMu.Unlock()
+		if len(subscriptions) != 3 {
+			return fmt.Errorf("subscriptions: %v != %v", len(subscriptions), 3)
 		}
 		return nil
 	})
@@ -6022,6 +6073,11 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 		if len(notifications) != 3 {
 			return fmt.Errorf("notifications: %v != %v", len(notifications), 3)
 		}
+		subscriptionsMu.Lock()
+		defer subscriptionsMu.Unlock()
+		if len(subscriptions) != 3 {
+			return fmt.Errorf("subscriptions: %v != %v", len(subscriptions), 3)
+		}
 		return nil
 	})
 	if err != nil {
@@ -6030,6 +6086,12 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 
 	// Unsubscribe
 	err = subscription.Unsubscribe(spk, srv2.Tweak)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the subscriptions after subscribing.
+	err = subscription.Subscriptions()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -6052,6 +6114,11 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 		if nNotifications != 3 {
 			return fmt.Errorf("notifications: %v != %v", len(notifications), 3)
 		}
+		subscriptionsMu.Lock()
+		defer subscriptionsMu.Unlock()
+		if len(subscriptions) != 4 {
+			return fmt.Errorf("subscriptions: %v != %v", len(subscriptions), 4)
+		}
 		return nil
 	})
 	if err != nil {
@@ -6071,10 +6138,30 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 		t.Fatal("notification mismatch")
 	}
 	// Make sure third notification matches.
-	if !reflect.DeepEqual(srv2, *&notifications[2].SignedRegistryValue) {
+	if !reflect.DeepEqual(srv2, notifications[2].SignedRegistryValue) {
 		t.Log(srv2)
 		t.Log(notifications[2].SignedRegistryValue)
 		t.Fatal("notification mismatch")
+	}
+
+	// Check subscription responses.
+	if len(subscriptions[0]) != 0 {
+		t.Fatal("wrong", len(subscriptions[0]), 0)
+	}
+	if len(subscriptions[1]) != 1 {
+		t.Fatal("wrong", len(subscriptions[0]), 0)
+	}
+	if subscriptions[1][0] != eid {
+		t.Fatal("wrong eid")
+	}
+	if len(subscriptions[2]) != 1 {
+		t.Fatal("wrong", len(subscriptions[0]), 0)
+	}
+	if subscriptions[2][0] != eid {
+		t.Fatal("wrong eid")
+	}
+	if len(subscriptions[3]) != 0 {
+		t.Fatal("wrong", len(subscriptions[0]), 0)
 	}
 }
 
@@ -6084,7 +6171,11 @@ func testRegistrySubscriptionDelays(t *testing.T, p *siatest.TestNode) {
 	// Collect notifications in a slice.
 	var notifications []time.Time
 	var notificationMu sync.Mutex
-	notifyFunc := func(entry skymodules.RegistryEntry) {
+	notifyFunc := func(resp api.RegistrySubscriptionResponse) {
+		entry, err := resp.ParseRegistryEntry()
+		if err != nil {
+			t.Fatal(err)
+		}
 		if err := entry.Verify(); err != nil {
 			t.Fatal("failed to verify entry", err)
 		}
@@ -6360,5 +6451,155 @@ func TestSkynetFailedPin(t *testing.T) {
 	_, err = cleanPortal.SkyfileGet(siaPath)
 	if err == nil || !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		t.Fatal("unexpected error", err)
+	}
+}
+
+// testRegistrySubscriptionNonExistent tests subscribing to an entry that
+// doesn't exist.
+func testRegistrySubscriptionNonExistent(t *testing.T, tg *siatest.TestGroup) {
+	// Add a special portal.
+	rt := node.RenterTemplate
+	rt.RenterDeps = &dependencies.DependencyRegistryReadOnlyFromCache{}
+	rt.CreatePortal = true
+	nodes, err := tg.AddNodes(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := nodes[0]
+	defer func() {
+		if err := tg.RemoveNode(p); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Collect notifications in a slice.
+	var notifications []skymodules.RegistryEntry
+	var notificationMu sync.Mutex
+	notifyFunc := func(resp api.RegistrySubscriptionResponse) {
+		entry, err := resp.ParseRegistryEntry()
+		if err != nil {
+			t.Fatal(err)
+		}
+		notificationMu.Lock()
+		defer notificationMu.Unlock()
+		notifications = append(notifications, entry)
+	}
+
+	// Start the subscription.
+	closeHandler := func(_ int, msg string) error {
+		// We are going to close the subscription gracefully so the
+		// close handler shouldn't be called on our end.
+		t.Fatal("Close handler called:", msg)
+		return nil
+	}
+	subscription, err := p.BeginRegistrySubscription(notifyFunc, closeHandler)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := subscription.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Create an entry but don't set it.
+	sk, pk := crypto.GenerateKeyPair()
+	spk := types.Ed25519PublicKey(pk)
+	var tweak crypto.Hash
+	fastrand.Read(tweak[:])
+	srv1 := modules.NewRegistryValue(tweak, []byte{}, 0, modules.RegistryTypeWithoutPubkey).Sign(sk)
+
+	// Subscribe to that entry.
+	err = subscription.Subscribe(spk, srv1.Tweak)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be 1 notification now.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		notificationMu.Lock()
+		defer notificationMu.Unlock()
+		if len(notifications) != 1 {
+			return fmt.Errorf("notifications: %v != %v", len(notifications), 2)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Subscribe again to the same entry.
+	err = subscription.Subscribe(spk, srv1.Tweak)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be 2 notifications now.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		notificationMu.Lock()
+		defer notificationMu.Unlock()
+		if len(notifications) != 1 {
+			return fmt.Errorf("notifications: %v != %v", len(notifications), 2)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Fetch the entry using the GET endpoint. This should look up the entry
+	// from the cache and return the ErrRegistryEntryNotFound.
+	_, err = p.RegistryRead(spk, tweak)
+	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryEntryNotFound.Error()) {
+		t.Fatal("expect this to fail")
+	}
+
+	// Set the entry.
+	err = p.RegistryUpdateWithEntry(spk, srv1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be 3 notifications now.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// There should still be 3 notifications.
+		notificationMu.Lock()
+		defer notificationMu.Unlock()
+		if len(notifications) != 3 {
+			return fmt.Errorf("notifications: %v != %v", len(notifications), 3)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Fetch the entry using the GET endpoint. This should return the entry from cache now.
+	readSRV, err := p.RegistryRead(spk, tweak)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(readSRV, srv1) {
+		t.Log(readSRV)
+		t.Log(srv1)
+		t.Fatal("mismatch")
+	}
+
+	// We expect the responses to be empty entries with only the
+	expectedEntry := skymodules.NewRegistryEntry(spk, modules.NewSignedRegistryValue(tweak, nil, 0, crypto.Signature{}, modules.RegistryTypeInvalid))
+
+	// Make sure notification match the expectations.
+	for i := 0; i < len(notifications)-1; i++ {
+		if !reflect.DeepEqual(expectedEntry, notifications[i]) {
+			t.Log(expectedEntry.SignedRegistryValue)
+			t.Log(notifications[i].SignedRegistryValue)
+			t.Error(i, "notification mismatch")
+		}
+	}
+
+	if !reflect.DeepEqual(srv1, notifications[2].SignedRegistryValue) {
+		t.Log(srv1)
+		t.Log(notifications[2].SignedRegistryValue)
+		t.Error("notification mismatch")
 	}
 }

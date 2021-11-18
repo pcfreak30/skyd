@@ -366,8 +366,13 @@ func (r *Renter) managedReadRegistry(ctx context.Context, rid modules.RegistryEn
 	subscribedRV, ok := r.staticSubscriptionManager.Get(rid)
 	span.SetTag("cached", ok)
 	if ok && subscribedRV != nil {
-		// We are, no need to look it up.
+		if subscribedRV.Type == modules.RegistryTypeInvalid {
+			return skymodules.RegistryEntry{}, ErrRegistryEntryNotFound
+		}
 		return *subscribedRV, nil
+	}
+	if r.staticDeps.Disrupt("ReadRegistryCacheOnly") {
+		return skymodules.RegistryEntry{}, errors.New("ReadRegistryCacheOnly")
 	}
 
 	// Measure the time it takes to fetch the entry.

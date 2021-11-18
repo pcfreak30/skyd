@@ -1,7 +1,6 @@
 package client
 
 import (
-	"encoding/hex"
 	"fmt"
 	"math"
 	"net/http"
@@ -11,21 +10,19 @@ import (
 	"github.com/gorilla/websocket"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/node/api"
-	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
-	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 	"golang.org/x/net/context"
 )
 
 // BeginRegistrySubscription starts a new subscription.
-func (c *Client) BeginRegistrySubscription(notifyFunc func(skymodules.RegistryEntry), closeHandler func(_ int, _ string) error) (*RegistrySubscription, error) {
+func (c *Client) BeginRegistrySubscription(notifyFunc func(api.RegistrySubscriptionResponse), closeHandler func(_ int, _ string) error) (*RegistrySubscription, error) {
 	// Subscribe without limits.
 	return c.BeginRegistrySubscriptionCustom(math.MaxUint64, 0, notifyFunc, closeHandler)
 }
 
 // BeginRegistrySubscriptionCustom starts a new subscription with custom params.
-func (c *Client) BeginRegistrySubscriptionCustom(bandwidthLimit uint64, notificationDelay time.Duration, notifyFunc func(skymodules.RegistryEntry), closeHandler func(_ int, _ string) error) (*RegistrySubscription, error) {
+func (c *Client) BeginRegistrySubscriptionCustom(bandwidthLimit uint64, notificationDelay time.Duration, notifyFunc func(api.RegistrySubscriptionResponse), closeHandler func(_ int, _ string) error) (*RegistrySubscription, error) {
 	// Build the URL.
 	values := url.Values{}
 	values.Set("bandwidthlimit", fmt.Sprint(bandwidthLimit))
@@ -65,7 +62,7 @@ func (c *Client) BeginRegistrySubscriptionCustom(bandwidthLimit uint64, notifica
 type RegistrySubscription struct {
 	staticCtx        context.Context
 	staticCancel     context.CancelFunc
-	staticNotifyFunc func(skymodules.RegistryEntry)
+	staticNotifyFunc func(api.RegistrySubscriptionResponse)
 	staticConn       *websocket.Conn
 }
 
@@ -78,9 +75,9 @@ func (rs *RegistrySubscription) Close() error {
 
 // threadedListen listens for notifications from the server.
 func (rs *RegistrySubscription) threadedListen() {
-	var resp api.RegistrySubscriptionResponse
 	for {
 		// Read the notification. This will block until we receive one.
+		var resp api.RegistrySubscriptionResponse
 		err := rs.staticConn.ReadJSON(&resp)
 		if err != nil {
 			_ = rs.staticConn.Close()
@@ -90,20 +87,7 @@ func (rs *RegistrySubscription) threadedListen() {
 			_ = rs.staticConn.Close()
 			return
 		}
-		var sig crypto.Signature
-		signature, err := hex.DecodeString(resp.Signature)
-		if err != nil {
-			_ = rs.staticConn.Close()
-			return
-		}
-		data, err := hex.DecodeString(resp.Data)
-		if err != nil {
-			_ = rs.staticConn.Close()
-			return
-		}
-		copy(sig[:], signature)
-		srv := modules.NewSignedRegistryValue(resp.DataKey, data, resp.Revision, sig, resp.Type)
-		rs.staticNotifyFunc(skymodules.NewRegistryEntry(resp.PubKey, srv))
+		rs.staticNotifyFunc(resp)
 	}
 }
 
@@ -111,8 +95,19 @@ func (rs *RegistrySubscription) threadedListen() {
 func (rs *RegistrySubscription) Subscribe(spk types.SiaPublicKey, datakey crypto.Hash) error {
 	err := rs.staticConn.WriteJSON(api.RegistrySubscriptionRequest{
 		Action:  api.RegistrySubscriptionActionSubscribe,
-		PubKey:  spk,
-		DataKey: datakey,
+		PubKey:  spk.String(),
+		DataKey: datakey.String(),
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// Subscriptions returns the active subscriptions.
+func (rs *RegistrySubscription) Subscriptions() error {
+	err := rs.staticConn.WriteJSON(api.RegistrySubscriptionRequest{
+		Action: api.RegistrySubscriptionActionSubscriptions,
 	})
 	if err != nil {
 		return err
@@ -124,8 +119,8 @@ func (rs *RegistrySubscription) Subscribe(spk types.SiaPublicKey, datakey crypto
 func (rs *RegistrySubscription) Unsubscribe(spk types.SiaPublicKey, datakey crypto.Hash) error {
 	err := rs.staticConn.WriteJSON(api.RegistrySubscriptionRequest{
 		Action:  api.RegistrySubscriptionActionUnsubscribe,
-		PubKey:  spk,
-		DataKey: datakey,
+		PubKey:  spk.String(),
+		DataKey: datakey.String(),
 	})
 	if err != nil {
 		return err
