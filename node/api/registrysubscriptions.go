@@ -57,10 +57,10 @@ type (
 
 		DataKey   string                    `json:"datakey"`
 		PubKey    string                    `json:"pubkey"`
-		Signature string                    `json:"signature"`
-		Data      string                    `json:"data"`
+		Signature string                    `json:"signature,omitempty"`
+		Data      string                    `json:"data,omitempty"`
 		Revision  uint64                    `json:"revision"`
-		Type      modules.RegistryEntryType `json:"type"`
+		Type      modules.RegistryEntryType `json:"type,omitempty"`
 	}
 
 	// RegistrySubscriptionResponseSubscriptions foo
