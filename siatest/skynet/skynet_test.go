@@ -5936,7 +5936,7 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 	var notificationMu sync.Mutex
 	var subscriptions [][]modules.RegistryEntryID
 	var subscriptionsMu sync.Mutex
-	notifyFunc := func(resp api.RegistrySubscriptionResponse) {
+	notifyFunc := func(resp client.RegistrySubscriptionResponse) {
 		switch resp.ResponseType {
 		case api.RegistrySubscriptionResponseTypeNotification:
 			entry, err := resp.ParseRegistryEntry()
@@ -6171,7 +6171,7 @@ func testRegistrySubscriptionDelays(t *testing.T, p *siatest.TestNode) {
 	// Collect notifications in a slice.
 	var notifications []time.Time
 	var notificationMu sync.Mutex
-	notifyFunc := func(resp api.RegistrySubscriptionResponse) {
+	notifyFunc := func(resp client.RegistrySubscriptionResponse) {
 		entry, err := resp.ParseRegistryEntry()
 		if err != nil {
 			t.Fatal(err)
@@ -6475,7 +6475,7 @@ func testRegistrySubscriptionNonExistent(t *testing.T, tg *siatest.TestGroup) {
 	// Collect notifications in a slice.
 	var notifications []skymodules.RegistryEntry
 	var notificationMu sync.Mutex
-	notifyFunc := func(resp api.RegistrySubscriptionResponse) {
+	notifyFunc := func(resp client.RegistrySubscriptionResponse) {
 		entry, err := resp.ParseRegistryEntry()
 		if err != nil {
 			t.Fatal(err)

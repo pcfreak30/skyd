@@ -10,7 +10,6 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/julienschmidt/httprouter"
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -35,6 +34,7 @@ const (
 )
 
 const (
+	RegistrySubscriptionResponseTypeError = "error"
 	// RegistrySubscriptionResponseTypeNotification is the type for a
 	// response that notifies the subscriber of an update to one of their
 	// subscriptions.
@@ -45,81 +45,40 @@ const (
 	RegistrySubscriptionResponseTypeSubscriptions = "activesubscriptions"
 )
 
-// RegistrySubscriptionResponse is the datatype defining the response the server
-// sends to a client.
-type RegistrySubscriptionResponse struct {
-	// Mandatory fields. These always need to be set for every response.
-	ResponseType string `json:"responsetype"`
-	Error        string `json:"error"`
+type (
+	// RegistrySubscriptionResponse is the datatype defining the response the server
+	// sends to a client.
+	RegistrySubscriptionResponseCommon struct {
+		// Mandatory fields. These always need to be set for every response.
+		ResponseType string `json:"responsetype"`
+	}
 
-	// Fields only set for responses of type 'notification'.
-	DataKey   string                    `json:"datakey,omitempty"`
-	PubKey    string                    `json:"pubkey,omitempty"`
-	Signature string                    `json:"signature,omitempty"`
-	Data      string                    `json:"data,omitempty"`
-	Revision  uint64                    `json:"revision,omitempty"`
-	Type      modules.RegistryEntryType `json:"type,omitempty"`
+	RegistrySubscriptionResponseNotification struct {
+		RegistrySubscriptionResponseCommon
 
-	// Fields only set for responses of type 'activesubscriptions'.
-	Subscriptions []string `json:"subscriptions,omitempty"`
-}
+		DataKey   string                    `json:"datakey"`
+		PubKey    string                    `json:"pubkey"`
+		Signature string                    `json:"signature"`
+		Data      string                    `json:"data"`
+		Revision  uint64                    `json:"revision"`
+		Type      modules.RegistryEntryType `json:"type"`
+	}
 
-// ParseRegistryEntry tries to parse a RegistryEntry from the response. It will
-// fail if the response doesn't have the 'notification' type.
-func (rsr *RegistrySubscriptionResponse) ParseRegistryEntry() (skymodules.RegistryEntry, error) {
-	// Check error.
-	if rsr.Error != "" {
-		return skymodules.RegistryEntry{}, fmt.Errorf("can't parse failed response: %v", rsr.Error)
-	}
-	// Check type first.
-	if rsr.ResponseType != RegistrySubscriptionResponseTypeNotification {
-		return skymodules.RegistryEntry{}, errors.New("can't parse registry entry - wrong type")
-	}
-	// Parse entry.
-	var sig crypto.Signature
-	signature, err := hex.DecodeString(rsr.Signature)
-	if err != nil {
-		return skymodules.RegistryEntry{}, err
-	}
-	copy(sig[:], signature)
-	data, err := hex.DecodeString(rsr.Data)
-	if err != nil {
-		return skymodules.RegistryEntry{}, err
-	}
-	var dataKey crypto.Hash
-	err = dataKey.LoadString(rsr.DataKey)
-	if err != nil {
-		return skymodules.RegistryEntry{}, err
-	}
-	var pubKey types.SiaPublicKey
-	err = pubKey.LoadString(rsr.PubKey)
-	if err != nil {
-		return skymodules.RegistryEntry{}, err
-	}
-	srv := modules.NewSignedRegistryValue(dataKey, data, rsr.Revision, sig, rsr.Type)
-	return skymodules.NewRegistryEntry(pubKey, srv), nil
-}
+	RegistrySubscriptionResponseSubscriptions struct {
+		RegistrySubscriptionResponseCommon
 
-// ParseSubscriptions tries to parse the subscriptions from the response. It
-// will fail if the response doesn't have the 'subscriptions' type.
-func (rsr *RegistrySubscriptionResponse) ParseSubscriptions() ([]modules.RegistryEntryID, error) {
-	// Check error.
-	if rsr.Error != "" {
-		return nil, fmt.Errorf("can't parse failed response: %v", rsr.Error)
+		Subscriptions []string `json:"subscriptions"`
 	}
-	// Check type first.
-	if rsr.ResponseType != RegistrySubscriptionResponseTypeSubscriptions {
-		return nil, errors.New("can't parse subscriptions response - wrong type")
+
+	RegistrySubscriptionResponseError struct {
+		Error string `json:"error"`
 	}
-	subs := make([]modules.RegistryEntryID, 0, len(rsr.Subscriptions))
-	for _, sub := range rsr.Subscriptions {
-		var h crypto.Hash
-		if err := h.LoadString(sub); err != nil {
-			return nil, err
-		}
-		subs = append(subs, modules.RegistryEntryID(h))
+)
+
+func newRegistrySubscriptionError(err string) RegistrySubscriptionResponseError {
+	return RegistrySubscriptionResponseError{
+		Error: err,
 	}
-	return subs, nil
 }
 
 // RegistrySubscriptionRequest defines the request the client sends to the
@@ -132,7 +91,7 @@ type RegistrySubscriptionRequest struct {
 
 // queuedNotification describes a queued websocket update.
 type queuedNotification struct {
-	staticResponse   RegistrySubscriptionResponse
+	staticResponse   interface{}
 	staticNotifyTime time.Time
 }
 
@@ -206,7 +165,7 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 	queue := newNotificationQueue()
 	wakeChan := make(chan struct{}, 1)
 	var lastWrite time.Time
-	queueResponse := func(resp RegistrySubscriptionResponse) {
+	queueResponse := func(resp interface{}) {
 		queueMu.Lock()
 		// Compute lastWrite1 by adding he delay to the current time.
 		lastWrite1 := time.Now().Add(notificationDelay)
@@ -235,14 +194,20 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 
 	// specific handler for queueing notification.
 	queueNotification := func(srv skymodules.RegistryEntry) error {
-		queueResponse(RegistrySubscriptionResponse{
-			DataKey:      srv.Tweak.String(),
-			PubKey:       srv.PubKey.String(),
-			Signature:    hex.EncodeToString(srv.Signature[:]),
-			Data:         hex.EncodeToString(srv.Data),
-			ResponseType: RegistrySubscriptionResponseTypeNotification,
-			Revision:     srv.Revision,
-			Type:         srv.Type,
+		var sig string
+		if srv.Signature != (crypto.Signature{}) {
+			sig = hex.EncodeToString(srv.Signature[:])
+		}
+		queueResponse(RegistrySubscriptionResponseNotification{
+			RegistrySubscriptionResponseCommon: RegistrySubscriptionResponseCommon{
+				ResponseType: RegistrySubscriptionResponseTypeNotification,
+			},
+			DataKey:   srv.Tweak.String(),
+			PubKey:    srv.PubKey.String(),
+			Signature: sig,
+			Data:      hex.EncodeToString(srv.Data),
+			Revision:  srv.Revision,
+			Type:      srv.Type,
 		})
 		return nil
 	}
@@ -253,8 +218,10 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 		for _, eid := range eids {
 			subs = append(subs, crypto.Hash(eid).String())
 		}
-		queueResponse(RegistrySubscriptionResponse{
-			ResponseType:  RegistrySubscriptionResponseTypeSubscriptions,
+		queueResponse(RegistrySubscriptionResponseSubscriptions{
+			RegistrySubscriptionResponseCommon: RegistrySubscriptionResponseCommon{
+				ResponseType: RegistrySubscriptionResponseTypeSubscriptions,
+			},
 			Subscriptions: subs,
 		})
 	}
@@ -293,7 +260,9 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 	// Start subscription.
 	subscriber, err := api.renter.NewRegistrySubscriber(queueNotification)
 	if err != nil {
-		c.WriteJSON(RegistrySubscriptionResponse{Error: fmt.Sprintf("failed to create subscriber: %v", err)})
+		msg := fmt.Sprintf("failed to create subscriber: %v", err)
+		_ = c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseAbnormalClosure, msg))
+		return
 	}
 
 	// Unsubscribe when the connection is closed.
@@ -310,51 +279,49 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 		}
 		if err != nil {
 			msg := fmt.Sprintf("failed to read JSON request: %v", err)
-			_ = c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseAbnormalClosure, msg))
-			return
+			c.WriteJSON(newRegistrySubscriptionError(msg))
+			continue
 		}
 		switch r.Action {
 		case RegistrySubscriptionActionSubscribe:
 			var spk types.SiaPublicKey
 			if err := spk.LoadString(r.PubKey); err != nil {
 				msg := fmt.Sprintf("failed to parse pubkey: %v", err)
-				_ = c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseAbnormalClosure, msg))
-				return
+				c.WriteJSON(newRegistrySubscriptionError(msg))
+				continue
 			}
 			var dataKey crypto.Hash
 			if err := dataKey.LoadString(r.DataKey); err != nil {
 				msg := fmt.Sprintf("failed to parse datakey: %v", err)
-				_ = c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseAbnormalClosure, msg))
-				return
+				c.WriteJSON(newRegistrySubscriptionError(msg))
+				continue
 			}
 			srv := subscriber.Subscribe(spk, dataKey)
 			if srv != nil {
 				if err := queueNotification(*srv); err != nil {
-					// This probably won't reach the client
-					// but try a graceful close anyway.
 					msg := fmt.Sprintf("failed to notify client: %v", err)
-					_ = c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseAbnormalClosure, msg))
-					return // connection is broken, nothing we can do
+					c.WriteJSON(newRegistrySubscriptionError(msg))
+					continue
 				}
 			}
 		case RegistrySubscriptionActionUnsubscribe:
 			var spk types.SiaPublicKey
 			if err := spk.LoadString(r.PubKey); err != nil {
 				msg := fmt.Sprintf("failed to parse pubkey: %v", err)
-				_ = c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseAbnormalClosure, msg))
-				return
+				c.WriteJSON(newRegistrySubscriptionError(msg))
+				continue
 			}
 			var dataKey crypto.Hash
 			if err := dataKey.LoadString(r.DataKey); err != nil {
 				msg := fmt.Sprintf("failed to parse datakey: %v", err)
-				_ = c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseAbnormalClosure, msg))
-				return
+				c.WriteJSON(newRegistrySubscriptionError(msg))
+				continue
 			}
 			subscriber.Unsubscribe(modules.DeriveRegistryEntryID(spk, dataKey))
 		case RegistrySubscriptionActionSubscriptions:
 			queueSubscriptions(subscriber.Subscriptions())
 		default:
-			c.WriteJSON(RegistrySubscriptionResponse{Error: "unknown action"})
+			c.WriteJSON(RegistrySubscriptionResponseError{Error: "unknown action"})
 		}
 	}
 }
