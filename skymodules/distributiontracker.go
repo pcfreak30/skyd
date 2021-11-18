@@ -608,7 +608,7 @@ func (dt *DistributionTracker) MergeWith(other *DistributionTracker, weight floa
 // tracker.
 func (dt *DistributionTracker) NumDistributions() int {
 	dt.mu.Lock()
-	dt.mu.Unlock()
+	defer dt.mu.Unlock()
 	return len(dt.distributions)
 }
 
