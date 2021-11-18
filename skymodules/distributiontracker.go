@@ -122,19 +122,19 @@ type (
 		DataPoints []float64
 	}
 
-	// DistributionJsonDump contains the information about a distribution that
+	// DistributionSnapshot contains the information about a distribution that
 	// is periodically written to a log file on disk.
-	DistributionJsonDump struct {
+	DistributionSnapshot struct {
 		HalfLife time.Duration       `json:"halflife"`
 		Timings  [numBuckets]float64 `json:"timings"`
 	}
 
-	// DistributionTrackerJsonDump contains a bunch of distribution dumps which
+	// DistributionTrackerSnapshot contains a bunch of distribution dumps which
 	// are periodically written to a log file on disk
-	DistributionTrackerJsonDump struct {
+	DistributionTrackerSnapshot struct {
 		Name          string                 `json:"name"`
 		Timestamp     uint64                 `json:"timestamp"`
-		Distributions []DistributionJsonDump `json:"distributions"`
+		Distributions []DistributionSnapshot `json:"distributions"`
 	}
 
 	// PersistedDistribution contains the information about a distribution
@@ -160,15 +160,15 @@ func (dt *DistributionTracker) JsonDump(name string) (string, error) {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
-	distributions := make([]DistributionJsonDump, 0, len(dt.distributions))
+	distributions := make([]DistributionSnapshot, 0, len(dt.distributions))
 	for _, d := range dt.distributions {
-		distributions = append(distributions, DistributionJsonDump{
+		distributions = append(distributions, DistributionSnapshot{
 			HalfLife: d.HalfLife(),
 			Timings:  d.timings,
 		})
 	}
 
-	jsonBytes, err := json.Marshal(DistributionTrackerJsonDump{
+	jsonBytes, err := json.Marshal(DistributionTrackerSnapshot{
 		Name:          name,
 		Timestamp:     uint64(time.Now().Unix()),
 		Distributions: distributions,

@@ -83,9 +83,9 @@ var (
 		Testing:  2 * time.Second,
 	}).(time.Duration)
 
-	// distributionTrackerDumpInterval defines the interval the renter uses for
+	// distributionTrackerLogInterval defines the interval the renter uses for
 	// dumping certain distribution trackers of interest.
-	distributionTrackerDumpInterval = build.Select(build.Var{
+	distributionTrackerLogInterval = build.Select(build.Var{
 		Dev:      time.Hour,
 		Standard: time.Hour,
 		Testing:  time.Minute,
@@ -119,16 +119,16 @@ func (r *Renter) saveSync() error {
 	return persist.SaveJSON(settingsMetadata, r.persist, filepath.Join(r.persistDir, PersistFilename))
 }
 
-// threadedDistributionTrackerDump periodically prints a series of distribution
-// tracker dumps (as JSON) to a log file. By doing so we keep a historical
-// record of certain distributions of interest.
-func (r *Renter) threadedDistributionTrackerDump() {
+// threadedDistributionTrackerLogger periodically prints a series of
+// distribution trackers (as JSON) to a log file. By doing so we keep a
+// historical record of certain distributions of interest.
+func (r *Renter) threadedDistributionTrackerLogger() {
 	if err := r.tg.Add(); err != nil {
 		return
 	}
 	defer r.tg.Done()
 
-	ticker := time.NewTicker(distributionTrackerDumpInterval)
+	ticker := time.NewTicker(distributionTrackerLogInterval)
 	for {
 		dts := []DistributionTrackerIdentifier{
 			{"RegistryRead", r.staticRegistryReadStats},

@@ -1107,7 +1107,7 @@ func testDistributionTrackerJsonDump(t *testing.T) {
 		t.Fatal("failed to get json dump", err)
 	}
 
-	dtDump := DistributionTrackerJsonDump{}
+	dtDump := DistributionTrackerSnapshot{}
 	err = json.Unmarshal([]byte(jsonStr), &dtDump)
 	if err != nil {
 		t.Fatal("failed to unmarshal json", err)

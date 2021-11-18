@@ -1238,7 +1238,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	go r.threadedStatsPersister()
 
 	// Launch the distribution tracker dump thread.
-	go r.threadedDistributionTrackerDump()
+	go r.threadedDistributionTrackerLogger()
 
 	// Spin up background threads which are not depending on the renter being
 	// up-to-date with consensus.
