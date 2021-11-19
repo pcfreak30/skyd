@@ -10,9 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -485,17 +483,6 @@ func testAccountCriticalOnDoubleSave(t *testing.T, closedRenter *Renter) {
 func testWorkerAccountHostAccountBalance(t *testing.T, wt *workerTester) {
 	w := wt.worker
 
-	// wait until the worker is done with its maintenance tasks - this basically
-	// ensures we have a working worker, with valid PT and funded EA
-	if err := build.Retry(100, 100*time.Millisecond, func() error {
-		if !w.managedMaintenanceSucceeded() {
-			return errors.New("worker not ready with maintenance")
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-
 	// fetch the host account balance and assert it's correct
 	balance, err := w.staticHostAccountBalance()
 	if err != nil {
@@ -510,17 +497,6 @@ func testWorkerAccountHostAccountBalance(t *testing.T, wt *workerTester) {
 // verifies the sync can not be called when the account delta is not zero
 func testWorkerAccountSyncAccountBalanceToHostCritical(t *testing.T, wt *workerTester) {
 	w := wt.worker
-
-	// wait until the worker is done with its maintenance tasks - this basically
-	// ensures we have a working worker, with valid PT and funded EA
-	if err := build.Retry(100, 100*time.Millisecond, func() error {
-		if !w.managedMaintenanceSucceeded() {
-			return errors.New("worker not ready with maintenance")
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
 
 	// track a deposit to simulate an ongoing fund
 	w.staticAccount.managedTrackDeposit(w.staticBalanceTarget)
@@ -542,17 +518,6 @@ func testWorkerAccountSyncAccountBalanceToHostCritical(t *testing.T, wt *workerT
 // update the spending details in the worker account.
 func testWorkerAccountSpendingDetails(t *testing.T, wt *workerTester) {
 	w := wt.worker
-
-	// wait until the worker is done with its maintenance tasks - this basically
-	// ensures we have a working worker, with valid PT and funded EA
-	if err := build.Retry(100, 100*time.Millisecond, func() error {
-		if !w.managedMaintenanceSucceeded() {
-			return errors.New("worker not ready with maintenance")
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
 
 	// verify initial state
 	spending := w.staticAccount.callSpendingDetails()

@@ -83,6 +83,20 @@ func newWorkerTesterCustomDependency(name string, renterDeps skymodules.SkydDepe
 		}
 		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Wait until the worker is done with its maintenance tasks.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if !w.managedMaintenanceSucceeded() {
+			return errors.New("worker not ready with maintenance")
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
 
 	return &workerTester{
 		rt:     rt,

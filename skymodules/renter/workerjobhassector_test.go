@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -122,17 +121,6 @@ func TestHasSectorJobQueueAvailabilityRate(t *testing.T) {
 		}
 	}()
 	w := wt.worker
-
-	// wait until the worker is done with its maintenance tasks - this basically
-	// ensures we have a working worker, with valid PT and funded EA
-	if err := build.Retry(100, 100*time.Millisecond, func() error {
-		if !w.managedMaintenanceSucceeded() {
-			return errors.New("worker not ready with maintenance")
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
 
 	// assert the min availability rate on a new queue
 	randomNumPieces := fastrand.Intn(64) + 1

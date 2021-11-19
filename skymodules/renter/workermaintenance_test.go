@@ -36,17 +36,6 @@ func TestWorkerMaintenanceCoolDown(t *testing.T) {
 	}()
 	w := wt.worker
 
-	// wait until the worker is done with its maintenance tasks - this basically
-	// ensures we have a working worker, with valid PT and funded EA
-	if err := build.Retry(100, 100*time.Millisecond, func() error {
-		if !w.managedMaintenanceSucceeded() {
-			return errors.New("worker not ready with maintenance")
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-
 	// verify the worker is not on an maintenance cooldown
 	if w.managedOnMaintenanceCooldown() {
 		t.Fatal("Unexpected maintenance cooldown")
