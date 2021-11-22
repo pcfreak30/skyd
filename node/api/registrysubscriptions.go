@@ -159,7 +159,12 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 
 	// Compute how much time needs to pass between notifications to reach
 	// that limit.
-	timeBetweenNotifications := time.Duration(float64(time.Second) / notificationsPerSecond)
+	var timeBetweenNotifications time.Duration
+	if bandwidthLimit == 0 {
+		timeBetweenNotifications = 0
+	} else {
+		timeBetweenNotifications = time.Duration(float64(time.Second) / notificationsPerSecond)
+	}
 
 	// Declare a handler for queuing responses.
 	var queueMu sync.Mutex
