@@ -1,0 +1,1 @@
+- fix bug where skyd would panic upon receiving a registry subscription
