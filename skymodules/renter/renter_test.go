@@ -1,9 +1,12 @@
 package renter
 
 import (
+	"bufio"
+	"encoding/json"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 	"time"
 
@@ -574,5 +577,74 @@ func TestPaySkynetFee(t *testing.T) {
 	}
 	if ls, lsbd := sh.LastSpending(); !ls.Equals(oldExpectedSpending) || lsbd.Before(expectedTime) {
 		t.Fatal("wrong history", ls, oldExpectedSpending, lsbd, expectedTime)
+	}
+}
+
+// TestRenterLogsDistributionTrackers is a unit test that verifies the renter
+// periodically logs the contents of some distribution trackers of interest to a
+// log file
+func TestRenterLogsDistributionTrackers(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// create the log file path
+	logFilePath := filepath.Join(filepath.Join(rt.dir, skymodules.RenterDir), distributionsLogFile)
+
+	// read from the log file in a retry loop and assert we can find the DT
+	// snapshot for the RegistryRead DT, this asserts the log file exists and
+	// contains meaningful data
+	err = build.Retry(60, time.Second, func() error {
+		// open file
+		file, err := os.Open(logFilePath)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			err := file.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}()
+
+		// create a scanner to read the file line per line
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			// extract the json
+			lineStr := scanner.Text()
+			match := regexp.MustCompile(`{.*}`).FindStringSubmatch(lineStr)
+			if len(match) == 0 {
+				continue
+			}
+
+			// unmarshal it
+			var dts skymodules.DistributionTrackerSnapshot
+			err = json.Unmarshal([]byte(match[0]), &dts)
+			if err != nil {
+				return err
+			}
+
+			// look for the RegistryRead snapshot
+			if dts.Name == "RegistryRead" {
+				return nil
+			}
+		}
+
+		// check whether we encountered an error scanning
+		return scanner.Err()
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

@@ -88,7 +88,7 @@ var (
 	distributionTrackerLogInterval = build.Select(build.Var{
 		Dev:      time.Hour,
 		Standard: time.Hour,
-		Testing:  time.Minute,
+		Testing:  5 * time.Second,
 	}).(time.Duration)
 
 	// statsMetadata is the metadata used when persisting the renter stats.
