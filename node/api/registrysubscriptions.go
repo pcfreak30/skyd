@@ -127,15 +127,20 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 	}
 	defer c.Close()
 
+	// writeErrorClose is a helper method to write error messages to the websocket and close it.
+	writeErrorClose := func(msg string) {
+		_ = c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseAbnormalClosure, msg))
+	}
+
 	// Make sure the limit and delay are set.
 	bandwidthLimitStr := req.FormValue("bandwidthlimit")
 	if bandwidthLimitStr == "" {
-		WriteError(w, Error{"bandwidthlimit param not specified"}, http.StatusBadRequest)
+		writeErrorClose("bandwidthlimit param not specified")
 		return
 	}
 	notificationDelayStr := req.FormValue("notificationdelay")
 	if notificationDelayStr == "" {
-		WriteError(w, Error{"notificationdelay param not specified"}, http.StatusBadRequest)
+		writeErrorClose("notificationdelay param not specified")
 		return
 	}
 
@@ -143,13 +148,13 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 	var bandwidthLimit uint64
 	_, err = fmt.Sscan(bandwidthLimitStr, &bandwidthLimit)
 	if err != nil {
-		WriteError(w, Error{"failed to parse bandwidthlimit" + err.Error()}, http.StatusBadRequest)
+		writeErrorClose("failed to parse bandwidthlimit" + err.Error())
 		return
 	}
 	var notificationDelayMS uint64
 	_, err = fmt.Sscan(notificationDelayStr, &notificationDelayMS)
 	if err != nil {
-		WriteError(w, Error{"failed to parse notificationdelay" + err.Error()}, http.StatusBadRequest)
+		writeErrorClose("failed to parse notificationdelay" + err.Error())
 		return
 	}
 	notificationDelay := time.Millisecond * time.Duration(notificationDelayMS)
