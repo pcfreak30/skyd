@@ -240,16 +240,23 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 	// Start a worker for pushing notifications.
 	go func() {
 		for {
+			// Check for shutdown.
 			select {
 			case <-req.Context().Done():
 				return
-			case <-wakeChan:
+			default:
 			}
 
 			queueMu.Lock()
 			next := queue.Pop()
 			queueMu.Unlock()
 			if next == nil {
+				// No work. Wait for wake signal.
+				select {
+				case <-req.Context().Done():
+					return
+				case <-wakeChan:
+				}
 				continue
 			}
 
