@@ -845,7 +845,7 @@ func testParseDownloadRequestParameters(t *testing.T) {
 func testParseStatsType(t *testing.T) {
 	t.Parallel()
 
-	statsType, err := parseStatsType("OverdriveStats")
+	statsType, err := parseStatsType("overdrive")
 	if err != nil {
 		t.Fatal("bad")
 	}
