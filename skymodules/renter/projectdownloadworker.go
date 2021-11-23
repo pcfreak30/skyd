@@ -70,8 +70,11 @@ const (
 	// bucketIndexScanStep defines the step size with which we increment the
 	// bucket index when we try and find the best set the first time around.
 	// This works more or less in a binary search fashion where we try and
-	// quickly approximate the bucket index, and then scan -12|+12 buckets
+	// quickly approximate the bucket index, and then scan -10|+10 buckets
 	// before and after the index we found.
+	// NOTE: bucketIndexScanStep needs to cleanly divide the number of total
+	// buckets in the distribution tracker. Otherwise we might miss buckets
+	// at the end.
 	bucketIndexScanStep = 10
 
 	// chimeraAvailabilityRateThreshold defines the number that must be reached
@@ -236,6 +239,9 @@ type (
 	coinflips []float64
 )
 
+// BufferedDownloadState is a helper type which contains fields which we only
+// want to allocate once and then reuse between iterations of the download
+// algorithm for optimization reasons.
 type bufferedDownloadState struct {
 	downloadWorkers       []downloadWorker
 	mostLikely            []downloadWorker
@@ -245,6 +251,8 @@ type bufferedDownloadState struct {
 	sortedDownloadWorkers sortedDownloadWorkers
 }
 
+// Reset resets the download state without freeing its memory for the next
+// iteration of the loop.
 func (ds *bufferedDownloadState) Reset() {
 	ds.downloadWorkers = ds.downloadWorkers[:0]
 	ds.mostLikely = ds.mostLikely[:0]
@@ -258,29 +266,74 @@ func (ds *bufferedDownloadState) Reset() {
 	}
 }
 
+// pdcGougingCache is a helper type to cache pdc gouging results for workers.
+type pdcGougingCache struct {
+	staticCache map[string]pdcGougingResult
+	mu          sync.Mutex
+}
+
+// pdcGougingResults contains a project download chunk gouging result for a
+// given allowance and price table ID.
+type pdcGougingResult struct {
+	staticAllowance skymodules.Allowance
+	staticPTID      modules.UniqueID
+	staticIsGouging error
+}
+
+// pcwsGougingCache is a helper type to cache pcws gouging results for workers.
+type pcwsGougingCache struct {
+	staticCache map[string]map[int]pcwsGougingResult
+	mu          sync.Mutex
+}
+
+// pcwsGougingResult contains a project chunk workerset gouging result for a
+// given allowance, number of workers and price table.
+type pcwsGougingResult struct {
+	staticAllowance  skymodules.Allowance
+	staticNumWorkers int
+	staticPTID       modules.UniqueID
+	staticIsGouging  error
+}
+
+// sortedDownloadWorker is a helper type for working workers by completeChance.
 type sortedDownloadWorker struct {
 	originalIndex  int
 	completeChance float64
 }
 
+// sortedDownloadWorkers is a helper type to implement the sort.Interface
+// interface.
 type sortedDownloadWorkers []sortedDownloadWorker
 
+// Len returns the length of the slice.
 func (sdw sortedDownloadWorkers) Len() int { return len(sdw) }
+
+// Less returns whether the completeChance at index i is less than at index j.
 func (sdw sortedDownloadWorkers) Less(i, j int) bool {
 	return sdw[i].completeChance > sdw[j].completeChance
 }
+
+// Swap swaps two workers in the slice.
 func (sdw sortedDownloadWorkers) Swap(i, j int) {
 	sdw[i], sdw[j] = sdw[j], sdw[i]
 }
 
+// sortedIndividualWorkers is a helper type to implement the sort.Interface
+// interface.
 type sortedIndividualWorkers []*individualWorker
 
+// Len returns the length of the slice.
 func (siw sortedIndividualWorkers) Len() int { return len(siw) }
+
+// Less returns whether the cachedCompleteChance at index i is less than at
+// index j.
 func (siw sortedIndividualWorkers) Less(i, j int) bool {
 	eRTI := siw[i].cachedCompleteChance
 	eRTJ := siw[j].cachedCompleteChance
 	return eRTI > eRTJ
 }
+
+// Swap swaps two workers in the slice.
 func (siw sortedIndividualWorkers) Swap(i, j int) {
 	siw[i], siw[j] = siw[j], siw[i]
 }
@@ -712,6 +765,10 @@ func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker) []*i
 			w.resolved = true
 			w.pieceIndices = pieceIndices
 			if len(w.pieceIndices) == 0 {
+				// if the worker resolved and doesn't have any
+				// pieces, remove it from the workers by
+				// swapping it to the end and shrinking the
+				// slice by 1.
 				workers[i], workers[len(workers)-1] = workers[len(workers)-1], workers[i]
 				workers = workers[:len(workers)-1]
 				i--
@@ -1053,13 +1110,6 @@ OUTER:
 	return bestSet, nil
 }
 
-func (pdc *projectDownloadChunk) Println(i ...interface{}) (int, error) {
-	if time.Since(pdc.creation) > time.Minute {
-		return fmt.Println(i...)
-	}
-	return 0, nil
-}
-
 // createWorkerSetInner is the inner loop that is called by createWorkerSet, it
 // tries to create a worker set from the given list of workers, taking into
 // account the given amount of workers and overdrive workers, but also the given
@@ -1084,7 +1134,6 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 
 	// if there aren't even likely workers, escape early
 	if len(mostLikely) == 0 {
-		//pdc.Println("mostLikely", len(mostLikely))
 		return nil, true
 	}
 	//pdc.Println("mostLikely", len(mostLikely), len(lessLikely))
@@ -1322,29 +1371,8 @@ func bucketIndexRange(bI int) (int, int) {
 	return bIMin, bIMax
 }
 
-type pdcGougingCache struct {
-	staticCache map[string]pdcGougingResult
-	mu          sync.Mutex
-}
-
-type pdcGougingResult struct {
-	staticAllowance skymodules.Allowance
-	staticPTID      modules.UniqueID
-	staticIsGouging error
-}
-
-type pcwsGougingCache struct {
-	staticCache map[string]map[int]pcwsGougingResult
-	mu          sync.Mutex
-}
-
-type pcwsGougingResult struct {
-	staticAllowance  skymodules.Allowance
-	staticNumWorkers int
-	staticPTID       modules.UniqueID
-	staticIsGouging  error
-}
-
+// checkGougingAndUpdateCache checks if a worker is pcws gouging and updates the
+// cache with the result.
 func (c *pcwsGougingCache) checkGougingAndUpdateCache(hpks string, pt modules.RPCPriceTable, allowance skymodules.Allowance, numWorkers, numRoots int) error {
 	err := checkPCWSGouging(pt, allowance, numWorkers, numRoots)
 

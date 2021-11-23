@@ -30,28 +30,6 @@ func TestDistributionTracker(t *testing.T) {
 	t.Run("Shift", testDistributionShift)
 }
 
-func TestFoo(t *testing.T) {
-	d := NewDistribution(time.Second * 5)
-
-	bi := 34
-	d.setTiming(bi, 0.7935982340519643)
-	d.lastDecay = d.lastDecay.Add(-time.Second * 5)
-	d.addDecay()
-	//d.expectedDurationNominator = 1.0792935983106709e08
-	t.Log(d.expectedDurationNominator)
-
-	t.Log(float64(DistributionDurationForBucketIndex(bi)))
-
-	d.setTiming(bi, 0)
-
-	if d.expectedDurationNominator < 0 {
-		t.Fatal(d.expectedDurationNominator)
-	}
-	if d.total < 0 {
-		t.Fatal(d.total)
-	}
-}
-
 // testDistributionBucketing will check that the distribution is placing timings
 // into the right buckets and then reporting the right timings in the pstats.
 func testDistributionBucketing(t *testing.T) {
@@ -397,8 +375,8 @@ func testDistributionChanceAfterShift(t *testing.T) {
 	for i, timing := range d.timings {
 		denom += timing * float64(DistributionDurationForBucketIndex(i))
 	}
-	if d.expectedDurationNominator != denom {
-		t.Error("bad", d.expectedDurationNominator, denom)
+	if d.expectedDurationNumerator != denom {
+		t.Error("bad", d.expectedDurationNumerator, denom)
 	}
 
 	d.Shift(100 * time.Millisecond)
@@ -413,8 +391,8 @@ func testDistributionChanceAfterShift(t *testing.T) {
 	for i, timing := range d.timings {
 		denom += timing * float64(DistributionDurationForBucketIndex(i))
 	}
-	if d.expectedDurationNominator != denom {
-		t.Error("bad", d.expectedDurationNominator, denom)
+	if d.expectedDurationNumerator != denom {
+		t.Error("bad", d.expectedDurationNumerator, denom)
 	}
 }
 
@@ -447,7 +425,7 @@ func testDistributionClone(t *testing.T) {
 	if c.total != d.total {
 		t.Fatal("bad")
 	}
-	if c.expectedDurationNominator != d.expectedDurationNominator {
+	if c.expectedDurationNumerator != d.expectedDurationNumerator {
 		t.Fatal("bad")
 	}
 
@@ -1024,10 +1002,10 @@ func testDistributionShift(t *testing.T) {
 	}
 
 	// compare the expected chance with the actual chance, allow for some
-	// floating point precision errors up until 1e-3
+	// floating point precision errors up until 1e-9
 	for i := 1; i < 200; i++ {
 		chance = smear * float64(i) / d.DataPoints()
-		if math.Abs(chance-d.ChanceAfter(DistributionDurationForBucketIndex(i))) > 1e-3 {
+		if math.Abs(chance-d.ChanceAfter(DistributionDurationForBucketIndex(i))) > 1e-9 {
 			t.Fatal("bad", i, chance, d.ChanceAfter(DistributionDurationForBucketIndex(i)))
 		}
 	}

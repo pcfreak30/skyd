@@ -14,6 +14,7 @@ import (
 	"go.sia.tech/siad/types"
 )
 
+// newTestDowloadState creates a new bufferedDownloadState for testing.
 func newTestDownloadState() *bufferedDownloadState {
 	return &bufferedDownloadState{
 		pieces: make(map[uint64]struct{}),

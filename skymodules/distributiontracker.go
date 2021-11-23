@@ -100,9 +100,24 @@ type (
 		// spaced 64ms apart, the spacings multiplying by 4 every 48 buckets.
 		// The final bucket is just over an hour, anything over will be put into
 		// that bucket as well.
-		total                     float64
-		timings                   [numBuckets]float64
-		expectedDurationNominator float64
+		timings [numBuckets]float64
+
+		// expectedDurationNumerator tracks the current numerator for
+		// computing the expected duration of the Distribution.
+		//
+		// The full equation is:
+		//
+		//                    timing[0] * bucketDuration[0] + ... + timing[n] * bucketDuration[n]   expectedDurationNumerator
+		// ExpectedDuration = ___________________________________________________________________ = _________________________
+		//                                        timing[0] + ... + timing[n]                                 total
+		//
+		//
+		// This allows us to optimize the otherwise expensive
+		// computation from O(n) -> O(1).
+		expectedDurationNumerator float64
+
+		// total tracks the current total of all timings.
+		total float64
 	}
 
 	// DistributionTracker will track the performance distribution of a series
@@ -139,20 +154,28 @@ type (
 	Chances [DistributionTrackerTotalBuckets]float64
 )
 
+// setTiming updates a timing for the distribution while also making sure the
+// total and numerator remain up-to-date.
 func (d *Distribution) setTiming(i int, t float64) {
+	// Subtract the timing from the total and numerator first.
 	d.total -= d.timings[i]
-	d.expectedDurationNominator -= d.timings[i] * float64(DistributionDurationForBucketIndex(i))
+	d.expectedDurationNumerator -= d.timings[i] * float64(DistributionDurationForBucketIndex(i))
 
+	// Set the new timing.
 	d.timings[i] = t
 
+	// Add the timing and numerator back using the new timing.
 	d.total += d.timings[i]
-	d.expectedDurationNominator += d.timings[i] * float64(DistributionDurationForBucketIndex(i))
+	d.expectedDurationNumerator += d.timings[i] * float64(DistributionDurationForBucketIndex(i))
 
+	// Due to the fact that floats are not perfectly accurate, the total and
+	// numerator could be slightly negative instead of 0. e.g. -0.0000001.
+	// If that happens, we round to 0.
 	if d.total < 0 {
 		d.total = 0
 	}
-	if d.expectedDurationNominator < 0 {
-		d.expectedDurationNominator = 0
+	if d.expectedDurationNumerator < 0 {
+		d.expectedDurationNumerator = 0
 	}
 }
 
@@ -181,6 +204,9 @@ func DistributionBucketIndexForDuration(dur time.Duration) int {
 	return index
 }
 
+// staticDistributionDurationsForBucketIndices is a slice used for translating
+// durations to bucket indices. As an optimization we only compute it on
+// startup.
 var staticDistributionDurationsForBucketIndices = func() []time.Duration {
 	durations := make([]time.Duration, DistributionTrackerTotalBuckets)
 LOOP:
@@ -253,11 +279,11 @@ func indexForDuration(duration time.Duration) (int, float64) {
 func (d *Distribution) addDecay() {
 	d.Decay(func(decay float64) {
 		d.total = 0
-		d.expectedDurationNominator = 0
+		d.expectedDurationNumerator = 0
 		for i := 0; i < len(d.timings); i++ {
 			d.timings[i] = d.timings[i] * decay
 			d.total += d.timings[i]
-			d.expectedDurationNominator += d.timings[i] * float64(DistributionDurationForBucketIndex(i))
+			d.expectedDurationNumerator += d.timings[i] * float64(DistributionDurationForBucketIndex(i))
 		}
 	})
 }
@@ -337,7 +363,7 @@ func (d *Distribution) Clone() Distribution {
 	c := Distribution{
 		GenericDecay:              d.GenericDecay.Clone(),
 		total:                     d.total,
-		expectedDurationNominator: d.expectedDurationNominator,
+		expectedDurationNumerator: d.expectedDurationNumerator,
 		timings:                   d.timings,
 	}
 
@@ -378,7 +404,7 @@ func (d Distribution) ExpectedDuration() time.Duration {
 
 	// Across all buckets, multiply the pct chance times the bucket's duration.
 	// The sum is the expected duration.
-	return time.Duration(float64(d.expectedDurationNominator) / total)
+	return time.Duration(float64(d.expectedDurationNumerator) / total)
 }
 
 // MergeWith merges the given distribution according to a certain weight.
@@ -398,11 +424,11 @@ func (d *Distribution) MergeWith(other *Distribution, weight float64) {
 	// loop all other timings and append them taking into account the given
 	// weight
 	d.total = 0
-	d.expectedDurationNominator = 0
+	d.expectedDurationNumerator = 0
 	for bi, b := range other.timings {
 		d.timings[bi] += b * weight
 		d.total += d.timings[bi]
-		d.expectedDurationNominator += d.timings[bi] * float64(DistributionDurationForBucketIndex(bi))
+		d.expectedDurationNumerator += d.timings[bi] * float64(DistributionDurationForBucketIndex(bi))
 	}
 }
 

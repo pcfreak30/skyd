@@ -15,7 +15,7 @@ const (
 	// continuously is the limited precision of floating point numbers. We found
 	// that in production, performing a decay after a very tiny amount of time
 	// had elapsed resulted in highly inaccurate data, because the floating
-	// points rounded the result too heavily. 100 is generally a good value,
+	// points rounded the result too heavily. 15 is generally a good value,
 	// because it is infrequent enough that the float point precision can still
 	// provide strong accuracy, yet frequent enough that a value which has not
 	// been decayed recently is still also an accurate value.

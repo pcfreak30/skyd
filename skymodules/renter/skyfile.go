@@ -881,7 +881,6 @@ func (r *Renter) managedDownloadSkylink(ctx context.Context, link skymodules.Sky
 			return
 		case <-time.After(time.Minute):
 		}
-		fmt.Println("link", link)
 	}()
 	defer close(done)
 	// Create the data source and add it to the stream buffer set.
