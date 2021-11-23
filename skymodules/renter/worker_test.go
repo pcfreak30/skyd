@@ -72,30 +72,34 @@ func newWorkerTesterCustomDependency(name string, renterDeps skymodules.SkydDepe
 		return nil, err
 	}
 
-	// Schedule a price table update for a brand new one.
-	w.staticSchedulePriceTableUpdate(false)
+	if !renterDeps.Disrupt("DisableWorkerLoop") {
+		// Schedule a price table update for a brand new one.
+		w.staticSchedulePriceTableUpdate(false)
 
-	// Wait for the price table to be updated.
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		pt := w.staticPriceTable()
-		if pt.staticUpdateTime.Before(time.Now()) {
-			return errors.New("price table not updated")
+		// Wait for the price table to be updated.
+		err = build.Retry(100, 100*time.Millisecond, func() error {
+			pt := w.staticPriceTable()
+			if pt.staticUpdateTime.Before(time.Now()) {
+				return errors.New("price table not updated")
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
 		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
 	}
 
-	// Wait until the worker is done with its maintenance tasks.
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		if !w.managedMaintenanceSucceeded() {
-			return errors.New("worker not ready with maintenance")
+	if !(renterDeps.Disrupt("DisableFunding") || renterDeps.Disrupt("DisableWorkerLoop")) {
+		// Wait until the worker is done with its maintenance tasks.
+		err = build.Retry(100, 100*time.Millisecond, func() error {
+			if !w.managedMaintenanceSucceeded() {
+				return errors.New("worker not ready with maintenance")
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
 		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
 	}
 
 	return &workerTester{
