@@ -5987,6 +5987,25 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 		t.Fatal(err)
 	}
 
+	// Subscribe again to the same entry.
+	err = subscription.Subscribe(spk, srv1.Tweak)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be 2 notifications now.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		notificationMu.Lock()
+		defer notificationMu.Unlock()
+		if len(notifications) != 1 {
+			return fmt.Errorf("notifications: %v != %v", len(notifications), 2)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Increase the revision number and set again.
 	srv2 := srv1
 	srv2.Revision++
@@ -5996,12 +6015,12 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 		t.Fatal(err)
 	}
 
-	// There should be 2 notifications now.
+	// There should be 3 notifications now.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		notificationMu.Lock()
 		defer notificationMu.Unlock()
-		if len(notifications) != 2 {
-			return fmt.Errorf("notifications: %v != %v", len(notifications), 2)
+		if len(notifications) != 3 {
+			return fmt.Errorf("notifications: %v != %v", len(notifications), 3)
 		}
 		return nil
 	})
@@ -6026,15 +6045,18 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 
 	// Wait for a bit to give the notification some time.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		// There should still be 2 notifications.
+		// There should still be 3 notifications.
 		notificationMu.Lock()
 		nNotifications := len(notifications)
 		notificationMu.Unlock()
-		if nNotifications != 2 {
-			return fmt.Errorf("notifications: %v != %v", len(notifications), 2)
+		if nNotifications != 3 {
+			return fmt.Errorf("notifications: %v != %v", len(notifications), 3)
 		}
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Make sure first notification matches.
 	if !reflect.DeepEqual(srv1, notifications[0].SignedRegistryValue) {
@@ -6043,9 +6065,15 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 		t.Fatal("notification mismatch")
 	}
 	// Make sure second notification matches.
-	if !reflect.DeepEqual(srv2, *&notifications[1].SignedRegistryValue) {
-		t.Log(srv2)
+	if !reflect.DeepEqual(srv1, notifications[1].SignedRegistryValue) {
+		t.Log(srv1)
 		t.Log(notifications[1].SignedRegistryValue)
+		t.Fatal("notification mismatch")
+	}
+	// Make sure third notification matches.
+	if !reflect.DeepEqual(srv2, *&notifications[2].SignedRegistryValue) {
+		t.Log(srv2)
+		t.Log(notifications[2].SignedRegistryValue)
 		t.Fatal("notification mismatch")
 	}
 }

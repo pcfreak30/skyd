@@ -108,6 +108,7 @@ func testSubscriptionManagerSubscribeUnsubscribe(t *testing.T, r *Renter) {
 	if !reflect.DeepEqual(rv, &srv) {
 		t.Fatal("wrong rv")
 	}
+
 	// Expect 1 subscription and 1 subscriber.
 	if len(sm.subscriptions) != 1 || len(sm.subscribers) != 1 {
 		t.Fatal("wrong number of subscriptions and/or subscribers")
