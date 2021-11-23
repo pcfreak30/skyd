@@ -298,7 +298,8 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 		if err != nil {
 			msg := fmt.Sprintf("failed to read JSON request: %v", err)
 			c.WriteJSON(newRegistrySubscriptionError(msg))
-			continue
+			fmt.Println("msg", msg)
+			return
 		}
 		switch r.Action {
 		case RegistrySubscriptionActionSubscribe:
