@@ -147,7 +147,7 @@ type DownloadOverdriveStats struct {
 
 // OverdriveStats specifies the download overdrive statistics. This includes
 // both the base sector and fanout over drive stats.
-var OverdriveStats = types.NewSpecifier("OverdriveStats")
+var OverdriveStats = types.NewSpecifier("overdrive")
 
 // NewSectorDownloadStats returns a new DownloadOverdriveStats object.
 func NewSectorDownloadStats() *DownloadOverdriveStats {

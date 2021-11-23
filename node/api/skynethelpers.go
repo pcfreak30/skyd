@@ -252,7 +252,7 @@ func parseRegistryTimeout(queryForm url.Values) (time.Duration, error) {
 // will panic on runtime.
 func parseStatsType(statsType string) (types.Specifier, error) {
 	switch statsType {
-	case "OverdriveStats":
+	case "overdrive":
 		return skymodules.OverdriveStats, nil
 	default:
 		return types.Specifier{}, errors.New("invalid statsType")

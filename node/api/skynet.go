@@ -1078,7 +1078,7 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 // skynetResetStatsHandlerPOST handles the API call to renter's reset stats
 // endpoint.
 func (api *API) skynetResetStatsHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	statsType, err := parseStatsType(req.FormValue("statsType"))
+	statsType, err := parseStatsType(req.FormValue("type"))
 	if err != nil {
 		WriteError(w, Error{"failed to reset stats: " + err.Error()}, http.StatusInternalServerError)
 		return

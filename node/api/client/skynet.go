@@ -746,7 +746,7 @@ func (c *Client) SkynetStatsGet() (stats api.SkynetStatsGET, err error) {
 // endpoint
 func (c *Client) SkynetStatsResetOverdrive() error {
 	values := url.Values{}
-	values.Set("statsType", skymodules.OverdriveStats.String())
+	values.Set("type", "overdrive")
 	return c.post("/skynet/stats/reset", values.Encode(), nil)
 }
 
