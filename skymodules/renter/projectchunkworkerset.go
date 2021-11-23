@@ -172,11 +172,6 @@ func (pcws *projectChunkWorkerSet) Download(ctx context.Context, pricePerMS type
 	return pcws.managedDownload(ctx, pricePerMS, offset, length, skipRecovery, lowPrio)
 }
 
-// Return returns the unresolved worker to the pool.
-func (uw *pcwsUnresolvedWorker) Return() {
-	staticPoolUnresolvedWorkers.Put(uw)
-}
-
 // closeUpdateChans will close all of the update chans and clear out the slice.
 // This will cause any threads waiting for more results from the unresolved
 // workers to unblock.
@@ -205,6 +200,15 @@ func (ws *pcwsWorkerState) registerForWorkerUpdate() <-chan struct{} {
 	return c
 }
 
+// removeUnresolvedWorker removes an unresolved worker from the worker state.
+func (ws *pcwsWorkerState) removeUnresolvedWorker(hpk string) {
+	uw, exists := ws.unresolvedWorkers[hpk]
+	if exists {
+		staticPoolUnresolvedWorkers.Put(uw)
+		delete(ws.unresolvedWorkers, hpk)
+	}
+}
+
 // managedHandleResponse will handle a HasSector response from a worker,
 // updating the workerState accordingly.
 //
@@ -225,12 +229,9 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	if w == nil {
 		ws.staticRenter.staticLog.Critical("nil worker provided in resp")
 	}
+
 	// Return the worker to the pool and delete it from the map.
-	uw, exists := ws.unresolvedWorkers[w.staticHostPubKeyStr]
-	if exists {
-		uw.Return()
-		delete(ws.unresolvedWorkers, w.staticHostPubKeyStr)
-	}
+	ws.removeUnresolvedWorker(w.staticHostPubKeyStr)
 
 	// If the map is empty now, release some memory.
 	if len(ws.unresolvedWorkers) == 0 {
