@@ -874,15 +874,6 @@ func (r *Renter) managedDownloadSkylink(ctx context.Context, link skymodules.Sky
 		return stream, nil
 	}
 
-	done := make(chan struct{})
-	go func() {
-		select {
-		case <-done:
-			return
-		case <-time.After(time.Minute):
-		}
-	}()
-	defer close(done)
 	// Create the data source and add it to the stream buffer set.
 	dataSource, err := r.managedSkylinkDataSource(ctx, link, pricePerMS)
 	if err != nil {
