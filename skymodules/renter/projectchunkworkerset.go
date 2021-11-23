@@ -207,6 +207,11 @@ func (ws *pcwsWorkerState) removeUnresolvedWorker(hpk string) {
 		staticPoolUnresolvedWorkers.Put(uw)
 		delete(ws.unresolvedWorkers, hpk)
 	}
+
+	// If the map is empty now, release some memory.
+	if len(ws.unresolvedWorkers) == 0 {
+		ws.unresolvedWorkers = make(map[string]*pcwsUnresolvedWorker)
+	}
 }
 
 // managedHandleResponse will handle a HasSector response from a worker,
@@ -232,11 +237,6 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 
 	// Return the worker to the pool and delete it from the map.
 	ws.removeUnresolvedWorker(w.staticHostPubKeyStr)
-
-	// If the map is empty now, release some memory.
-	if len(ws.unresolvedWorkers) == 0 {
-		ws.unresolvedWorkers = make(map[string]*pcwsUnresolvedWorker)
-	}
 
 	// If the response contained an error, add this worker to the set of
 	// resolved workers as supporting no indices.
