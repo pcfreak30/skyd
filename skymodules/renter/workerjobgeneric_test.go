@@ -518,7 +518,7 @@ func TestQueueMemoryLeak(t *testing.T) {
 	// stats. During testing it turned out that running the loop above 1 million
 	// times would cause the number of objects to be at around 65k vs 200+k with
 	// the old code.
-	if ms.HeapObjects > 100000 {
+	if ms.HeapObjects > 150000 {
 		t.Fatal("Too many allocated objects", ms.HeapObjects)
 	}
 
