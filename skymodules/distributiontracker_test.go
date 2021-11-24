@@ -24,6 +24,7 @@ func TestDistributionTracker(t *testing.T) {
 	t.Run("Decay", testDistributionDecay)
 	t.Run("DecayedLifetime", testDistributionDecayedLifetime)
 	t.Run("ExpectedDuration", testDistributionExpectedDuration)
+	t.Run("ExpectedDurationWithShift", testDistributionExpectedDurationWithShift)
 	t.Run("FullTestLong", testDistributionTrackerFullTestLong)
 	t.Run("Helpers", testDistributionHelpers)
 	t.Run("MergeWith", testDistributionMergeWith)
@@ -527,6 +528,41 @@ func testDistributionDecayedLifetime(t *testing.T) {
 	// floating points.
 	if pointsPerHour < 55 || pointsPerHour > 65 {
 		t.Error("bad", pointsPerHour)
+	}
+}
+
+// testDistributionExpectedDurationWithShift is the unit test for
+// ExpectedDurationWithShift. It makes use of both Shift and ExpectedDuration
+// which are covered by their own unit tests to compare their results to
+// ExpectedDurationWithShift's.
+func testDistributionExpectedDurationWithShift(t *testing.T) {
+	d := NewDistribution(time.Minute * 100)
+
+	// Add 100 datapoints to every bucket.
+	for i := range d.timings {
+		for j := 0; j < 100; j++ {
+			d.AddDataPoint(DistributionDurationForBucketIndex(i))
+		}
+	}
+
+	// Do 100 shifts and compares between ExpectedDuration and
+	// ExpectedDurationWithShift.
+	for i := 0; i < 100; i++ {
+		shift := 10 * time.Millisecond * time.Duration(i)
+
+		// Compute the expected duration once by using ExpectedDuration
+		// on a copy.
+		c := d.Clone()
+		c.Shift(shift)
+		ed1 := c.ExpectedDuration()
+
+		// And another time with ExpectedDurationWithShift.
+		ed2 := d.ExpectedDurationWithShift(shift)
+
+		// The results should mach.
+		if ed1 != ed2 {
+			t.Fatal("expected duration mismatch", ed1, ed2)
+		}
 	}
 }
 

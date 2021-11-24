@@ -1136,7 +1136,6 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 	if len(mostLikely) == 0 {
 		return nil, true
 	}
-	//pdc.Println("mostLikely", len(mostLikely), len(lessLikely))
 
 	// build the most likely set
 	mostLikelySet := &workerSet{

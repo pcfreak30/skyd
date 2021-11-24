@@ -5,6 +5,20 @@ import (
 	"sync"
 )
 
+const (
+	// executeProgrammBufferSize defines the size of the buffers distributed
+	// by the executeProgram buffer pool
+	//
+	// NOTE: we empirically found 4kib to be a safe value
+	executeProgramBufferSize = 1 << 12 // 4kib
+
+	// providePaymentBufferSize defines the size of the buffers distributed
+	// by the providePayment buffer pool
+	//
+	// NOTE: we empirically found 300 bytes to be a safe value
+	providePaymentBufferSize = 300
+)
+
 var (
 	// staticPoolExecuteProgramBuffers is the global pool for buffers used
 	// by managedExecuteProgram.
@@ -73,7 +87,7 @@ func newExecuteProgramBufferPool() *executeProgramBufferPool {
 	return &executeProgramBufferPool{
 		staticPool: sync.Pool{
 			New: func() interface{} {
-				return bytes.NewBuffer(make([]byte, 1<<12))
+				return bytes.NewBuffer(make([]byte, executeProgramBufferSize))
 			},
 		},
 	}
@@ -108,8 +122,8 @@ func (p *jobHasSectorResponsePool) Get() *jobHasSectorResponse {
 }
 
 // Put returns a jobHasSectorResponse to the pool.
-func (p *jobHasSectorResponsePool) Put(iw *jobHasSectorResponse) {
-	p.staticPool.Put(iw)
+func (p *jobHasSectorResponsePool) Put(resp *jobHasSectorResponse) {
+	p.staticPool.Put(resp)
 }
 
 // newProvidePaymentBufferPool creates a new providePaymentBufferPool.
@@ -117,7 +131,7 @@ func newProvidePaymentBufferPool() *providePaymentBufferPool {
 	return &providePaymentBufferPool{
 		staticPool: sync.Pool{
 			New: func() interface{} {
-				return bytes.NewBuffer(make([]byte, 300))
+				return bytes.NewBuffer(make([]byte, providePaymentBufferSize))
 			},
 		},
 	}

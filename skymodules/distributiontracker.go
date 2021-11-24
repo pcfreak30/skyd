@@ -498,28 +498,28 @@ func (d *Distribution) ExpectedDurationWithShift(dur time.Duration) time.Duratio
 	index, keep, smear := d.shift(dur)
 
 	var total float64
-	var durationNominator float64
+	var durationNumerator float64
 
 	// Everything before index would be equal to smear.
 	for i := 0; i < index && smear > 0; i++ {
 		total += smear
-		durationNominator += (smear * float64(DistributionDurationForBucketIndex(i)))
+		durationNumerator += (smear * float64(DistributionDurationForBucketIndex(i)))
 	}
 
 	// At index, the value is 'keep'.
 	total += keep
-	durationNominator += (keep * float64(DistributionDurationForBucketIndex(index)))
+	durationNumerator += (keep * float64(DistributionDurationForBucketIndex(index)))
 
 	// After index we got the same values as before.
 	for i := index + 1; i < len(d.timings); i++ {
 		total += float64(d.timings[i])
-		durationNominator += float64(d.timings[i]) * float64(DistributionDurationForBucketIndex(i))
+		durationNumerator += float64(d.timings[i]) * float64(DistributionDurationForBucketIndex(i))
 	}
 	// No data collected, just return the worst case.
 	if total == 0 {
 		return DistributionDurationForBucketIndex(DistributionTrackerTotalBuckets - 1)
 	}
-	return time.Duration(durationNominator / total)
+	return time.Duration(durationNumerator / total)
 }
 
 // Shift shifts the distribution by a certain duration. The shift operation will
