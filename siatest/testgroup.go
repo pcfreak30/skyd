@@ -678,7 +678,7 @@ func (tg *TestGroup) RemoveNodeN(tns ...*TestNode) error {
 		// Actual shutdown happens in another goroutine.
 		wg.Add(1)
 		go func(i int, tn *TestNode) {
-			errs[i] = tn.StopNode()
+			errs[i] = tg.StopNode(tn)
 			wg.Done()
 		}(i, tn)
 	}
@@ -791,7 +791,14 @@ func (tg *TestGroup) StopNode(tn *TestNode) error {
 	}
 
 	// Wait until no renter got any workers left for the stopped node.
+	numRetries := 0
 	return build.Retry(600, 100*time.Millisecond, func() error {
+		if numRetries%10 == 0 {
+			if err := tg.Miners()[0].MineBlock(); err != nil {
+				return err
+			}
+		}
+		numRetries++
 		// If the node wasn't a host we are done.
 		for _, node := range tg.Renters() {
 			rwg, err := node.RenterWorkersGet()

@@ -5576,7 +5576,7 @@ func TestRenterRepairSize(t *testing.T) {
 	checkDirRepairSize := func(dirSiaPath skymodules.SiaPath, repairExpected, stuckExpected uint64) error {
 		return build.Retry(10, time.Second, func() error {
 			// Make sure the directory is being updated
-			err := r.RenterBubblePost(dirSiaPath, true)
+			err := r.RenterBubblePost(skymodules.RootSiaPath(), true)
 			if err != nil {
 				return err
 			}
