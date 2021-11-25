@@ -668,13 +668,6 @@ func (tg *TestGroup) RemoveNodeN(tns ...*TestNode) error {
 	var wg sync.WaitGroup
 	errs := make([]error, len(tns))
 	for i, tn := range tns {
-		// Remote node from all data structures.
-		delete(tg.nodes, tn)
-		delete(tg.hosts, tn)
-		delete(tg.portals, tn)
-		delete(tg.renters, tn)
-		delete(tg.miners, tn)
-
 		// Actual shutdown happens in another goroutine.
 		wg.Add(1)
 		go func(i int, tn *TestNode) {
@@ -683,6 +676,16 @@ func (tg *TestGroup) RemoveNodeN(tns ...*TestNode) error {
 		}(i, tn)
 	}
 	wg.Wait()
+
+	// Remove the nodes from the maps.
+	for _, tn := range tns {
+		// Remote node from all data structures.
+		delete(tg.nodes, tn)
+		delete(tg.hosts, tn)
+		delete(tg.portals, tn)
+		delete(tg.renters, tn)
+		delete(tg.miners, tn)
+	}
 
 	// Close node.
 	return errors.Compose(errs...)
