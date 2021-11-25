@@ -829,13 +829,12 @@ func (tg *TestGroup) StopNode(tn *TestNode) error {
 	numRetries := 0
 	return build.Retry(600, 100*time.Millisecond, func() error {
 		if numRetries%10 == 0 {
-			if err := tg.Miners()[0].MineBlock(); err != nil {
+			if err := mapToSlice(tg.miners)[0].MineBlock(); err != nil {
 				return err
 			}
 		}
 		numRetries++
-		// If the node wasn't a host we are done.
-		for _, node := range tg.Renters() {
+		for node := range tg.renters {
 			rwg, err := node.RenterWorkersGet()
 			if err != nil {
 				return err
