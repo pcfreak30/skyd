@@ -459,7 +459,7 @@ func (d *DependencyAcceptHostRevision) Disrupt(s string) bool {
 
 // Disrupt returns true if the correct string is provided.
 func (d *DependencyUnstableTUSUpload) Disrupt(s string) bool {
-	return s == "TUSUnstable"
+	return s == "TUSUnstable" || s == "TUSNoPrune"
 }
 
 // Disrupt returns true if the correct string is provided.
