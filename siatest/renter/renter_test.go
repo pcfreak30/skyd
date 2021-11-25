@@ -5574,7 +5574,7 @@ func TestRenterRepairSize(t *testing.T) {
 	// Define helper
 	m := tg.Miners()[0]
 	checkDirRepairSize := func(dirSiaPath skymodules.SiaPath, repairExpected, stuckExpected uint64) error {
-		return build.Retry(5, time.Second, func() error {
+		return build.Retry(10, time.Second, func() error {
 			// Make sure the directory is being updated
 			err := r.RenterBubblePost(dirSiaPath, true)
 			if err != nil {
@@ -5636,7 +5636,7 @@ func TestRenterRepairSize(t *testing.T) {
 		})
 	}
 	checkFileRepairSize := func(rf *siatest.RemoteFile, repairExpected, stuckExpected uint64) error {
-		return build.Retry(5, time.Second, func() error {
+		return build.Retry(10, time.Second, func() error {
 			// Mine a block to make sure contracts are being updated for hosts.
 			if err := m.MineBlock(); err != nil {
 				return err
