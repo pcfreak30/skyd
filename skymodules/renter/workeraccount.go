@@ -784,7 +784,8 @@ func (w *worker) managedRefillAccount() {
 			// to the order of events in the worker loop, seeing as we just
 			// synced our account balance with the host if that was necessary
 			if build.Release == "testing" {
-				build.Critical("worker account refill failed with a max balance - are the host max balance settings lower than the threshold balance?", err)
+				msg := fmt.Sprintf("amount: %v, estimatedBalance: %v, target: %v", amount, balance, w.staticBalanceTarget)
+				build.Critical("worker account refill failed with a max balance - ", msg, " - are the host max balance settings lower than the threshold balance?", err)
 			}
 			w.staticRenter.staticLog.Println("worker account refill failed", err)
 		}
