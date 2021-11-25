@@ -787,6 +787,12 @@ func (tg *TestGroup) StopNode(tn *TestNode) error {
 		return nil
 	}
 
+	// If there are no miners left we are also done since we can't trigger a
+	// contract maintenance.
+	if len(tg.Miners()) == 0 {
+		return nil
+	}
+
 	// Get the host's key.
 	hpk, err := tn.HostPublicKey()
 	if err != nil {
