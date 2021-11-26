@@ -44,8 +44,27 @@ type programResponse struct {
 	Output []byte
 }
 
+// bandwidthRefundFunc describes a function used to compute the bandwidth refund
+// for a mdm program.
+type bandwidthRefundFunc func(ul, dl uint64) types.Currency
+
+// mdmBandwidthCost compute the bandwidth cost for a mdm program and also
+// returns a function to compute a bandwidth refund in case the provided
+// arguments were an overestimation.
+func mdmBandwidthCost(pt modules.RPCPriceTable, uploadBandwidth, downloadBandwidth uint64) (types.Currency, bandwidthRefundFunc) {
+	bandwidthCost := modules.MDMBandwidthCost(pt, uploadBandwidth, downloadBandwidth)
+	bandwidthRefund := func(ul, dl uint64) types.Currency {
+		actualBandwidthCost := modules.MDMBandwidthCost(pt, ul, dl)
+		if actualBandwidthCost.Cmp(bandwidthCost) < 0 {
+			return bandwidthCost.Sub(actualBandwidthCost)
+		}
+		return types.ZeroCurrency
+	}
+	return bandwidthCost, bandwidthRefund
+}
+
 // managedExecuteProgram performs the ExecuteProgramRPC on the host
-func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, category spendingCategory, cost types.Currency) (responses []programResponse, limit mux.BandwidthLimit, err error) {
+func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, category spendingCategory, cost types.Currency, bandwidthRefund bandwidthRefundFunc) (responses []programResponse, limit mux.BandwidthLimit, err error) {
 	// Defer a function that schedules a price table update in case we received
 	// an error that indicates the host deems our price table invalid.
 	defer func() {
@@ -76,6 +95,9 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 
 	// set the limit return var.
 	limit = stream.Limit()
+	defer func() {
+		refund = refund.Add(bandwidthRefund(limit.Uploaded(), limit.Downloaded()))
+	}()
 
 	// prepare a buffer so we can optimize our writes
 	buffer := staticPoolExecuteProgramBuffers.Get()
