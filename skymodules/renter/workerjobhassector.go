@@ -412,13 +412,13 @@ func (j *jobHasSectorBatch) managedHasSector() (results [][]uint64, err error) {
 
 	// take into account bandwidth costs
 	ulBandwidth, dlBandwidth := j.callExpectedBandwidth()
-	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	bandwidthCost, bandwidthRefund := mdmBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
 	// Execute the program and parse the responses.
 	hasSectors := make([]bool, 0, len(program))
 	var responses []programResponse
-	responses, _, err = w.managedExecuteProgram(program, programData, types.FileContractID{}, categoryDownload, cost)
+	responses, _, err = w.managedExecuteProgram(program, programData, types.FileContractID{}, categoryDownload, cost, bandwidthRefund)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to execute program for has sector job")
 	}

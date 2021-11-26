@@ -50,10 +50,10 @@ func (j *jobReadSector) managedReadSector() ([]byte, error) {
 
 	// take into account bandwidth costs
 	ulBandwidth, dlBandwidth := j.callExpectedBandwidth()
-	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	bandwidthCost, bandwidthRefund := mdmBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
-	responses, err := j.jobRead.managedRead(w, program, programData, cost)
+	responses, err := j.jobRead.managedRead(w, program, programData, cost, bandwidthRefund)
 	if err != nil {
 		return nil, errors.AddContext(err, "jobReadSector: failed to execute managedRead")
 	}
