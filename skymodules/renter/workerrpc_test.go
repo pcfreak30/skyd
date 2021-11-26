@@ -12,6 +12,44 @@ import (
 	"go.sia.tech/siad/types"
 )
 
+// TestMDMBandwidthCost is a unit test for mdmBandwidthCost.
+func TestMDMBandwidthCost(t *testing.T) {
+	pt := newDefaultPriceTable()
+	pt.UploadBandwidthCost = types.SiacoinPrecision
+	pt.DownloadBandwidthCost = types.SiacoinPrecision
+
+	// compute bandwidth cost for 100 bytes of upload and 200 of download.
+	ul := uint64(100)
+	dl := uint64(200)
+	bandwidthCost, refund := mdmBandwidthCost(pt, ul, dl)
+
+	// compute the expected value.
+	expectedCost := modules.MDMBandwidthCost(pt, ul, dl)
+	if !bandwidthCost.Equals(expectedCost) {
+		t.Fatal("mismatch", bandwidthCost, expectedCost)
+	}
+
+	// check for a positiv refund - less bandwidth was used than expected.
+	ref := refund(ul-10, dl-20)
+	expectedRef := bandwidthCost.Sub(modules.MDMBandwidthCost(pt, ul-10, dl-20))
+	if !ref.Equals(expectedRef) {
+		t.Log(bandwidthCost)
+		t.Fatal("mismatch", ref, expectedRef)
+	}
+
+	// check for a negative refund - more bandwidth was used than expected.
+	ref = refund(ul+10, dl+20)
+	if !ref.IsZero() {
+		t.Fatal("should be zero", ref)
+	}
+
+	// exact match
+	ref = refund(ul, dl)
+	if !ref.IsZero() {
+		t.Fatal("should be zero", ref)
+	}
+}
+
 // TestUseHostBlockHeight verifies we use the host's blockheight.
 func TestUseHostBlockHeight(t *testing.T) {
 	if testing.Short() {
@@ -56,11 +94,11 @@ func TestUseHostBlockHeight(t *testing.T) {
 	jhs := new(jobHasSector)
 	jhs.staticSectors = []crypto.Hash{{1, 2, 3}}
 	ulBandwidth, dlBandwidth := jhs.callExpectedBandwidth()
-	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	bandwidthCost, bandwidthRefund := mdmBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
 	// execute the program
-	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost)
+	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost, bandwidthRefund)
 	if err == nil || !strings.Contains(err.Error(), "ephemeral account withdrawal message expires too far into the future") {
 		t.Fatal("Unexpected error", err)
 	}
@@ -80,7 +118,7 @@ func TestUseHostBlockHeight(t *testing.T) {
 	w.staticSetPriceTable(wptc)
 
 	// execute the program
-	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost)
+	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost, bandwidthRefund)
 	if err != nil {
 		t.Fatal("Unexpected error", err)
 	}
@@ -131,11 +169,11 @@ func testExecuteProgramUsedBandwidthHasSector(t *testing.T, wt *workerTester) {
 	jhs.staticSectors = []crypto.Hash{{1, 2, 3}}
 	ulBandwidth, dlBandwidth := jhs.callExpectedBandwidth()
 
-	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	bandwidthCost, bandwidthRefund := mdmBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
 	// execute it
-	_, limit, err := w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost)
+	_, limit, err := w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost, bandwidthRefund)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,11 +223,11 @@ func testExecuteProgramUsedBandwidthReadSector(t *testing.T, wt *workerTester) {
 	jrs := w.newJobReadSector(context.Background(), w.staticJobReadQueue, readSectorRespChan, jobMetadata, sectorRoot, 0, modules.SectorSize)
 
 	ulBandwidth, dlBandwidth := jrs.callExpectedBandwidth()
-	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	bandwidthCost, bandwidthRefund := mdmBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
 	// execute it
-	_, limit, err := w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost)
+	_, limit, err := w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost, bandwidthRefund)
 	if err != nil {
 		t.Fatal(err)
 	}
