@@ -209,9 +209,6 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	if skylink != h.Get(api.SkynetSkylinkHeader) {
 		t.Fatal("skylink mismatch")
 	}
-	if skylink != h.Get(api.SkynetRequestedSkylinkHeader) {
-		t.Fatal("skylink mismatch")
-	}
 
 	// Fetch the links metadata and compare it. Should match.
 	h2, metadata2, err := r.SkynetMetadataGet(skylink)
@@ -224,9 +221,6 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("metadata doesn't match")
 	}
 	if skylink != h2.Get(api.SkynetSkylinkHeader) {
-		t.Fatal("skylink mismatch")
-	}
-	if skylink != h2.Get(api.SkynetRequestedSkylinkHeader) {
 		t.Fatal("skylink mismatch")
 	}
 
@@ -469,9 +463,6 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if emptySkylink != h3.Get(api.SkynetSkylinkHeader) {
 		t.Fatal("skylink mismatch")
-	}
-	if emptySkylink != h3.Get(api.SkynetRequestedSkylinkHeader) {
-		t.Fatal("skylink mismatch", emptySkylink)
 	}
 
 	// Upload another skyfile, this time ensure that the skyfile is more than
@@ -5035,6 +5026,153 @@ func TestSkynetFeePaid(t *testing.T) {
 	}
 }
 
+// TestSkynetDownloadPinnedSkyfile is a custom test to verify whether a portal
+// can still download a skyfile that was uploaded on portal A, pinned on portal
+// B and then manually removed from both portal's local filesystems.
+func TestSkynetDownloadPinnedSkyfile(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create test group with two portals
+	groupParams := siatest.GroupParams{
+		Hosts:  5,
+		Miners: 1,
+	}
+	groupDir := skynetTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err = tg.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	rt := node.RenterTemplate
+	rt.CreatePortal = true
+	_, err = tg.AddNodeN(rt, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Grab both portals
+	portals := tg.Portals()
+	p1 := portals[0]
+	p2 := portals[1]
+
+	// Upload a file to portal 1
+	filename := t.Name()
+	filedata := fastrand.Bytes(100)
+	skylink, sup, _, err := p1.UploadNewSkyfileWithDataBlocking(filename, filedata, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check the file is on the filesystem
+	originalFullPath, err := skymodules.SkynetFolder.Join(sup.SiaPath.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalFile, err := p1.RenterFileRootGet(originalFullPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(originalFile.File.Skylinks) != 1 {
+		t.Fatal("expecting 1 skylink")
+	}
+	if originalFile.File.Skylinks[0] != skylink {
+		t.Fatal("skylink mismatch")
+	}
+
+	// Pin the file on portal 2
+	pinPath := skymodules.RandomSiaPath()
+	p2.SkynetSkylinkPinPost(skylink, skymodules.SkyfilePinParameters{
+		SiaPath: pinPath,
+	})
+
+	// Assert we can download the file from portal 2
+	data, err := p2.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, filedata) {
+		t.Fatal(err)
+	}
+
+	// Check the file is on the filesystem
+	pinnedFullPath, err := skymodules.SkynetFolder.Join(pinPath.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinnedFile, err := p2.RenterFileRootGet(pinnedFullPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pinnedFile.File.Skylinks) != 1 {
+		t.Fatal("expecting 1 skylink")
+	}
+	if pinnedFile.File.Skylinks[0] != skylink {
+		t.Fatal("skylink mismatch")
+	}
+
+	// Delete the file and assert it is gone
+	err = p2.RenterFileDeleteRootPost(pinnedFullPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make sure the file is no longer present.
+	_, err = p2.RenterFileRootGet(pinnedFullPath)
+	if err == nil || !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+		t.Fatal("skyfile still present after deletion")
+	}
+
+	// Assert we can download the file from both portals still
+	data, err = p1.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, filedata) {
+		t.Fatal(err)
+	}
+	data, err = p2.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, filedata) {
+		t.Fatal(err)
+	}
+
+	// Delete the original file on portal 1
+	err = p1.RenterFileDeleteRootPost(originalFullPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make sure the file is no longer present.
+	_, err = p1.RenterFileRootGet(originalFullPath)
+	if err == nil || !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+		t.Fatal("skyfile still present after deletion")
+	}
+
+	// Assert we can download the file from both portals still
+	data, err = p1.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, filedata) {
+		t.Fatal(err)
+	}
+	data, err = p2.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, filedata) {
+		t.Fatal(err)
+	}
+}
+
 // TestSkynetPinUnpin tests pinning and unpinning a skylink
 func TestSkynetPinUnpin(t *testing.T) {
 	if testing.Short() {
@@ -5063,7 +5201,7 @@ func TestSkynetPinUnpin(t *testing.T) {
 	// Add portals with custom dependency
 	rt := node.RenterTemplate
 	rt.CreatePortal = true
-	deps := &dependencies.DependencySkipUnpinRequest{}
+	deps := dependencies.NewDependencySkipUnpinRequest()
 	rt.RenterDeps = deps
 	_, err = tg.AddNodeN(rt, 2)
 	if err != nil {
@@ -5085,7 +5223,7 @@ func TestSkynetPinUnpin(t *testing.T) {
 }
 
 // testSkynetPinUnpin tests pinning and unpinning a skylink
-func testSkynetPinUnpin(t *testing.T, p1, p2 *siatest.TestNode, fileSize uint64, deps *dependencies.DependencySkipUnpinRequest) {
+func testSkynetPinUnpin(t *testing.T, p1, p2 *siatest.TestNode, fileSize uint64, deps *dependencies.DependencyWithDisableAndEnable) {
 	// Define helper function for checking the number of files
 	fileCheck := func(p1Expected, p2Expected uint64) error {
 		return build.Retry(100, 100*time.Millisecond, func() error {
@@ -5330,10 +5468,6 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 	if sl := mdH.Get(api.SkynetSkylinkHeader); sl != skylink.String() {
 		t.Fatalf("wrong skylink %v != %v", sl, skylink.String())
 	}
-	// The skynet-requested-skylink should report the v2 skylink.
-	if sl := mdH.Get(api.SkynetRequestedSkylinkHeader); sl != recursiveLink.String() {
-		t.Fatalf("wrong skylink %v != %v", sl, recursiveLink.String())
-	}
 
 	// Fetch the header.
 	_, h, err := r.SkynetSkylinkHead(recursiveLink.String())
@@ -5343,10 +5477,6 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 	// The skynet-skylink header should report the v1 skylink.
 	if sl := h.Get(api.SkynetSkylinkHeader); sl != skylink.String() {
 		t.Fatalf("wrong skylink %v != %v", sl, skylink.String())
-	}
-	// The skynet-requested-skylink should report the v2 skylink.
-	if sl := h.Get(api.SkynetRequestedSkylinkHeader); sl != recursiveLink.String() {
-		t.Fatalf("wrong skylink %v != %v", sl, recursiveLink.String())
 	}
 	// It should contain a valid proof.
 	var proof []api.RegistryHandlerGET
@@ -5411,10 +5541,6 @@ func testSkylinkV2Download(t *testing.T, tg *siatest.TestGroup) {
 	skynetSkylink := h.Get(api.SkynetSkylinkHeader)
 	if skynetSkylink != resolvedSkylink {
 		t.Fatalf("wrong skylink header %v != %v", skynetSkylink, resolvedSkylink)
-	}
-	skynetRequestedSkylink := h.Get(api.SkynetRequestedSkylinkHeader)
-	if skynetRequestedSkylink != skylinkV2.String() {
-		t.Fatalf("wrong requested skylink header %v != %v", skynetRequestedSkylink, skylinkV2)
 	}
 
 	// Update entry to empty skylink.
@@ -5882,6 +6008,25 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 		t.Fatal(err)
 	}
 
+	// Subscribe again to the same entry.
+	err = subscription.Subscribe(spk, srv1.Tweak)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be 2 notifications now.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		notificationMu.Lock()
+		defer notificationMu.Unlock()
+		if len(notifications) != 1 {
+			return fmt.Errorf("notifications: %v != %v", len(notifications), 2)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Increase the revision number and set again.
 	srv2 := srv1
 	srv2.Revision++
@@ -5891,12 +6036,12 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 		t.Fatal(err)
 	}
 
-	// There should be 2 notifications now.
+	// There should be 3 notifications now.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		notificationMu.Lock()
 		defer notificationMu.Unlock()
-		if len(notifications) != 2 {
-			return fmt.Errorf("notifications: %v != %v", len(notifications), 2)
+		if len(notifications) != 3 {
+			return fmt.Errorf("notifications: %v != %v", len(notifications), 3)
 		}
 		return nil
 	})
@@ -5921,15 +6066,18 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 
 	// Wait for a bit to give the notification some time.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		// There should still be 2 notifications.
+		// There should still be 3 notifications.
 		notificationMu.Lock()
 		nNotifications := len(notifications)
 		notificationMu.Unlock()
-		if nNotifications != 2 {
-			return fmt.Errorf("notifications: %v != %v", len(notifications), 2)
+		if nNotifications != 3 {
+			return fmt.Errorf("notifications: %v != %v", len(notifications), 3)
 		}
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Make sure first notification matches.
 	if !reflect.DeepEqual(srv1, notifications[0].SignedRegistryValue) {
@@ -5938,9 +6086,15 @@ func testRegistrySubscriptionBasic(t *testing.T, p *siatest.TestNode) {
 		t.Fatal("notification mismatch")
 	}
 	// Make sure second notification matches.
-	if !reflect.DeepEqual(srv2, *&notifications[1].SignedRegistryValue) {
-		t.Log(srv2)
+	if !reflect.DeepEqual(srv1, notifications[1].SignedRegistryValue) {
+		t.Log(srv1)
 		t.Log(notifications[1].SignedRegistryValue)
+		t.Fatal("notification mismatch")
+	}
+	// Make sure third notification matches.
+	if !reflect.DeepEqual(srv2, *&notifications[2].SignedRegistryValue) {
+		t.Log(srv2)
+		t.Log(notifications[2].SignedRegistryValue)
 		t.Fatal("notification mismatch")
 	}
 }
@@ -6139,5 +6293,93 @@ func testRecursiveBaseSector(t *testing.T, tg *siatest.TestGroup) {
 	extensionSize := int64(8392)
 	if f1.File.Size() != int64(modules.SectorSize)+extensionSize {
 		t.Fatal("wrong size", f1.File.Size())
+	}
+}
+
+// TestSkynetFailedPin is a regression test that catches an edge case in the pin
+// code where the Pin is successful even if the portal is unable to download the
+// skylink.
+func TestSkynetFailedPin(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create test group
+	testDir := skynetTestDir(t.Name())
+	groupParams := siatest.GroupParams{
+		Hosts:   3,
+		Portals: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Grab clean portals
+	cleanPortal := tg.Portals()[0]
+
+	// Add a portal with a dependency to not upload the fanout
+	rt := node.RenterTemplate
+	rt.CreatePortal = true
+	deps := dependencies.NewDependencyDoNotUploadFanout()
+	rt.RenterDeps = deps
+	nodes, err := tg.AddNodes(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Grab dependency portal
+	depPortal := nodes[0]
+	deps.Disable()
+
+	// Upload large file to depPortal and download and pin on clean portal
+	skylink, _, _, err := depPortal.UploadNewSkyfileBlocking("largeFile", 2*modules.SectorSize, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = cleanPortal.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spp := skymodules.SkyfilePinParameters{
+		SiaPath: skymodules.RandomSiaPath(),
+	}
+	err = cleanPortal.SkynetSkylinkPinPost(skylink, spp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload a large file that doesn't get it's fanout uploaded
+	deps.Enable()
+	skylink, _, _, err = depPortal.UploadNewSkyfileBlocking("badLargeFile", 2*modules.SectorSize, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Download should fail
+	_, err = cleanPortal.SkynetSkylinkGet(skylink)
+	if err == nil {
+		t.Fatal("Download should fail")
+	}
+	// Pin should fail
+	siaPath := skymodules.RandomSiaPath()
+	spp = skymodules.SkyfilePinParameters{
+		SiaPath: siaPath,
+	}
+	err = cleanPortal.SkynetSkylinkPinPost(skylink, spp)
+	if err == nil {
+		t.Fatal("Pin should fail")
+	}
+
+	// Confirm siafile is deleted
+	_, err = cleanPortal.SkyfileGet(siaPath)
+	if err == nil || !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+		t.Fatal("unexpected error", err)
 	}
 }

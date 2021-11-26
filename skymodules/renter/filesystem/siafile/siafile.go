@@ -221,7 +221,6 @@ func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode skymodu
 			CachedRepairBytes:       repairSize,
 			CachedStuckBytes:        0,
 			CachedStuckHealth:       0,
-			CachedNumStuckChunks:    0,
 			CachedRedundancy:        0,
 			CachedUserRedundancy:    0,
 			CachedUploadProgress:    0,
@@ -254,7 +253,6 @@ func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode skymodu
 	// Update cached fields for 0-Byte files.
 	if file.staticMetadata.FileSize == 0 {
 		file.staticMetadata.CachedHealth = 0
-		file.staticMetadata.CachedNumStuckChunks = 0
 		file.staticMetadata.CachedRepairBytes = 0
 		file.staticMetadata.CachedStuckBytes = 0
 		file.staticMetadata.CachedStuckHealth = 0
@@ -645,7 +643,6 @@ func (sf *SiaFile) health(offline map[string]bool, goodForRenew map[string]bool)
 	// Update the cache.
 	defer func() {
 		sf.staticMetadata.CachedHealth = h
-		sf.staticMetadata.CachedNumStuckChunks = nsc
 		sf.staticMetadata.CachedRepairBytes = rb
 		sf.staticMetadata.CachedStuckBytes = sb
 		sf.staticMetadata.CachedStuckHealth = sh

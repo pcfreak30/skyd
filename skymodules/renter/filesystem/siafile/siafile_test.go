@@ -1516,7 +1516,6 @@ func TestUpdateMetadata(t *testing.T) {
 	file.staticMetadata.CachedStuckHealth = math.MaxFloat64
 	file.staticMetadata.CachedRepairBytes = math.MaxUint64
 	file.staticMetadata.CachedStuckBytes = math.MaxUint64
-	file.staticMetadata.CachedNumStuckChunks = math.MaxUint64
 	// LastHealthCheckTime is updated during UpdateMetadata
 	file.staticMetadata.LastHealthCheckTime = time.Time{}
 	// CachedExpiration is updated during UpdateMetadata
@@ -1548,9 +1547,6 @@ func TestUpdateMetadata(t *testing.T) {
 		}
 		if sf.staticMetadata.CachedStuckBytes == math.MaxUint64 {
 			err = errors.Compose(err, fmt.Errorf("CachedStuckBytes not updated; found %v", sf.staticMetadata.CachedStuckBytes))
-		}
-		if sf.staticMetadata.CachedNumStuckChunks == math.MaxUint64 {
-			err = errors.Compose(err, fmt.Errorf("CachedNumStuckChunks not updated; found %v", sf.staticMetadata.CachedNumStuckChunks))
 		}
 		// Check LastHealthCheckTime
 		if sf.staticMetadata.LastHealthCheckTime.IsZero() {

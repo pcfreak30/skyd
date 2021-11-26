@@ -82,7 +82,6 @@ type (
 		CachedRepairBytes    uint64            `json:"cachedrepairbytes"`
 		CachedUserRedundancy float64           `json:"cacheduserredundancy"`
 		CachedHealth         float64           `json:"cachedhealth"`
-		CachedNumStuckChunks uint64            `json:"cachednumstuckchunks"`
 		CachedStuckBytes     uint64            `json:"cachedstuckbytes"`
 		CachedStuckHealth    float64           `json:"cachedstuckhealth"`
 		CachedExpiration     types.BlockHeight `json:"cachedexpiration"`
@@ -110,13 +109,8 @@ type (
 		//
 		// StuckHealth is the worst health of any of the file's stuck chunks
 		Finished            bool      `json:"finished"`
-		Health              float64   `json:"health"`
 		LastHealthCheckTime time.Time `json:"lasthealthchecktime"`
 		NumStuckChunks      uint64    `json:"numstuckchunks"`
-		Redundancy          float64   `json:"redundancy"`
-		RepairBytes         uint64    `json:"repairbytes"`
-		StuckHealth         float64   `json:"stuckhealth"`
-		StuckBytes          uint64    `json:"stuckbytes"`
 
 		// File ownership/permission fields.
 		Mode    os.FileMode `json:"mode"`    // unix filemode of the sia file - uint32
@@ -329,19 +323,13 @@ func (md Metadata) backup() (b Metadata) {
 	b.CachedRedundancy = md.CachedRedundancy
 	b.CachedUserRedundancy = md.CachedUserRedundancy
 	b.CachedHealth = md.CachedHealth
-	b.CachedNumStuckChunks = md.CachedNumStuckChunks
 	b.CachedStuckHealth = md.CachedStuckHealth
 	b.CachedExpiration = md.CachedExpiration
 	b.CachedUploadedBytes = md.CachedUploadedBytes
 	b.CachedUploadProgress = md.CachedUploadProgress
 	b.Finished = md.Finished
-	b.Health = md.Health
 	b.LastHealthCheckTime = md.LastHealthCheckTime
 	b.NumStuckChunks = md.NumStuckChunks
-	b.RepairBytes = md.RepairBytes
-	b.StuckBytes = md.StuckBytes
-	b.Redundancy = md.Redundancy
-	b.StuckHealth = md.StuckHealth
 	b.Mode = md.Mode
 	b.UserID = md.UserID
 	b.GroupID = md.GroupID
@@ -379,19 +367,13 @@ func (md *Metadata) restore(b Metadata) {
 	md.CachedRedundancy = b.CachedRedundancy
 	md.CachedUserRedundancy = b.CachedUserRedundancy
 	md.CachedHealth = b.CachedHealth
-	md.CachedNumStuckChunks = b.CachedNumStuckChunks
 	md.CachedStuckHealth = b.CachedStuckHealth
 	md.CachedExpiration = b.CachedExpiration
 	md.CachedUploadedBytes = b.CachedUploadedBytes
 	md.CachedUploadProgress = b.CachedUploadProgress
 	md.Finished = b.Finished
-	md.Health = b.Health
 	md.LastHealthCheckTime = b.LastHealthCheckTime
 	md.NumStuckChunks = b.NumStuckChunks
-	md.RepairBytes = b.RepairBytes
-	md.StuckBytes = b.StuckBytes
-	md.Redundancy = b.Redundancy
-	md.StuckHealth = b.StuckHealth
 	md.Mode = b.Mode
 	md.UserID = b.UserID
 	md.GroupID = b.GroupID
