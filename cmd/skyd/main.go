@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -212,18 +211,6 @@ func main() {
 		globalConfig.Siad.SiaDir = build.SiadDataDir()
 	}
 
-	// ballast is a large memory allocation that provides stability to the heap.
-	// The GC triggers when the heap doubles in size, by providing this ballast
-	// we prevent that from occurring until our heap grows to double the size of
-	// the ballast. We allocate it with 10GiB.
-	//
-	// NOTE: we can safely add the balast here under the assumption that anyone
-	// running skyd is hosting a portal
-	//
-	// For more details see:
-	// https://blog.twitch.tv/en/2019/04/10/go-memory-ballast-how-i-learnt-to-stop-worrying-and-love-the-heap-26c2462549a2/
-	ballast := make([]byte, 10<<30)
-
 	// Parse cmdline flags, overwriting both the default values and the config
 	// file values.
 	if err := root.Execute(); err != nil {
@@ -233,7 +220,4 @@ func main() {
 		// Command.SilenceUsage is false) and we should exit with exitCodeUsage.
 		os.Exit(exitCodeUsage)
 	}
-
-	// Print length of the ballast to null writer to avoid compiler complaining
-	fmt.Fprintf(ioutil.Discard, fmt.Sprintf("%v", len(ballast)))
 }

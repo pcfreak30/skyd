@@ -92,7 +92,7 @@ type pcwsWorkerState struct {
 	// appended to as workers come back, meaning that chunk downloads can track
 	// internally which elements of the array they have already looked at,
 	// saving computational time when updating.
-	resolvedWorkers []*pcwsWorkerResponse
+	resolvedWorkers []pcwsWorkerResponse
 
 	// workerUpdateChans is used by download objects to block until more
 	// information about the unresolved workers is available. All of the worker
@@ -200,6 +200,20 @@ func (ws *pcwsWorkerState) registerForWorkerUpdate() <-chan struct{} {
 	return c
 }
 
+// removeUnresolvedWorker removes an unresolved worker from the worker state.
+func (ws *pcwsWorkerState) removeUnresolvedWorker(hpk string) {
+	uw, exists := ws.unresolvedWorkers[hpk]
+	if exists {
+		staticPoolUnresolvedWorkers.Put(uw)
+		delete(ws.unresolvedWorkers, hpk)
+	}
+
+	// If the map is empty now, release some memory.
+	if len(ws.unresolvedWorkers) == 0 {
+		ws.unresolvedWorkers = make(map[string]*pcwsUnresolvedWorker)
+	}
+}
+
 // managedHandleResponse will handle a HasSector response from a worker,
 // updating the workerState accordingly.
 //
@@ -220,12 +234,14 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	if w == nil {
 		ws.staticRenter.staticLog.Critical("nil worker provided in resp")
 	}
-	delete(ws.unresolvedWorkers, w.staticHostPubKeyStr)
+
+	// Return the worker to the pool and delete it from the map.
+	ws.removeUnresolvedWorker(w.staticHostPubKeyStr)
 
 	// If the response contained an error, add this worker to the set of
 	// resolved workers as supporting no indices.
 	if resp.staticErr != nil {
-		ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
+		ws.resolvedWorkers = append(ws.resolvedWorkers, pcwsWorkerResponse{
 			worker: w,
 			err:    resp.staticErr,
 		})
@@ -234,7 +250,7 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 
 	// Add this worker to the set of resolved workers (even if there are no
 	// indices that the worker can fetch).
-	ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
+	ws.resolvedWorkers = append(ws.resolvedWorkers, pcwsWorkerResponse{
 		worker:       w,
 		pieceIndices: resp.staticAvailbleIndices,
 	})
@@ -252,7 +268,7 @@ func (ws *pcwsWorkerState) managedRegisterForWorkerUpdate() <-chan struct{} {
 
 // WaitForResults waits for all workers of the state to resolve up until ctx is
 // closed. Once the ctx is closed, all available responses are returned.
-func (ws *pcwsWorkerState) WaitForResults(ctx context.Context) []*pcwsWorkerResponse {
+func (ws *pcwsWorkerState) WaitForResults(ctx context.Context) []pcwsWorkerResponse {
 	for {
 		ws.mu.Lock()
 		rw := ws.resolvedWorkers
@@ -284,7 +300,8 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 	cache := w.staticCache()
 	pt := w.staticPriceTable().staticPriceTable
 	numWorkers := pcws.staticRenter.staticWorkerPool.callNumWorkers()
-	err := checkPCWSGouging(pt, cache.staticRenterAllowance, numWorkers, len(pcws.staticPieceRoots))
+
+	err := staticPCWSGougingCache.IsGouging(w.staticHostPubKeyStr, pt, cache.staticRenterAllowance, numWorkers, len(pcws.staticPieceRoots))
 	if err != nil {
 		return errors.AddContext(err, fmt.Sprintf("price gouging for chunk worker set detected in worker %v", w.staticHostPubKeyStr))
 	}
@@ -301,10 +318,17 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 		wms.mu.Unlock()
 	}
 
+	// Don't bother scheduling a job if the worker doesn't have a valid
+	// price table.
+	if wpt := w.staticPriceTable(); !wpt.staticValid() {
+		return errInvalidPriceTable
+	}
+
 	// Create and launch the job.
 	ctx, cancel := context.WithTimeout(pcws.staticCtx, pcwsHasSectorTimeout)
 	jhs := w.newJobHasSectorWithPostExecutionHook(ctx, responseChan, func(resp *jobHasSectorResponse) {
 		ws.managedHandleResponse(resp)
+		staticPoolJobHasSectorResponse.Put(resp)
 		cancel()
 	}, pcws.staticErasureCoder.NumPieces(), pcws.staticPieceRoots...)
 
@@ -316,10 +340,9 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(w *worker, responseChan c
 	expectedResolveTime := expectedJobTime.Add(coolDownPenalty)
 
 	// Create the unresolved worker for this job.
-	uw := &pcwsUnresolvedWorker{
-		staticWorker:               w,
-		staticExpectedResolvedTime: expectedResolveTime,
-	}
+	uw := staticPoolUnresolvedWorkers.Get()
+	uw.staticWorker = w
+	uw.staticExpectedResolvedTime = expectedResolveTime
 
 	// Add the unresolved worker to the worker state. Technically this doesn't
 	// need to be wrapped in a lock, but that's not obvious from the function
@@ -386,8 +409,10 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 	// worker jobs needs to be created in the same thread that listens for the
 	// responses. Though there are a lot of concurrency patterns at play here,
 	// it was the cleanest thing I could come up with.
+	numWorkers := pcws.staticRenter.staticWorkerPool.callNumWorkers()
 	ws := &pcwsWorkerState{
-		unresolvedWorkers: make(map[string]*pcwsUnresolvedWorker),
+		unresolvedWorkers: make(map[string]*pcwsUnresolvedWorker, numWorkers),
+		resolvedWorkers:   make([]pcwsWorkerResponse, 0, numWorkers),
 
 		staticRenter: pcws.staticRenter,
 	}
@@ -512,7 +537,7 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 
 		pricePerMS: pricePerMS,
 
-		workerProgress: make(map[string]workerProgress),
+		workerProgress: make(map[uint32]workerProgress),
 
 		piecesData:         make([][]byte, ec.NumPieces()),
 		piecesInfo:         make([]pieceInfo, ec.NumPieces()),

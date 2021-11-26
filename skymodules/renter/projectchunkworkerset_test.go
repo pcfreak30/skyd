@@ -496,7 +496,7 @@ func TestWaitForResult(t *testing.T) {
 
 	// Wait for its result in a separate goroutine.
 	done := make(chan struct{})
-	var result []*pcwsWorkerResponse
+	var result []pcwsWorkerResponse
 	go func() {
 		result = ws.WaitForResults(context.Background())
 		close(done)
@@ -512,7 +512,7 @@ func TestWaitForResult(t *testing.T) {
 	// Move the unresolved workers to resolved.
 	ws.mu.Lock()
 	delete(ws.unresolvedWorkers, hpk1.String())
-	resolvedWorker := &pcwsWorkerResponse{err: errors.New("test")}
+	resolvedWorker := pcwsWorkerResponse{err: errors.New("test")}
 	ws.resolvedWorkers = append(ws.resolvedWorkers, resolvedWorker)
 
 	// Close the update chan.

@@ -29,7 +29,7 @@ func TestMDMBandwidthCost(t *testing.T) {
 		t.Fatal("mismatch", bandwidthCost, expectedCost)
 	}
 
-	// check for a positiv refund - less bandwidth was used than expected.
+	// check for a positive refund - less bandwidth was used than expected.
 	ref := refund(ul-10, dl-20)
 	expectedRef := bandwidthCost.Sub(modules.MDMBandwidthCost(pt, ul-10, dl-20))
 	if !ref.Equals(expectedRef) {

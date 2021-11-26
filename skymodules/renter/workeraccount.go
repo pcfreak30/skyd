@@ -224,22 +224,25 @@ func (a *account) ProvidePayment(stream io.ReadWriter, amount types.Currency, bl
 	msg := newWithdrawalMessage(a.staticID, amount, blockHeight)
 	sig := crypto.SignHash(crypto.HashObject(msg), a.staticSecretKey)
 
+	buffer := staticPoolProvidePaymentBuffers.Get()
+	defer staticPoolProvidePaymentBuffers.Put(buffer)
+
 	// send PaymentRequest
-	err := modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByEphemeralAccount})
+	err := modules.RPCWrite(buffer, modules.PaymentRequest{Type: modules.PayByEphemeralAccount})
 	if err != nil {
 		return err
 	}
 
 	// send PayByEphemeralAccountRequest
-	err = modules.RPCWrite(stream, modules.PayByEphemeralAccountRequest{
+	err = modules.RPCWrite(buffer, modules.PayByEphemeralAccountRequest{
 		Message:   msg,
 		Signature: sig,
 	})
 	if err != nil {
 		return err
 	}
-
-	return nil
+	_, err = buffer.WriteTo(stream)
+	return err
 }
 
 // availableBalance returns the amount of money that is available to
@@ -642,6 +645,9 @@ func (w *worker) managedRefillAccount() {
 	amount := types.ZeroCurrency
 	if w.staticBalanceTarget.Cmp(balance) > 0 {
 		amount = w.staticBalanceTarget.Sub(balance)
+	}
+	if amount.IsZero() {
+		return // nothing to do
 	}
 	pt := w.staticPriceTable().staticPriceTable
 

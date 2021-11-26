@@ -47,7 +47,7 @@ type (
 		// tracing. By allowing it to be nil we avoid the extra overhead.
 		staticSpan opentracing.Span
 
-		*jobGeneric
+		jobGeneric
 	}
 
 	// jobReadQueue is a list of Read queries that have been assigned to the
@@ -106,7 +106,8 @@ type (
 		// but might also be used for snapshots for example
 		staticSpendingCategory spendingCategory
 
-		staticWorker *worker
+		staticWorker           *worker
+		staticWorkerIdentifier uint32
 	}
 )
 

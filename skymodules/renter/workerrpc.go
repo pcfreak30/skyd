@@ -1,7 +1,6 @@
 package renter
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -49,7 +48,7 @@ type programResponse struct {
 // for a mdm program.
 type bandwidthRefundFunc func(ul, dl uint64) types.Currency
 
-// mdmBandwidthCost compute the bandwidth cost for a mdm program and also
+// mdmBandwidthCost computes the bandwidth cost for a mdm program and also
 // returns a function to compute a bandwidth refund in case the provided
 // arguments were an overestimation.
 func mdmBandwidthCost(pt modules.RPCPriceTable, uploadBandwidth, downloadBandwidth uint64) (types.Currency, bandwidthRefundFunc) {
@@ -101,9 +100,8 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}()
 
 	// prepare a buffer so we can optimize our writes
-	buffer := w.staticBufferPool.Get().(*bytes.Buffer)
-	defer w.staticBufferPool.Put(buffer)
-	buffer.Reset()
+	buffer := staticPoolExecuteProgramBuffers.Get()
+	defer staticPoolExecuteProgramBuffers.Put(buffer)
 
 	// write the specifier
 	err = modules.RPCWrite(buffer, modules.RPCExecuteProgram)
@@ -143,7 +141,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}
 
 	// write contents of the buffer to the stream
-	_, err = stream.Write(buffer.Bytes())
+	_, err = buffer.WriteTo(stream)
 	if err != nil {
 		return
 	}

@@ -251,6 +251,8 @@ func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
 	dataPieces := uint64(1)
 	parityPieces := uint64(len(tg.Hosts())) - dataPieces
 
+	t.Log("fileSize", fileSize)
+
 	// Upload file
 	localFile, remoteFile, err := r.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
@@ -270,6 +272,20 @@ func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if err := tg.RemoveNodeN(hostsRemoved...); err != nil {
 		t.Fatal("Failed to shutdown host", err)
+	}
+	// Wait for the workers to disappear.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		wps, err := r.RenterWorkersGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if wps.NumWorkers != 0 {
+			return fmt.Errorf("wrong number of workers %v != %v", wps.NumWorkers, 0)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 	if err := r.WaitForDecreasingRedundancy(remoteFile, 0); err != nil {
 		t.Fatal("Redundancy isn't decreasing", err)

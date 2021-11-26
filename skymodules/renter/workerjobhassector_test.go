@@ -26,7 +26,7 @@ func TestHasSectorJobBatchCallNext(t *testing.T) {
 		jobGenericQueue:     newJobGenericQueue(&worker{}),
 	}
 	jhs := &jobHasSector{
-		jobGeneric: &jobGeneric{
+		jobGeneric: jobGeneric{
 			staticQueue: queue,
 			staticCtx:   context.Background(),
 		},

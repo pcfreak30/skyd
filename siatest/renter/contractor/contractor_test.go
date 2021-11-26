@@ -194,7 +194,7 @@ func testContractorIncompleteMaintenanceAlert(t *testing.T, tg *siatest.TestGrou
 // TestRemoveRecoverableContracts makes sure that recoverable contracts which
 // have been reverted by a reorg are removed from the map.
 func TestRemoveRecoverableContracts(t *testing.T) {
-	if testing.Short() {
+	if testing.Short() || !build.VLONG {
 		t.SkipNow()
 	}
 	t.Parallel()
