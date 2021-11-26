@@ -513,7 +513,7 @@ func TestQueueMemoryLeak(t *testing.T) {
 	runtime.ReadMemStats(&ms)
 	t.Log("before gc", ms.HeapObjects, ms.HeapAlloc)
 
-	// Less than 100k objects should be allocated.
+	// Less than 150k objects should be allocated.
 	// NOTE: This number was chosen after manually testing and printing the
 	// stats. During testing it turned out that running the loop above 1 million
 	// times would cause the number of objects to be at around 65k vs 200+k with
