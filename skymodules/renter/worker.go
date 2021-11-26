@@ -14,7 +14,6 @@ package renter
 // not run out, it maintains a balance target by refilling it when necessary.
 
 import (
-	"bytes"
 	"container/list"
 	"sync"
 	"time"
@@ -150,8 +149,6 @@ type (
 		// registry entries.
 		staticRegistryCache *registryRevisionCache
 
-		staticBufferPool sync.Pool
-
 		// staticSetInitialEstimates is an object that ensures the initial queue
 		// estimates of the HS and RJ queues are only set once.
 		staticSetInitialEstimates sync.Once
@@ -285,15 +282,6 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		staticLoopState: &workerLoopState{
 			atomicReadDataLimit:  uint64(initialConcurrentAsyncReadData),
 			atomicWriteDataLimit: uint64(initialConcurrentAsyncWriteData),
-		},
-
-		// Initialize a buffer pool handing out 4kb buffers. This to prevent
-		// reallocating a buffer of unknown size, but instead reusing the same
-		// buffer over and over again.
-		staticBufferPool: sync.Pool{
-			New: func() interface{} {
-				return bytes.NewBuffer(make([]byte, 1<<12))
-			},
 		},
 
 		unprocessedChunks: newUploadChunks(),

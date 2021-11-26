@@ -591,11 +591,11 @@ func testWorkerAccountSpendingDetails(t *testing.T, wt *workerTester) {
 	jhs := new(jobHasSector)
 	jhs.staticSectors = []crypto.Hash{{1, 2, 3}}
 	ulBandwidth, dlBandwidth := jhs.callExpectedBandwidth()
-	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	bandwidthCost, bandwidthRefund := mdmBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
 	// execute it
-	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost)
+	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost, bandwidthRefund)
 	if err != nil {
 		t.Fatal(err)
 	}

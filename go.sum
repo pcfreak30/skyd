@@ -362,8 +362,8 @@ gitlab.com/NebulousLabs/ratelimit v0.0.0-20200811080431-99b8f0768b2e h1:sMZdmPFd
 gitlab.com/NebulousLabs/ratelimit v0.0.0-20200811080431-99b8f0768b2e/go.mod h1:HVrehlTxX2hYjsrL1k0WK43OZ0NGZfGvqzPL+n0/zrM=
 gitlab.com/NebulousLabs/siamux v0.0.0-20200723083235-f2c35a421446/go.mod h1:B0RyynPElUG2Y2CAVIIRriIqR9qht2I+nDisi3gfKn0=
 gitlab.com/NebulousLabs/siamux v0.0.0-20210409140711-e667c5f458e4/go.mod h1:Edr1el/xhHsWOYPBrm6oR1WLkU8YX1QRcY+efONUxiw=
-gitlab.com/NebulousLabs/siamux v0.0.0-20210824082138-a4ebafe4b9d9 h1:mxFPvzmU23gSdb62wxbMjT0Pag180h7DsYK3R+QfSmc=
-gitlab.com/NebulousLabs/siamux v0.0.0-20210824082138-a4ebafe4b9d9/go.mod h1:Edr1el/xhHsWOYPBrm6oR1WLkU8YX1QRcY+efONUxiw=
+gitlab.com/NebulousLabs/siamux v0.0.0-20211123104731-05f52227c71f h1:bFDVIgWyIDP9y3rGZ9M5FpvH5rkDx1sdaIJCiV3onLA=
+gitlab.com/NebulousLabs/siamux v0.0.0-20211123104731-05f52227c71f/go.mod h1:owMSVLlMMCSK6tfhfSshZhrsIFCUNvQEsiGZoWhaXcc=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20200527092543-afa01960408c/go.mod h1:av52iTyGuPtGU+GMcqfGtZu2vxhIjPgrxvIwVYelEvs=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20200608151952-38921fbef213 h1:owERlKtUEFTPQ897iiqWPOuWBdq7BYqPxDOCgEZnbN4=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20200608151952-38921fbef213/go.mod h1:vIutAvl7lmJqLVYTCBY5WDdJomP+V74At8LCeEYoH8w=
@@ -416,6 +416,7 @@ golang.org/x/lint v0.0.0-20190409202823-959b441ac422/go.mod h1:6SW0HCj/g11FgYtHl
 golang.org/x/lint v0.0.0-20190909230951-414d861bb4ac/go.mod h1:6SW0HCj/g11FgYtHlgUYUwCkIfeOF89ocIRzGO/8vkc=
 golang.org/x/lint v0.0.0-20190930215403-16217165b5de/go.mod h1:6SW0HCj/g11FgYtHlgUYUwCkIfeOF89ocIRzGO/8vkc=
 golang.org/x/lint v0.0.0-20200302205851-738671d3881b/go.mod h1:3xt1FjdF8hUf6vQPIChWIBhFzV8gjjsPE/fR3IyQdNY=
+golang.org/x/lint v0.0.0-20210508222113-6edffad5e616/go.mod h1:3xt1FjdF8hUf6vQPIChWIBhFzV8gjjsPE/fR3IyQdNY=
 golang.org/x/mobile v0.0.0-20190312151609-d3739f865fa6/go.mod h1:z+o9i4GpDbdi3rU15maQ/Ox0txvL9dWGYEHz965HBQE=
 golang.org/x/mobile v0.0.0-20190719004257-d2bd2a29d028/go.mod h1:E/iHnbuqvinMTCcRqshq8CkpyQDoeVncDDYHnLhea+o=
 golang.org/x/mod v0.0.0-20190513183733-4bf6d317e70e/go.mod h1:mXi4GBBbnImb6dmsKGUJ2LatrhH/nqhxcFungHvyanc=

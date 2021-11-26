@@ -25,7 +25,7 @@ func TestHasSectorJobBatchCallNext(t *testing.T) {
 		jobGenericQueue:     newJobGenericQueue(&worker{}),
 	}
 	jhs := &jobHasSector{
-		jobGeneric: &jobGeneric{
+		jobGeneric: jobGeneric{
 			staticQueue: queue,
 			staticCtx:   context.Background(),
 		},
@@ -235,7 +235,7 @@ func TestHasSectorJobExpectedBandwidth(t *testing.T) {
 
 		// calculate cost
 		ulBandwidth, dlBandwidth := jhs.callExpectedBandwidth()
-		bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+		bandwidthCost, bandwidthRefund := mdmBandwidthCost(pt, ulBandwidth, dlBandwidth)
 		cost = cost.Add(bandwidthCost)
 
 		// cost of batch should match.
@@ -245,7 +245,7 @@ func TestHasSectorJobExpectedBandwidth(t *testing.T) {
 		}
 
 		// execute the program
-		_, limit, err := w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost)
+		_, limit, err := w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost, bandwidthRefund)
 		if err != nil {
 			t.Fatal(err)
 		}
