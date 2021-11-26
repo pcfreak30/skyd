@@ -46,7 +46,7 @@ type (
 
 		staticResponseChan chan *jobReadRegistryResponse // Channel to send a response down
 
-		*jobGeneric
+		jobGeneric
 	}
 
 	// jobReadRegistryQueue is a list of ReadRegistry jobs that have been
@@ -127,11 +127,11 @@ func lookupRegistry(w *worker, sid modules.RegistryEntryID, spk *types.SiaPublic
 
 	// take into account bandwidth costs
 	ulBandwidth, dlBandwidth := readRegistryJobExpectedBandwidth()
-	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	bandwidthCost, bandwidthRefund := mdmBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
 	// Execute the program and parse the responses.
-	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, categoryRegistryRead, cost)
+	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, categoryRegistryRead, cost, bandwidthRefund)
 	if err != nil {
 		return nil, errors.AddContext(err, "Unable to execute program")
 	}

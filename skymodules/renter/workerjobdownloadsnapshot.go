@@ -24,7 +24,7 @@ type (
 	jobDownloadSnapshot struct {
 		staticResponseChan chan *jobDownloadSnapshotResponse
 
-		*jobGeneric
+		jobGeneric
 	}
 
 	// jobDownloadSnapshotQueue contains the download jobs.

@@ -9,7 +9,7 @@ import (
 
 // testDataSet is a test struct that defines a data set with a decay
 type testDataSet struct {
-	*GenericDecay
+	GenericDecay
 	data [64]float64
 }
 

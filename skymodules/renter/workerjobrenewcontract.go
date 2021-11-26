@@ -18,7 +18,7 @@ type (
 		staticParams             skymodules.ContractParams
 		staticFCID               types.FileContractID
 
-		*jobGeneric
+		jobGeneric
 	}
 
 	// jobRenewQueue is a list of Renew queries that have been assigned to the

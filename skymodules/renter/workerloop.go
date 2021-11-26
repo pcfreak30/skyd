@@ -9,6 +9,11 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+var (
+	errOnMaintenanceCooldown = errors.New("the worker account is on cooldown")
+	errInvalidPriceTable     = errors.New("price table with host is no longer valid")
+)
+
 type (
 	// workerLoopState tracks the state of the worker loop.
 	workerLoopState struct {
@@ -180,13 +185,13 @@ func (w *worker) externLaunchAsyncJob(job workerJob) bool {
 func (w *worker) managedAsyncReady() bool {
 	// A valid price table is required to perform async tasks.
 	if wpt := w.staticPriceTable(); !wpt.staticValid() {
-		w.managedDiscardAsyncJobs(errors.New("price table with host is no longer valid"))
+		w.managedDiscardAsyncJobs(errInvalidPriceTable)
 		return false
 	}
 
 	// RHP3 must not be on cooldown to perform async tasks.
 	if w.managedOnMaintenanceCooldown() {
-		w.managedDiscardAsyncJobs(errors.New("the worker account is on cooldown"))
+		w.managedDiscardAsyncJobs(errOnMaintenanceCooldown)
 		return false
 	}
 	return true

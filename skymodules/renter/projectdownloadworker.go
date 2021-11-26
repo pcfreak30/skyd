@@ -1,17 +1,18 @@
 package renter
 
 import (
-	"encoding/hex"
 	"fmt"
 	"math"
+	"reflect"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/opentracing/opentracing-go"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
+	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 )
 
@@ -69,9 +70,12 @@ const (
 	// bucketIndexScanStep defines the step size with which we increment the
 	// bucket index when we try and find the best set the first time around.
 	// This works more or less in a binary search fashion where we try and
-	// quickly approximate the bucket index, and then scan -12|+12 buckets
+	// quickly approximate the bucket index, and then scan -10|+10 buckets
 	// before and after the index we found.
-	bucketIndexScanStep = 12
+	// NOTE: bucketIndexScanStep needs to cleanly divide the number of total
+	// buckets in the distribution tracker. Otherwise we might miss buckets
+	// at the end.
+	bucketIndexScanStep = 10
 
 	// chimeraAvailabilityRateThreshold defines the number that must be reached
 	// when composing a chimera from unresolved workers. If the sum of the
@@ -130,7 +134,7 @@ type (
 
 		// identifier returns a unique identifier for the download worker, this
 		// identifier can be used as a key when mapping the download worker
-		identifier() string
+		identifier() uint32
 
 		// markPieceForDownload allows specifying what piece to download for
 		// this worker in the case the worker resolved multiple pieces
@@ -159,7 +163,7 @@ type (
 		staticCost float64
 
 		// staticIdentifier uniquely identifies the chimera worker
-		staticIdentifier string
+		staticIdentifier uint32
 	}
 
 	// individualWorker represents a single worker object, both resolved and
@@ -210,9 +214,9 @@ type (
 		staticAvailabilityRate   float64
 		staticCost               float64
 		staticDownloadLaunchTime time.Time
-		staticIdentifier         string
-		staticLookupDistribution *skymodules.Distribution
-		staticReadDistribution   *skymodules.Distribution
+		staticIdentifier         uint32
+		staticLookupDistribution skymodules.Distribution
+		staticReadDistribution   skymodules.Distribution
 		staticWorker             *worker
 	}
 
@@ -235,8 +239,107 @@ type (
 	coinflips []float64
 )
 
+// BufferedDownloadState is a helper type which contains fields which we only
+// want to allocate once and then reuse between iterations of the download
+// algorithm for optimization reasons.
+type bufferedDownloadState struct {
+	downloadWorkers       []downloadWorker
+	mostLikely            []downloadWorker
+	lessLikely            []downloadWorker
+	pieces                map[uint64]struct{}
+	added                 map[uint32]struct{}
+	sortedDownloadWorkers sortedDownloadWorkers
+}
+
+// Reset resets the download state without freeing its memory for the next
+// iteration of the loop.
+func (ds *bufferedDownloadState) Reset() {
+	ds.downloadWorkers = ds.downloadWorkers[:0]
+	ds.mostLikely = ds.mostLikely[:0]
+	ds.lessLikely = ds.lessLikely[:0]
+	ds.sortedDownloadWorkers = ds.sortedDownloadWorkers[:0]
+	for k := range ds.pieces {
+		delete(ds.pieces, k)
+	}
+	for k := range ds.added {
+		delete(ds.added, k)
+	}
+}
+
+// pdcGougingCache is a helper type to cache pdc gouging results for workers.
+type pdcGougingCache struct {
+	staticCache map[string]pdcGougingResult
+	mu          sync.Mutex
+}
+
+// pdcGougingResults contains a project download chunk gouging result for a
+// given allowance and price table ID.
+type pdcGougingResult struct {
+	staticAllowance skymodules.Allowance
+	staticPTID      modules.UniqueID
+	staticIsGouging error
+}
+
+// pcwsGougingCache is a helper type to cache pcws gouging results for workers.
+type pcwsGougingCache struct {
+	staticCache map[string]map[int]pcwsGougingResult
+	mu          sync.Mutex
+}
+
+// pcwsGougingResult contains a project chunk workerset gouging result for a
+// given allowance, number of workers and price table.
+type pcwsGougingResult struct {
+	staticAllowance  skymodules.Allowance
+	staticNumWorkers int
+	staticPTID       modules.UniqueID
+	staticIsGouging  error
+}
+
+// sortedDownloadWorker is a helper type for working workers by completeChance.
+type sortedDownloadWorker struct {
+	originalIndex  int
+	completeChance float64
+}
+
+// sortedDownloadWorkers is a helper type to implement the sort.Interface
+// interface.
+type sortedDownloadWorkers []sortedDownloadWorker
+
+// Len returns the length of the slice.
+func (sdw sortedDownloadWorkers) Len() int { return len(sdw) }
+
+// Less returns whether the completeChance at index i is less than at index j.
+func (sdw sortedDownloadWorkers) Less(i, j int) bool {
+	return sdw[i].completeChance > sdw[j].completeChance
+}
+
+// Swap swaps two workers in the slice.
+func (sdw sortedDownloadWorkers) Swap(i, j int) {
+	sdw[i], sdw[j] = sdw[j], sdw[i]
+}
+
+// sortedIndividualWorkers is a helper type to implement the sort.Interface
+// interface.
+type sortedIndividualWorkers []*individualWorker
+
+// Len returns the length of the slice.
+func (siw sortedIndividualWorkers) Len() int { return len(siw) }
+
+// Less returns whether the cachedCompleteChance at index i is less than at
+// index j.
+func (siw sortedIndividualWorkers) Less(i, j int) bool {
+	eRTI := siw[i].cachedCompleteChance
+	eRTJ := siw[j].cachedCompleteChance
+	return eRTI > eRTJ
+}
+
+// Swap swaps two workers in the slice.
+func (siw sortedIndividualWorkers) Swap(i, j int) {
+	siw[i], siw[j] = siw[j], siw[i]
+}
+
 // NewChimeraWorker returns a new chimera worker object.
-func NewChimeraWorker(workers []*individualWorker) *chimeraWorker {
+func NewChimeraWorker(workers []*individualWorker, identifier uint32) *chimeraWorker {
 	// calculate the average cost and average (weighted) complete chance
 	var totalCompleteChance float64
 	var totalCost float64
@@ -257,7 +360,7 @@ func NewChimeraWorker(workers []*individualWorker) *chimeraWorker {
 	return &chimeraWorker{
 		staticChanceComplete: avgChance,
 		staticCost:           avgCost,
-		staticIdentifier:     hex.EncodeToString(fastrand.Bytes(16)),
+		staticIdentifier:     identifier,
 	}
 }
 
@@ -281,7 +384,7 @@ func (cw *chimeraWorker) getPieceForDownload() uint64 {
 }
 
 // identifier returns a unqiue identifier for this worker.
-func (cw *chimeraWorker) identifier() string {
+func (cw *chimeraWorker) identifier() uint32 {
 	return cw.staticIdentifier
 }
 
@@ -336,10 +439,9 @@ func (iw *individualWorker) recalculateDistributionChances() {
 	// if the worker is not resolved yet, we want to always shift the lookup dt
 	// and use that to recalculate the expected duration index
 	if !iw.isResolved() {
-		lookupDT := iw.staticLookupDistribution.Clone()
-		lookupDT.Shift(time.Since(iw.staticDownloadLaunchTime))
-		indexForDur := skymodules.DistributionBucketIndexForDuration
-		iw.cachedLookupIndex = indexForDur(lookupDT.ExpectedDuration())
+		shift := time.Since(iw.staticDownloadLaunchTime)
+		ed := iw.staticLookupDistribution.ExpectedDurationWithShift(shift)
+		iw.cachedLookupIndex = skymodules.DistributionBucketIndexForDuration(ed)
 	}
 }
 
@@ -385,7 +487,7 @@ func (iw *individualWorker) getPieceForDownload() uint64 {
 
 // identifier returns a unqiue identifier for this worker, for an individual
 // worker this is equal to the short string version of the worker's host pubkey.
-func (iw *individualWorker) identifier() string {
+func (iw *individualWorker) identifier() uint32 {
 	return iw.staticIdentifier
 }
 
@@ -457,7 +559,7 @@ func (ws *workerSet) cheaperSetFromCandidate(candidate downloadWorker) *workerSe
 	pdc := ws.staticPDC
 
 	// build two maps for fast lookups
-	originalIndexMap := make(map[string]int)
+	originalIndexMap := make(map[uint32]int)
 	piecesToIndexMap := make(map[uint64]int)
 	for i, w := range ws.workers {
 		originalIndexMap[w.identifier()] = i
@@ -643,7 +745,7 @@ func (cf coinflips) chanceSum() float64 {
 // creating an individualWorker involves some cpu intensive steps, like gouging.
 // By updating them, rather than recreating them, we avoid doing these
 // computations in every iteration of the download algorithm.
-func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker) {
+func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker) []*individualWorker {
 	ws := pdc.workerState
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
@@ -655,11 +757,23 @@ func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker) {
 	}
 
 	// loop over all workers and update the resolved status and piece indices
-	for _, w := range workers {
+	for i := 0; i < len(workers); i++ {
+		w := workers[i]
+
 		pieceIndices, resolved := resolved[w.staticWorker.staticHostPubKeyStr]
 		if !w.isResolved() && resolved {
 			w.resolved = true
 			w.pieceIndices = pieceIndices
+			if len(w.pieceIndices) == 0 {
+				// if the worker resolved and doesn't have any
+				// pieces, remove it from the workers by
+				// swapping it to the end and shrinking the
+				// slice by 1.
+				workers[i], workers[len(workers)-1] = workers[len(workers)-1], workers[i]
+				workers = workers[:len(workers)-1]
+				i--
+				continue
+			}
 		}
 
 		// check whether the worker is on cooldown
@@ -670,6 +784,7 @@ func (pdc *projectDownloadChunk) updateWorkers(workers []*individualWorker) {
 		// recalculate the distributions
 		w.recalculateDistributionChances()
 	}
+	return workers
 }
 
 // workers returns both resolved and unresolved workers as a single slice of
@@ -679,38 +794,45 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 
-	var workers []*individualWorker
+	workers := make([]*individualWorker, 0, len(ws.resolvedWorkers)+len(ws.unresolvedWorkers))
 
 	// convenience variables
 	ec := pdc.workerSet.staticErasureCoder
 	length := pdc.pieceLength
 	numPieces := ec.NumPieces()
 
+	iws := make([]individualWorker, cap(workers))
+
 	// add all resolved workers that are deemed good for downloading
+	var ldt *skymodules.DistributionTracker
+	var rdt *skymodules.DistributionTracker
+	var jrq *jobReadQueue
+	var hsq *jobHasSectorQueue
+	var iw *individualWorker
+	var cost float64
 	for _, rw := range ws.resolvedWorkers {
 		if !isGoodForDownload(rw.worker, rw.pieceIndices) {
 			continue
 		}
 
-		jrq := rw.worker.staticJobReadQueue
-		rdt := jrq.staticStats.distributionTrackerForLength(length)
-		cost, _ := jrq.callExpectedJobCost(length).Float64()
-		hsq := rw.worker.staticJobHasSectorQueue
-		ldt := hsq.staticDT
+		jrq = rw.worker.staticJobReadQueue
+		rdt = jrq.staticStats.distributionTrackerForLength(length)
+		cost, _ = jrq.callExpectedJobCost(length).Float64()
+		hsq = rw.worker.staticJobHasSectorQueue
+		ldt = hsq.staticDT
 
-		workers = append(workers, &individualWorker{
-			resolved:     true,
-			pieceIndices: rw.pieceIndices,
-			onCoolDown:   jrq.callOnCooldown() || hsq.callOnCooldown(),
-
-			staticAvailabilityRate:   hsq.callAvailabilityRate(numPieces),
-			staticCost:               cost,
-			staticDownloadLaunchTime: time.Now(),
-			staticIdentifier:         rw.worker.staticHostPubKey.ShortString(),
-			staticLookupDistribution: ldt.Distribution(0),
-			staticReadDistribution:   rdt.Distribution(0),
-			staticWorker:             rw.worker,
-		})
+		iw = &iws[len(workers)] //staticPoolIndividualWorkers.Get()
+		iw.resolved = true
+		iw.pieceIndices = rw.pieceIndices
+		iw.onCoolDown = jrq.callOnCooldown() || hsq.callOnCooldown()
+		iw.staticAvailabilityRate = hsq.callAvailabilityRate(numPieces)
+		iw.staticCost = cost
+		iw.staticDownloadLaunchTime = time.Now()
+		iw.staticIdentifier = uint32(len(workers))
+		iw.staticLookupDistribution = ldt.Distribution(0)
+		iw.staticReadDistribution = rdt.Distribution(0)
+		iw.staticWorker = rw.worker
+		workers = append(workers, iw)
 	}
 
 	// add all unresolved workers that are deemed good for downloading
@@ -721,25 +843,25 @@ func (pdc *projectDownloadChunk) workers() []*individualWorker {
 			continue
 		}
 
-		jrq := w.staticJobReadQueue
-		rdt := jrq.staticStats.distributionTrackerForLength(length)
-		hsq := w.staticJobHasSectorQueue
-		ldt := hsq.staticDT
+		jrq = w.staticJobReadQueue
+		rdt = jrq.staticStats.distributionTrackerForLength(length)
+		hsq = w.staticJobHasSectorQueue
+		ldt = hsq.staticDT
 
-		cost, _ := jrq.callExpectedJobCost(length).Float64()
-		workers = append(workers, &individualWorker{
-			resolved:     false,
-			pieceIndices: pdc.staticPieceIndices,
-			onCoolDown:   jrq.callOnCooldown() || hsq.callOnCooldown(),
+		iw = &iws[len(workers)] //staticPoolIndividualWorkers.Get()
+		cost, _ = jrq.callExpectedJobCost(length).Float64()
+		iw.resolved = false
+		iw.pieceIndices = pdc.staticPieceIndices
+		iw.onCoolDown = jrq.callOnCooldown() || hsq.callOnCooldown()
 
-			staticAvailabilityRate:   hsq.callAvailabilityRate(numPieces),
-			staticCost:               cost,
-			staticDownloadLaunchTime: time.Now(),
-			staticIdentifier:         w.staticHostPubKey.ShortString(),
-			staticLookupDistribution: ldt.Distribution(0),
-			staticReadDistribution:   rdt.Distribution(0),
-			staticWorker:             w,
-		})
+		iw.staticAvailabilityRate = hsq.callAvailabilityRate(numPieces)
+		iw.staticCost = cost
+		iw.staticDownloadLaunchTime = time.Now()
+		iw.staticIdentifier = uint32(len(workers))
+		iw.staticLookupDistribution = ldt.Distribution(0)
+		iw.staticReadDistribution = rdt.Distribution(0)
+		iw.staticWorker = w
+		workers = append(workers, iw)
 	}
 
 	return workers
@@ -809,6 +931,7 @@ func (pdc *projectDownloadChunk) launchWorkerSet(ws *workerSet) {
 			}
 		}
 	}
+	return
 }
 
 // threadedLaunchProjectDownload performs the main download loop, every
@@ -830,6 +953,17 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		return
 	}
 
+	// Allocate some memory outside of the loop to reduce the number of
+	// allocations within.
+	ds := &bufferedDownloadState{
+		downloadWorkers:       make([]downloadWorker, 0, len(workers)),
+		mostLikely:            make([]downloadWorker, 0, maxOverdriveWorkers+pdc.workerSet.staticErasureCoder.MinPieces()),
+		lessLikely:            make([]downloadWorker, 0, len(workers)),
+		pieces:                make(map[uint64]struct{}, pdc.workerSet.staticErasureCoder.NumPieces()),
+		added:                 make(map[uint32]struct{}, len(workers)),
+		sortedDownloadWorkers: make([]sortedDownloadWorker, 0, len(workers)),
+	}
+
 	// register for a worker update chan
 	workerUpdateChan := ws.managedRegisterForWorkerUpdate()
 	prevWorkerUpdate := time.Now()
@@ -840,12 +974,12 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 
 		// update the workers
 		if updated || time.Since(prevWorkerUpdate) > maxWaitUpdateWorkers {
-			pdc.updateWorkers(workers)
+			workers = pdc.updateWorkers(workers)
 			prevWorkerUpdate = time.Now()
 		}
 
 		// create a worker set and launch it
-		workerSet, err := pdc.createWorkerSet(workers)
+		workerSet, err := pdc.createWorkerSet(workers, ds)
 		if err != nil {
 			pdc.fail(err)
 			return
@@ -864,7 +998,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 		case jrr := <-pdc.workerResponseChan:
 			pdc.handleJobReadResponse(jrr)
 		case <-pdc.ctx.Done():
-			pdc.fail(errors.New("download timed out"))
+			pdc.fail(ErrProjectTimedOut)
 			return
 		}
 
@@ -884,7 +1018,7 @@ func (pdc *projectDownloadChunk) threadedLaunchProjectDownload() {
 // createWorkerSet tries to create a worker set from the pdc's resolved and
 // unresolved workers, the maximum amount of overdrive workers in the set is
 // defined by the given 'maxOverdriveWorkers' argument.
-func (pdc *projectDownloadChunk) createWorkerSet(workers []*individualWorker) (*workerSet, error) {
+func (pdc *projectDownloadChunk) createWorkerSet(workers []*individualWorker, ds *bufferedDownloadState) (*workerSet, error) {
 	// can't create a workerset without download workers
 	if len(workers) == 0 {
 		return nil, nil
@@ -909,10 +1043,13 @@ func (pdc *projectDownloadChunk) createWorkerSet(workers []*individualWorker) (*
 	// bI-stepsize|bi+stepSize to find the best bucket index
 OUTER:
 	for ; numOverdrive <= maxOverdriveWorkers; numOverdrive++ {
-		for bI = 0; bI < skymodules.DistributionTrackerTotalBuckets; bI += bucketIndexScanStep {
+		for bI = 0; bI <= skymodules.DistributionTrackerTotalBuckets; bI += bucketIndexScanStep {
+			if bI == skymodules.DistributionTrackerTotalBuckets {
+				bI--
+			}
 			// create the worker set
 			bDur := skymodules.DistributionDurationForBucketIndex(bI)
-			mostLikelySet, escape := pdc.createWorkerSetInner(workers, minPieces, numOverdrive, bI, bDur)
+			mostLikelySet, escape := pdc.createWorkerSetInner(workers, minPieces, numOverdrive, bI, bDur, ds)
 			if escape {
 				break OUTER
 			}
@@ -947,7 +1084,7 @@ OUTER:
 	for bI = bIMin; bI < bIMax; bI++ {
 		// create the worker set
 		bDur := skymodules.DistributionDurationForBucketIndex(bI)
-		mostLikelySet, escape := pdc.createWorkerSetInner(workers, minPieces, numOverdrive, bI, bDur)
+		mostLikelySet, escape := pdc.createWorkerSetInner(workers, minPieces, numOverdrive, bI, bDur, ds)
 		if escape {
 			break
 		}
@@ -978,7 +1115,10 @@ OUTER:
 // account the given amount of workers and overdrive workers, but also the given
 // bucket duration. It returns a workerset, and a boolean that indicates whether
 // we want to break out of the (outer) loop that surrounds this function call.
-func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorker, minPieces, numOverdrive, bI int, bDur time.Duration) (*workerSet, bool) {
+func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorker, minPieces, numOverdrive, bI int, bDur time.Duration, ds *bufferedDownloadState) (*workerSet, bool) {
+	// reset the buffered state
+	ds.Reset()
+
 	workersNeeded := minPieces + numOverdrive
 
 	// recalculate the complete chance at given index
@@ -987,10 +1127,10 @@ func (pdc *projectDownloadChunk) createWorkerSetInner(workers []*individualWorke
 	}
 
 	// build the download workers
-	downloadWorkers := pdc.buildDownloadWorkers(workers)
+	downloadWorkers := pdc.buildDownloadWorkers(workers, ds)
 
 	// divide the workers in most likely and less likely
-	mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(downloadWorkers, workersNeeded)
+	mostLikely, lessLikely := pdc.splitMostlikelyLessLikely(downloadWorkers, workersNeeded, ds)
 
 	// if there aren't even likely workers, escape early
 	if len(mostLikely) == 0 {
@@ -1071,13 +1211,9 @@ func addCostPenalty(jobTime time.Duration, jobCost, pricePerMS types.Currency) t
 }
 
 // buildChimeraWorkers turns a list of individual workers into chimera workers.
-func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*individualWorker) []downloadWorker {
+func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*individualWorker, lowestChimeraIdentifier uint32) []downloadWorker {
 	// sort workers by chance they complete
-	sort.Slice(unresolvedWorkers, func(i, j int) bool {
-		eRTI := unresolvedWorkers[i].cachedCompleteChance
-		eRTJ := unresolvedWorkers[j].cachedCompleteChance
-		return eRTI > eRTJ
-	})
+	sort.Sort(sortedIndividualWorkers(unresolvedWorkers))
 
 	// create an array that will hold all chimera workers
 	chimeras := make([]downloadWorker, 0, len(unresolvedWorkers))
@@ -1091,7 +1227,8 @@ func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*indivi
 		currAvail += unresolvedWorkers[curr].staticAvailabilityRate
 		if currAvail >= chimeraAvailabilityRateThreshold {
 			end := curr + 1
-			chimera := NewChimeraWorker(unresolvedWorkers[start:end])
+			chimera := NewChimeraWorker(unresolvedWorkers[start:end], lowestChimeraIdentifier)
+			lowestChimeraIdentifier++
 			chimeras = append(chimeras, chimera)
 
 			// reset loop state
@@ -1104,17 +1241,19 @@ func (pdc *projectDownloadChunk) buildChimeraWorkers(unresolvedWorkers []*indivi
 
 // buildDownloadWorkers is a helper function that takes a list of individual
 // workers and turns them into download workers.
-func (pdc *projectDownloadChunk) buildDownloadWorkers(workers []*individualWorker) []downloadWorker {
+func (pdc *projectDownloadChunk) buildDownloadWorkers(workers []*individualWorker, ds *bufferedDownloadState) []downloadWorker {
 	// create an array of download workers
-	downloadWorkers := make([]downloadWorker, 0, len(workers))
+	downloadWorkers := ds.downloadWorkers
 
 	// split the workers into resolved and unresolved workers, the resolved
 	// workers can be added directly to the array of download workers
 	resolvedWorkers, unresolvedWorkers := splitResolvedUnresolved(workers)
-	downloadWorkers = append(downloadWorkers, resolvedWorkers...)
+	for _, rw := range resolvedWorkers {
+		downloadWorkers = append(downloadWorkers, rw)
+	}
 
 	// the unresolved workers are used to build chimeras with
-	chimeraWorkers := pdc.buildChimeraWorkers(unresolvedWorkers)
+	chimeraWorkers := pdc.buildChimeraWorkers(unresolvedWorkers, uint32(len(workers)))
 	return append(downloadWorkers, chimeraWorkers...)
 }
 
@@ -1124,23 +1263,16 @@ func (pdc *projectDownloadChunk) buildDownloadWorkers(workers []*individualWorke
 // workers but also takes into account an amount of overdrive workers). This
 // method will split the given workers array in a list of most likely workers,
 // and a list of less likely workers.
-func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWorker, workersNeeded int) ([]downloadWorker, []downloadWorker) {
-	// calculate the initial capacity of the less likely array
-	var lessLikelyCap int
-	if len(workers) > workersNeeded {
-		lessLikelyCap = len(workers) - workersNeeded
-	}
-
+func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWorker, workersNeeded int, ds *bufferedDownloadState) ([]downloadWorker, []downloadWorker) {
 	// prepare two slices that hold the workers which are most likely and the
 	// ones that are less likely
-	mostLikely := make([]downloadWorker, 0, workersNeeded)
-	lessLikely := make([]downloadWorker, 0, lessLikelyCap)
+	mostLikely := ds.mostLikely
+	lessLikely := ds.lessLikely
 
 	// define some state variables to ensure we select workers in a way the
 	// pieces are unique and we are not using a worker twice
-	numPieces := pdc.workerSet.staticErasureCoder.NumPieces()
-	pieces := make(map[uint64]struct{}, numPieces)
-	added := make(map[string]struct{}, len(workers))
+	pieces := ds.pieces
+	added := ds.added
 
 	// add worker is a helper function that adds a worker to either the most
 	// likely or less likely worker array and updates our state variables
@@ -1158,14 +1290,18 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 
 	// sort the workers by percentage chance they complete after the current
 	// bucket duration, essentially sorting them from most to least likely
-	sort.Slice(workers, func(i, j int) bool {
-		chanceI := workers[i].completeChanceCached()
-		chanceJ := workers[j].completeChanceCached()
-		return chanceI > chanceJ
-	})
+	sdw := ds.sortedDownloadWorkers
+	for i := range workers {
+		sdw = append(sdw, sortedDownloadWorker{
+			originalIndex:  i,
+			completeChance: workers[i].completeChanceCached(),
+		})
+	}
+	sort.Sort(sdw)
 
 	// loop over the workers and try to add them
-	for _, w := range workers {
+	for _, sw := range sdw {
+		w := workers[sw.originalIndex]
 		// workers that have in-progress downloads are re-added as long as we
 		// don't already have a worker for the piece they are downloading
 		currPiece, launched, completed := pdc.workerProgress(w)
@@ -1198,7 +1334,8 @@ func (pdc *projectDownloadChunk) splitMostlikelyLessLikely(workers []downloadWor
 	// array with the remainder of the workers, still ensuring a worker is only
 	// used once, this time we don't assert the piece indices are unique as this
 	// makes it possible to overdrive on the same piece
-	for _, w := range workers {
+	for _, sw := range sdw {
+		w := workers[sw.originalIndex]
 		_, added := added[w.identifier()]
 		if added {
 			continue
@@ -1233,6 +1370,94 @@ func bucketIndexRange(bI int) (int, int) {
 	return bIMin, bIMax
 }
 
+// checkGougingAndUpdateCache checks if a worker is pcws gouging and updates the
+// cache with the result.
+func (c *pcwsGougingCache) checkGougingAndUpdateCache(hpks string, pt modules.RPCPriceTable, allowance skymodules.Allowance, numWorkers, numRoots int) error {
+	err := checkPCWSGouging(pt, allowance, numWorkers, numRoots)
+
+	results, exist := staticPCWSGougingCache.staticCache[hpks]
+	if !exist {
+		results = make(map[int]pcwsGougingResult)
+		staticPCWSGougingCache.staticCache[hpks] = results
+	}
+	results[numRoots] = pcwsGougingResult{
+		staticAllowance:  allowance,
+		staticNumWorkers: numWorkers,
+		staticPTID:       pt.UID,
+		staticIsGouging:  err,
+	}
+	return err
+}
+
+// IsGouging performs the checkPCWSGouging check but will return a cached result
+// if possible.
+func (c *pcwsGougingCache) IsGouging(hpks string, pt modules.RPCPriceTable, allowance skymodules.Allowance, numWorkers, numRoots int) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	results, exist := staticPCWSGougingCache.staticCache[hpks]
+	if !exist {
+		return c.checkGougingAndUpdateCache(hpks, pt, allowance, numWorkers, numRoots)
+	}
+	result, exist := results[numRoots]
+	if !exist {
+		return c.checkGougingAndUpdateCache(hpks, pt, allowance, numWorkers, numRoots)
+	}
+	if pt.UID != result.staticPTID {
+		return c.checkGougingAndUpdateCache(hpks, pt, allowance, numWorkers, numRoots)
+	}
+	if numWorkers != result.staticNumWorkers {
+		return c.checkGougingAndUpdateCache(hpks, pt, allowance, numWorkers, numRoots)
+	}
+	if !reflect.DeepEqual(allowance, result.staticAllowance) {
+		return c.checkGougingAndUpdateCache(hpks, pt, allowance, numWorkers, numRoots)
+	}
+	return result.staticIsGouging
+}
+
+// IsGouging performs the checkProjetDownloadGouging check but will return a
+// cached result if possible.
+func (c *pdcGougingCache) IsGouging(hpks string, pt modules.RPCPriceTable, allowance skymodules.Allowance) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	cachedResult := c.staticCache[hpks]
+	if cachedResult.staticPTID == pt.UID && reflect.DeepEqual(cachedResult.staticAllowance, allowance) {
+		return cachedResult.staticIsGouging
+	}
+
+	err := checkProjectDownloadGouging(pt, allowance)
+
+	c.staticCache[hpks] = pdcGougingResult{
+		staticAllowance: allowance,
+		staticPTID:      pt.UID,
+		staticIsGouging: err,
+	}
+	return err
+}
+
+// PruneWorker removes the cached results for a given worker.
+func (c *pcwsGougingCache) PruneWorker(hpks string) {
+	c.mu.Lock()
+	delete(c.staticCache, hpks)
+	c.mu.Unlock()
+}
+
+// PruneWorker removes the cached results for a given worker.
+func (c *pdcGougingCache) PruneWorker(hpks string) {
+	c.mu.Lock()
+	delete(c.staticCache, hpks)
+	c.mu.Unlock()
+}
+
+var staticDownloadGougingCache = &pdcGougingCache{
+	staticCache: make(map[string]pdcGougingResult),
+}
+
+var staticPCWSGougingCache = &pcwsGougingCache{
+	staticCache: make(map[string]map[int]pcwsGougingResult),
+}
+
 // isGoodForDownload is a helper function that returns true if and only if the
 // worker meets a certain set of criteria that make it useful for downloads.
 // It's only useful if it is not on any type of cooldown, if it's async ready
@@ -1251,31 +1476,39 @@ func isGoodForDownload(w *worker, pieces []uint64) bool {
 	// workers that are price gouging are not useful
 	pt := w.staticPriceTable().staticPriceTable
 	allowance := w.staticCache().staticRenterAllowance
-	if err := checkProjectDownloadGouging(pt, allowance); err != nil {
-		return false
-	}
 
-	return true
+	// Check cache.
+	err := staticDownloadGougingCache.IsGouging(w.staticHostPubKeyStr, pt, allowance)
+	return err == nil
+}
+
+// partitionWorkers partitions a slice of workers in-place.
+func partitionWorkers(iws []*individualWorker, isLeft func(i int) bool) (left, right []*individualWorker) {
+	i := 0
+	j := len(iws) - 1
+
+	for i <= j {
+		if !isLeft(i) {
+			iws[i], iws[j] = iws[j], iws[i]
+			j--
+			continue
+		} else {
+			i++
+		}
+	}
+	return iws[:i], iws[i:]
 }
 
 // splitResolvedUnresolved is a helper function that splits the given workers
 // into resolved and unresolved worker arrays. Note that if the worker is on a
 // cooldown we exclude it from the returned workers list.
-func splitResolvedUnresolved(workers []*individualWorker) ([]downloadWorker, []*individualWorker) {
-	resolvedWorkers := make([]downloadWorker, 0, len(workers))
-	unresolvedWorkers := make([]*individualWorker, 0, len(workers))
-
-	for _, w := range workers {
-		if w.isOnCooldown() {
-			continue
-		}
-
-		if w.isResolved() {
-			resolvedWorkers = append(resolvedWorkers, w)
-		} else {
-			unresolvedWorkers = append(unresolvedWorkers, w)
-		}
-	}
-
+func splitResolvedUnresolved(workers []*individualWorker) ([]*individualWorker, []*individualWorker) {
+	// filter out the workers on cooldown first.
+	notOnCooldown, _ := partitionWorkers(workers, func(i int) bool {
+		return !workers[i].isOnCooldown()
+	})
+	resolvedWorkers, unresolvedWorkers := partitionWorkers(notOnCooldown, func(i int) bool {
+		return workers[i].isResolved()
+	})
 	return resolvedWorkers, unresolvedWorkers
 }
