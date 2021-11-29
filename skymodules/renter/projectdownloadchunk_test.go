@@ -71,7 +71,7 @@ func testProjectDownloadChunkHandleJobResponse(t *testing.T) {
 
 	// mock state after launching a worker
 	workerKey := uint32(1)
-	pdc.workerProgress[workerKey] = workerProgress{
+	pdc.workerProgressMap[workerKey] = workerProgress{
 		completedPieces: make(completedPieces),
 		launchedPieces:  make(launchedPieces),
 	}
@@ -338,7 +338,7 @@ func testProjectDownloadChunkLaunchWorker(t *testing.T) {
 	}
 
 	// assert worker progress has been initialised
-	progress, exists := pdc.workerProgress[workerIdentifier]
+	progress, exists := pdc.workerProgressMap[workerIdentifier]
 	if !exists {
 		t.Fatal("unexpected")
 	}
@@ -639,7 +639,7 @@ func newTestProjectDownloadChunk(pcws *projectChunkWorkerSet, responseChan chan 
 		piecesInfo: make([]pieceInfo, ec.NumPieces()),
 		piecesData: make([][]byte, ec.NumPieces()),
 
-		workerProgress: make(map[uint32]workerProgress),
+		workerProgressMap: make(map[uint32]workerProgress),
 
 		downloadResponseChan: responseChan,
 		workerSet:            pcws,
