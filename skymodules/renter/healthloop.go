@@ -433,7 +433,7 @@ func (r *Renter) threadedHealthLoop() {
 		// the right amount of sleep time is chosen, as the sleep duration will
 		// depend on which directory is up next.
 		sleepTime := dirFinder.sleepDurationBeforeNextDir()
-		r.staticLog.Println("HEALTH LOOP VERBOSE: sleeping before next directory", sleepTime)
+		r.staticLog.Debugln("HEALTH LOOP VERBOSE: sleeping before next directory", sleepTime)
 		select {
 		case <-time.After(sleepTime):
 		case <-r.tg.StopChan():
