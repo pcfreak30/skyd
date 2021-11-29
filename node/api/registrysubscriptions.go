@@ -120,6 +120,7 @@ func (queue *notificationQueue) Pop() *queuedNotification {
 // skynetRegistrySubscriptionHandler handles websocket subscriptions to the registry.
 func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Upgrade connection to use websocket.
+	upgrader.CheckOrigin = func(r *http.Request) bool { return true } // TODO: this is not safe
 	c, err := upgrader.Upgrade(w, req, nil)
 	if err != nil {
 		handleSkynetError(w, "failed to upgrade connection to websocket connection", err)
