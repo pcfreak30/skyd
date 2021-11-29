@@ -39,8 +39,9 @@ const (
 	logFile = skymodules.RenterDir + ".log"
 
 	// distributionsLogFile contains periodic dumps of certain distribution
-	// trackers of interest
-	distributionsLogFile = "distributions.log"
+	// trackers of interest, every line is this file is a JSON object and thus
+	// the file can be processed line by line
+	distributionsLogFile = "distributions.jsonl"
 
 	repairLogFile = "repair.log"
 	// PersistFilename is the filename to be used when persisting renter
@@ -171,12 +172,12 @@ func (r *Renter) threadedDistributionTrackerLogger() {
 
 		// loop over all distribution trackers log a JSON dump per distribution
 		for _, dt := range dts {
-			json, err := dt.DistributionTracker.JsonDump(dt.Name)
+			snapshot := dt.DistributionTracker.Snapshot(dt.Name)
+			err := r.staticDistributionTrackerLog.WriteJSON(snapshot)
 			if err != nil {
-				r.staticLog.Printf("failed to get json dump for distribution tracker '%v', error: %v", dt.Name, err)
+				r.staticLog.Printf("failed to log distribution tracker snapshot as json, distribution tracker '%v', error: %v", dt.Name, err)
 				continue
 			}
-			r.staticDistributionTrackerLog.Println(json)
 		}
 
 		// Sleep
@@ -263,8 +264,8 @@ func (r *Renter) managedLoadSettings() error {
 	return r.staticSetBandwidthLimits(r.persist.MaxDownloadSpeed, r.persist.MaxUploadSpeed)
 }
 
-// managedInitPersist handles all of the persistence initialization, such as creating
-// the persistence directory and starting the logger.
+// managedInitPersist handles all of the persistence initialization, such as
+// creating the persistence directory and starting the logger.
 func (r *Renter) managedInitPersist() error {
 	// Create the persist and filesystem directories if they do not yet exist.
 	//

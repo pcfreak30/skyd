@@ -1,7 +1,6 @@
 package skymodules
 
 import (
-	"encoding/json"
 	"math"
 	"testing"
 	"time"
@@ -27,10 +26,10 @@ func TestDistributionTracker(t *testing.T) {
 	t.Run("ExpectedDuration", testDistributionExpectedDuration)
 	t.Run("FullTestLong", testDistributionTrackerFullTestLong)
 	t.Run("Helpers", testDistributionHelpers)
-	t.Run("JsonDump", testDistributionTrackerJsonDump)
 	t.Run("DistributionMergeWith", testDistributionMergeWith)
 	t.Run("DistributionTrackerMergeWith", testDistributionTrackerMergeWith)
 	t.Run("Shift", testDistributionShift)
+	t.Run("Snapshot", testDistributionTrackerSnapshot)
 }
 
 // testDistributionBucketing will check that the distribution is placing timings
@@ -1089,9 +1088,9 @@ func testDistributionHelpers(t *testing.T) {
 	}
 }
 
-// testDistributionTrackerJsonDump is a small unit test that verifies the
-// functionality of the JsonDump method on the distribution tracker
-func testDistributionTrackerJsonDump(t *testing.T) {
+// testDistributionTrackerSnapshot is a small unit test that verifies the
+// functionality of the Snapshot method on the distribution tracker
+func testDistributionTrackerSnapshot(t *testing.T) {
 	t.Parallel()
 
 	// create a standard DT
@@ -1102,32 +1101,22 @@ func testDistributionTrackerJsonDump(t *testing.T) {
 		dt.AddDataPoint(DistributionDurationForBucketIndex(i))
 	}
 
-	jsonStr, err := dt.JsonDump("some name")
-	if err != nil {
-		t.Fatal("failed to get json dump", err)
+	snapshot := dt.Snapshot("some name")
+	if snapshot.Name != "some name" {
+		t.Fatal("unexpected name", snapshot.Name)
 	}
-
-	dtDump := DistributionTrackerSnapshot{}
-	err = json.Unmarshal([]byte(jsonStr), &dtDump)
-	if err != nil {
-		t.Fatal("failed to unmarshal json", err)
+	if snapshot.Timestamp == 0 {
+		t.Fatal("unexpected timestamp", snapshot.Timestamp)
 	}
-
-	if dtDump.Name != "some name" {
-		t.Fatal("unexpected name", dtDump.Name)
-	}
-	if dtDump.Timestamp == 0 {
-		t.Fatal("unexpected timestamp", dtDump.Timestamp)
-	}
-	if len(dtDump.Distributions) != len(dt.distributions) {
-		t.Fatal("unexpected number of distributions", len(dtDump.Distributions))
+	if len(snapshot.Distributions) != len(dt.distributions) {
+		t.Fatal("unexpected number of distributions", len(snapshot.Distributions))
 	}
 	for i, d := range dt.distributions {
-		if dtDump.Distributions[i].HalfLife != d.staticHalfLife {
-			t.Fatal("unexpected halflife", dtDump.Distributions[i].HalfLife)
+		if snapshot.Distributions[i].HalfLife != d.staticHalfLife {
+			t.Fatal("unexpected halflife", snapshot.Distributions[i].HalfLife)
 		}
-		if dtDump.Distributions[i].Timings != d.timings {
-			t.Fatal("unexpected timings", dtDump.Distributions[i].Timings)
+		if snapshot.Distributions[i].Timings != d.timings {
+			t.Fatal("unexpected timings", snapshot.Distributions[i].Timings)
 		}
 	}
 }

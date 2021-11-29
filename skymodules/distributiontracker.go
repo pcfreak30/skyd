@@ -21,7 +21,6 @@ package skymodules
 // that wouldn't be possible with generic values.
 
 import (
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"sync"
@@ -153,33 +152,6 @@ type (
 	Chances [DistributionTrackerTotalBuckets]float64
 )
 
-// JsonDump takes a name, identifying this distribution tracker, and returns the
-// json string representation of a DistributionTrackerJsonDump for the
-// DistributionTracker.
-func (dt *DistributionTracker) JsonDump(name string) (string, error) {
-	dt.mu.Lock()
-	defer dt.mu.Unlock()
-
-	distributions := make([]DistributionSnapshot, 0, len(dt.distributions))
-	for _, d := range dt.distributions {
-		distributions = append(distributions, DistributionSnapshot{
-			HalfLife: d.HalfLife(),
-			Timings:  d.timings,
-		})
-	}
-
-	jsonBytes, err := json.Marshal(DistributionTrackerSnapshot{
-		Name:          name,
-		Timestamp:     uint64(time.Now().Unix()),
-		Distributions: distributions,
-	})
-	if err != nil {
-		return "", err
-	}
-
-	return string(jsonBytes), nil
-}
-
 // Persist returns a PersistedDistributionTracker for the DistributionTracker by
 // copying all of its buckets.
 func (dt *DistributionTracker) Persist() PersistedDistributionTracker {
@@ -192,6 +164,27 @@ func (dt *DistributionTracker) Persist() PersistedDistributionTracker {
 		})
 	}
 	return PersistedDistributionTracker{
+		Distributions: distributions,
+	}
+}
+
+// Snapshot takes a name, identifying this distribution tracker, and returns a
+// snapshot of the distribution tracker.
+func (dt *DistributionTracker) Snapshot(name string) DistributionTrackerSnapshot {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	distributions := make([]DistributionSnapshot, 0, len(dt.distributions))
+	for _, d := range dt.distributions {
+		distributions = append(distributions, DistributionSnapshot{
+			HalfLife: d.HalfLife(),
+			Timings:  d.timings,
+		})
+	}
+
+	return DistributionTrackerSnapshot{
+		Name:          name,
+		Timestamp:     uint64(time.Now().Unix()),
 		Distributions: distributions,
 	}
 }

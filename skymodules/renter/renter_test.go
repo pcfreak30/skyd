@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"regexp"
 	"testing"
 	"time"
 
@@ -622,15 +621,11 @@ func TestRenterLogsDistributionTrackers(t *testing.T) {
 		scanner := bufio.NewScanner(file)
 		for scanner.Scan() {
 			// extract the json
-			lineStr := scanner.Text()
-			match := regexp.MustCompile(`{.*}`).FindStringSubmatch(lineStr)
-			if len(match) == 0 {
-				continue
-			}
+			line := scanner.Text()
 
 			// unmarshal it
 			var dts skymodules.DistributionTrackerSnapshot
-			err = json.Unmarshal([]byte(match[0]), &dts)
+			err = json.Unmarshal([]byte(line), &dts)
 			if err != nil {
 				return err
 			}

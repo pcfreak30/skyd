@@ -308,7 +308,7 @@ type Renter struct {
 	persistDir                   string
 	mu                           *siasync.RWMutex
 	staticDeps                   skymodules.SkydDependencies
-	staticDistributionTrackerLog *persist.Logger
+	staticDistributionTrackerLog *JSONLogger
 	staticLog                    *persist.Logger
 	staticMux                    *siamux.SiaMux
 	staticRepairLog              *persist.Logger
@@ -1161,7 +1161,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	if err := r.tg.AfterStop(r.staticRepairLog.Close); err != nil {
 		return nil, err
 	}
-	r.staticDistributionTrackerLog, err = persist.NewFileLogger(filepath.Join(r.persistDir, distributionsLogFile))
+	r.staticDistributionTrackerLog, err = newJSONLogger(filepath.Join(r.persistDir, distributionsLogFile))
 	if err != nil {
 		return nil, err
 	}
