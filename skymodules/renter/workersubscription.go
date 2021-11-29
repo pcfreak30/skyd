@@ -690,7 +690,7 @@ func (w *worker) managedPriceTableForSubscription(duration time.Duration) *modul
 		// Check for shutdown.
 		select {
 		case _ = <-w.staticTG.StopChan():
-			w.staticRenter.staticLog.Print("managedPriceTableForSubscription: abort due to shutdown")
+			w.staticRenter.staticLog.Debugln("managedPriceTableForSubscription: abort due to shutdown")
 			return nil // shutdown
 		default:
 		}
@@ -724,7 +724,7 @@ func (w *worker) managedPriceTableForSubscription(duration time.Duration) *modul
 		// a price table that is at least valid for another 5 minutes. The
 		// SubscriptionPeriod also happens to be 5 minutes but we renew 2.5
 		// minutes before it ends.
-		w.staticRenter.staticLog.Printf("managedPriceTableForSubscription: pt not ready yet for worker %v", w.staticHostPubKeyStr)
+		w.staticRenter.staticLog.Debugf("managedPriceTableForSubscription: pt not ready yet for worker %v", w.staticHostPubKeyStr)
 
 		// Trigger an update by setting the update time to now and calling
 		// 'staticWake'.
@@ -745,7 +745,7 @@ func (w *worker) managedPriceTableForSubscription(duration time.Duration) *modul
 		// Wait a bit before checking again.
 		select {
 		case _ = <-w.staticTG.StopChan():
-			w.staticRenter.staticLog.Print("managedPriceTableForSubscription: abort due to shutdown")
+			w.staticRenter.staticLog.Debugln("managedPriceTableForSubscription: abort due to shutdown")
 			return nil // shutdown
 		case <-time.After(priceTableRetryInterval):
 		}
