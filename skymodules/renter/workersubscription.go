@@ -701,12 +701,16 @@ func (w *worker) managedPriceTableForSubscription(duration time.Duration) *modul
 		// Check for gouging.
 		allowance := w.staticRenter.staticHostContractor.Allowance()
 		if err := checkSubscriptionGouging(pt.staticPriceTable, allowance); err != nil {
-			w.staticRenter.staticLog.Printf("WARN: worker %v failed subscription gouging: %v", w.staticHostPubKeyStr, err)
+			w.staticRenter.staticLog.Debugf("WARN: worker %v failed subscription gouging: %v", w.staticHostPubKeyStr, err)
+			sleepTime := time.Until(pt.staticUpdateTime)
+			if sleepTime < priceTableRetryInterval {
+				sleepTime = priceTableRetryInterval
+			}
 			// Wait a bit before checking again.
 			select {
-			case _ = <-w.staticRenter.tg.StopChan():
+			case <-w.staticRenter.tg.StopChan():
 				return nil // shutdown
-			case <-time.After(time.Until(pt.staticUpdateTime)):
+			case <-time.After(sleepTime):
 				continue // check next price table
 			}
 		}
