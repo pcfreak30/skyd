@@ -213,11 +213,11 @@ func TestSchedulePriceTableUpdate(t *testing.T) {
 	jhs := new(jobHasSector)
 	jhs.staticSectors = []crypto.Hash{{1, 2, 3}}
 	ulBandwidth, dlBandwidth := jhs.callExpectedBandwidth()
-	bandwidthCost := modules.MDMBandwidthCost(pt.staticPriceTable, ulBandwidth, dlBandwidth)
+	bandwidthCost, bandwidthRefund := mdmBandwidthCost(pt.staticPriceTable, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
 	// execute it
-	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost)
+	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost, bandwidthRefund)
 	if !modules.IsPriceTableInvalidErr(err) {
 		t.Fatal("unexpected")
 	}
@@ -242,7 +242,7 @@ func TestSchedulePriceTableUpdate(t *testing.T) {
 	deps.Disable()
 
 	// execute the same program
-	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost)
+	_, _, err = w.managedExecuteProgram(p, data, types.FileContractID{}, categoryDownload, cost, bandwidthRefund)
 	if err != nil {
 		t.Fatal("unexpected")
 	}

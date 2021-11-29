@@ -418,7 +418,7 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 		// regular download first.
 		logicalChunkData, err = r.managedDownloadLogicalChunkDataFromSiaFile(chunk, downloadLength)
 		if err != nil {
-			r.staticLog.Println("failed to download chunk data from siafile", err)
+			r.staticLog.Debugln("failed to download chunk data from siafile", err)
 		}
 		if r.staticDeps.Disrupt("FailLegacyRepairDownload") {
 			err = errors.New("FailLegacyRepairDownload")

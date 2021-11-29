@@ -92,7 +92,7 @@ type (
 	// 'Clone' method.
 	Distribution struct {
 		// Decay is applied to the distribution.
-		*GenericDecay
+		GenericDecay
 
 		// Buckets that represent the distribution. The first
 		// bucketsPerStepChange buckets start at 4ms and are 4ms spaced apart.
@@ -101,6 +101,23 @@ type (
 		// The final bucket is just over an hour, anything over will be put into
 		// that bucket as well.
 		timings [numBuckets]float64
+
+		// expectedDurationNumerator tracks the current numerator for
+		// computing the expected duration of the Distribution.
+		//
+		// The full equation is:
+		//
+		//                    timing[0] * bucketDuration[0] + ... + timing[n] * bucketDuration[n]   expectedDurationNumerator
+		// ExpectedDuration = ___________________________________________________________________ = _________________________
+		//                                        timing[0] + ... + timing[n]                                 total
+		//
+		//
+		// This allows us to optimize the otherwise expensive
+		// computation from O(n) -> O(1).
+		expectedDurationNumerator float64
+
+		// total tracks the current total of all timings.
+		total float64
 	}
 
 	// DistributionTracker will track the performance distribution of a series
@@ -137,6 +154,31 @@ type (
 	Chances [DistributionTrackerTotalBuckets]float64
 )
 
+// setTiming updates a timing for the distribution while also making sure the
+// total and numerator remain up-to-date.
+func (d *Distribution) setTiming(i int, t float64) {
+	// Subtract the timing from the total and numerator first.
+	d.total -= d.timings[i]
+	d.expectedDurationNumerator -= d.timings[i] * float64(DistributionDurationForBucketIndex(i))
+
+	// Set the new timing.
+	d.timings[i] = t
+
+	// Add the timing and numerator back using the new timing.
+	d.total += d.timings[i]
+	d.expectedDurationNumerator += d.timings[i] * float64(DistributionDurationForBucketIndex(i))
+
+	// Due to the fact that floats are not perfectly accurate, the total and
+	// numerator could be slightly negative instead of 0. e.g. -0.0000001.
+	// If that happens, we round to 0.
+	if d.total < 0 {
+		d.total = 0
+	}
+	if d.expectedDurationNumerator < 0 {
+		d.expectedDurationNumerator = 0
+	}
+}
+
 // Persist returns a PersistedDistributionTracker for the DistributionTracker by
 // copying all of its buckets.
 func (dt *DistributionTracker) Persist() PersistedDistributionTracker {
@@ -144,9 +186,11 @@ func (dt *DistributionTracker) Persist() PersistedDistributionTracker {
 	defer dt.mu.Unlock()
 	distributions := make([]PersistedDistribution, 0, len(dt.distributions))
 	for _, d := range dt.distributions {
-		distributions = append(distributions, PersistedDistribution{
-			Timings: d.timings,
-		})
+		pd := PersistedDistribution{}
+		for i := range pd.Timings {
+			pd.Timings[i] = float64(d.timings[i])
+		}
+		distributions = append(distributions, pd)
 	}
 	return PersistedDistributionTracker{
 		Distributions: distributions,
@@ -160,28 +204,38 @@ func DistributionBucketIndexForDuration(dur time.Duration) int {
 	return index
 }
 
+// staticDistributionDurationsForBucketIndices is a slice used for translating
+// durations to bucket indices. As an optimization we only compute it on
+// startup.
+var staticDistributionDurationsForBucketIndices = func() []time.Duration {
+	durations := make([]time.Duration, DistributionTrackerTotalBuckets)
+LOOP:
+	for index := 0; index < DistributionTrackerTotalBuckets; index++ {
+		stepSize := distributionTrackerInitialStepSize
+		if index <= distributionTrackerInitialBuckets {
+			durations[index] = stepSize * time.Duration(index)
+			continue LOOP
+		}
+		prevMax := stepSize * distributionTrackerInitialBuckets
+		for i := distributionTrackerInitialBuckets; i <= DistributionTrackerTotalBuckets; i += distributionTrackerBucketsPerStepChange {
+			stepSize *= distributionTrackerStepChangeMultiple
+			if index < i+distributionTrackerBucketsPerStepChange {
+				durations[index] = stepSize*time.Duration(index-i) + prevMax
+				continue LOOP
+			}
+			prevMax *= distributionTrackerStepChangeMultiple
+		}
+	}
+	return durations
+}()
+
 // DistributionDurationForBucketIndex converts the index of a timing bucket into
 // a timing.
 func DistributionDurationForBucketIndex(index int) time.Duration {
 	if index < 0 || index > DistributionTrackerTotalBuckets-1 {
 		build.Critical("distribution duration index out of bounds:", index)
 	}
-
-	stepSize := distributionTrackerInitialStepSize
-	if index <= distributionTrackerInitialBuckets {
-		return stepSize * time.Duration(index)
-	}
-	prevMax := stepSize * distributionTrackerInitialBuckets
-	for i := distributionTrackerInitialBuckets; i <= DistributionTrackerTotalBuckets; i += distributionTrackerBucketsPerStepChange {
-		stepSize *= distributionTrackerStepChangeMultiple
-		if index < i+distributionTrackerBucketsPerStepChange {
-			return stepSize*time.Duration(index-i) + prevMax
-		}
-		prevMax *= distributionTrackerStepChangeMultiple
-	}
-
-	// The final bucket value.
-	return prevMax
+	return staticDistributionDurationsForBucketIndices[index]
 }
 
 // indexForDuration converts the given duration to a bucket index. Alongside the
@@ -193,7 +247,7 @@ func DistributionDurationForBucketIndex(index int) time.Duration {
 // bucket at index 0, and the given duration included 25% of that bucket.
 func indexForDuration(duration time.Duration) (int, float64) {
 	if duration < 0 {
-		build.Critical("negative duration")
+		build.Critical(fmt.Sprintf("negative duration %v", duration))
 		return -1, 0
 	}
 
@@ -224,8 +278,12 @@ func indexForDuration(duration time.Duration) (int, float64) {
 // addDecay will decay the data in the distribution.
 func (d *Distribution) addDecay() {
 	d.Decay(func(decay float64) {
+		d.total = 0
+		d.expectedDurationNumerator = 0
 		for i := 0; i < len(d.timings); i++ {
-			d.timings[i] *= decay
+			d.timings[i] = d.timings[i] * decay
+			d.total += d.timings[i]
+			d.expectedDurationNumerator += d.timings[i] * float64(DistributionDurationForBucketIndex(i))
 		}
 	})
 }
@@ -244,7 +302,7 @@ func (d *Distribution) AddDataPoint(dur time.Duration) {
 	index, _ := indexForDuration(dur)
 
 	// Add the datapoint
-	d.timings[index]++
+	d.setTiming(index, float64(d.timings[index]+1))
 }
 
 // ChanceAfter returns the chance we find a data point after the given duration.
@@ -265,14 +323,14 @@ func (d *Distribution) ChanceAfter(dur time.Duration) float64 {
 	count := float64(0)
 	index, fraction := indexForDuration(dur)
 	for i := 0; i < index; i++ {
-		count += d.timings[i]
+		count += float64(d.timings[i])
 	}
 
 	// Add the fraction of the data points in the bucket at index.
-	count += fraction * d.timings[index]
+	count += fraction * float64(d.timings[index])
 
 	// Calculate the chance
-	chance := count / total
+	chance := count / float64(total)
 	return chance
 }
 
@@ -285,29 +343,33 @@ func (d *Distribution) ChancesAfter() Chances {
 	// Get the total data points.
 	total := d.DataPoints()
 	if total == 0 {
+		// If there are not datapoints, we set the last index to 1 to
+		// make sure the chances still add up to 100%.
 		return chances
 	}
 
 	// Loop over every bucket once and calculate the chance at that bucket
 	count := float64(0)
 	for i := 0; i < DistributionTrackerTotalBuckets; i++ {
-		chances[i] = count / total
-		count += d.timings[i]
+		chances[i] = count / float64(total)
+		count += float64(d.timings[i])
 	}
 
 	return chances
 }
 
 // Clone returns a deep copy of the distribution.
-func (d *Distribution) Clone() *Distribution {
-	c := &Distribution{GenericDecay: d.GenericDecay.Clone()}
-	for i, b := range d.timings {
-		c.timings[i] = b
+func (d *Distribution) Clone() Distribution {
+	c := Distribution{
+		GenericDecay:              d.GenericDecay.Clone(),
+		total:                     d.total,
+		expectedDurationNumerator: d.expectedDurationNumerator,
+		timings:                   d.timings,
 	}
 
 	// sanity check using reflect package, only executed in testing
 	if build.Release == "testing" {
-		if !reflect.DeepEqual(d, c) {
+		if !reflect.DeepEqual(*d, c) {
 			build.Critical("cloned distribution not equal")
 		}
 	}
@@ -322,12 +384,7 @@ func (d *Distribution) DataPoints() float64 {
 	// datapoint was added, decay should be applied so that the rates are
 	// correct.
 	d.addDecay()
-
-	var total float64
-	for i := 0; i < len(d.timings); i++ {
-		total += d.timings[i]
-	}
-	return total
+	return float64(d.total)
 }
 
 // DurationForIndex converts the index of a bucket into a duration.
@@ -337,7 +394,7 @@ func (d *Distribution) DurationForIndex(index int) time.Duration {
 
 // ExpectedDuration returns the estimated duration based upon the current
 // distribution.
-func (d *Distribution) ExpectedDuration() time.Duration {
+func (d Distribution) ExpectedDuration() time.Duration {
 	// Get the total data points.
 	total := d.DataPoints()
 	if total == 0 {
@@ -347,12 +404,7 @@ func (d *Distribution) ExpectedDuration() time.Duration {
 
 	// Across all buckets, multiply the pct chance times the bucket's duration.
 	// The sum is the expected duration.
-	var expected float64
-	for i := 0; i < len(d.timings); i++ {
-		pct := d.timings[i] / total
-		expected += pct * float64(DistributionDurationForBucketIndex(i))
-	}
-	return time.Duration(expected)
+	return time.Duration(float64(d.expectedDurationNumerator) / total)
 }
 
 // MergeWith merges the given distribution according to a certain weight.
@@ -371,8 +423,12 @@ func (d *Distribution) MergeWith(other *Distribution, weight float64) {
 
 	// loop all other timings and append them taking into account the given
 	// weight
+	d.total = 0
+	d.expectedDurationNumerator = 0
 	for bi, b := range other.timings {
 		d.timings[bi] += b * weight
+		d.total += d.timings[bi]
+		d.expectedDurationNumerator += d.timings[bi] * float64(DistributionDurationForBucketIndex(bi))
 	}
 }
 
@@ -393,10 +449,7 @@ func (d *Distribution) PStat(p float64) time.Duration {
 	}
 
 	// Get the total.
-	var total float64
-	for i := 0; i < len(d.timings); i++ {
-		total += d.timings[i]
-	}
+	total := d.DataPoints()
 	if total == 0 {
 		// No data collected, just return the worst case.
 		return DistributionDurationForBucketIndex(DistributionTrackerTotalBuckets - 1)
@@ -405,8 +458,8 @@ func (d *Distribution) PStat(p float64) time.Duration {
 	// Count up until we reach p.
 	var run float64
 	var index int
-	for run/total < p && index < DistributionTrackerTotalBuckets-1 {
-		run += d.timings[index]
+	for run/float64(total) < p && index < DistributionTrackerTotalBuckets-1 {
+		run += float64(d.timings[index])
 		index++
 	}
 
@@ -414,12 +467,9 @@ func (d *Distribution) PStat(p float64) time.Duration {
 	return DistributionDurationForBucketIndex(index)
 }
 
-// Shift shifts the distribution by a certain duration. The shift operation will
-// essentially ignore all data points up until the duration with which we're
-// shifting. If that duration does not perfectly align with the distribution's
-// buckets, we smear the fractionalised value over the buckets preceding the
-// bucket that corresponds with the given duration.
-func (d *Distribution) Shift(dur time.Duration) {
+// shift returns the information required for a shifting of the distribution
+// without actually shifting.
+func (d *Distribution) shift(dur time.Duration) (index int, keep float64, smear float64) {
 	// Check for negative inputs.
 	if dur < 0 {
 		build.Critical("cannot call Shift with negative duration")
@@ -428,23 +478,67 @@ func (d *Distribution) Shift(dur time.Duration) {
 
 	// Get the value at index
 	index, fraction := indexForDuration(dur)
-	value := d.timings[index]
+	value := float64(d.timings[index])
 
 	// Calculate the fraction we want to keep and update the bucket
-	keep := (1 - fraction) * value
-	d.timings[index] = keep
-
-	// If we're at index 0 we are done because there's no buckets preceding it.
-	if index == 0 {
-		return
-	}
+	keep = (1 - fraction) * value
 
 	// Otherwise we calculate the remainder and smear it over all buckets
 	// up until we reach index.
 	remainder := fraction * value
-	smear := remainder / float64(index)
+	smear = remainder / float64(index)
+	return
+}
+
+// ExpectedDurationWithShift is similar to ExpectedDuration but it assumes a
+// shift before computing the expected value. The shift is not applied though.
+// That makes it faster than cloning the distribution, shifting it and then
+// calling ExpectedDuration on the copy.
+func (d *Distribution) ExpectedDurationWithShift(dur time.Duration) time.Duration {
+	index, keep, smear := d.shift(dur)
+
+	var total float64
+	var durationNumerator float64
+
+	// Everything before index would be equal to smear.
+	for i := 0; i < index && smear > 0; i++ {
+		total += smear
+		durationNumerator += (smear * float64(DistributionDurationForBucketIndex(i)))
+	}
+
+	// At index, the value is 'keep'.
+	total += keep
+	durationNumerator += (keep * float64(DistributionDurationForBucketIndex(index)))
+
+	// After index we got the same values as before.
+	for i := index + 1; i < len(d.timings); i++ {
+		total += float64(d.timings[i])
+		durationNumerator += float64(d.timings[i]) * float64(DistributionDurationForBucketIndex(i))
+	}
+	// No data collected, just return the worst case.
+	if total == 0 {
+		return DistributionDurationForBucketIndex(DistributionTrackerTotalBuckets - 1)
+	}
+	return time.Duration(durationNumerator / total)
+}
+
+// Shift shifts the distribution by a certain duration. The shift operation will
+// essentially ignore all data points up until the duration with which we're
+// shifting. If that duration does not perfectly align with the distribution's
+// buckets, we smear the fractionalised value over the buckets preceding the
+// bucket that corresponds with the given duration.
+func (d *Distribution) Shift(dur time.Duration) {
+	index, keep, smear := d.shift(dur)
+
+	// Set the timing at 'index' to keep.
+	d.setTiming(index, keep)
+	// If we're at index 0 we are done because there's no buckets preceding it.
+	if index == 0 {
+		return
+	}
+	// Otherwise set the smear.
 	for i := 0; i < index; i++ {
-		d.timings[i] = smear
+		d.setTiming(i, smear)
 	}
 }
 
@@ -474,7 +568,7 @@ func (dt *DistributionTracker) Load(tracker PersistedDistributionTracker) error 
 	}
 	for i := range tracker.Distributions {
 		for j := range dt.distributions[i].timings {
-			dt.distributions[i].timings[j] = tracker.Distributions[i].Timings[j]
+			dt.distributions[i].setTiming(j, tracker.Distributions[i].Timings[j])
 		}
 	}
 	return nil
@@ -509,20 +603,20 @@ func (dt *DistributionTracker) DataPoints() []float64 {
 
 	var totals []float64
 	for _, d := range dt.distributions {
-		totals = append(totals, d.DataPoints())
+		totals = append(totals, float64(d.DataPoints()))
 	}
 	return totals
 }
 
 // Distribution returns the distribution at the requested index. If the given
 // index is not within bounds it returns nil.
-func (dt *DistributionTracker) Distribution(index int) *Distribution {
+func (dt *DistributionTracker) Distribution(index int) Distribution {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
 	if index < 0 || index >= len(dt.distributions) {
 		build.Critical("unexpected distribution index")
-		return nil
+		index = 0
 	}
 	return dt.distributions[index].Clone()
 }

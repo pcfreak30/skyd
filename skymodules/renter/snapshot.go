@@ -788,7 +788,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 			return nil
 		}()
 		if err != nil {
-			r.staticLog.Println("Failed to synchronize snapshots on host:", err)
+			r.staticLog.Debugln("Failed to synchronize snapshots on host:", err)
 			// sleep for a bit to prevent retrying the same host repeatedly in a
 			// tight loop
 			select {

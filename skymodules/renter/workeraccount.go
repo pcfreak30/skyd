@@ -224,22 +224,25 @@ func (a *account) ProvidePayment(stream io.ReadWriter, amount types.Currency, bl
 	msg := newWithdrawalMessage(a.staticID, amount, blockHeight)
 	sig := crypto.SignHash(crypto.HashObject(msg), a.staticSecretKey)
 
+	buffer := staticPoolProvidePaymentBuffers.Get()
+	defer staticPoolProvidePaymentBuffers.Put(buffer)
+
 	// send PaymentRequest
-	err := modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByEphemeralAccount})
+	err := modules.RPCWrite(buffer, modules.PaymentRequest{Type: modules.PayByEphemeralAccount})
 	if err != nil {
 		return err
 	}
 
 	// send PayByEphemeralAccountRequest
-	err = modules.RPCWrite(stream, modules.PayByEphemeralAccountRequest{
+	err = modules.RPCWrite(buffer, modules.PayByEphemeralAccountRequest{
 		Message:   msg,
 		Signature: sig,
 	})
 	if err != nil {
 		return err
 	}
-
-	return nil
+	_, err = buffer.WriteTo(stream)
+	return err
 }
 
 // availableBalance returns the amount of money that is available to
@@ -643,6 +646,9 @@ func (w *worker) managedRefillAccount() {
 	if w.staticBalanceTarget.Cmp(balance) > 0 {
 		amount = w.staticBalanceTarget.Sub(balance)
 	}
+	if amount.IsZero() {
+		return // nothing to do
+	}
 	pt := w.staticPriceTable().staticPriceTable
 
 	// If the target amount is larger than the remaining money, adjust the
@@ -784,7 +790,8 @@ func (w *worker) managedRefillAccount() {
 			// to the order of events in the worker loop, seeing as we just
 			// synced our account balance with the host if that was necessary
 			if build.Release == "testing" {
-				build.Critical("worker account refill failed with a max balance - are the host max balance settings lower than the threshold balance?", err)
+				msg := fmt.Sprintf("amount: %v, estimatedBalance: %v, target: %v", amount, balance, w.staticBalanceTarget)
+				build.Critical("worker account refill failed with a max balance - ", msg, " - are the host max balance settings lower than the threshold balance?", err)
 			}
 			w.staticRenter.staticLog.Println("worker account refill failed", err)
 		}

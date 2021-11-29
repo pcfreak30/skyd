@@ -54,7 +54,7 @@ func (w *worker) externTryFixRevisionMismatch() {
 	}
 
 	if err != nil {
-		w.staticRenter.staticLog.Printf("could not fix revision number mismatch, could not retrieve a session with host %v, err: %v\n", w.staticHostPubKeyStr, err)
+		w.staticRenter.staticLog.Debugf("could not fix revision number mismatch, could not retrieve a session with host %v, err: %v\n", w.staticHostPubKeyStr, err)
 		return
 	}
 

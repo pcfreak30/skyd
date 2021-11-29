@@ -1,7 +1,7 @@
 package contractor
 
 import (
-	"gitlab.com/NebulousLabs/errors"
+	"errors"
 
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/types"
