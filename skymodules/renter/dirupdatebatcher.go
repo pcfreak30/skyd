@@ -111,7 +111,7 @@ func (batch *dirUpdateBatch) managedExecute() {
 	dirs := 0
 	defer func() {
 		str := fmt.Sprintf("dirupdatebatch completed %v dirs in %v", dirs, time.Since(start))
-		renter.staticLog.Println(str, "dirupdatebatcher")
+		renter.staticLog.Debugln(str, "dirupdatebatcher")
 	}()
 
 	// iterate through the batchSet backwards.

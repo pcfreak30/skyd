@@ -40,6 +40,7 @@ type (
 
 		stopped map[*TestNode]struct{}
 
+		mu  sync.Mutex
 		dir string
 	}
 )
@@ -599,6 +600,8 @@ func (tg *TestGroup) AddNodeN(np node.NodeParams, n int) ([]*TestNode, error) {
 
 // AddNodes creates a node and adds it to the group.
 func (tg *TestGroup) AddNodes(nodeParams ...node.NodeParams) ([]*TestNode, error) {
+	tg.mu.Lock()
+	defer tg.mu.Unlock()
 	// Add nodes.
 	newNodes, newHosts, newRenters, err := tg.addNodes(nodeParams...)
 	if err != nil {
@@ -612,6 +615,8 @@ func (tg *TestGroup) AddNodes(nodeParams ...node.NodeParams) ([]*TestNode, error
 // process, but we can speed it up a lot by closing each node in a separate
 // goroutine.
 func (tg *TestGroup) Close() error {
+	tg.mu.Lock()
+	defer tg.mu.Unlock()
 	wg := new(sync.WaitGroup)
 	errs := make([]error, len(tg.nodes))
 	i := 0
@@ -637,24 +642,32 @@ func (tg *TestGroup) Close() error {
 // Hosts returns all the hosts of the group. Note that the ordering of nodes in
 // the slice returned is not the same across multiple calls this function.
 func (tg *TestGroup) Hosts() []*TestNode {
+	tg.mu.Lock()
+	defer tg.mu.Unlock()
 	return mapToSlice(tg.hosts)
 }
 
 // Miners returns all the miners of the group.  Note that the ordering of nodes in
 // the slice returned is not the same across multiple calls this function.
 func (tg *TestGroup) Miners() []*TestNode {
+	tg.mu.Lock()
+	defer tg.mu.Unlock()
 	return mapToSlice(tg.miners)
 }
 
 // Nodes returns all the nodes of the group. Note that the ordering of nodes in
 // the slice returned is not the same across multiple calls this function.
 func (tg *TestGroup) Nodes() []*TestNode {
+	tg.mu.Lock()
+	defer tg.mu.Unlock()
 	return mapToSlice(tg.nodes)
 }
 
 // Portals returns all the portals of the group. Note that the ordering of nodes
 // in the slice returned is not the same across multiple calls this function.
 func (tg *TestGroup) Portals() []*TestNode {
+	tg.mu.Lock()
+	defer tg.mu.Unlock()
 	return mapToSlice(tg.portals)
 }
 
@@ -668,21 +681,27 @@ func (tg *TestGroup) RemoveNodeN(tns ...*TestNode) error {
 	var wg sync.WaitGroup
 	errs := make([]error, len(tns))
 	for i, tn := range tns {
+		// Actual shutdown happens in another goroutine.
+		wg.Add(1)
+		go func(i int, tn *TestNode) {
+			errs[i] = tg.StopNode(tn)
+			wg.Done()
+		}(i, tn)
+	}
+	wg.Wait()
+
+	// Remove the nodes from the maps.
+	tg.mu.Lock()
+	defer tg.mu.Unlock()
+	for _, tn := range tns {
 		// Remote node from all data structures.
 		delete(tg.nodes, tn)
 		delete(tg.hosts, tn)
 		delete(tg.portals, tn)
 		delete(tg.renters, tn)
 		delete(tg.miners, tn)
-
-		// Actual shutdown happens in another goroutine.
-		wg.Add(1)
-		go func(i int, tn *TestNode) {
-			errs[i] = tn.StopNode()
-			wg.Done()
-		}(i, tn)
+		delete(tg.stopped, tn)
 	}
-	wg.Wait()
 
 	// Close node.
 	return errors.Compose(errs...)
@@ -691,6 +710,8 @@ func (tg *TestGroup) RemoveNodeN(tns ...*TestNode) error {
 // Renters returns all the renters of the group. Note that the ordering of nodes in
 // the slice returned is not the same across multiple calls this function.
 func (tg *TestGroup) Renters() []*TestNode {
+	tg.mu.Lock()
+	defer tg.mu.Unlock()
 	return mapToSlice(tg.renters)
 }
 
@@ -705,6 +726,8 @@ func (tg *TestGroup) RestartNode(tn *TestNode) error {
 
 // SetRenterAllowance finished the setup for the renter test node
 func (tg *TestGroup) SetRenterAllowance(renter *TestNode, allowance skymodules.Allowance) error {
+	tg.mu.Lock()
+	defer tg.mu.Unlock()
 	if _, ok := tg.renters[renter]; !ok {
 		return errors.New("Can not set allowance for renter not in test group")
 	}
@@ -730,6 +753,8 @@ func (tg *TestGroup) SetRenterAllowance(renter *TestNode, allowance skymodules.A
 
 // StartNode starts a node from the group that has previously been stopped.
 func (tg *TestGroup) StartNode(tn *TestNode) error {
+	tg.mu.Lock()
+	defer tg.mu.Unlock()
 	if _, exists := tg.nodes[tn]; !exists {
 		return errors.New("cannot start node that's not part of the group")
 	}
@@ -738,14 +763,14 @@ func (tg *TestGroup) StartNode(tn *TestNode) error {
 		return err
 	}
 	delete(tg.stopped, tn)
-	if err := fullyConnectNodes(tg.Nodes()); err != nil {
+	if err := fullyConnectNodes(mapToSlice(tg.nodes)); err != nil {
 		return err
 	}
 	// Mine a block before the synchronization check to guarantee that the
 	// restarted node will receive a consensus change with `cc.Synced ==
 	// true`. Otherwise some functionality might be disabled on the node.
 	// e.g. a host won't accept EA withdrawals.
-	if err := tg.Miners()[0].MineBlock(); err != nil {
+	if err := mapToSlice(tg.miners)[0].MineBlock(); err != nil {
 		return err
 	}
 	return synchronizationCheck(tg.nodes)
@@ -754,6 +779,8 @@ func (tg *TestGroup) StartNode(tn *TestNode) error {
 // StartNodeCleanDeps starts a node from the group that has previously been
 // stopped without its previously assigned dependencies.
 func (tg *TestGroup) StartNodeCleanDeps(tn *TestNode) error {
+	tg.mu.Lock()
+	defer tg.mu.Unlock()
 	if _, exists := tg.nodes[tn]; !exists {
 		return errors.New("cannot start node that's not part of the group")
 	}
@@ -761,7 +788,7 @@ func (tg *TestGroup) StartNodeCleanDeps(tn *TestNode) error {
 	if err != nil {
 		return err
 	}
-	if err := fullyConnectNodes(tg.Nodes()); err != nil {
+	if err := fullyConnectNodes(mapToSlice(tg.nodes)); err != nil {
 		return err
 	}
 	return synchronizationCheck(tg.nodes)
@@ -769,6 +796,8 @@ func (tg *TestGroup) StartNodeCleanDeps(tn *TestNode) error {
 
 // StopNode stops a node of a group.
 func (tg *TestGroup) StopNode(tn *TestNode) error {
+	tg.mu.Lock()
+	defer tg.mu.Unlock()
 	if _, exists := tg.nodes[tn]; !exists {
 		return errors.New("cannot stop node that's not part of the group")
 	}
@@ -784,6 +813,12 @@ func (tg *TestGroup) StopNode(tn *TestNode) error {
 		return nil
 	}
 
+	// If there are no miners left we are also done since we can't trigger a
+	// contract maintenance.
+	if len(tg.miners) == 0 {
+		return nil
+	}
+
 	// Get the host's key.
 	hpk, err := tn.HostPublicKey()
 	if err != nil {
@@ -791,9 +826,15 @@ func (tg *TestGroup) StopNode(tn *TestNode) error {
 	}
 
 	// Wait until no renter got any workers left for the stopped node.
+	numRetries := 0
 	return build.Retry(600, 100*time.Millisecond, func() error {
-		// If the node wasn't a host we are done.
-		for _, node := range tg.Renters() {
+		if numRetries%10 == 0 {
+			if err := mapToSlice(tg.miners)[0].MineBlock(); err != nil {
+				return err
+			}
+		}
+		numRetries++
+		for node := range tg.renters {
 			rwg, err := node.RenterWorkersGet()
 			if err != nil {
 				return err
@@ -810,6 +851,8 @@ func (tg *TestGroup) StopNode(tn *TestNode) error {
 
 // Sync makes sure that the test group's nodes are synchronized
 func (tg *TestGroup) Sync() error {
+	tg.mu.Lock()
+	defer tg.mu.Unlock()
 	return synchronizationCheck(tg.nodes)
 }
 

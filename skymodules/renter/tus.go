@@ -479,6 +479,9 @@ func (u *ongoingTUSUpload) managedClose() error {
 // threadedPruneTUSUploads periodically cleans up the uploads launched by the
 // TUS endpoints.
 func (r *Renter) threadedPruneTUSUploads() {
+	if r.staticDeps.Disrupt("TUSNoPrune") {
+		return // disable pruning
+	}
 	ticker := time.NewTicker(PruneTUSUploadInterval)
 	for {
 		select {

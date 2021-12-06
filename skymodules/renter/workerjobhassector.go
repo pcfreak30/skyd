@@ -74,7 +74,7 @@ type (
 
 		staticSpan opentracing.Span
 
-		*jobGeneric
+		jobGeneric
 	}
 
 	// jobHasSectorBatch is a batch of has sector lookups.
@@ -129,7 +129,7 @@ type (
 	// sector was available, every bucket holds these stats for sectors that
 	// were uploaded with a similar redundancy scheme
 	availabilityBucket struct {
-		*skymodules.GenericDecay
+		skymodules.GenericDecay
 
 		// Keeps track of the total amount of sectors that were available and
 		// the total amount of lookups that were performed. Note that a decaying
@@ -208,13 +208,13 @@ func (am *availabilityMetrics) updateMetrics(numPieces, numSectors, numAvailable
 // callNext overwrites the generic call next and batches a certain number of has
 // sector jobs together.
 func (jq *jobHasSectorQueue) callNext() workerJob {
-	var jobs []*jobHasSector
-
+	jobs := make([]*jobHasSector, 0, hasSectorBatchSize)
+	var next workerJob
 	for {
 		if len(jobs) >= hasSectorBatchSize {
 			break
 		}
-		next := jq.jobGenericQueue.callNext()
+		next = jq.jobGenericQueue.callNext()
 		if next == nil {
 			break
 		}
@@ -239,7 +239,8 @@ func (w *worker) newJobHasSector(ctx context.Context, responseChan chan *jobHasS
 // HasSector job with a post execution hook that is executed after the response
 // is available but before sending it over the channel.
 func (w *worker) newJobHasSectorWithPostExecutionHook(ctx context.Context, responseChan chan *jobHasSectorResponse, hook func(*jobHasSectorResponse), numPieces int, roots ...crypto.Hash) *jobHasSector {
-	span, _ := opentracing.StartSpanFromContext(ctx, "HasSectorJob")
+	t := opentracing.NoopTracer{} // NOTE: disabled for performance
+	span, _ := opentracing.StartSpanFromContextWithTracer(ctx, t, "HasSectorJob")
 	return &jobHasSector{
 		staticNumPieces:         numPieces,
 		staticSectors:           roots,
@@ -254,11 +255,10 @@ func (w *worker) newJobHasSectorWithPostExecutionHook(ctx context.Context, respo
 func (j *jobHasSector) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
 	errLaunch := w.staticTG.Launch(func() {
-		response := &jobHasSectorResponse{
-			staticErr: err,
+		response := staticPoolJobHasSectorResponse.Get()
+		response.staticErr = err
+		response.staticWorker = w
 
-			staticWorker: w,
-		}
 		j.managedCallPostExecutionHook(response)
 		select {
 		case j.staticResponseChan <- response:
@@ -331,11 +331,11 @@ func (j jobHasSectorBatch) callExecute() {
 		hsj.staticSpan.Finish()
 
 		// Create the response.
-		response := &jobHasSectorResponse{
-			staticErr:     err,
-			staticJobTime: jobTime,
-			staticWorker:  w,
-		}
+		response := staticPoolJobHasSectorResponse.Get()
+		response.staticErr = err
+		response.staticJobTime = jobTime
+		response.staticWorker = w
+
 		// If it was successful, attach the result.
 		if err == nil {
 			response.staticAvailbleIndices = availables[i]
@@ -412,13 +412,13 @@ func (j *jobHasSectorBatch) managedHasSector() (results [][]uint64, err error) {
 
 	// take into account bandwidth costs
 	ulBandwidth, dlBandwidth := j.callExpectedBandwidth()
-	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	bandwidthCost, bandwidthRefund := mdmBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
 	// Execute the program and parse the responses.
 	hasSectors := make([]bool, 0, len(program))
 	var responses []programResponse
-	responses, _, err = w.managedExecuteProgram(program, programData, types.FileContractID{}, categoryDownload, cost)
+	responses, _, err = w.managedExecuteProgram(program, programData, types.FileContractID{}, categoryDownload, cost, bandwidthRefund)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to execute program for has sector job")
 	}

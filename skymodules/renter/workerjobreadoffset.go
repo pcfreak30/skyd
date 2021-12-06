@@ -39,15 +39,15 @@ func (j *jobReadOffset) managedReadOffset() ([]byte, error) {
 	pb.AddRevisionInstruction()
 	pb.AddReadOffsetInstruction(j.staticLength, j.staticOffset, true)
 	program, programData := pb.Program()
-	cost, _, _ := pb.Cost(true)
+	costProgram, _, _ := pb.Cost(true)
 
 	// take into account bandwidth costs
 	ulBandwidth, dlBandwidth := j.callExpectedBandwidth()
-	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
-	cost = cost.Add(bandwidthCost)
+	bandwidthCost, bandwidthRefund := mdmBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	cost := costProgram.Add(bandwidthCost)
 
 	// Read responses.
-	responses, err := j.jobRead.managedRead(w, program, programData, cost)
+	responses, err := j.jobRead.managedRead(w, program, programData, cost, bandwidthRefund)
 	if err != nil {
 		return nil, errors.AddContext(err, "jobReadOffset: failed to execute managedRead")
 	}

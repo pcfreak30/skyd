@@ -47,7 +47,7 @@ type (
 		// tracing. By allowing it to be nil we avoid the extra overhead.
 		staticSpan opentracing.Span
 
-		*jobGeneric
+		jobGeneric
 	}
 
 	// jobReadQueue is a list of Read queries that have been assigned to the
@@ -106,7 +106,8 @@ type (
 		// but might also be used for snapshots for example
 		staticSpendingCategory spendingCategory
 
-		staticWorker *worker
+		staticWorker           *worker
+		staticWorkerIdentifier uint32
 	}
 )
 
@@ -218,9 +219,9 @@ func (j *jobRead) callExpectedBandwidth() (ul, dl uint64) {
 
 // managedRead returns the sector data for the given read program and the merkle
 // proof.
-func (j *jobRead) managedRead(w *worker, program modules.Program, programData []byte, cost types.Currency) ([]programResponse, error) {
+func (j *jobRead) managedRead(w *worker, program modules.Program, programData []byte, cost types.Currency, bandwidthRefund func(ul, dl uint64) types.Currency) ([]programResponse, error) {
 	// execute it
-	responses, _, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, j.staticJobReadMetadata().staticSpendingCategory, cost)
+	responses, _, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, j.staticJobReadMetadata().staticSpendingCategory, cost, bandwidthRefund)
 	if err != nil {
 		return []programResponse{}, err
 	}

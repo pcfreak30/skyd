@@ -70,8 +70,8 @@ func testProjectDownloadChunkHandleJobResponse(t *testing.T) {
 	worker := new(worker)
 
 	// mock state after launching a worker
-	workerKey := worker.staticHostPubKey.ShortString()
-	pdc.workerProgress[workerKey] = workerProgress{
+	workerKey := uint32(1)
+	pdc.workerProgressMap[workerKey] = workerProgress{
 		completedPieces: make(completedPieces),
 		launchedPieces:  make(launchedPieces),
 	}
@@ -89,6 +89,7 @@ func testProjectDownloadChunkHandleJobResponse(t *testing.T) {
 			staticPieceRootIndex:      1,
 			staticSectorRoot:          crypto.MerkleRoot(pieces[1]),
 			staticWorker:              worker,
+			staticWorkerIdentifier:    workerKey,
 		},
 	}
 	pdc.handleJobReadResponse(success)
@@ -123,9 +124,10 @@ func testProjectDownloadChunkHandleJobResponse(t *testing.T) {
 		staticErr:     errors.New("read failed"),
 		staticJobTime: time.Duration(1),
 		staticMetadata: jobReadMetadata{
-			staticPieceRootIndex: 2,
-			staticSectorRoot:     empty,
-			staticWorker:         worker,
+			staticPieceRootIndex:   2,
+			staticSectorRoot:       empty,
+			staticWorker:           worker,
+			staticWorkerIdentifier: workerKey,
 		},
 	})
 
@@ -314,7 +316,7 @@ func testProjectDownloadChunkLaunchWorker(t *testing.T) {
 
 	// mock a worker, ensure the readqueue returns a non zero time estimate
 	worker := mockWorker(100 * time.Millisecond)
-	workerIdentifier := worker.staticHostPubKey.ShortString()
+	workerIdentifier := uint32(1)
 	workerHostPubKeyStr := worker.staticHostPubKeyStr
 
 	// create pdc
@@ -336,7 +338,7 @@ func testProjectDownloadChunkLaunchWorker(t *testing.T) {
 	}
 
 	// assert worker progress has been initialised
-	progress, exists := pdc.workerProgress[workerIdentifier]
+	progress, exists := pdc.workerProgressMap[workerIdentifier]
 	if !exists {
 		t.Fatal("unexpected")
 	}
@@ -400,7 +402,7 @@ func testProjectDownloadChunkWorkers(t *testing.T) {
 	}
 
 	// mock a resolved worker
-	ws.resolvedWorkers = append(ws.resolvedWorkers, &pcwsWorkerResponse{
+	ws.resolvedWorkers = append(ws.resolvedWorkers, pcwsWorkerResponse{
 		worker:       w3,
 		pieceIndices: []uint64{0},
 	})
@@ -637,7 +639,7 @@ func newTestProjectDownloadChunk(pcws *projectChunkWorkerSet, responseChan chan 
 		piecesInfo: make([]pieceInfo, ec.NumPieces()),
 		piecesData: make([][]byte, ec.NumPieces()),
 
-		workerProgress: make(map[string]workerProgress),
+		workerProgressMap: make(map[uint32]workerProgress),
 
 		downloadResponseChan: responseChan,
 		workerSet:            pcws,

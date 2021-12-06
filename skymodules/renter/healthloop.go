@@ -165,7 +165,7 @@ func (dirFinder *healthLoopDirFinder) reset() {
 	filesProcessed := dirFinder.windowFilesProcessed
 	timeTaken := time.Since(dirFinder.windowStartTime) - dirFinder.windowSleepTime
 	dirFinder.updateEstimatedSystemScanDuration()
-	dirFinder.renter.staticLog.Printf("HEALTH LOOP: scanned %v files in %v, resulting in a new estimated full scan duration of %v", filesProcessed, timeTaken, dirFinder.estimatedSystemScanDuration)
+	dirFinder.renter.staticLog.Debugf("HEALTH LOOP: scanned %v files in %v, resulting in a new estimated full scan duration of %v", filesProcessed, timeTaken, dirFinder.estimatedSystemScanDuration)
 }
 
 // loadNextDir will find the next directory with the worst health and load
@@ -280,7 +280,7 @@ func (dirFinder *healthLoopDirFinder) sleepDurationBeforeNextDir() time.Duration
 	// filesystem is longer than the target health interval, do not try to
 	// sleep.
 	if urgent || manualCheckActive || slowScanTime {
-		dirFinder.renter.staticLog.Println("HEALTH LOOP VERBOSE: skipping a sleep", urgent, manualCheckActive, slowScanTime)
+		dirFinder.renter.staticLog.Debugln("HEALTH LOOP VERBOSE: skipping a sleep", urgent, manualCheckActive, slowScanTime)
 		return 0
 	}
 
@@ -433,7 +433,7 @@ func (r *Renter) threadedHealthLoop() {
 		// the right amount of sleep time is chosen, as the sleep duration will
 		// depend on which directory is up next.
 		sleepTime := dirFinder.sleepDurationBeforeNextDir()
-		r.staticLog.Println("HEALTH LOOP VERBOSE: sleeping before next directory", sleepTime)
+		r.staticLog.Debugln("HEALTH LOOP VERBOSE: sleeping before next directory", sleepTime)
 		select {
 		case <-time.After(sleepTime):
 		case <-r.tg.StopChan():

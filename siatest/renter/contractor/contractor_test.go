@@ -194,7 +194,7 @@ func testContractorIncompleteMaintenanceAlert(t *testing.T, tg *siatest.TestGrou
 // TestRemoveRecoverableContracts makes sure that recoverable contracts which
 // have been reverted by a reorg are removed from the map.
 func TestRemoveRecoverableContracts(t *testing.T) {
-	if testing.Short() {
+	if testing.Short() || !build.VLONG {
 		t.SkipNow()
 	}
 	t.Parallel()
@@ -241,19 +241,14 @@ func TestRemoveRecoverableContracts(t *testing.T) {
 	// Bring up new hosts for the new renter to form contracts with, otherwise no
 	// contracts will form because it will not form contracts with hosts it see to
 	// have recoverable contracts with
-	_, err = tg.AddNodeN(node.HostTemplate, 2)
-	if err != nil {
-		t.Fatal("Failed to create a new host", err)
-	}
-
-	// Start a new renter with the same seed but disable contract recovery.
+	// Also start a new renter with the same seed but disable contract recovery.
 	newRenterDir := filepath.Join(testDir, "renter")
 	renterParams := node.Renter(newRenterDir)
 	renterParams.Allowance = siatest.DefaultAllowance
 	renterParams.Allowance.Hosts = 2
 	renterParams.PrimarySeed = seed
 	renterParams.ContractorDeps = &dependencies.DependencyDisableContractRecovery{}
-	nodes, err := tg.AddNodes(renterParams)
+	nodes, err := tg.AddNodes(renterParams, node.HostTemplate, node.HostTemplate)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,8 +257,8 @@ func TestRemoveRecoverableContracts(t *testing.T) {
 	// The new renter should have the right number of recoverable contracts.
 	miner := tg.Miners()[0]
 	numRetries := 0
-	err = build.Retry(60, time.Second, func() error {
-		if numRetries%10 == 0 {
+	err = build.Retry(10, time.Second, func() error {
+		if numRetries%2 == 0 {
 			if err := miner.MineBlock(); err != nil {
 				return err
 			}

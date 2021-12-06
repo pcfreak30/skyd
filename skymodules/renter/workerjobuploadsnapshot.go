@@ -32,7 +32,7 @@ type (
 
 		staticResponseChan chan *jobUploadSnapshotResponse
 
-		*jobGeneric
+		jobGeneric
 	}
 
 	// jobUploadSnapshotQueue contains the set of snapshots that need to be

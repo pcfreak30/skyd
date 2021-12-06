@@ -14,7 +14,6 @@ package renter
 // not run out, it maintains a balance target by refilling it when necessary.
 
 import (
-	"bytes"
 	"container/list"
 	"sync"
 	"time"
@@ -150,8 +149,6 @@ type (
 		// registry entries.
 		staticRegistryCache *registryRevisionCache
 
-		staticBufferPool sync.Pool
-
 		// staticSetInitialEstimates is an object that ensures the initial queue
 		// estimates of the HS and RJ queues are only set once.
 		staticSetInitialEstimates sync.Once
@@ -174,20 +171,6 @@ func (w *worker) callReadQueue(lowPrio bool) *jobReadQueue {
 		return w.staticJobLowPrioReadQueue
 	}
 	return w.staticJobReadQueue
-}
-
-// downloadChunks is a queue of download chunks.
-type downloadChunks struct {
-	*list.List
-}
-
-// Pop removes the first element of the queue.
-func (queue *downloadChunks) Pop() *unfinishedDownloadChunk {
-	mr := queue.Front()
-	if mr == nil {
-		return nil
-	}
-	return queue.List.Remove(mr).(*unfinishedDownloadChunk)
 }
 
 // uploadChunks is a queue of upload chunks.
@@ -216,17 +199,6 @@ func (w *worker) managedKill() {
 	err := w.staticTG.Stop()
 	if err != nil && !errors.Contains(err, threadgroup.ErrStopped) {
 		w.staticRenter.staticLog.Printf("Worker %v: kill failed: %v", w.staticHostPubKeyStr, err)
-	}
-}
-
-// staticKilled is a convenience function to determine if a worker has been
-// killed or not.
-func (w *worker) staticKilled() bool {
-	select {
-	case <-w.staticTG.StopChan():
-		return true
-	default:
-		return false
 	}
 }
 
@@ -285,15 +257,6 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		staticLoopState: &workerLoopState{
 			atomicReadDataLimit:  uint64(initialConcurrentAsyncReadData),
 			atomicWriteDataLimit: uint64(initialConcurrentAsyncWriteData),
-		},
-
-		// Initialize a buffer pool handing out 4kb buffers. This to prevent
-		// reallocating a buffer of unknown size, but instead reusing the same
-		// buffer over and over again.
-		staticBufferPool: sync.Pool{
-			New: func() interface{} {
-				return bytes.NewBuffer(make([]byte, 1<<12))
-			},
 		},
 
 		unprocessedChunks: newUploadChunks(),

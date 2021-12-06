@@ -419,6 +419,9 @@ func compareDirectoryInfoAndMetadataCustom(di skymodules.DirectoryInfo, siaDir *
 	if md.AggregateNumFiles != di.AggregateNumFiles {
 		return fmt.Errorf("AggregateNumFiles not equal, %v and %v", md.AggregateNumFiles, di.AggregateNumFiles)
 	}
+	if md.AggregateNumLostFiles != di.AggregateNumLostFiles {
+		return fmt.Errorf("AggregateNumLostFiles not equal, %v and %v", md.AggregateNumLostFiles, di.AggregateNumLostFiles)
+	}
 	if md.AggregateNumStuckChunks != di.AggregateNumStuckChunks {
 		return fmt.Errorf("AggregateNumStuckChunks not equal, %v and %v", md.AggregateNumStuckChunks, di.AggregateNumStuckChunks)
 	}
@@ -462,6 +465,9 @@ func compareDirectoryInfoAndMetadataCustom(di skymodules.DirectoryInfo, siaDir *
 	}
 	if md.NumFiles != di.NumFiles {
 		return fmt.Errorf("NumFiles not equal, %v and %v", md.NumFiles, di.NumFiles)
+	}
+	if md.NumLostFiles != di.NumLostFiles {
+		return fmt.Errorf("NumLostFiles not equal, %v and %v", md.NumLostFiles, di.NumLostFiles)
 	}
 	if md.NumStuckChunks != di.NumStuckChunks {
 		return fmt.Errorf("NumStuckChunks not equal, %v and %v", md.NumStuckChunks, di.NumStuckChunks)
