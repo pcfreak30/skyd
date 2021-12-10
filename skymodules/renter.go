@@ -1554,7 +1554,7 @@ type Renter interface {
 
 	// UpdateSkynetBlocklist updates the list of hashed merkleroots that are
 	// blocked
-	UpdateSkynetBlocklist(ctx context.Context, additions, removals []string, isHash bool) error
+	UpdateSkynetBlocklist(ctx context.Context, additions, removals []string, isHash bool, probationaryPeriod int64) error
 
 	// UpdateSkynetPortals updates the list of known skynet portals.
 	UpdateSkynetPortals(additions []SkynetPortal, removals []modules.NetAddress) error

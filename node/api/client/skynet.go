@@ -697,10 +697,18 @@ func (c *Client) SkynetBlocklistGet() (blocklist api.SkynetBlocklistGET, err err
 
 // SkynetBlocklistHashPost requests the /skynet/blocklist Post endpoint
 func (c *Client) SkynetBlocklistHashPost(additions, removals []string, isHash bool) (err error) {
+	err = c.SkynetBlocklistHashCustomPost(additions, removals, isHash, 0)
+	return
+}
+
+// SkynetBlocklistHashPost requests the /skynet/blocklist Post endpoint with a
+// probationaryPeriod defined
+func (c *Client) SkynetBlocklistHashCustomPost(additions, removals []string, isHash bool, probationaryPeriod int64) (err error) {
 	sbp := api.SkynetBlocklistPOST{
-		Add:    additions,
-		Remove: removals,
-		IsHash: isHash,
+		Add:                additions,
+		Remove:             removals,
+		IsHash:             isHash,
+		ProbationaryPeriod: probationaryPeriod,
 	}
 	data, err := json.Marshal(sbp)
 	if err != nil {

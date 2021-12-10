@@ -21,6 +21,7 @@ import (
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/filesystem"
+	"gitlab.com/SkynetLabs/skyd/skymodules/renter/skynetblocklist"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter/skynetportals"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -102,6 +103,10 @@ type (
 		// IsHash indicates if the supplied Add and Remove strings are already
 		// hashes of Skylinks
 		IsHash bool `json:"ishash"`
+
+		// Period is the probationary period during which the skylink
+		// with be blocked but the data won't be deleted.
+		ProbationaryPeriod int64 `json:"probationaryperiod"`
 	}
 
 	// SkynetPortalsGET contains the information queried for the /skynet/portals
@@ -342,6 +347,17 @@ func (api *API) skynetBlocklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 		return
 	}
 
+	// Check period to set default if necessary
+	if params.ProbationaryPeriod == 0 {
+		params.ProbationaryPeriod = skynetblocklist.DefaultProbationaryPeriod
+		// } else {
+		// 	fmt.Println("probationary period not 0")
+		// 	// Convert to seconds
+		// 	fmt.Println("before:", params.ProbationaryPeriod)
+		// 	params.ProbationaryPeriod = int64(time.Second * time.Duration(params.ProbationaryPeriod))
+		// 	fmt.Println("after:", params.ProbationaryPeriod)
+	}
+
 	// Parse the timeout.
 	timeout, err := parseTimeout(queryForm)
 	if err != nil {
@@ -354,7 +370,7 @@ func (api *API) skynetBlocklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 	defer cancel()
 
 	// Update the Skynet Blocklist
-	err = api.renter.UpdateSkynetBlocklist(ctx, params.Add, params.Remove, params.IsHash)
+	err = api.renter.UpdateSkynetBlocklist(ctx, params.Add, params.Remove, params.IsHash, params.ProbationaryPeriod)
 	if err != nil {
 		WriteError(w, Error{"unable to update the skynet blocklist: " + err.Error()}, http.StatusInternalServerError)
 		return

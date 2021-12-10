@@ -311,18 +311,8 @@ func (r *Renter) managedCreateSkylinkRawMD(ctx context.Context, sup skymodules.S
 	}
 
 	// Check if the new skylink is blocked
-	blocked, err := r.managedIsBlocked(ctx, skylink)
+	err = r.managedHandleIsBlockedCheck(ctx, skylink, sup.SiaPath)
 	if err != nil {
-		return skymodules.Skylink{}, err
-	}
-	if blocked {
-		err = ErrSkylinkBlocked
-		// Skylink is blocked, return error and try and delete file
-		deleteErr := r.DeleteFile(sup.SiaPath)
-		// Don't bother returning an error if the file doesn't exist
-		if !errors.Contains(deleteErr, filesystem.ErrNotExist) {
-			err = errors.Compose(err, deleteErr)
-		}
 		return skymodules.Skylink{}, err
 	}
 
@@ -342,14 +332,7 @@ func (r *Renter) managedCreateSkylinkRawMD(ctx context.Context, sup skymodules.S
 // causing any race conditions.
 func (r *Renter) managedCreateSkylinkFromFileNode(ctx context.Context, sup skymodules.SkyfileUploadParameters, skyfileMetadata skymodules.SkyfileMetadata, fileNode *filesystem.FileNode, fanoutBytes []byte) (skymodules.Skylink, error) {
 	// Check if any of the skylinks associated with the siafile are blocked
-	if r.managedIsFileNodeBlocked(fileNode) {
-		err := ErrSkylinkBlocked
-		// Skylink is blocked, return error and try and delete file
-		deleteErr := r.DeleteFile(sup.SiaPath)
-		// Don't bother returning an error if the file doesn't exist
-		if !errors.Contains(deleteErr, filesystem.ErrNotExist) {
-			err = errors.Compose(err, deleteErr)
-		}
+	if err := r.managedHandleFileNodeBlockedCheck(fileNode, sup.SiaPath); err != nil {
 		return skymodules.Skylink{}, err
 	}
 
@@ -419,7 +402,7 @@ func (r *Renter) Blocklist() ([]crypto.Hash, error) {
 }
 
 // UpdateSkynetBlocklist updates the list of hashed merkleroots that are blocked
-func (r *Renter) UpdateSkynetBlocklist(ctx context.Context, additions, removals []string, isHash bool) error {
+func (r *Renter) UpdateSkynetBlocklist(ctx context.Context, additions, removals []string, isHash bool, probationaryPeriod int64) error {
 	err := r.tg.Add()
 	if err != nil {
 		return err
@@ -437,7 +420,7 @@ func (r *Renter) UpdateSkynetBlocklist(ctx context.Context, additions, removals 
 	}
 
 	// Update the blocklist
-	return r.staticSkynetBlocklist.UpdateBlocklist(addHashes, removeHashes)
+	return r.staticSkynetBlocklist.UpdateBlocklist(addHashes, removeHashes, probationaryPeriod)
 }
 
 // Portals returns the list of known skynet portals.
@@ -729,7 +712,7 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 	defer r.tg.Done()
 
 	// Check if the merkleroot is blocked
-	if r.staticSkynetBlocklist.IsHashBlocked(crypto.HashObject(root)) {
+	if blocked, _ := r.staticSkynetBlocklist.IsHashBlocked(crypto.HashObject(root)); blocked {
 		return nil, ErrSkylinkBlocked
 	}
 
@@ -905,12 +888,9 @@ func (r *Renter) PinSkylink(skylink skymodules.Skylink, lup skymodules.SkyfileUp
 	}
 
 	// Check if link is blocked
-	blocked, err := r.managedIsBlocked(ctx, skylink)
+	err = r.managedHandleIsBlockedCheck(ctx, skylink, lup.SiaPath)
 	if err != nil {
 		return err
-	}
-	if blocked {
-		return ErrSkylinkBlocked
 	}
 
 	// Create a span.
@@ -1077,12 +1057,9 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 	}
 
 	// Check if the new skylink is blocked
-	blocked, err := r.managedIsBlocked(r.tg.StopCtx(), skylink)
+	err = r.managedHandleIsBlockedCheck(r.tg.StopCtx(), skylink, skymodules.SiaPath{})
 	if err != nil {
 		return skymodules.Skylink{}, err
-	}
-	if blocked {
-		return skymodules.Skylink{}, ErrSkylinkBlocked
 	}
 
 	// Check if the base sector is encrypted, and attempt to decrypt it.
@@ -1204,14 +1181,7 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (skymodules.Skylink, error) {
 	}()
 
 	// Check if any of the skylinks associated with the siafile are blocked
-	if r.managedIsFileNodeBlocked(fileNode) {
-		err = ErrSkylinkBlocked
-		// Skylink is blocked, return error and try and delete file
-		deleteErr := r.DeleteFile(sup.SiaPath)
-		// Don't bother returning an error if the file doesn't exist
-		if !errors.Contains(deleteErr, filesystem.ErrNotExist) {
-			err = errors.Compose(err, deleteErr)
-		}
+	if err := r.managedHandleFileNodeBlockedCheck(fileNode, fup.SiaPath); err != nil {
 		return skymodules.Skylink{}, err
 	}
 
@@ -1291,22 +1261,18 @@ func (r *Renter) UploadSkyfile(ctx context.Context, sup skymodules.SkyfileUpload
 	r.staticDirUpdateBatcher.callQueueDirUpdate(dirPath)
 
 	// Check if skylink is blocked
-	blocked, err := r.managedIsBlocked(ctx, skylink)
-	if err != nil {
+	err = r.managedHandleIsBlockedCheck(ctx, skylink, sup.SiaPath)
+	if err != nil && !sup.DryRun {
 		return skymodules.Skylink{}, err
-	}
-	if blocked && !sup.DryRun {
-		// No need to try and delete the file, the above defer func will handle
-		// the deletion
-		return skymodules.Skylink{}, ErrSkylinkBlocked
 	}
 
 	return skylink, nil
 }
 
-// managedIsFileNodeBlocked checks if any of the skylinks associated with the
-// siafile are blocked
-func (r *Renter) managedIsFileNodeBlocked(fileNode *filesystem.FileNode) bool {
+// managedHandleFileNodeBlockedCheck checks if any of the skylinks associated
+// with the siafile are blocked and deletes the file if necessary via
+// managedHandleIsBlockedCheck.
+func (r *Renter) managedHandleFileNodeBlockedCheck(fileNode *filesystem.FileNode, siaPath skymodules.SiaPath) error {
 	skylinkstrs := fileNode.Metadata().Skylinks
 	for _, skylinkstr := range skylinkstrs {
 		var skylink skymodules.Skylink
@@ -1320,16 +1286,15 @@ func (r *Renter) managedIsFileNodeBlocked(fileNode *filesystem.FileNode) bool {
 			continue
 		}
 		// Check if skylink is blocked
-		blocked, err := r.managedIsBlocked(r.tg.StopCtx(), skylink)
+		err = r.managedHandleIsBlockedCheck(r.tg.StopCtx(), skylink, siaPath)
+		if err == ErrSkylinkBlocked {
+			return err
+		}
 		if err != nil {
 			r.staticLog.Printf("WARN: error checking if skylink (%v) is blocked: %v", skylink, err)
-			continue
-		}
-		if blocked {
-			return true
 		}
 	}
-	return false
+	return nil
 }
 
 // ResolveSkylinkV2 resolves a V2 skylink to a V1 skylink if possible.
@@ -1405,12 +1370,9 @@ func (r *Renter) managedResolveSkylinkV2(ctx context.Context, sl skymodules.Skyl
 	}
 
 	// Check if link is blocked
-	blocked, err := r.managedIsBlocked(ctx, skylink)
+	err = r.managedHandleIsBlockedCheck(ctx, skylink, skymodules.SiaPath{})
 	if err != nil {
 		return skymodules.Skylink{}, nil, err
-	}
-	if blocked {
-		return skymodules.Skylink{}, nil, ErrSkylinkBlocked
 	}
 	return skylink, &srv, nil
 }
@@ -1440,12 +1402,9 @@ func (r *Renter) managedTryResolveSkylinkV2(ctx context.Context, link skymodules
 
 	// If we made it to a V1 link check if it is blocked.
 	if blocklistCheck {
-		blocked, err := r.managedIsBlocked(ctx, link)
+		err = r.managedHandleIsBlockedCheck(ctx, link, skymodules.SiaPath{})
 		if err != nil {
 			return skymodules.Skylink{}, nil, err
-		}
-		if blocked {
-			return skymodules.Skylink{}, nil, ErrSkylinkBlocked
 		}
 	}
 	return link, srvs, nil

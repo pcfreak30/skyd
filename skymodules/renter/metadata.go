@@ -366,10 +366,8 @@ func (r *Renter) managedCachedFileMetadata(siaPath skymodules.SiaPath) (bubbledS
 	// file so this is required to ensuring the node is purging blocked files.
 	//
 	// TODO: This delete/unpin code should be replaced with another system.
-	if r.managedIsFileNodeBlocked(sf) && !r.staticDeps.Disrupt("DisableDeleteBlockedFiles") {
-		// Delete the file
-		r.staticLog.Println("Deleting blocked fileNode at:", siaPath)
-		return bubbledSiaFileMetadata{}, errors.Compose(r.staticFileSystem.DeleteFile(siaPath), ErrSkylinkBlocked)
+	if err := r.managedHandleFileNodeBlockedCheck(sf, siaPath); err != nil {
+		return bubbledSiaFileMetadata{}, err
 	}
 	// Check if there is a pending unpin request
 	if r.staticSkylinkManager.callIsUnpinned(sf) {

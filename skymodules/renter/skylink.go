@@ -2,6 +2,7 @@ package renter
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -113,12 +114,9 @@ func (r *Renter) UnpinSkylink(skylink skymodules.Skylink) error {
 
 	// Check if skylink is blocked. If it is we can return early since the bubble
 	// code will handle deletion of blocked files.
-	blocked, err := r.managedIsBlocked(r.tg.StopCtx(), skylink)
+	err = r.managedHandleIsBlockedCheck(r.tg.StopCtx(), skylink, skymodules.SiaPath{})
 	if err != nil {
 		return err
-	}
-	if blocked {
-		return ErrSkylinkBlocked
 	}
 
 	// Check for dependency injection
@@ -154,15 +152,37 @@ func (r *Renter) managedBlocklistHash(ctx context.Context, sl skymodules.Skylink
 	return crypto.Hash{}, ErrInvalidSkylinkVersion
 }
 
-// managedIsBlocked returns whether or not a skylink is blocked. This method can
-// be used for both V1 and V2 skylinks.
-func (r *Renter) managedIsBlocked(ctx context.Context, sl skymodules.Skylink) (bool, error) {
+// managedHandleIsBlockedCheck handles checking if a skylink is blocked. It will
+// also handle the deletion of a blocked file if necessary. This method can be
+// used for both V1 and V2 skylinks.
+func (r *Renter) managedHandleIsBlockedCheck(ctx context.Context, sl skymodules.Skylink, siaPath skymodules.SiaPath) error {
+	// Convert skylink to blocklist hash
 	hash, err := r.managedBlocklistHash(ctx, sl)
 	if err != nil {
-		return false, errors.AddContext(err, "unable to get blocklist hash")
+		return errors.AddContext(err, "unable to get blocklist hash")
 	}
-
-	return r.staticSkynetBlocklist.IsHashBlocked(hash), nil
+	// Check the Skynet Blocklist
+	isBlocked, shouldDelete := r.staticSkynetBlocklist.IsHashBlocked(hash)
+	if !isBlocked {
+		return nil
+	}
+	fmt.Println("checking blocklist", sl, isBlocked, shouldDelete)
+	// Check if the skyfile should be deleted
+	if shouldDelete {
+		fmt.Println("shoulDelete")
+	}
+	if shouldDelete && !siaPath.IsEmpty() && !r.staticDeps.Disrupt("DisableDeleteBlockedFiles") {
+		// Skylink is blocked and the data should be deleted, try and
+		// delete file
+		fmt.Println("delete file blocked", siaPath)
+		deleteErr := r.DeleteFile(siaPath)
+		// Don't bother logging an error if the file doesn't exist
+		if deleteErr != nil && !errors.Contains(deleteErr, filesystem.ErrNotExist) {
+			r.staticLog.Println("WARN: unable to delete blocked skyfile at", siaPath.String())
+		}
+	}
+	// Return that the Skylink is blocked
+	return ErrSkylinkBlocked
 }
 
 // managedParseBlocklistHashes parses the input hash string slice and returns

@@ -27,13 +27,14 @@ const (
 )
 
 var (
-	// DefaultProbationaryPeriod is the default length of the blocklist
-	// probationary period. During this time, skylinks will be blocked but not deleted
+	// DefaultProbationaryPeriod is the default length in seconds of the
+	// blocklist probationary period. During this time, skylinks will be
+	// blocked but not deleted
 	DefaultProbationaryPeriod = build.Select(build.Var{
-		Standard: time.Hour * 24 * 30, // 30 days
-		Dev:      time.Hour * 24,      // 1 day
-		Testing:  time.Second,
-	}).(time.Duration)
+		Standard: int64(30 * 24 * 60 * 60), // 30 days
+		Dev:      int64(24 * 60 * 60),      // 1 day
+		Testing:  int64(10),
+	}).(int64)
 
 	// metadataHeader is the header of the metadata for the persist file
 	metadataHeader = types.NewSpecifier("SkynetBlocklist\n")
@@ -129,11 +130,11 @@ func (sb *SkynetBlocklist) IsHashBlocked(hash crypto.Hash) (isBlocked bool, shou
 }
 
 // UpdateBlocklist updates the list of skylinks that are blocked.
-func (sb *SkynetBlocklist) UpdateBlocklist(additions, removals []crypto.Hash, probationaryPeriodEnd int64) error {
+func (sb *SkynetBlocklist) UpdateBlocklist(additions, removals []crypto.Hash, probationaryPeriod int64) error {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
 
-	buf, err := sb.marshalObjects(additions, removals, probationaryPeriodEnd)
+	buf, err := sb.marshalObjects(additions, removals, probationaryPeriod)
 	if err != nil {
 		return errors.AddContext(err, fmt.Sprintf("unable to update skynet blocklist persistence at '%v'", sb.staticAop.FilePath()))
 	}
@@ -142,14 +143,17 @@ func (sb *SkynetBlocklist) UpdateBlocklist(additions, removals []crypto.Hash, pr
 }
 
 // marshalObjects marshals the given objects into a byte buffer.
-func (sb *SkynetBlocklist) marshalObjects(additions, removals []crypto.Hash, probationaryPeriodEnd int64) (bytes.Buffer, error) {
+func (sb *SkynetBlocklist) marshalObjects(additions, removals []crypto.Hash, probationaryPeriod int64) (bytes.Buffer, error) {
 	// Create buffer for encoder
 	var buf bytes.Buffer
 	// Create and encode the persist links
 	listed := true
 	for _, hash := range additions {
+		probationaryPeriodEnd := time.Now().Unix() + probationaryPeriod
 		// Check if the hash is already blocked
 		if _, ok := sb.hashes[hash]; ok {
+			// Update the probationaryPeriod
+			sb.hashes[hash] = probationaryPeriodEnd
 			continue
 		}
 

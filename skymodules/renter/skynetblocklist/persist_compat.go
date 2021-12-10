@@ -194,7 +194,7 @@ func convertPersistVersionFromv151Tov1510(persistDir string) error {
 	var buf bytes.Buffer
 	for hash := range blocklist {
 		// Initialize all entries with the default probationary period
-		ppe := time.Now().Add(DefaultProbationaryPeriod).Unix()
+		ppe := time.Now().Unix() + DefaultProbationaryPeriod
 		pe := persistEntry{hash, ppe, true}
 		bytes := encoding.Marshal(pe)
 		_, err = buf.Write(bytes)

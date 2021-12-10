@@ -3412,6 +3412,16 @@ add is an array of skylinks that should be added to the blocklist.
 **remove** | array of strings  
 remove is an array of skylinks that should be removed from the blocklist.
 
+### OPTIONAL
+**ishash** | boolean  
+`ishash` tells skyd if the incoming values are blocklist hashes as oppose to skylinks.
+
+**period** | int64  
+`probationaryperiod` defines the probationary period for the blocked content in
+seconds. During the probationary period, the data will be blocked but not be
+deleted. If left blank the default period of 30days will be used. If you want
+the data to be deleted immediately you can set this value to -1.
+
 ### Response
 
 standard success or error response. See [standard

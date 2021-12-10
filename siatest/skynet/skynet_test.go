@@ -2550,7 +2550,7 @@ func testSkynetBlocklistSkylink(t *testing.T, tg *siatest.TestGroup, deps *depen
 // testSkynetBlocklist tests the skynet blocklist module
 func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies.DependencyToggleDisableDeleteBlockedFiles, isHash, isV2Skylink bool) {
 	r := tg.Renters()[0]
-	deps.DisableDeleteBlockedFiles(true)
+	deps.DisableDeleteBlockedFiles(false)
 
 	// Create skyfile upload params, data should be larger than a sector size to
 	// test large file uploads and the deletion of their extended data.
@@ -2839,6 +2839,32 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, deps *dependencies
 
 	// Try and convert to skylink again, should fail. Set the Force Flag to true
 	// to avoid error for file already existing
+	fmt.Println("=== CONVERT", convertSkylink)
+	convertUP.Force = true
+	_, err = r.SkynetConvertSiafileToSkyfilePost(convertUP, rf.SiaPath())
+	if err == nil || !strings.Contains(err.Error(), renter.ErrSkylinkBlocked.Error()) {
+		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlocked, err)
+	}
+
+	// This won't delete the files because of the probationary period
+	_, err = r.RenterFileGet(rf.SiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.RenterFileRootGet(skyfilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add to blocklist again with no probationary period
+	err = r.SkynetBlocklistHashCustomPost(add, remove, isHash, -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try and convert to skylink again, should fail. Set the Force Flag to true
+	// to avoid error for file already existing
+	fmt.Println("=== CONVERT", convertSkylink)
 	convertUP.Force = true
 	_, err = r.SkynetConvertSiafileToSkyfilePost(convertUP, rf.SiaPath())
 	if err == nil || !strings.Contains(err.Error(), renter.ErrSkylinkBlocked.Error()) {
