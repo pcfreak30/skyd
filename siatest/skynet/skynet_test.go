@@ -2917,7 +2917,7 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash, isV2Skylin
 	} else {
 		add = []string{skylink, convertSkylink}
 	}
-	err = r.SkynetBlocklistHashPost(add, remove, isHash)
+	err = r.SkynetBlocklistHashCustomPost(add, remove, isHash, -1)
 	if err != nil {
 		t.Fatal(err)
 	}

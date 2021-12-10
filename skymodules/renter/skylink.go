@@ -2,7 +2,6 @@ package renter
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -166,15 +165,10 @@ func (r *Renter) managedHandleIsBlockedCheck(ctx context.Context, sl skymodules.
 	if !isBlocked {
 		return nil
 	}
-	fmt.Println("checking blocklist", sl, isBlocked, shouldDelete)
 	// Check if the skyfile should be deleted
-	if shouldDelete {
-		fmt.Println("shoulDelete")
-	}
 	if shouldDelete && !siaPath.IsEmpty() {
 		// Skylink is blocked and the data should be deleted, try and
 		// delete file
-		fmt.Println("delete file blocked", siaPath)
 		deleteErr := r.DeleteFile(siaPath)
 		// Don't bother logging an error if the file doesn't exist
 		if deleteErr != nil && !errors.Contains(deleteErr, filesystem.ErrNotExist) {

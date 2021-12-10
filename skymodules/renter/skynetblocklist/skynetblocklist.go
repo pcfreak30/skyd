@@ -33,7 +33,7 @@ var (
 	DefaultProbationaryPeriod = build.Select(build.Var{
 		Standard: int64(30 * 24 * 60 * 60), // 30 days
 		Dev:      int64(24 * 60 * 60),      // 1 day
-		Testing:  int64(10),
+		Testing:  int64(60),
 	}).(int64)
 
 	// metadataHeader is the header of the metadata for the persist file
