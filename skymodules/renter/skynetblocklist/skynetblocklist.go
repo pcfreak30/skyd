@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
@@ -20,16 +21,25 @@ const (
 	persistFile string = "skynetblocklist.dat"
 
 	// persistSize is the size of a persisted merkleroot in the blocklist. It is
-	// the length of `merkleroot` plus the `listed` flag (32 + 1).
-	persistSize uint64 = 33
+	// the length of `merkleroot` plus the int64 probationary period plus
+	// the `listed` flag (32 + 8 + 1).
+	persistSize uint64 = 41
 )
 
 var (
+	// DefaultProbationaryPeriod is the default length of the blocklist
+	// probationary period. During this time, skylinks will be blocked but not deleted
+	DefaultProbationaryPeriod = build.Select(build.Var{
+		Standard: time.Hour * 24 * 30, // 30 days
+		Dev:      time.Hour * 24,      // 1 day
+		Testing:  time.Second,
+	}).(time.Duration)
+
 	// metadataHeader is the header of the metadata for the persist file
 	metadataHeader = types.NewSpecifier("SkynetBlocklist\n")
 
 	// metadataVersion is the version of the persistence file
-	metadataVersion = types.NewSpecifier("v1.5.1\n")
+	metadataVersion = types.NewSpecifier("v1.5.10\n")
 )
 
 type (
@@ -38,8 +48,13 @@ type (
 	SkynetBlocklist struct {
 		staticAop *persist.AppendOnlyPersist
 
-		// hashes is a set of hashed blocked merkleroots.
-		hashes map[crypto.Hash]struct{}
+		// hashes is a map of hashed blocked merkleroots to the uinx
+		// timestamp of the end of their probationary period. During the
+		// probationary period, the skylinks are blocked but the
+		// underlying content is not deleted. This allows portal
+		// operations time to validate blocklist requests to protect
+		// against malicious blocklisting.
+		hashes map[crypto.Hash]int64
 
 		mu sync.Mutex
 	}
@@ -47,8 +62,9 @@ type (
 	// persistEntry contains a hash and whether it should be listed as being in
 	// the current blocklist.
 	persistEntry struct {
-		Hash   crypto.Hash
-		Listed bool
+		Hash                  crypto.Hash
+		ProbationaryPeriodEnd int64
+		Listed                bool
 	}
 )
 
@@ -90,30 +106,34 @@ func (sb *SkynetBlocklist) Close() error {
 	return sb.staticAop.Close()
 }
 
-// IsBlocked indicates if a skylink is currently blocked
-func (sb *SkynetBlocklist) IsBlocked(skylink skymodules.Skylink) bool {
+// IsBlocked indicates if a skylink is currently blocked and if it should be
+// deleted.
+func (sb *SkynetBlocklist) IsBlocked(skylink skymodules.Skylink) (bool, bool) {
 	if !skylink.IsSkylinkV1() {
 		build.Critical("IsBlocked requires V1 skylink")
-		return false
+		return false, false
 	}
 	hash := crypto.HashObject(skylink.MerkleRoot())
 	return sb.IsHashBlocked(hash)
 }
 
-// IsHashBlocked indicates if a hash is currently blocked
-func (sb *SkynetBlocklist) IsHashBlocked(hash crypto.Hash) bool {
+// IsHashBlocked indicates if a hash is currently blocked and if it should be
+// deleted.
+func (sb *SkynetBlocklist) IsHashBlocked(hash crypto.Hash) (isBlocked bool, shouldDelete bool) {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
-	_, ok := sb.hashes[hash]
-	return ok
+	probationaryPeriodEnd, ok := sb.hashes[hash]
+	// If the hash exists it is blocked, and if the probationaryPeriod is in
+	// the past we should delete the data.
+	return ok, time.Now().Unix() >= probationaryPeriodEnd
 }
 
 // UpdateBlocklist updates the list of skylinks that are blocked.
-func (sb *SkynetBlocklist) UpdateBlocklist(additions, removals []crypto.Hash) error {
+func (sb *SkynetBlocklist) UpdateBlocklist(additions, removals []crypto.Hash, probationaryPeriodEnd int64) error {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
 
-	buf, err := sb.marshalObjects(additions, removals)
+	buf, err := sb.marshalObjects(additions, removals, probationaryPeriodEnd)
 	if err != nil {
 		return errors.AddContext(err, fmt.Sprintf("unable to update skynet blocklist persistence at '%v'", sb.staticAop.FilePath()))
 	}
@@ -122,7 +142,7 @@ func (sb *SkynetBlocklist) UpdateBlocklist(additions, removals []crypto.Hash) er
 }
 
 // marshalObjects marshals the given objects into a byte buffer.
-func (sb *SkynetBlocklist) marshalObjects(additions, removals []crypto.Hash) (bytes.Buffer, error) {
+func (sb *SkynetBlocklist) marshalObjects(additions, removals []crypto.Hash, probationaryPeriodEnd int64) (bytes.Buffer, error) {
 	// Create buffer for encoder
 	var buf bytes.Buffer
 	// Create and encode the persist links
@@ -134,10 +154,10 @@ func (sb *SkynetBlocklist) marshalObjects(additions, removals []crypto.Hash) (by
 		}
 
 		// Add hash to map
-		sb.hashes[hash] = struct{}{}
+		sb.hashes[hash] = probationaryPeriodEnd
 
 		// Marshal the update
-		pe := persistEntry{hash, listed}
+		pe := persistEntry{hash, probationaryPeriodEnd, listed}
 		data := encoding.Marshal(pe)
 		_, err := buf.Write(data)
 		if err != nil {
@@ -155,7 +175,7 @@ func (sb *SkynetBlocklist) marshalObjects(additions, removals []crypto.Hash) (by
 		delete(sb.hashes, hash)
 
 		// Marshal the update
-		pe := persistEntry{hash, listed}
+		pe := persistEntry{hash, 0, listed}
 		data := encoding.Marshal(pe)
 		_, err := buf.Write(data)
 		if err != nil {
@@ -167,8 +187,8 @@ func (sb *SkynetBlocklist) marshalObjects(additions, removals []crypto.Hash) (by
 }
 
 // unmarshalObjects unmarshals the sia encoded objects.
-func unmarshalObjects(reader io.Reader) (map[crypto.Hash]struct{}, error) {
-	blocklist := make(map[crypto.Hash]struct{})
+func unmarshalObjects(reader io.Reader) (map[crypto.Hash]int64, error) {
+	blocklist := make(map[crypto.Hash]int64)
 	// Unmarshal blocked links one by one until EOF.
 	var offset uint64
 	for {
@@ -191,7 +211,7 @@ func unmarshalObjects(reader io.Reader) (map[crypto.Hash]struct{}, error) {
 			delete(blocklist, pe.Hash)
 			continue
 		}
-		blocklist[pe.Hash] = struct{}{}
+		blocklist[pe.Hash] = pe.ProbationaryPeriodEnd
 	}
 	return blocklist, nil
 }

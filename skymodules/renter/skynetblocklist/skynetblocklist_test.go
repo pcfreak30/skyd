@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
@@ -33,6 +34,19 @@ func checkNumPersistedLinks(blocklistPath string, numLinks int) error {
 	return nil
 }
 
+// checkIsBlocked is a helper to check the IsBlocked method for both if the
+// skylink is blocked but also if the data should be deleted.
+func checkIsBlocked(sb *SkynetBlocklist, isBlockedExpected, shouldDeleteExpected bool, skylink skymodules.Skylink) error {
+	isBlocked, shouldDelete := sb.IsBlocked(skylink)
+	if isBlocked != isBlockedExpected {
+		return fmt.Errorf("isBlocked %v, expected %v", isBlocked, isBlockedExpected)
+	}
+	if shouldDelete != shouldDeleteExpected {
+		return fmt.Errorf("should delete %v, expected %v", shouldDelete, shouldDeleteExpected)
+	}
+	return nil
+}
+
 // TestPersist tests the persistence of the Skynet blocklist.
 func TestPersist(t *testing.T) {
 	if testing.Short() {
@@ -40,123 +54,141 @@ func TestPersist(t *testing.T) {
 	}
 	t.Parallel()
 
-	// Create a new SkynetBlocklist
-	testdir := testDir(t.Name())
-	sb, err := New(testdir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	filename := filepath.Join(testdir, persistFile)
-	if filename != sb.staticAop.FilePath() {
-		t.Fatalf("Expected filepath %v, was %v", filename, sb.staticAop.FilePath())
-	}
-
-	// There should be no skylinks in the blocklist
-	if len(sb.hashes) != 0 {
-		t.Fatal("Expected blocklist to be empty but found:", len(sb.hashes))
-	}
-
-	// Update blocklist
+	// Define blocklist tests
 	var skylink skymodules.Skylink
+	blocklistTest := func(hash crypto.Hash, ppe int64, shouldDeleteExpected bool) error {
+		// Create a new SkynetBlocklist
+		testdir := testDir(t.Name())
+		sb, err := New(testdir)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		filename := filepath.Join(testdir, persistFile)
+		if filename != sb.staticAop.FilePath() {
+			t.Fatalf("Expected filepath %v, was %v", filename, sb.staticAop.FilePath())
+		}
+
+		// There should be no skylinks in the blocklist
+		if len(sb.hashes) != 0 {
+			t.Fatal("Expected blocklist to be empty but found:", len(sb.hashes))
+		}
+
+		// Create the inputs and update the initial blocklist
+		add := []crypto.Hash{hash}
+		remove := []crypto.Hash{hash}
+		err = sb.UpdateBlocklist(add, remove, ppe)
+		if err != nil {
+			return err
+		}
+
+		// Blocklist should be empty because we added and then removed the same
+		// skylink
+		if len(sb.hashes) != 0 {
+			return fmt.Errorf("Expected blocklist to be empty but found: %v", len(sb.hashes))
+		}
+
+		// Verify that the correct number of links were persisted to verify no links
+		// are being truncated
+		if err := checkNumPersistedLinks(filename, 2); err != nil {
+			return fmt.Errorf("error verifying correct number of links: %v", err)
+		}
+
+		// Add the skylink again
+		err = sb.UpdateBlocklist(add, []crypto.Hash{}, ppe)
+		if err != nil {
+			return err
+		}
+
+		// There should be 1 element in the blocklist now
+		if len(sb.hashes) != 1 {
+			return fmt.Errorf("Expected 1 element in the blocklist but found: %v", len(sb.hashes))
+		}
+		if err := checkIsBlocked(sb, true, shouldDeleteExpected, skylink); err != nil {
+			return err
+		}
+
+		// Verify persist file size
+		if err := checkNumPersistedLinks(filename, 3); err != nil {
+			return fmt.Errorf("error verifying correct number of links: %v", err)
+		}
+
+		// Load a new Skynet Blocklist to verify the contents from disk get loaded
+		// properly
+		sb2, err := New(testdir)
+		if err != nil {
+			return err
+		}
+
+		// Verify that the correct number of links were persisted to verify no links
+		// are being truncated
+		if err := checkNumPersistedLinks(filename, 3); err != nil {
+			return fmt.Errorf("error verifying correct number of links: %v", err)
+		}
+
+		// There should be 1 element in the blocklist
+		if len(sb2.hashes) != 1 {
+			return fmt.Errorf("Expected 1 element in the blocklist but found: %v", len(sb2.hashes))
+		}
+		if err := checkIsBlocked(sb, true, shouldDeleteExpected, skylink); err != nil {
+			return err
+		}
+
+		// Add the skylink again
+		err = sb2.UpdateBlocklist(add, []crypto.Hash{}, ppe)
+		if err != nil {
+			return err
+		}
+
+		// There should still only be 1 element in the blocklist
+		if len(sb2.hashes) != 1 {
+			return fmt.Errorf("Expected 1 element in the blocklist but found: %v", len(sb2.hashes))
+		}
+		if err := checkIsBlocked(sb2, true, shouldDeleteExpected, skylink); err != nil {
+			return err
+		}
+
+		// Verify persist file size
+		if err := checkNumPersistedLinks(filename, 3); err != nil {
+			return fmt.Errorf("error verifying correct number of links: %v", err)
+		}
+
+		// Load another new Skynet Blocklist to verify the contents from disk get loaded
+		// properly
+		sb3, err := New(testdir)
+		if err != nil {
+			return err
+		}
+
+		// Verify that the correct number of links were persisted to verify no links
+		// are being truncated
+		if err := checkNumPersistedLinks(filename, 3); err != nil {
+			return fmt.Errorf("error verifying correct number of links: %v", err)
+		}
+
+		// There should be 1 element in the blocklist
+		if len(sb3.hashes) != 1 {
+			return fmt.Errorf("Expected 1 element in the blocklist but found: %v", len(sb3.hashes))
+		}
+		if err := checkIsBlocked(sb3, true, shouldDeleteExpected, skylink); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	// Check once where the file should not be deleted due to being in the probationary period
 	hash := crypto.HashObject(skylink.MerkleRoot())
-	add := []crypto.Hash{hash}
-	remove := []crypto.Hash{hash}
-	err = sb.UpdateBlocklist(add, remove)
+	probationaryPeriodEnd := time.Now().Add(time.Hour).Unix()
+	err := blocklistTest(hash, probationaryPeriodEnd, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Blocklist should be empty because we added and then removed the same
-	// skylink
-	if len(sb.hashes) != 0 {
-		t.Fatal("Expected blocklist to be empty but found:", len(sb.hashes))
-	}
-
-	// Verify that the correct number of links were persisted to verify no links
-	// are being truncated
-	if err := checkNumPersistedLinks(filename, 2); err != nil {
-		t.Errorf("error verifying correct number of links: %v", err)
-	}
-
-	// Add the skylink again
-	err = sb.UpdateBlocklist(add, []crypto.Hash{})
+	// Check once where the file should be deleted due to not being in the probationary period
+	probationaryPeriodEnd = 0
+	err = blocklistTest(hash, probationaryPeriodEnd, true)
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	// There should be 1 element in the blocklist now
-	if len(sb.hashes) != 1 {
-		t.Fatal("Expected 1 element in the blocklist but found:", len(sb.hashes))
-	}
-	if !sb.IsBlocked(skylink) {
-		t.Fatal("Expected skylink to be listed in blocklist")
-	}
-
-	// Verify persist file size
-	if err := checkNumPersistedLinks(filename, 3); err != nil {
-		t.Errorf("error verifying correct number of links: %v", err)
-	}
-
-	// Load a new Skynet Blocklist to verify the contents from disk get loaded
-	// properly
-	sb2, err := New(testdir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Verify that the correct number of links were persisted to verify no links
-	// are being truncated
-	if err := checkNumPersistedLinks(filename, 3); err != nil {
-		t.Errorf("error verifying correct number of links: %v", err)
-	}
-
-	// There should be 1 element in the blocklist
-	if len(sb2.hashes) != 1 {
-		t.Fatal("Expected 1 element in the blocklist but found:", len(sb2.hashes))
-	}
-	if !sb.IsBlocked(skylink) {
-		t.Fatal("Expected skylink to be listed in blocklist")
-	}
-
-	// Add the skylink again
-	err = sb2.UpdateBlocklist(add, []crypto.Hash{})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// There should still only be 1 element in the blocklist
-	if len(sb2.hashes) != 1 {
-		t.Fatal("Expected 1 element in the blocklist but found:", len(sb2.hashes))
-	}
-	if !sb2.IsBlocked(skylink) {
-		t.Fatal("Expected skylink to be listed in blocklist")
-	}
-
-	// Verify persist file size
-	if err := checkNumPersistedLinks(filename, 3); err != nil {
-		t.Errorf("error verifying correct number of links: %v", err)
-	}
-
-	// Load another new Skynet Blocklist to verify the contents from disk get loaded
-	// properly
-	sb3, err := New(testdir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Verify that the correct number of links were persisted to verify no links
-	// are being truncated
-	if err := checkNumPersistedLinks(filename, 3); err != nil {
-		t.Errorf("error verifying correct number of links: %v", err)
-	}
-
-	// There should be 1 element in the blocklist
-	if len(sb3.hashes) != 1 {
-		t.Fatal("Expected 1 element in the blocklist but found:", len(sb3.hashes))
-	}
-	if !sb3.IsBlocked(skylink) {
-		t.Fatal("Expected skylink to be listed in blocklist")
 	}
 }
 
@@ -215,7 +247,7 @@ func TestPersistCorruption(t *testing.T) {
 	hash := crypto.HashObject(skylink.MerkleRoot())
 	add := []crypto.Hash{hash}
 	remove := []crypto.Hash{hash}
-	err = sb.UpdateBlocklist(add, remove)
+	err = sb.UpdateBlocklist(add, remove, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +270,7 @@ func TestPersistCorruption(t *testing.T) {
 	}
 
 	// Add the skylink again
-	err = sb.UpdateBlocklist(add, []crypto.Hash{})
+	err = sb.UpdateBlocklist(add, []crypto.Hash{}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,8 +279,9 @@ func TestPersistCorruption(t *testing.T) {
 	if len(sb.hashes) != 1 {
 		t.Fatal("Expected 1 element in the blocklist but found:", len(sb.hashes))
 	}
-	if !sb.IsBlocked(skylink) {
-		t.Fatal("Expected skylink to be listed in blocklist")
+	err = checkIsBlocked(sb, true, true, skylink)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Load a new Skynet Blocklist to verify the contents from disk get loaded
@@ -262,12 +295,13 @@ func TestPersistCorruption(t *testing.T) {
 	if len(sb2.hashes) != 1 {
 		t.Fatal("Expected 1 element in the blocklist but found:", len(sb2.hashes))
 	}
-	if !sb2.IsBlocked(skylink) {
-		t.Fatal("Expected skylink to be listed in blocklist")
+	err = checkIsBlocked(sb2, true, true, skylink)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Add the skylink again
-	err = sb2.UpdateBlocklist(add, []crypto.Hash{})
+	err = sb2.UpdateBlocklist(add, []crypto.Hash{}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,8 +310,9 @@ func TestPersistCorruption(t *testing.T) {
 	if len(sb2.hashes) != 1 {
 		t.Fatal("Expected 1 element in the blocklist but found:", len(sb2.hashes))
 	}
-	if !sb2.IsBlocked(skylink) {
-		t.Fatal("Expected skylink to be listed in blocklist")
+	err = checkIsBlocked(sb2, true, true, skylink)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Load another new Skynet Blocklist to verify the contents from disk get loaded
@@ -291,8 +326,9 @@ func TestPersistCorruption(t *testing.T) {
 	if len(sb3.hashes) != 1 {
 		t.Fatal("Expected 1 element in the blocklist but found:", len(sb3.hashes))
 	}
-	if !sb3.IsBlocked(skylink) {
-		t.Fatal("Expected skylink to be listed in blocklist")
+	err = checkIsBlocked(sb3, true, true, skylink)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// The final filesize should be equal to the persist length.
@@ -322,7 +358,8 @@ func TestMarshalSia(t *testing.T) {
 	merkleRoot := skylink.MerkleRoot()
 	merkleRootHash := crypto.HashObject(merkleRoot)
 	listed := false
-	ll := persistEntry{merkleRootHash, listed}
+	probationaryPeriodEnd := int64(123)
+	ll := persistEntry{merkleRootHash, probationaryPeriodEnd, listed}
 	writtenBytes := encoding.Marshal(ll)
 	buf.Write(writtenBytes)
 	if uint64(buf.Len()) != persistSize {
@@ -346,6 +383,9 @@ func TestMarshalSia(t *testing.T) {
 	if merkleRootHash != ll.Hash {
 		t.Fatalf("MerkleRoot hashes don't match, expected %v, got %v", merkleRootHash, ll.Hash)
 	}
+	if probationaryPeriodEnd != ll.ProbationaryPeriodEnd {
+		t.Fatalf("Probationary periods don't match, expected %v, got %v", probationaryPeriodEnd, ll.ProbationaryPeriodEnd)
+	}
 	if ll.Listed {
 		t.Fatal("expected persisted link to not be blocked")
 	}
@@ -355,6 +395,9 @@ func TestMarshalSia(t *testing.T) {
 	}
 	if merkleRootHash != ll.Hash {
 		t.Fatalf("MerkleRoot hashes don't match, expected %v, got %v", merkleRootHash, ll.Hash)
+	}
+	if probationaryPeriodEnd != ll.ProbationaryPeriodEnd {
+		t.Fatalf("Probationary periods don't match, expected %v, got %v", probationaryPeriodEnd, ll.ProbationaryPeriodEnd)
 	}
 	if !ll.Listed {
 		t.Fatal("expected persisted link to be blocked")
@@ -371,8 +414,11 @@ func TestMarshalSia(t *testing.T) {
 	if len(blocklist) != 1 {
 		t.Fatalf("Incorrect number of blocklisted merkleRoots, expected %v, got %v", 1, len(blocklist))
 	}
-	_, ok := blocklist[merkleRootHash]
+	ppe, ok := blocklist[merkleRootHash]
 	if !ok {
 		t.Fatal("merkleroot not found in blocklist")
+	}
+	if ppe != probationaryPeriodEnd {
+		t.Fatalf("probationaryPeriodEnd mismatch; found %v, expected %v", ppe, probationaryPeriodEnd)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"time"
 
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
@@ -17,13 +18,28 @@ import (
 
 const (
 	blacklistPersistFile string = "skynetblacklist"
+
+	// persistSizeV151 is the size of a persisted merkleroot in the
+	// blocklist up through compat version v1.5.1. It is the length of
+	// `merkleroot` plus the `listed` flag (32 + 1).
+	persistSizeV151 uint64 = 33
 )
 
 var (
 	blacklistMetadataHeader = types.NewSpecifier("SkynetBlacklist\n")
 	metadataVersionV143     = types.NewSpecifier("v1.4.3\n")
-
 	// NOTE: There is a MetadataVersionV150 in the persist package
+	metadataVersionV151 = types.NewSpecifier("v1.5.1\n")
+)
+
+type (
+	// persistEntryV151 contains the information persisted up through compat
+	// version v1.5.1. The data contained is a hash and whether it should be
+	// listed as being in the current blocklist.
+	persistEntryV151 struct {
+		Hash   crypto.Hash
+		Listed bool
+	}
 )
 
 // tempPersistFileName is a helper for creating the file name for a temporary
@@ -57,7 +73,7 @@ func convertPersistVersionFromv143Tov150(persistDir string) (err error) {
 
 	// Unmarshal the persistence. We can still use the same unmarshalObjects
 	// function since merkleroots are a crypto.Hash this code did not change
-	merkleroots, err := unmarshalObjects(readerv143)
+	merkleroots, err := unmarshalObjectsV151(readerv143)
 	if err != nil {
 		return errors.AddContext(err, "unable to unmarshal persist objects")
 	}
@@ -66,7 +82,7 @@ func convertPersistVersionFromv143Tov150(persistDir string) (err error) {
 	var buf bytes.Buffer
 	for mr := range merkleroots {
 		hash := crypto.HashObject(mr)
-		pe := persistEntry{hash, true}
+		pe := persistEntryV151{hash, true}
 		bytes := encoding.Marshal(pe)
 		_, err = buf.Write(bytes)
 		if err != nil {
@@ -121,7 +137,7 @@ func convertPersistVersionFromv150Tov151(persistDir string) error {
 	}
 
 	// Initialize new blocklist persistence
-	aopBlocklist, _, err := persist.NewAppendOnlyPersist(persistDir, persistFile, metadataHeader, metadataVersion)
+	aopBlocklist, _, err := persist.NewAppendOnlyPersist(persistDir, persistFile, metadataHeader, metadataVersionV151)
 	if err != nil {
 		return errors.AddContext(err, "unable to initialize blocklist persist file")
 	}
@@ -135,6 +151,71 @@ func convertPersistVersionFromv150Tov151(persistDir string) error {
 	_, err = aopBlocklist.Write(data)
 	if err != nil {
 		return errors.AddContext(err, "unable to write to blocklist persist file")
+	}
+
+	// Delete the temporary file
+	err = os.Remove(tempFilePath)
+	if err != nil {
+		return errors.AddContext(err, "unable to remove temp file from disk")
+	}
+
+	return nil
+}
+
+// convertPersistVersionFromv151Tov1510 handles the compatibility code for
+// upgrading the persistence from v1.5.1 to v1.5.10. The change in persistence
+// is the addition of the probationaryPeriodEnd field.
+func convertPersistVersionFromv151Tov1510(persistDir string) error {
+	// Identify the filepath for the persist file and the temp persist file that
+	// will be created during the conversion of the persistence from v1.5.1 to
+	// v1.5.10
+	persistFilePath := filepath.Join(persistDir, persistFile)
+	tempFilePath := filepath.Join(persistDir, tempPersistFileName(persistFile))
+
+	// Create a temporary file from v1.5.1 persist file
+	readerv151, err := createTempFileFromPersistFile(persistDir, persistFile, metadataHeader, metadataVersionV151)
+	if err != nil {
+		return errors.AddContext(err, "unable to create temp file")
+	}
+
+	// Delete the v1.5.1 persist file
+	err = os.RemoveAll(persistFilePath)
+	if err != nil {
+		return errors.AddContext(err, "unable to remove v1.5.1 persist file from disk")
+	}
+
+	// Unmarshal the persistence.
+	blocklist, err := unmarshalObjectsV151(readerv151)
+	if err != nil {
+		return errors.AddContext(err, "unable to unmarshal persist objects")
+	}
+
+	// Add probationaryPeriodEnd values and marshal
+	var buf bytes.Buffer
+	for hash := range blocklist {
+		// Initialize all entries with the default probationary period
+		ppe := time.Now().Add(DefaultProbationaryPeriod).Unix()
+		pe := persistEntry{hash, ppe, true}
+		bytes := encoding.Marshal(pe)
+		_, err = buf.Write(bytes)
+		if err != nil {
+			return errors.AddContext(err, "unable to write to buffer")
+		}
+	}
+
+	// Initialize new v1.5.10 persistence
+	aopV1510, _, err := persist.NewAppendOnlyPersist(persistDir, persistFile, metadataHeader, metadataVersion)
+	if err != nil {
+		return errors.AddContext(err, "unable to initialize v1.5.10 persist file")
+	}
+	defer func() {
+		err = errors.Compose(err, aopV1510.Close())
+	}()
+
+	// Write the updated blocklist to the v1.5.10 persist file
+	_, err = aopV1510.Write(buf.Bytes())
+	if err != nil {
+		return errors.AddContext(err, "unable to write to v150 persist file")
 	}
 
 	// Delete the temporary file
@@ -262,30 +343,33 @@ func loadTempFile(tempFilePath string) (_ io.Reader, err error) {
 // loadPersist will load the persistence from the persist file in a way that
 // takes into account any previous persistence updates
 func loadPersist(persistDir string) (*persist.AppendOnlyPersist, io.Reader, error) {
-	// Check for any temp files indicating that a persistence update was
-	// interrupted
+	// Check for any temp files or old file indicating that a persistence
+	// update was interrupted
 	//
 	// We check for a temp file first because in the event of an unclean shutdown
 	// there is the potential for a temp file to exist but no persist file. In
 	// this case a call to NewAppendOnlyPersist would create a new persist file
 	// and we would lose the information in the temp file.
-	tempFilePath := filepath.Join(persistDir, tempPersistFileName(blacklistPersistFile))
-	_, err := os.Stat(tempFilePath)
-	if !os.IsNotExist(err) {
-		// Temp file exists. Continue persistence update.
-		err = convertPersistence(persistDir)
+	//
+	// Check for old blacklist file
+	_, errBlacklist := os.Stat(filepath.Join(persistDir, blacklistPersistFile))
+	blacklistFileExists := !os.IsNotExist(errBlacklist)
+	// Check for old temp blacklist file
+	tempFilePathBlacklist := filepath.Join(persistDir, tempPersistFileName(blacklistPersistFile))
+	_, errOld := os.Stat(tempFilePathBlacklist)
+	blacklistTempFileExists := !os.IsNotExist(errOld)
+	// Check for temp blocklist file
+	tempFilePathBlocklist := filepath.Join(persistDir, tempPersistFileName(persistFile))
+	_, errBlocklist := os.Stat(tempFilePathBlocklist)
+	blocklistTempFileExists := !os.IsNotExist(errBlocklist)
+	// If any of these files exist, there was an unclean shutdown, try and
+	// convert the persistence.
+	if blacklistFileExists || blacklistTempFileExists || blocklistTempFileExists {
+		// Either a temp file exists or a blacklist file exists. Try and
+		// update the persistence.
+		err := convertPersistence(persistDir)
 		if err != nil {
-			return nil, nil, errors.AddContext(err, "unable to convert persistence with the existence of a temp file")
-		}
-	}
-
-	// Check for the existence of the old persist file
-	_, err = os.Stat(filepath.Join(persistDir, blacklistPersistFile))
-	if !os.IsNotExist(err) {
-		// Old persist file exists, try and update persistence
-		err = convertPersistence(persistDir)
-		if err != nil {
-			return nil, nil, errors.AddContext(err, "unable to convert persistence when old persist file exists")
+			return nil, nil, errors.AddContext(err, "unable to convert persistence with the existence of an old or temp file")
 		}
 	}
 
@@ -297,7 +381,7 @@ func loadPersist(persistDir string) (*persist.AppendOnlyPersist, io.Reader, erro
 		if err != nil {
 			return nil, nil, errors.AddContext(err, "unable to convert persistence after wrong version error")
 		}
-		// Load the v1.5.1 persistence
+		// Load the current persistence
 		aop, reader, err = persist.NewAppendOnlyPersist(persistDir, persistFile, metadataHeader, metadataVersion)
 	}
 	if err != nil {
@@ -318,8 +402,42 @@ func convertPersistence(persistDir string) error {
 
 	// Try converting persistence from v1.5.0 to v1.5.1
 	errv150TOv151 := convertPersistVersionFromv150Tov151(persistDir)
-	if errv150TOv151 != nil {
-		return errors.Compose(errv143Tov150, errv150TOv151)
+
+	// Try converting persistence from v1.5.1 to v1.5.10
+	errv151TOv1510 := convertPersistVersionFromv151Tov1510(persistDir)
+	if errv151TOv1510 != nil {
+		return errors.Compose(errv143Tov150, errv150TOv151, errv151TOv1510)
 	}
 	return nil
+}
+
+// unmarshalObjectsV151 unmarshals the sia encoded objects up through compat
+// version v1.5.1.
+func unmarshalObjectsV151(reader io.Reader) (map[crypto.Hash]struct{}, error) {
+	blocklist := make(map[crypto.Hash]struct{})
+	// Unmarshal blocked links one by one until EOF.
+	var offset uint64
+	for {
+		buf := make([]byte, persistSizeV151)
+		_, err := io.ReadFull(reader, buf)
+		if errors.Contains(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		var pe persistEntryV151
+		err = encoding.Unmarshal(buf, &pe)
+		if err != nil {
+			return nil, err
+		}
+		offset += persistSizeV151
+
+		if !pe.Listed {
+			delete(blocklist, pe.Hash)
+			continue
+		}
+		blocklist[pe.Hash] = struct{}{}
+	}
+	return blocklist, nil
 }
