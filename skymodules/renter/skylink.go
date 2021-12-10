@@ -171,7 +171,7 @@ func (r *Renter) managedHandleIsBlockedCheck(ctx context.Context, sl skymodules.
 	if shouldDelete {
 		fmt.Println("shoulDelete")
 	}
-	if shouldDelete && !siaPath.IsEmpty() && !r.staticDeps.Disrupt("DisableDeleteBlockedFiles") {
+	if shouldDelete && !siaPath.IsEmpty() {
 		// Skylink is blocked and the data should be deleted, try and
 		// delete file
 		fmt.Println("delete file blocked", siaPath)
