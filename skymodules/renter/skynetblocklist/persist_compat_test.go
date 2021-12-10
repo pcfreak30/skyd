@@ -352,7 +352,7 @@ func testPersistCompatValidCheckSum(t *testing.T, testdir, oldPersistFile, newPe
 	}
 
 	// Simulate a crash after creating a temporary file
-	_, err = createTempFileFromPersistFile(subTestDir, oldPersistFile, oldHeader, oldVersion)
+	_, err = createTempFileFromPersistFilev151(subTestDir, oldPersistFile, oldHeader, oldVersion)
 	if err != nil {
 		t.Fatal(err)
 	}

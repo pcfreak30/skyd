@@ -350,12 +350,6 @@ func (api *API) skynetBlocklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 	// Check period to set default if necessary
 	if params.ProbationaryPeriod == 0 {
 		params.ProbationaryPeriod = skynetblocklist.DefaultProbationaryPeriod
-		// } else {
-		// 	fmt.Println("probationary period not 0")
-		// 	// Convert to seconds
-		// 	fmt.Println("before:", params.ProbationaryPeriod)
-		// 	params.ProbationaryPeriod = int64(time.Second * time.Duration(params.ProbationaryPeriod))
-		// 	fmt.Println("after:", params.ProbationaryPeriod)
 	}
 
 	// Parse the timeout.
