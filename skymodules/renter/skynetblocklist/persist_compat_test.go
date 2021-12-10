@@ -18,6 +18,17 @@ import (
 	"go.sia.tech/siad/types"
 )
 
+func TestHelp(t *testing.T) {
+	mv := encoding.Marshal(metadataVersion)
+	fmt.Println(mv)
+
+	var version types.Specifier
+	err := encoding.Unmarshal(mv, &version)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestPersistCompat tests the compat code for the skynet blocklist
 // persistence.
 func TestPersistCompat(t *testing.T) {
@@ -34,7 +45,7 @@ func TestPersistCompat(t *testing.T) {
 	t.Run("V150ToV151", testPersistCompatv150Tov151)
 	t.Run("V150ToV1510", testPersistCompatv150Tov1510)
 	// Starting file, v1.5.1
-	t.Run("V151ToV1510", testPersistCompatv150Tov1510)
+	t.Run("V151ToV1510", testPersistCompatv151Tov1510)
 
 	// Regression Test
 	t.Run("BadCompatTwoFiles", testPersistCompatTwoFiles)
@@ -151,7 +162,7 @@ func testPersistCompatv143Tov151(t *testing.T) {
 func testPersistCompatv143Tov1510(t *testing.T) {
 	t.Parallel()
 	testdir := testDir(t.Name())
-	testPersistCompat(t, testdir, blacklistPersistFile, persistFile, blacklistMetadataHeader, metadataHeader, metadataVersionV143, metadataVersion)
+	testPersistCompat(t, testdir, blacklistPersistFile, persistFile, blacklistMetadataHeader, metadataHeader, metadataVersionV143, metadataVersionV1510)
 }
 
 // testPersistCompatv150Tov151 tests converting the skynet blacklist persistence
@@ -167,7 +178,7 @@ func testPersistCompatv150Tov151(t *testing.T) {
 func testPersistCompatv150Tov1510(t *testing.T) {
 	t.Parallel()
 	testdir := testDir(t.Name())
-	testPersistCompat(t, testdir, blacklistPersistFile, persistFile, blacklistMetadataHeader, metadataHeader, persist.MetadataVersionv150, metadataVersion)
+	testPersistCompat(t, testdir, blacklistPersistFile, persistFile, blacklistMetadataHeader, metadataHeader, persist.MetadataVersionv150, metadataVersionV1510)
 }
 
 // testPersistCompatv151Tov1510 tests converting the skynet blocklist persistence
@@ -175,7 +186,7 @@ func testPersistCompatv150Tov1510(t *testing.T) {
 func testPersistCompatv151Tov1510(t *testing.T) {
 	t.Parallel()
 	testdir := testDir(t.Name())
-	testPersistCompat(t, testdir, persistFile, persistFile, metadataHeader, metadataHeader, metadataVersionV151, metadataVersion)
+	testPersistCompat(t, testdir, persistFile, persistFile, metadataHeader, metadataHeader, metadataVersionV151, metadataVersionV1510)
 }
 
 // testPersistCompat tests the persist compat code going between two versions
@@ -186,14 +197,20 @@ func testPersistCompat(t *testing.T, testdir, oldPersistFile, newPersistFile str
 	t.Run("TempFile", func(t *testing.T) {
 		testPersistCompatTempFile(t, testdir, oldPersistFile, newPersistFile, oldHeader, newHeader, oldVersion, newVersion)
 	})
-	// This Test is broken because there is a bug in the code. The old test
-	// was not properly testing this scenario. Since the temp file doesn't
-	// have the header or version number, we can't verify which version a
-	// valid temp file belongs too. This means we would automatically go
-	// through all compat version which would most likely corrupt the data.
-	// t.Run("ValidChecksum", func(t *testing.T) {
-	// 	testPersistCompatValidCheckSum(t, testdir, oldPersistFile, newPersistFile, oldHeader, newHeader, oldVersion, newVersion)
-	// })
+	switch oldVersion {
+	case metadataVersionV143, persist.MetadataVersionv150:
+		// This test is broken for older version due to a bug in the
+		// compat code and how the test was written. Previously the
+		// compat code wasn't writting the version in the temp file,
+		// which means there wasn't a way to determine if if was a valid
+		// temp file for the version being coverted. This leads to a
+		// valid checksum for an older version that would then corrupt
+		// the data by doing a previous compat conversion again.
+	default:
+		t.Run("ValidChecksum", func(t *testing.T) {
+			testPersistCompatValidCheckSum(t, testdir, oldPersistFile, newPersistFile, oldHeader, newHeader, oldVersion, newVersion)
+		})
+	}
 }
 
 // testPersistCompatClean tests the expected execution of the persist compat

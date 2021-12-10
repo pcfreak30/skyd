@@ -19,6 +19,10 @@ import (
 const (
 	blacklistPersistFile string = "skynetblacklist"
 
+	// marshaledVersionLength is the length of the byte slice generated from
+	// marshalling the version
+	marshaledVersionLength = 16
+
 	// persistSizeV151 is the size of a persisted merkleroot in the
 	// blocklist up through compat version v1.5.1. It is the length of
 	// `merkleroot` plus the `listed` flag (32 + 1).
@@ -259,7 +263,7 @@ func createTempFileFromPersistFile(persistDir, fileName string, header, version 
 	// NewAppendOnlyPersist to create a new persist file resulting in a loss of
 	// the data in the temporary file
 	tempFilePath := filepath.Join(persistDir, tempPersistFileName(fileName))
-	reader, err := loadTempFile(tempFilePath)
+	reader, err := loadTempFile(tempFilePath, version)
 	if err == nil {
 		// Temporary file is valid, return the reader
 		return reader, nil
@@ -272,21 +276,74 @@ func createTempFileFromPersistFile(persistDir, fileName string, header, version 
 	}
 
 	// Prepend the version
+	versionBytes := encoding.Marshal(version)
+	data = append(versionBytes, data...)
 
 	// Write the checksum and data to the temp file
-	return writeDataAndChecksumToFile(tempFilePath, data)
+	return bytes.NewReader(data[marshaledVersionLength:]), writeDataAndChecksumToFile(tempFilePath, data)
+}
+
+// createTempFileFromPersistFilev151 copies the data from the persist file into
+// a temporary file and returns a reader for the data. This function checks for
+// the existence of a temp file first and will return a reader for the temporary
+// file if the temporary file contains a valid checksum.
+//
+// This method should be used for compat code up through v1.5.1.
+func createTempFileFromPersistFilev151(persistDir, fileName string, header, version types.Specifier) (_ io.Reader, err error) {
+	// Try and load the temporary file first. This is done first because an
+	// unclean shutdown could result in a valid temporary file existing but no
+	// persist file existing. In this case we do not want a call to
+	// NewAppendOnlyPersist to create a new persist file resulting in a loss of
+	// the data in the temporary file
+	tempFilePath := filepath.Join(persistDir, tempPersistFileName(fileName))
+	reader, err := loadTempFilev151(tempFilePath)
+	if err == nil {
+		// Temporary file is valid, return the reader
+		return reader, nil
+	}
+
+	// Clear any old temp file and read the persist data
+	data, err := removeTempFileAndReadPersistData(tempFilePath, persistDir, fileName, header, version)
+	if err != nil {
+		return nil, err
+	}
+
+	// write data to file
+	return bytes.NewReader(data), writeDataAndChecksumToFile(tempFilePath, data)
 }
 
 // loadTempFile will load a temporary file and verifies the checksum that was
 // prefixed. If the checksum is valid a reader will be returned.
-func loadTempFile(tempFilePath string) (_ io.Reader, err error) {
+func loadTempFile(tempFilePath string, expectedVersion types.Specifier) (_ io.Reader, err error) {
 	// Load and verify the checksum
 	fileBytes, err := loadTempFileAndVerifyChecksum(tempFilePath)
 	if err != nil {
 		return nil, err
 	}
 
-	// Verify version and header
+	// Verify version
+	var version types.Specifier
+	versionBytes := fileBytes[:marshaledVersionLength]
+	err = encoding.Unmarshal(versionBytes, &version)
+	if err != nil {
+		return nil, err
+	}
+	if version != expectedVersion {
+		return nil, errors.New("wrong version")
+	}
+
+	// Return the data after the checksum as a reader
+	return bytes.NewReader(fileBytes[marshaledVersionLength:]), nil
+}
+
+// loadTempFilev151 will load a temporary file and verifies the checksum that was
+// prefixed. If the checksum is valid a reader will be returned.
+func loadTempFilev151(tempFilePath string) (_ io.Reader, err error) {
+	// Load and verify the checksum
+	fileBytes, err := loadTempFileAndVerifyChecksum(tempFilePath)
+	if err != nil {
+		return nil, err
+	}
 
 	// Return the data after the checksum as a reader
 	return bytes.NewReader(fileBytes), nil
@@ -404,16 +461,47 @@ func removeTempFileAndReadPersistData(tempFilePath, persistDir, fileName string,
 	return data, nil
 }
 
+// unmarshalObjectsV151 unmarshals the sia encoded objects up through compat
+// version v1.5.1.
+func unmarshalObjectsV151(reader io.Reader) (map[crypto.Hash]struct{}, error) {
+	blocklist := make(map[crypto.Hash]struct{})
+	// Unmarshal blocked links one by one until EOF.
+	var offset uint64
+	for {
+		buf := make([]byte, persistSizeV151)
+		_, err := io.ReadFull(reader, buf)
+		if errors.Contains(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		var pe persistEntryV151
+		err = encoding.Unmarshal(buf, &pe)
+		if err != nil {
+			return nil, err
+		}
+		offset += persistSizeV151
+
+		if !pe.Listed {
+			delete(blocklist, pe.Hash)
+			continue
+		}
+		blocklist[pe.Hash] = struct{}{}
+	}
+	return blocklist, nil
+}
+
 // writeDataAndChecksumToFile generates the checksum and writes it and the data
 // to the temp file on disk.
-func writeDataAndChecksumToFile(tempFilePath string, data []byte) (io.Reader, error) {
+func writeDataAndChecksumToFile(tempFilePath string, data []byte) error {
 	// Create the checksum for the persist file
 	checksum := crypto.HashBytes(data)
 
 	// Create the temporary file
 	f, err := os.Create(tempFilePath)
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to open temp file")
+		return errors.AddContext(err, "unable to open temp file")
 	}
 	defer func() {
 		err = errors.Compose(err, f.Close())
@@ -428,21 +516,15 @@ func writeDataAndChecksumToFile(tempFilePath string, data []byte) (io.Reader, er
 	offset := int64(len(checksum))
 	_, err = f.WriteAt(data, offset)
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to write persist data to temp file")
+		return errors.AddContext(err, "unable to write persist data to temp file")
 	}
 
 	// Write the checksum to the beginning of the file
 	_, err = f.WriteAt(checksum[:], 0)
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to write persist checksum to temp file")
+		return errors.AddContext(err, "unable to write persist checksum to temp file")
 	}
 
 	// Sync writes
-	err = f.Sync()
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to sync temp file")
-	}
-
-	// Since the reader has been read, create and return a new reader.
-	return bytes.NewReader(data), nil
+	return f.Sync()
 }
