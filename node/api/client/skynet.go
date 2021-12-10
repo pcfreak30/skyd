@@ -701,8 +701,8 @@ func (c *Client) SkynetBlocklistHashPost(additions, removals []string, isHash bo
 	return
 }
 
-// SkynetBlocklistHashPost requests the /skynet/blocklist Post endpoint with a
-// probationaryPeriod defined
+// SkynetBlocklistHashCustomPost requests the /skynet/blocklist Post endpoint
+// with a probationaryPeriod defined
 func (c *Client) SkynetBlocklistHashCustomPost(additions, removals []string, isHash bool, probationaryPeriod int64) (err error) {
 	sbp := api.SkynetBlocklistPOST{
 		Add:                additions,

@@ -201,9 +201,9 @@ func testPersistCompat(t *testing.T, testdir, oldPersistFile, newPersistFile str
 	case metadataVersionV143, persist.MetadataVersionv150:
 		// This test is broken for older version due to a bug in the
 		// compat code and how the test was written. Previously the
-		// compat code wasn't writting the version in the temp file,
+		// compat code wasn't writing the version in the temp file,
 		// which means there wasn't a way to determine if if was a valid
-		// temp file for the version being coverted. This leads to a
+		// temp file for the version being converted. This leads to a
 		// valid checksum for an older version that would then corrupt
 		// the data by doing a previous compat conversion again.
 	default:
