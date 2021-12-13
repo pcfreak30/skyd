@@ -712,7 +712,7 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 	defer r.tg.Done()
 
 	// Check if the merkleroot is blocked
-	if blocked, _ := r.staticSkynetBlocklist.IsHashBlocked(crypto.HashObject(root)); blocked {
+	if _, blocked := r.staticSkynetBlocklist.IsHashBlocked(crypto.HashObject(root)); blocked {
 		return nil, ErrSkylinkBlocked
 	}
 

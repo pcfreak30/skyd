@@ -109,7 +109,7 @@ func (sb *SkynetBlocklist) Close() error {
 
 // IsBlocked indicates if a skylink is currently blocked and if it should be
 // deleted.
-func (sb *SkynetBlocklist) IsBlocked(skylink skymodules.Skylink) (bool, bool) {
+func (sb *SkynetBlocklist) IsBlocked(skylink skymodules.Skylink) (shouldDelete, isBlocked bool) {
 	if !skylink.IsSkylinkV1() {
 		build.Critical("IsBlocked requires V1 skylink")
 		return false, false
@@ -120,13 +120,13 @@ func (sb *SkynetBlocklist) IsBlocked(skylink skymodules.Skylink) (bool, bool) {
 
 // IsHashBlocked indicates if a hash is currently blocked and if it should be
 // deleted.
-func (sb *SkynetBlocklist) IsHashBlocked(hash crypto.Hash) (isBlocked bool, shouldDelete bool) {
+func (sb *SkynetBlocklist) IsHashBlocked(hash crypto.Hash) (shouldDelete, isBlocked bool) {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
 	probationaryPeriodEnd, ok := sb.hashes[hash]
 	// If the hash exists it is blocked, and if the probationaryPeriod is in
 	// the past we should delete the data.
-	return ok, time.Now().Unix() >= probationaryPeriodEnd
+	return time.Now().Unix() >= probationaryPeriodEnd, ok
 }
 
 // UpdateBlocklist updates the list of skylinks that are blocked.

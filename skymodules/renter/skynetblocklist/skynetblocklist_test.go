@@ -37,7 +37,7 @@ func checkNumPersistedLinks(blocklistPath string, numLinks int) error {
 // checkIsBlocked is a helper to check the IsBlocked method for both if the
 // skylink is blocked but also if the data should be deleted.
 func checkIsBlocked(sb *SkynetBlocklist, isBlockedExpected, shouldDeleteExpected bool, skylink skymodules.Skylink) error {
-	isBlocked, shouldDelete := sb.IsBlocked(skylink)
+	shouldDelete, isBlocked := sb.IsBlocked(skylink)
 	if isBlocked != isBlockedExpected {
 		return fmt.Errorf("isBlocked %v, expected %v", isBlocked, isBlockedExpected)
 	}

@@ -161,7 +161,7 @@ func (r *Renter) managedHandleIsBlockedCheck(ctx context.Context, sl skymodules.
 		return errors.AddContext(err, "unable to get blocklist hash")
 	}
 	// Check the Skynet Blocklist
-	isBlocked, shouldDelete := r.staticSkynetBlocklist.IsHashBlocked(hash)
+	shouldDelete, isBlocked := r.staticSkynetBlocklist.IsHashBlocked(hash)
 	if !isBlocked {
 		return nil
 	}
