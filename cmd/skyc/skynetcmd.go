@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -362,10 +363,35 @@ func skynetdownloadcmd(cmd *cobra.Command, args []string) {
 // skynetisblockedcmd will check if a skylink, or list of skylinks, is on the
 // blocklist.
 func skynetisblockedcmd(_ *cobra.Command, skylinkStrs []string) {
-	// Get the blocklist
-	response, err := httpClient.SkynetBlocklistGet()
-	if err != nil {
-		die("Unable to get skynet blocklist:", err)
+	var response api.SkynetBlocklistGET
+	if skynetDownloadPortal != "" {
+		url := skynetDownloadPortal + "/skynet/blocklist"
+		resp, err := http.Get(url)
+		if err != nil {
+			die(err)
+		}
+		defer func() {
+			err = resp.Body.Close()
+			if err != nil {
+				die("unable to close reader:", err)
+			}
+		}()
+		data, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			die(err)
+		}
+		buf := bytes.NewBuffer(data)
+		err = json.NewDecoder(buf).Decode(&response)
+		if err != nil {
+			die(err)
+		}
+	} else {
+		// Get the blocklist
+		var err error
+		response, err = httpClient.SkynetBlocklistGet()
+		if err != nil {
+			die("Unable to get skynet blocklist:", err)
+		}
 	}
 
 	// Parse the slice response into a map
