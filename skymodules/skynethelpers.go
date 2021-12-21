@@ -203,7 +203,7 @@ func buildBaseSectorExtension(payload []byte, size uint64) ([]byte, [][]byte) {
 	return baseSectorPart, uploadPart
 }
 
-// ExpectedFanoutBytesLen returns the expected size of a skyfile's fanout BEFORE
+// ExpectedFanoutBytesLen returns the expected size of a skyfile's fanout before
 // potential compression is applied and it's turned into a compressed fanout.
 func ExpectedFanoutBytesLen(fileSize uint64, fanoutDataPieces, fanoutParityPieces int, ct crypto.CipherType) uint64 {
 	numChunks := NumChunks(ct, fileSize, uint64(fanoutDataPieces))
