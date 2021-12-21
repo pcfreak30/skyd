@@ -71,10 +71,6 @@ type (
 		LastWrite   time.Time `bson:"lastwrite"`
 		ServerNames []string  `bson:"servernames"`
 
-		// TODO: Remove FanoutBytes after the next deployment for a
-		// smooth transition of ongoing uploads.
-		FanoutBytes []byte `bson:"fanoutbytes"`
-
 		FanoutSequenceCounter uint64             `bson:"fanoutsequencecounter"`
 		FileInfo              handler.FileInfo   `bson:"fileinfo"`
 		FileName              string             `bson:"filename"`
@@ -366,14 +362,6 @@ func (u *MongoTUSUpload) UploadParams(ctx context.Context) (skymodules.SkyfileUp
 // CommitWriteChunk commits writing a chunk of either a small or
 // large file with fanout.
 func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, newLastWrite time.Time, isSmall bool, fanout []byte) error {
-	// COMPAT: If an upload has the 'fanoutbytes' set, we prepend the fanout
-	// with them and set them to nil in the db.
-	if len(u.FanoutBytes) > 0 {
-		newFanout := make([]byte, len(u.FanoutBytes)+len(fanout))
-		copy(newFanout, u.FanoutBytes)
-		copy(newFanout[len(u.FanoutBytes):], fanout)
-		fanout = newFanout
-	}
 	// This method writes to the db twice. Make sure that the writes happen
 	// atomically.
 	err := u.staticUploadStore.staticClient.UseSession(ctx, func(sctx mongo.SessionContext) error {
@@ -403,7 +391,6 @@ func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, 
 			// Commit the chunk write.
 			return nil, u.commitWriteChunk(ctx, bson.M{
 				"fanoutsequencecounter": fsc + 1, // increment the sequence
-				"fanoutbytes":           nil,
 			}, newOffset, newLastWrite)
 		})
 		return err
@@ -414,7 +401,6 @@ func (u *MongoTUSUpload) CommitWriteChunk(ctx context.Context, newOffset int64, 
 
 	// Increment the sequence number in memory if everything went well.
 	u.FanoutSequenceCounter++
-	u.FanoutBytes = nil
 	return nil
 }
 
@@ -474,7 +460,6 @@ func (u *MongoTUSUpload) CommitFinishUpload(ctx context.Context, skylink skymodu
 	u.Complete = newComplete
 	u.FileInfo = newFileInfo
 	u.LastWrite = time.Now()
-	u.FanoutBytes = nil
 
 	// Remove the fanout chunks.
 	fanout := u.staticUploadStore.staticFanoutCollection()
@@ -541,9 +526,9 @@ func newSkynetTUSMongoUploadStore(ctx context.Context, uri, portalName string, c
 	opts := options.Client().
 		ApplyURI(uri).
 		SetAuth(creds).
-		SetReadConcern(readconcern.Local()).
+		SetReadConcern(readconcern.Majority()).
 		SetReadPreference(readpref.Nearest()).
-		SetWriteConcern(writeconcern.New(writeconcern.W(1)))
+		SetWriteConcern(writeconcern.New(writeconcern.WMajority()))
 
 	client, err := mongo.Connect(ctx, opts)
 	if err != nil {
