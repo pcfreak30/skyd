@@ -113,7 +113,6 @@ func testExpectedFanoutBytes(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 // testTranslateBaseSectorExtensionOffset is a unit test for
