@@ -541,9 +541,9 @@ func newSkynetTUSMongoUploadStore(ctx context.Context, uri, portalName string, c
 	opts := options.Client().
 		ApplyURI(uri).
 		SetAuth(creds).
-		SetReadConcern(readconcern.Local()).
+		SetReadConcern(readconcern.Majority()).
 		SetReadPreference(readpref.Nearest()).
-		SetWriteConcern(writeconcern.New(writeconcern.W(1)))
+		SetWriteConcern(writeconcern.New(writeconcern.WMajority()))
 
 	client, err := mongo.Connect(ctx, opts)
 	if err != nil {
