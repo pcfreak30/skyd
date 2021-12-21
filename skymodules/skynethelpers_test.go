@@ -23,6 +23,97 @@ func TestSkynetHelpers(t *testing.T) {
 	t.Run("EnsureSuffix", testEnsureSuffix)
 	t.Run("BuildBaseSectorExtension", testBuildBaseSectorExtension)
 	t.Run("ResolveCompressedDataOffsetLength", testTranslateBaseSectorExtensionOffset)
+	t.Run("ExpectedFanoutBytes", testExpectedFanoutBytes)
+}
+
+// testExpectedFanoutBytes is a unit test for ExpectedFanoutBytes.
+func testExpectedFanoutBytes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name               string
+		fileSize           uint64
+		fanoutDataPieces   int
+		fanoutParityPieces int
+		ct                 crypto.CipherType
+		result             uint64
+	}{
+		// 1 of 10 tests
+		{
+			name:               "1b-1dp-9pp-plain",
+			fileSize:           1,
+			fanoutDataPieces:   1,
+			fanoutParityPieces: 9,
+			ct:                 crypto.TypePlain,
+			result:             crypto.HashSize,
+		},
+		{
+			name:               "1b-1dp-9pp-encrypted",
+			fileSize:           1,
+			fanoutDataPieces:   1,
+			fanoutParityPieces: 9,
+			ct:                 crypto.TypeThreefish,
+			result:             crypto.HashSize * 10,
+		},
+		{
+			name:               "2chunks-1dp-9pp-plain",
+			fileSize:           ChunkSize(crypto.TypePlain, 1) + 1,
+			fanoutDataPieces:   1,
+			fanoutParityPieces: 9,
+			ct:                 crypto.TypePlain,
+			result:             2 * crypto.HashSize,
+		},
+		{
+			name:               "2chunks-1dp-9pp-encrypted",
+			fileSize:           ChunkSize(crypto.TypeThreefish, 1) + 1,
+			fanoutDataPieces:   1,
+			fanoutParityPieces: 9,
+			ct:                 crypto.TypeThreefish,
+			result:             2 * 10 * crypto.HashSize,
+		},
+		// 10 of 30 tests
+		{
+			name:               "1b-10dp-20pp-plain",
+			fileSize:           1,
+			fanoutDataPieces:   10,
+			fanoutParityPieces: 20,
+			ct:                 crypto.TypePlain,
+			result:             30 * crypto.HashSize,
+		},
+		{
+			name:               "1b-10dp-20pp-encrypted",
+			fileSize:           1,
+			fanoutDataPieces:   10,
+			fanoutParityPieces: 20,
+			ct:                 crypto.TypeThreefish,
+			result:             30 * crypto.HashSize,
+		},
+		{
+			name:               "2chunks-10dp-20pp-plain",
+			fileSize:           ChunkSize(crypto.TypePlain, 10) + 1,
+			fanoutDataPieces:   10,
+			fanoutParityPieces: 20,
+			ct:                 crypto.TypePlain,
+			result:             2 * 30 * crypto.HashSize,
+		},
+		{
+			name:               "2chunks-10dp-20pp-encrypted",
+			fileSize:           ChunkSize(crypto.TypeThreefish, 10) + 1,
+			fanoutDataPieces:   10,
+			fanoutParityPieces: 20,
+			ct:                 crypto.TypeThreefish,
+			result:             2 * 30 * crypto.HashSize,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			l := ExpectedFanoutBytesLen(test.fileSize, test.fanoutDataPieces, test.fanoutParityPieces, test.ct)
+			if l != test.result {
+				t.Fatalf("invalid length: expected %v got %v", test.result, l)
+			}
+		})
+	}
+
 }
 
 // testTranslateBaseSectorExtensionOffset is a unit test for
