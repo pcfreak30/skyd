@@ -100,7 +100,7 @@ func (c *Contractor) managedCheckHostScore(contract skymodules.RenterContract, s
 // managedUtilityChecks performs checks on a contract that
 // might require marking the contract as !GFR and/or !GFU.
 // Returns the new utility and corresponding update status.
-func (c *Contractor) managedUtilityChecks(contract skymodules.RenterContract, host skymodules.HostDBEntry, sb skymodules.HostScoreBreakdown, minScoreGFU, minScoreGFR types.Currency) (newUtility skymodules.ContractUtility, uus utilityUpdateStatus) {
+func (c *Contractor) managedUtilityChecks(contract skymodules.RenterContract, host skymodules.HostDBEntry, sb skymodules.HostScoreBreakdown, minScoreGFU, minScoreGFR types.Currency) (_ skymodules.ContractUtility, uus utilityUpdateStatus) {
 	revision := contract.Transaction.FileContractRevisions[0]
 	c.mu.RLock()
 	allowance := c.allowance
@@ -113,53 +113,52 @@ func (c *Contractor) managedUtilityChecks(contract skymodules.RenterContract, ho
 	// Init uus to no update and the utility with the contract's utility.
 	// We assume that the contract is good when we start.
 	uus = noUpdate
-	newUtility = contract.Utility
-	newUtility.GoodForRenew = true
-	newUtility.GoodForUpload = true
+	contract.Utility.GoodForRenew = true
+	contract.Utility.GoodForUpload = true
 
 	// A contract with a dead score should not be used for anything.
-	u, needsUpdate := deadScoreCheck(newUtility, sb.Score)
+	u, needsUpdate := deadScoreCheck(contract.Utility, sb.Score)
 	uus = uus.Merge(needsUpdate)
-	newUtility = newUtility.Merge(u)
+	contract.Utility = contract.Utility.Merge(u)
 
 	// A contract that has been renewed should be set to !GFU and !GFR.
 	u, needsUpdate = renewedCheck(contract.Utility, renewed)
 	uus = uus.Merge(needsUpdate)
-	newUtility = newUtility.Merge(u)
+	contract.Utility = contract.Utility.Merge(u)
 
 	u, needsUpdate = maxRevisionCheck(contract.Utility, revision.NewRevisionNumber)
 	uus = uus.Merge(needsUpdate)
-	newUtility = newUtility.Merge(u)
+	contract.Utility = contract.Utility.Merge(u)
 
 	u, needsUpdate = badContractCheck(contract.Utility)
 	uus = uus.Merge(needsUpdate)
-	newUtility = newUtility.Merge(u)
+	contract.Utility = contract.Utility.Merge(u)
 
 	u, needsUpdate = offlineCheck(contract, host, c.staticLog)
 	uus = uus.Merge(needsUpdate)
-	newUtility = newUtility.Merge(u)
+	contract.Utility = contract.Utility.Merge(u)
 
 	u, needsUpdate = upForRenewalCheck(contract, renewWindow, blockHeight, c.staticLog)
 	uus = uus.Merge(needsUpdate)
-	newUtility = newUtility.Merge(u)
+	contract.Utility = contract.Utility.Merge(u)
 
 	u, needsUpdate = sufficientFundsCheck(contract, host, period, c.staticLog)
 	uus = uus.Merge(needsUpdate)
-	newUtility = newUtility.Merge(u)
+	contract.Utility = contract.Utility.Merge(u)
 
 	u, needsUpdate = outOfStorageCheck(contract, blockHeight, c.staticLog)
 	uus = uus.Merge(needsUpdate)
-	newUtility = newUtility.Merge(u)
+	contract.Utility = contract.Utility.Merge(u)
 
 	u, needsUpdate = storageGougingCheck(contract, allowance, host, revision.NewFileSize)
 	uus = uus.Merge(needsUpdate)
-	newUtility = newUtility.Merge(u)
+	contract.Utility = contract.Utility.Merge(u)
 
 	u, needsUpdate = c.managedCheckHostScore(contract, sb, minScoreGFR, minScoreGFU)
 	uus = uus.Merge(needsUpdate)
-	newUtility = newUtility.Merge(u)
+	contract.Utility = contract.Utility.Merge(u)
 
-	return newUtility, uus
+	return contract.Utility, uus
 }
 
 // managedHostInHostDBCheck checks if the host is in the hostdb and not
