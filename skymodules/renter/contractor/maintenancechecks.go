@@ -88,9 +88,6 @@ func (c *Contractor) managedCheckHostScore(contract skymodules.RenterContract, s
 			c.staticLog.Println("Uptime Adjustment:     ", sb.UptimeAdjustment)
 			c.staticLog.Println("Version Adjustment:    ", sb.VersionAdjustment)
 		}
-		if !u.GoodForRenew {
-			c.staticLog.Println("Marking contract as being good for renew", contract.ID)
-		}
 		u.GoodForUpload = false
 		return u, necessaryUtilityUpdate
 	}
@@ -113,6 +110,7 @@ func (c *Contractor) managedUtilityChecks(contract skymodules.RenterContract, ho
 	// Init uus to no update and the utility with the contract's utility.
 	// We assume that the contract is good when we start.
 	uus = noUpdate
+	oldUtility := contract.Utility
 	contract.Utility.GoodForRenew = true
 	contract.Utility.GoodForUpload = true
 
@@ -158,6 +156,16 @@ func (c *Contractor) managedUtilityChecks(contract skymodules.RenterContract, ho
 	uus = uus.Merge(needsUpdate)
 	contract.Utility = contract.Utility.Merge(u)
 
+	// Log some info about changed utilities.
+	if oldUtility.BadContract != contract.Utility.BadContract {
+		c.staticLog.Printf("managedUtilityChecks: [%v] badContract %v -> %v", contract.ID, oldUtility.BadContract, contract.Utility.BadContract)
+	}
+	if oldUtility.GoodForRenew != contract.Utility.GoodForRenew {
+		c.staticLog.Printf("managedUtilityChecks: [%v] goodForRenew %v -> %v", contract.ID, oldUtility.GoodForRenew, contract.Utility.GoodForRenew)
+	}
+	if oldUtility.GoodForUpload != contract.Utility.GoodForUpload {
+		c.staticLog.Printf("managedUtilityChecks: [%v] goodForUpload %v -> %v", contract.ID, oldUtility.GoodForUpload, contract.Utility.GoodForUpload)
+	}
 	return contract.Utility, uus
 }
 
@@ -309,9 +317,6 @@ func sufficientFundsCheck(contract skymodules.RenterContract, host skymodules.Ho
 		if u.GoodForUpload {
 			log.Printf("Marking contract as not good for upload because of insufficient funds: %v vs. %v - %v", contract.RenterFunds.Cmp(sectorPrice.Mul64(3)) < 0, percentRemaining, contract.ID)
 		}
-		if !u.GoodForRenew {
-			log.Println("Marking contract as being good for renew:", contract.ID)
-		}
 		u.GoodForUpload = false
 		return u, necessaryUtilityUpdate
 	}
@@ -332,9 +337,6 @@ func upForRenewalCheck(contract skymodules.RenterContract, renewWindow, blockHei
 	if blockHeight+renewWindow/2 >= contract.EndHeight {
 		if u.GoodForUpload {
 			log.Println("Marking contract as not good for upload because it is time to renew the contract", contract.ID)
-		}
-		if !u.GoodForRenew {
-			log.Println("Marking contract as being good for renew:", contract.ID)
 		}
 		u.GoodForUpload = false
 		return u, necessaryUtilityUpdate
