@@ -119,6 +119,33 @@ func (queue *notificationQueue) Pop() *queuedNotification {
 
 // skynetRegistrySubscriptionHandler handles websocket subscriptions to the registry.
 func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Make sure the limit and delay are set.
+	bandwidthLimitStr := req.FormValue("bandwidthlimit")
+	if bandwidthLimitStr == "" {
+		WriteError(w, Error{"bandwidthlimit param not specified"}, http.StatusBadRequest)
+		return
+	}
+	notificationDelayStr := req.FormValue("notificationdelay")
+	if notificationDelayStr == "" {
+		WriteError(w, Error{"notificationdelay param not specified"}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse them.
+	var bandwidthLimit uint64
+	_, err := fmt.Sscan(bandwidthLimitStr, &bandwidthLimit)
+	if err != nil {
+		WriteError(w, Error{"failed to parse bandwidthlimit" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	var notificationDelayMS uint64
+	_, err = fmt.Sscan(notificationDelayStr, &notificationDelayMS)
+	if err != nil {
+		WriteError(w, Error{"failed to parse notificationdelay" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	notificationDelay := time.Millisecond * time.Duration(notificationDelayMS)
+
 	// Upgrade connection to use websocket.
 	upgrader.CheckOrigin = func(r *http.Request) bool { return true } // TODO: this is not safe
 	c, err := upgrader.Upgrade(w, req, nil)
@@ -127,38 +154,6 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 		return
 	}
 	defer c.Close()
-
-	// writeErrorClose is a helper method to write error messages to the websocket and close it.
-	writeErrorClose := func(msg string) {
-		_ = c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseAbnormalClosure, msg))
-	}
-
-	// Make sure the limit and delay are set.
-	bandwidthLimitStr := req.FormValue("bandwidthlimit")
-	if bandwidthLimitStr == "" {
-		writeErrorClose("bandwidthlimit param not specified")
-		return
-	}
-	notificationDelayStr := req.FormValue("notificationdelay")
-	if notificationDelayStr == "" {
-		writeErrorClose("notificationdelay param not specified")
-		return
-	}
-
-	// Parse them.
-	var bandwidthLimit uint64
-	_, err = fmt.Sscan(bandwidthLimitStr, &bandwidthLimit)
-	if err != nil {
-		writeErrorClose("failed to parse bandwidthlimit" + err.Error())
-		return
-	}
-	var notificationDelayMS uint64
-	_, err = fmt.Sscan(notificationDelayStr, &notificationDelayMS)
-	if err != nil {
-		writeErrorClose("failed to parse notificationdelay" + err.Error())
-		return
-	}
-	notificationDelay := time.Millisecond * time.Duration(notificationDelayMS)
 
 	// Compute how many notifications per second we want to serve.
 	notificationsPerSecond := float64(bandwidthLimit) / RegistrySubscriptionNotificationSize
