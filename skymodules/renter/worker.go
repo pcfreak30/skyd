@@ -173,20 +173,6 @@ func (w *worker) callReadQueue(lowPrio bool) *jobReadQueue {
 	return w.staticJobReadQueue
 }
 
-// downloadChunks is a queue of download chunks.
-type downloadChunks struct {
-	*list.List
-}
-
-// Pop removes the first element of the queue.
-func (queue *downloadChunks) Pop() *unfinishedDownloadChunk {
-	mr := queue.Front()
-	if mr == nil {
-		return nil
-	}
-	return queue.List.Remove(mr).(*unfinishedDownloadChunk)
-}
-
 // uploadChunks is a queue of upload chunks.
 type uploadChunks struct {
 	*list.List
@@ -213,17 +199,6 @@ func (w *worker) managedKill() {
 	err := w.staticTG.Stop()
 	if err != nil && !errors.Contains(err, threadgroup.ErrStopped) {
 		w.staticRenter.staticLog.Printf("Worker %v: kill failed: %v", w.staticHostPubKeyStr, err)
-	}
-}
-
-// staticKilled is a convenience function to determine if a worker has been
-// killed or not.
-func (w *worker) staticKilled() bool {
-	select {
-	case <-w.staticTG.StopChan():
-		return true
-	default:
-		return false
 	}
 }
 

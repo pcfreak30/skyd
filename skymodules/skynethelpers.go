@@ -203,6 +203,20 @@ func buildBaseSectorExtension(payload []byte, size uint64) ([]byte, [][]byte) {
 	return baseSectorPart, uploadPart
 }
 
+// ExpectedFanoutBytesLen returns the expected size of a skyfile's fanout before
+// potential compression is applied and it's turned into a compressed fanout.
+func ExpectedFanoutBytesLen(fileSize uint64, fanoutDataPieces, fanoutParityPieces int, ct crypto.CipherType) uint64 {
+	numChunks := NumChunks(ct, fileSize, uint64(fanoutDataPieces))
+	var chunkRootsSize uint64
+	if fanoutDataPieces == 1 && ct == crypto.TypePlain {
+		chunkRootsSize = crypto.HashSize
+	} else {
+		piecesPerChunk := uint64(fanoutDataPieces) + uint64(fanoutParityPieces)
+		chunkRootsSize = crypto.HashSize * piecesPerChunk
+	}
+	return numChunks * chunkRootsSize
+}
+
 // BuildBaseSector will take all of the elements of the base sector and copy
 // them into a freshly created base sector.
 func BuildBaseSector(layoutBytes, fanoutBytes, metadataBytes, fileBytes []byte) ([]byte, uint64, [][]byte) {
