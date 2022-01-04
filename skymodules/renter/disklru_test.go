@@ -62,6 +62,10 @@ func TestPersistedLRU(t *testing.T) {
 			name: "Section",
 			f:    testSection,
 		},
+		{
+			name: "PutGet",
+			f:    testPutGet,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, test.f)
@@ -130,10 +134,11 @@ func testPersistence(t *testing.T) {
 // testSection is a unit test for newSection and freeSection.
 func testSection(t *testing.T) {
 	sectionSize := int64(100)
-	ds := newCachedDataSource(int(sectionSize))
+	lru := newTestLRU(t.Name())
+	ds := lru.staticNewCachedDataSource(int(sectionSize))
 
-	addTestSection := func(index uint64, expectedOffset int64) error {
-		offset := ds.newSection(index)
+	addTestSection := func(index uint64, expectedOffset int64, length int) error {
+		offset := ds.newSection(index, length)
 		if offset != expectedOffset {
 			return fmt.Errorf("wrong offset returned %v %v", offset, expectedOffset)
 		}
@@ -148,13 +153,13 @@ func testSection(t *testing.T) {
 	}
 
 	// Create sections
-	if err := addTestSection(1, 0); err != nil {
+	if err := addTestSection(1, 0, 100); err != nil {
 		t.Fatal(err)
 	}
-	if err := addTestSection(5, sectionSize); err != nil {
+	if err := addTestSection(5, sectionSize, 200); err != nil {
 		t.Fatal(err)
 	}
-	if err := addTestSection(10, 2*sectionSize); err != nil {
+	if err := addTestSection(10, 2*sectionSize, 300); err != nil {
 		t.Fatal(err)
 	}
 
@@ -168,7 +173,7 @@ func testSection(t *testing.T) {
 	}
 
 	// Add another one. Should reuse the section.
-	if err := addTestSection(100, sectionSize); err != nil {
+	if err := addTestSection(100, sectionSize, 400); err != nil {
 		t.Fatal(err)
 	}
 	if len(ds.unusedSections) != 0 {
@@ -179,6 +184,7 @@ func testSection(t *testing.T) {
 	}
 }
 
+// testPutGet tests adding files to the cache and reading them.
 func testPutGet(t *testing.T) {
 	dir := lruTestDir(t.Name())
 	lru := newTestLRU(dir)
@@ -192,6 +198,73 @@ func testPutGet(t *testing.T) {
 
 	section1 := fastrand.Bytes(testLRUSectionSize)
 	section2 := fastrand.Bytes(testLRUSectionSize)
-	section3 := 1 // small section
+	section3 := fastrand.Bytes(1) // small section
+	section4 := fastrand.Bytes(1) // small section
 
+	testPutGet := func(dsid crypto.Hash, sectorIndex uint64, data []byte) error {
+		if err := lru.Put(dsid, sectorIndex, data); err != nil {
+			return err
+		}
+		cachedData, cached, err := lru.Get(dsid, sectorIndex)
+		if err != nil {
+			return err
+		}
+		if !cached {
+			return errors.New("data not found in cache")
+		}
+		if !bytes.Equal(data, cachedData) {
+			return fmt.Errorf("cached data != data %v %v", len(data), len(cachedData))
+		}
+		return nil
+	}
+
+	// Cache section 1 twice.
+	if err := testPutGet(dsid, 0, section1); err != nil {
+		t.Fatal(err)
+	}
+	if err := testPutGet(dsid, 0, section1); err != nil {
+		t.Fatal(err)
+	}
+
+	// Cache section 2.
+	if err := testPutGet(dsid, 1, section2); err != nil {
+		t.Fatal(err)
+	}
+
+	// Free section 1.
+	lru.dataSources[dsid].freeSection(0)
+
+	// Cache section 3.
+	if err := testPutGet(dsid, 2, section3); err != nil {
+		t.Fatal(err)
+	}
+
+	// Cache section 4.
+	if err := testPutGet(dsid, 3, section4); err != nil {
+		t.Fatal(err)
+	}
+
+	// Run the above again but in a loop with more randomness.
+	var dsid2 crypto.Hash
+	fastrand.Read(dsid2[:])
+	var dsid3 crypto.Hash
+	fastrand.Read(dsid3[:])
+
+	dsids := []crypto.Hash{dsid, dsid2, dsid3}
+	sections := [][]byte{section1, section2, section3}
+
+	for i := 0; i < 100; i++ {
+		dsidI := fastrand.Intn(3)
+		sectionI := fastrand.Intn(3)
+
+		if err := testPutGet(dsids[dsidI], uint64(sectionI), sections[sectionI]); err != nil {
+			t.Error(err)
+			return
+		}
+
+		// 50% chance to free the section again.
+		if fastrand.Intn(2) == 0 {
+			lru.dataSources[dsids[dsidI]].freeSection(uint64(sectionI))
+		}
+	}
 }
