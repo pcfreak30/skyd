@@ -19,7 +19,6 @@ type (
 		WriteBPS           int64  `json:"writebps"`
 		PacketSize         uint64 `json:"packetsize"`
 
-		// path of config on disk.
 		path string
 		mu   sync.Mutex
 	}
@@ -66,6 +65,7 @@ func (cfg *SiadConfig) save() error {
 
 // load loads the config from disk.
 func (cfg *SiadConfig) load(path string) error {
+	cfg.path = path
 	defer cfg.writeBPSCompat()
 	return persist.LoadJSON(configMetadata, cfg, path)
 }
@@ -86,7 +86,6 @@ func (cfg *SiadConfig) writeBPSCompat() {
 // yet.
 func NewConfig(path string) (*SiadConfig, error) {
 	var cfg SiadConfig
-	cfg.path = path
 	// Try loading the config from disk first.
 	err := cfg.load(cfg.path)
 	if err != nil && !os.IsNotExist(err) {

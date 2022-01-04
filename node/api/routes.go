@@ -11,7 +11,6 @@ import (
 	"github.com/tus/tusd/pkg/handler"
 	siaapi "go.sia.tech/siad/node/api"
 
-	"gitlab.com/NebulousLabs/log"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules/renter"
 )
@@ -184,8 +183,7 @@ func (api *API) buildHTTPRoutes() {
 			RespectForwardedHeaders: true,
 			StoreComposer:           storeComposer,
 
-			// NOTE: comment logger out for debugging
-			Logger: log.DiscardLogger.Logger, // discard third party logging
+			Logger: api.staticLogger,
 		})
 		if err != nil {
 			build.Critical("failed to create skynet TUS handler", err)
