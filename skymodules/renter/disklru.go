@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"container/list"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -64,6 +65,9 @@ type persistedLRU struct {
 	staticPath        string
 	staticSectionSize uint64
 
+	staticLRU   *list.List
+	lruElements map[crypto.Hash]map[uint64]*list.Element
+
 	dataSources map[crypto.Hash]*cachedDataSource
 	mu          sync.Mutex
 }
@@ -87,6 +91,8 @@ func newPersistedLRU(path string, sectionSize uint64) (*persistedLRU, error) {
 	}
 	return &persistedLRU{
 		dataSources:       make(map[crypto.Hash]*cachedDataSource),
+		lruElements:       make(map[crypto.Hash]map[uint64]*list.Element),
+		staticLRU:         list.New(),
 		staticPath:        path,
 		staticSectionSize: sectionSize,
 	}, nil
@@ -118,7 +124,20 @@ func (lru *persistedLRU) Get(dsid crypto.Hash, sectionIndex uint64) ([]byte, boo
 	if !exists {
 		return nil, false, nil
 	}
-	return ds.managedGet(dsid, sectionIndex)
+	data, found, err := ds.managedGet(dsid, sectionIndex)
+	if err != nil {
+		return nil, false, err
+	}
+	// Refresh the cache if we got the data cached.
+	if found {
+		lru.managedRefreshCachedEntry(dsid, sectionIndex)
+	}
+	return data, found, nil
+}
+
+type lruElement struct {
+	staticDSID         crypto.Hash
+	staticSectionIndex uint64
 }
 
 func (lru *persistedLRU) Put(dsid crypto.Hash, sectionIndex uint64, data []byte) error {
@@ -139,8 +158,32 @@ func (lru *persistedLRU) Put(dsid crypto.Hash, sectionIndex uint64, data []byte)
 		return err
 	}
 
-	// TODO: Update the lru.
+	// Update the lru.
+	lru.managedRefreshCachedEntry(dsid, sectionIndex)
 	return nil
+}
+
+func (lru *persistedLRU) managedRefreshCachedEntry(dsid crypto.Hash, sectionIndex uint64) {
+	lru.mu.Lock()
+	elements, exists := lru.lruElements[dsid]
+	if !exists {
+		elements = make(map[uint64]*list.Element)
+		lru.lruElements[dsid] = elements
+	}
+	ele, exists := elements[sectionIndex]
+	if exists {
+		// Remove element and add it at the front.
+		lru.staticLRU.Remove(ele)
+		lru.staticLRU.PushFront(ele.Value)
+	} else {
+		// Push a new element.
+		ele = lru.staticLRU.PushFront(lruElement{
+			staticDSID:         dsid,
+			staticSectionIndex: sectionIndex,
+		})
+		elements[sectionIndex] = ele
+	}
+	lru.mu.Unlock()
 }
 
 func (ds *cachedDataSource) managedPut(dsid crypto.Hash, sectionIndex uint64, data []byte) (err error) {

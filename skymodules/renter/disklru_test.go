@@ -66,6 +66,10 @@ func TestPersistedLRU(t *testing.T) {
 			name: "PutGet",
 			f:    testPutGet,
 		},
+		{
+			name: "LRURefresh",
+			f:    testLRURefresh,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, test.f)
@@ -266,5 +270,121 @@ func testPutGet(t *testing.T) {
 		if fastrand.Intn(2) == 0 {
 			lru.dataSources[dsids[dsidI]].freeSection(uint64(sectionI))
 		}
+	}
+}
+
+// testLRURefresh is a unit test for checking that Put and Get call
+// managedRefreshCachedEntry and that it correctly updates the lru.
+func testLRURefresh(t *testing.T) {
+	dir := lruTestDir(t.Name())
+	lru := newTestLRU(dir)
+
+	var dsid1 crypto.Hash
+	fastrand.Read(dsid1[:])
+	var dsid2 crypto.Hash
+	fastrand.Read(dsid2[:])
+
+	// Put some data in the cache for dsid1 section1.
+	if err := lru.Put(dsid1, 1, fastrand.Bytes(1)); err != nil {
+		t.Fatal(err)
+	}
+	if lru.staticLRU.Len() != 1 {
+		t.Fatal("wrong lru len", lru.staticLRU.Len())
+	}
+	if len(lru.lruElements[dsid1]) != 1 {
+		t.Fatal("wrong lruElements len", len(lru.lruElements[dsid1]))
+	}
+	element := lru.staticLRU.Front().Value.(lruElement)
+	if element.staticDSID != dsid1 || element.staticSectionIndex != 1 {
+		t.Fatal("wrong element in list")
+	}
+
+	// Put some data in the cache for dsid2 section1. It should now be at
+	// the front of the LRU.
+	if err := lru.Put(dsid2, 1, fastrand.Bytes(1)); err != nil {
+		t.Fatal(err)
+	}
+	if lru.staticLRU.Len() != 2 {
+		t.Fatal("wrong lru len", lru.staticLRU.Len())
+	}
+	if len(lru.lruElements[dsid2]) != 1 {
+		t.Fatal("wrong lruElements len", len(lru.lruElements[dsid2]))
+	}
+	element = lru.staticLRU.Front().Value.(lruElement)
+	if element.staticDSID != dsid2 || element.staticSectionIndex != 1 {
+		t.Fatal("wrong element in list")
+	}
+
+	// Put some data for dsid1 section1 again. Should be back in the front.
+	if err := lru.Put(dsid1, 1, fastrand.Bytes(1)); err != nil {
+		t.Fatal(err)
+	}
+	if lru.staticLRU.Len() != 2 {
+		t.Fatal("wrong lru len", lru.staticLRU.Len())
+	}
+	if len(lru.lruElements[dsid1]) != 1 {
+		t.Fatal("wrong lruElements len", len(lru.lruElements[dsid1]))
+	}
+	element = lru.staticLRU.Front().Value.(lruElement)
+	if element.staticDSID != dsid1 || element.staticSectionIndex != 1 {
+		t.Fatal("wrong element in list")
+	}
+	element = lru.staticLRU.Back().Value.(lruElement)
+	if element.staticDSID != dsid2 || element.staticSectionIndex != 1 {
+		t.Fatal("wrong element in list")
+	}
+
+	// Put some data for dsid1 section2. The new order should be dsid1
+	// section2, dsid1 section1 and then dsid2 section1.
+	if err := lru.Put(dsid1, 2, fastrand.Bytes(1)); err != nil {
+		t.Fatal(err)
+	}
+	if lru.staticLRU.Len() != 3 {
+		t.Fatal("wrong lru len", lru.staticLRU.Len())
+	}
+	if len(lru.lruElements[dsid1]) != 2 {
+		t.Fatal("wrong lruElements len", len(lru.lruElements[dsid1]))
+	}
+	if len(lru.lruElements[dsid2]) != 1 {
+		t.Fatal("wrong lruElements len", len(lru.lruElements[dsid2]))
+	}
+	element = lru.staticLRU.Front().Value.(lruElement)
+	if element.staticDSID != dsid1 || element.staticSectionIndex != 2 {
+		t.Fatal("wrong element in list")
+	}
+	element = lru.staticLRU.Front().Next().Value.(lruElement)
+	if element.staticDSID != dsid1 || element.staticSectionIndex != 1 {
+		t.Fatal("wrong element in list")
+	}
+	element = lru.staticLRU.Back().Value.(lruElement)
+	if element.staticDSID != dsid2 || element.staticSectionIndex != 1 {
+		t.Fatal("wrong element in list")
+	}
+
+	// Get dsid2 section1. This should put it back in the front, followed by
+	// dsid1 section2 and dsid1 section1.
+	if _, cached, err := lru.Get(dsid2, 1); !cached || err != nil {
+		t.Fatal(err)
+	}
+	if lru.staticLRU.Len() != 3 {
+		t.Fatal("wrong lru len", lru.staticLRU.Len())
+	}
+	if len(lru.lruElements[dsid1]) != 2 {
+		t.Fatal("wrong lruElements len", len(lru.lruElements[dsid1]))
+	}
+	if len(lru.lruElements[dsid2]) != 1 {
+		t.Fatal("wrong lruElements len", len(lru.lruElements[dsid2]))
+	}
+	element = lru.staticLRU.Front().Value.(lruElement)
+	if element.staticDSID != dsid2 || element.staticSectionIndex != 1 {
+		t.Fatal("wrong element in list")
+	}
+	element = lru.staticLRU.Front().Next().Value.(lruElement)
+	if element.staticDSID != dsid1 || element.staticSectionIndex != 2 {
+		t.Fatal("wrong element in list")
+	}
+	element = lru.staticLRU.Back().Value.(lruElement)
+	if element.staticDSID != dsid1 || element.staticSectionIndex != 1 {
+		t.Fatal("wrong element in list")
 	}
 }
