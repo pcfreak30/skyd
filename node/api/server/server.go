@@ -181,6 +181,12 @@ func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string,
 			return nil, errors.AddContext(err, "failed to load siad config")
 		}
 
+		// Create dir.
+		err = os.MkdirAll(nodeParams.Dir, skymodules.DefaultDirPerm)
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to create server root dir")
+		}
+
 		// Create logger.
 		logFile, err := os.OpenFile(filepath.Join(nodeParams.Dir, logFileName), os.O_WRONLY|os.O_APPEND|os.O_CREATE, skymodules.DefaultFilePerm)
 		if err != nil {
