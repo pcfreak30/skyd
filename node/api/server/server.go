@@ -176,7 +176,7 @@ func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string,
 		}
 
 		// Load the config file.
-		cfg, err := skymodules.NewConfig(nodeParams.Dir)
+		cfg, err := skymodules.NewConfig(filepath.Join(nodeParams.Dir, skymodules.ConfigName))
 		if err != nil {
 			return nil, errors.AddContext(err, "failed to load siad config")
 		}

@@ -19,6 +19,7 @@ type (
 		WriteBPS           int64  `json:"writebps"`
 		PacketSize         uint64 `json:"packetsize"`
 
+		// path of config on disk.
 		path string
 		mu   sync.Mutex
 	}
