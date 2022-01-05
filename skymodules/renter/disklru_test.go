@@ -146,7 +146,7 @@ func testSection(t *testing.T) {
 		if offset != expectedOffset {
 			return fmt.Errorf("wrong offset returned %v %v", offset, expectedOffset)
 		}
-		section, ok := ds.staticSections[index]
+		section, ok := ds.sections[index]
 		if !ok {
 			return errors.New("added section not found")
 		}
@@ -172,8 +172,8 @@ func testSection(t *testing.T) {
 	if len(ds.unusedSections) != 1 {
 		t.Fatal("wrong number of unused sections")
 	}
-	if len(ds.staticSections) != 2 {
-		t.Fatal("wrong number of used sections", len(ds.staticSections))
+	if len(ds.sections) != 2 {
+		t.Fatal("wrong number of used sections", len(ds.sections))
 	}
 
 	// Add another one. Should reuse the section.
@@ -183,8 +183,8 @@ func testSection(t *testing.T) {
 	if len(ds.unusedSections) != 0 {
 		t.Fatal("wrong number of unused sections")
 	}
-	if len(ds.staticSections) != 3 {
-		t.Fatal("wrong number of used sections", len(ds.staticSections))
+	if len(ds.sections) != 3 {
+		t.Fatal("wrong number of used sections", len(ds.sections))
 	}
 }
 
