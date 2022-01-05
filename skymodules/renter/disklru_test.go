@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"sync"
 	"testing"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -14,8 +15,13 @@ import (
 	"go.sia.tech/siad/persist"
 )
 
-// testLRUSectionSize is the section size for testing.
-const testLRUSectionSize = 4096
+const (
+	// testLRUSectionSize is the section size for testing.
+	testLRUSectionSize = 4096
+
+	// testLRUMaxCacheSize is the max cache size for most tests.
+	testLRUMaxCacheSize = 1 << 20
+)
 
 // lruTestDir creates a dir for testing the persistedLRU.
 func lruTestDir(testName string) string {
@@ -32,7 +38,7 @@ func lruTestDir(testName string) string {
 }
 
 func newTestLRU(path string) *persistedLRU {
-	lru, err := newPersistedLRU(path, testLRUSectionSize)
+	lru, err := newPersistedLRU(path, testLRUMaxCacheSize, testLRUSectionSize)
 	if err != nil {
 		panic(err)
 	}
@@ -69,6 +75,18 @@ func TestPersistedLRU(t *testing.T) {
 		{
 			name: "LRURefresh",
 			f:    testLRURefresh,
+		},
+		{
+			name: "PruneLRU",
+			f:    testLRUPrune,
+		},
+		{
+			name: "AddCachedData",
+			f:    testAddCacheSize,
+		},
+		{
+			name: "Parallel",
+			f:    testLRUParallel,
 		},
 	}
 	for _, test := range tests {
@@ -139,8 +157,16 @@ func testPersistence(t *testing.T) {
 func testSection(t *testing.T) {
 	sectionSize := int64(100)
 	lru := newTestLRU(t.Name())
-	ds := lru.staticNewCachedDataSource(int(sectionSize))
+	var dsid crypto.Hash
+	fastrand.Read(dsid[:])
+	ds := lru.staticNewCachedDataSource(dsid, int(sectionSize))
 
+	// Check if id was set.
+	if ds.staticID != dsid {
+		t.Fatal("wrong id", ds.staticID, dsid)
+	}
+
+	// Define test helper.
 	addTestSection := func(index uint64, expectedOffset int64, length int) error {
 		offset := ds.newSection(index, length)
 		if offset != expectedOffset {
@@ -386,5 +412,255 @@ func testLRURefresh(t *testing.T) {
 	element = lru.staticLRU.Back().Value.(lruElement)
 	if element.staticDSID != dsid1 || element.staticSectionIndex != 1 {
 		t.Fatal("wrong element in list")
+	}
+}
+
+func testLRUPrune(t *testing.T) {
+	dir := lruTestDir(t.Name())
+	lru := newTestLRU(dir)
+
+	// Put some data in the cache for dsid1.
+	var dsid1 crypto.Hash
+	fastrand.Read(dsid1[:])
+	section1 := fastrand.Bytes(1)
+	section2 := fastrand.Bytes(int(4096))
+	if err := lru.Put(dsid1, 1, section1); err != nil {
+		t.Fatal(err)
+	}
+	if err := lru.Put(dsid1, 2, section2); err != nil {
+		t.Fatal(err)
+	}
+	if lru.staticLRU.Len() != 2 {
+		t.Fatal("wrong lru len", lru.staticLRU.Len())
+	}
+	if len(lru.lruElements[dsid1]) != 2 {
+		t.Fatal("wrong lruElements len", len(lru.lruElements[dsid1]))
+	}
+
+	// Check the relevant size fields.
+	if lru.staticMaxCacheSize != int64(testLRUMaxCacheSize) {
+		t.Fatal("wrong max size", lru.staticMaxCacheSize)
+	}
+	if lru.cachedSize != int64(len(section1)+len(section2)) {
+		t.Fatal("wrong cached size", lru.cachedSize)
+	}
+
+	// Prune. This should remove section1 since we added that before
+	// section2.
+	length, more, err := lru.managedPruneLRU()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !more {
+		t.Fatal("more should be true since the lru isn't empty")
+	}
+	if length != int64(len(section1)) {
+		t.Fatal("wrong pruned size")
+	}
+	if lru.staticLRU.Len() != 1 {
+		t.Fatal("wrong lru len", lru.staticLRU.Len())
+	}
+	if len(lru.lruElements[dsid1]) != 1 {
+		t.Fatal("wrong lruElements len", len(lru.lruElements[dsid1]))
+	}
+	_, exists1 := lru.lruElements[dsid1][1]
+	_, exists2 := lru.lruElements[dsid1][2]
+	if exists1 || !exists2 {
+		t.Fatal("wrong lru element exists", exists1, exists2)
+	}
+	// Check datasource.
+	ds := lru.dataSources[dsid1]
+	if len(ds.sections) != 1 && len(ds.unusedSections) != 1 {
+		t.Fatal("wrong number of sections")
+	}
+	if ds.staticID != dsid1 {
+		t.Fatal("wrong id")
+	}
+	// Try to open the cache file on disk. Should work.
+	_, err = os.Stat(lru.staticDataSourceIDToPath(dsid1))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Prune. This should remove section2 since it's the last one left.
+	length, more, err = lru.managedPruneLRU()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !more {
+		t.Fatal("more should be true since we pruned some data")
+	}
+	if length != int64(len(section2)) {
+		t.Fatal("wrong pruned size")
+	}
+	if lru.staticLRU.Len() != 0 {
+		t.Fatal("wrong lru len", lru.staticLRU.Len())
+	}
+	if len(lru.lruElements[dsid1]) != 0 {
+		t.Fatal("wrong lruElements len", len(lru.lruElements[dsid1]))
+	}
+	_, exists1 = lru.lruElements[dsid1][1]
+	_, exists2 = lru.lruElements[dsid1][2]
+	if exists1 || exists2 {
+		t.Fatal("wrong lru element exists", exists1, exists2)
+	}
+	// Check datasource.
+	ds = lru.dataSources[dsid1]
+	if len(ds.sections) != 0 && len(ds.unusedSections) != 2 {
+		t.Fatal("wrong number of sections")
+	}
+	if ds.staticID != dsid1 {
+		t.Fatal("wrong id")
+	}
+	// Try to open the cache file on disk. Should fail since it was deleted.
+	_, err = os.Stat(lru.staticDataSourceIDToPath(dsid1))
+	if !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+}
+
+func testAddCacheSize(t *testing.T) {
+	dir := lruTestDir(t.Name())
+	maxSize := uint64(100)
+	sectionSize := uint64(50)
+	lru, err := newPersistedLRU(dir, maxSize, sectionSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Put some data in the cache for dsid.
+	var dsid crypto.Hash
+	fastrand.Read(dsid[:])
+	section := fastrand.Bytes(int(sectionSize))
+	if err := lru.Put(dsid, 1, section); err != nil {
+		t.Fatal(err)
+	}
+	if err := lru.Put(dsid, 2, section); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check cache size.
+	if lru.cachedSize != int64(maxSize) {
+		t.Fatal("wrong cached size", lru.cachedSize)
+	}
+
+	// Call managedAddCachedData with 0 bytes added. This shouldn't do
+	// anything.
+	err = lru.managedAddCachedData(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lru.cachedSize != int64(maxSize) {
+		t.Fatal("wrong cached size", lru.cachedSize)
+	}
+	if lru.staticLRU.Len() != 2 {
+		t.Fatal("wrong lru length", lru.staticLRU.Len())
+	}
+
+	// Call it again with 51 bytes. This pushes it above the max and will
+	// cause it to prune both sections and leave the size at 51.
+	err = lru.managedAddCachedData(51)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lru.cachedSize != 51 {
+		t.Fatal("wrong cached size", lru.cachedSize)
+	}
+	if lru.staticLRU.Len() != 0 {
+		t.Fatal("wrong lru length", lru.staticLRU.Len())
+	}
+	_, ok, err := lru.Get(dsid, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("shouldn't be cached")
+	}
+	_, ok, err = lru.Get(dsid, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("shouldn't be cached")
+	}
+}
+
+func testLRUParallel(t *testing.T) {
+	dir := lruTestDir(t.Name())
+	maxSize := uint64(100)
+	sectionSize := int(25)
+	lru, err := newPersistedLRU(dir, maxSize, uint64(sectionSize))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s := func() []byte {
+		return fastrand.Bytes(sectionSize)
+	}
+
+	// Prepare 2 data sources with 3 sections each.
+	var dsid1 crypto.Hash
+	fastrand.Read(dsid1[:])
+	var dsid2 crypto.Hash
+	fastrand.Read(dsid2[:])
+
+	dsids := []crypto.Hash{dsid1, dsid2}
+	sections1 := [][]byte{s(), s(), s()}
+	sections2 := [][]byte{s(), s(), s()}
+	sectionss := [][][]byte{sections1, sections2}
+
+	// Define a reader. The reader tries to read a random section from a
+	// random datasource. If the cache is empty, Put is called to fill it
+	// instead. 6 sections exist in total but only 4 can be in the cache at
+	// any given time. This gurantees some pruning.
+	reader := func() {
+		for i := 0; i < 20; i++ {
+			dsidI := fastrand.Intn(len(dsids))
+			sections := sectionss[dsidI]
+
+			dsid := dsids[dsidI]
+			sectionI := fastrand.Intn(len(sections))
+
+			section, cached, err := lru.Get(dsid, uint64(sectionI))
+			if err != nil {
+				t.Error(err)
+				return
+			}
+
+			if cached {
+				// Check cached data.
+				if !bytes.Equal(section, sections[sectionI]) {
+					t.Fatal("section mismatch")
+				}
+			} else {
+				// Add data to cache.
+				err = lru.Put(dsid, uint64(sectionI), sections[sectionI])
+				if err != nil {
+					t.Error(err)
+					return
+				}
+			}
+		}
+	}
+
+	numThreads := 2
+	var wg sync.WaitGroup
+	for i := 0; i < numThreads; i++ {
+		wg.Add(1)
+		go func(i int) {
+			reader()
+			wg.Done()
+		}(i)
+	}
+
+	// Wait for readers to be done.
+	wg.Wait()
+
+	// Check the cache.
+	if lru.cachedSize != int64(maxSize) {
+		t.Error("wrong cached size", lru.cachedSize)
+	}
+	if lru.staticLRU.Len() != int(maxSize)/sectionSize {
+		t.Error("wrong lru length", lru.staticLRU.Len())
 	}
 }

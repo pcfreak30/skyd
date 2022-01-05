@@ -25,7 +25,6 @@ type cachedDataSource struct {
 	staticLRU         *persistedLRU
 	staticSectionSize int
 
-	deleted        bool
 	sections       map[uint64]cachedDataSection
 	unusedSections []cachedDataSection
 	mu             sync.Mutex
@@ -52,27 +51,22 @@ func (ds *cachedDataSource) newSection(index uint64, length int) int64 {
 	return section.staticOffset
 }
 
-func (ds *cachedDataSource) managedFreeSection(index uint64) (int64, error) {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-	return ds.freeSection(index)
-}
-
-func (ds *cachedDataSource) freeSection(index uint64) (int64, error) {
+func (ds *cachedDataSource) freeSection(index uint64) (int64, bool, error) {
 	section, exists := ds.sections[index]
 	if !exists {
-		build.Critical("trying to free uncached section")
-		return 0, nil
+		// already freed.
+		return 0, true, nil
 	}
 	ds.unusedSections = append(ds.unusedSections, section)
 	delete(ds.sections, index)
 
 	var err error
+	var deleted bool
 	if len(ds.sections) == 0 {
 		err = ds.staticLRU.staticRemoveCacheFile(ds.staticID)
-		ds.deleted = true
+		deleted = true
 	}
-	return int64(section.length), err
+	return int64(section.length), deleted, err
 }
 
 type persistedLRU struct {
@@ -89,11 +83,81 @@ type persistedLRU struct {
 	mu          sync.Mutex
 }
 
+func (lru *persistedLRU) managedAcquireCreateDataSource(dsid crypto.Hash) *cachedDataSource {
+	for {
+		lru.mu.Lock()
+		ds, exists := lru.dataSources[dsid]
+		if !exists {
+			ds = lru.staticNewCachedDataSource(dsid, int(lru.staticSectionSize))
+			lru.dataSources[dsid] = ds
+		}
+		lru.mu.Unlock()
+		ds.mu.Lock()
+
+		lru.mu.Lock()
+		ds2, exists := lru.dataSources[dsid]
+		lru.mu.Unlock()
+		if !exists || ds2 != ds {
+			ds.mu.Unlock()
+			continue // try again
+		}
+		return ds
+	}
+}
+
+func (lru *persistedLRU) managedAcquireDataSource(dsid crypto.Hash) (*cachedDataSource, bool) {
+	lru.mu.Lock()
+	ds, exists := lru.dataSources[dsid]
+	lru.mu.Unlock()
+	if !exists {
+		return nil, false
+	}
+	ds.mu.Lock()
+
+	lru.mu.Lock()
+	ds2, exists := lru.dataSources[dsid]
+	lru.mu.Unlock()
+	if !exists || ds2 != ds {
+		ds.mu.Unlock()
+		return nil, false
+	}
+	return ds, true
+}
+
+func (lru *persistedLRU) managedDeleteDataSource(ds *cachedDataSource) {
+	lru.mu.Lock()
+	ds, exists := lru.dataSources[ds.staticID]
+	if !exists {
+		lru.mu.Unlock()
+		build.Critical("trying to delete already deleted data source")
+		return
+	}
+	delete(lru.dataSources, ds.staticID)
+	lru.mu.Unlock()
+	ds.mu.Unlock()
+}
+
+func (lru *persistedLRU) managedReturnDataSource(ds *cachedDataSource) {
+	lru.mu.Lock()
+	ds, exists := lru.dataSources[ds.staticID]
+	lru.mu.Unlock()
+	if !exists {
+		build.Critical("no data source with that id")
+	}
+	ds.mu.Unlock()
+}
+
 func (lru *persistedLRU) managedPruneLRU() (int64, bool, error) {
-	ele := lru.staticLRU.Front()
+	lru.mu.Lock()
+	ele := lru.staticLRU.Back()
+	println("lrulen", lru.staticLRU.Len())
 	if ele == nil {
+		println("nothing to prune")
+		lru.mu.Unlock()
 		return 0, false, nil
 	}
+	lru.staticLRU.Remove(ele)
+
 	toPrune := ele.Value.(lruElement)
 
 	// Cleanup the lru's maps first.
@@ -107,25 +171,33 @@ func (lru *persistedLRU) managedPruneLRU() (int64, bool, error) {
 	}
 
 	// Then find the datasource.
-	ds, exists := lru.dataSources[toPrune.staticDSID]
+	lru.mu.Unlock()
+	ds, exists := lru.managedAcquireDataSource(toPrune.staticDSID)
 	if !exists {
+		// no ds
 		return 0, true, nil
 	}
-	ds.mu.Lock()
-	length, err := ds.freeSection(toPrune.staticSectionIndex)
-	ds.mu.Unlock()
+	length, deleted, err := ds.freeSection(toPrune.staticSectionIndex)
+
+	// Delete the datasource if it was marked as deleted.
+	if deleted {
+		lru.managedDeleteDataSource(ds)
+	} else {
+		lru.managedReturnDataSource(ds)
+	}
 	return length, true, err
 }
 
-func (lru *persistedLRU) staticNewCachedDataSource(sectionSize int) *cachedDataSource {
+func (lru *persistedLRU) staticNewCachedDataSource(id crypto.Hash, sectionSize int) *cachedDataSource {
 	return &cachedDataSource{
+		staticID:          id,
 		staticLRU:         lru,
 		sections:          make(map[uint64]cachedDataSection),
 		staticSectionSize: sectionSize,
 	}
 }
 
-func newPersistedLRU(path string, sectionSize uint64) (*persistedLRU, error) {
+func newPersistedLRU(path string, maxSize, sectionSize uint64) (*persistedLRU, error) {
 	// Remove root dir to prune any existing cached elements.
 	if err := os.RemoveAll(path); err != nil {
 		return nil, err
@@ -135,11 +207,12 @@ func newPersistedLRU(path string, sectionSize uint64) (*persistedLRU, error) {
 		return nil, err
 	}
 	return &persistedLRU{
-		dataSources:       make(map[crypto.Hash]*cachedDataSource),
-		lruElements:       make(map[crypto.Hash]map[uint64]*list.Element),
-		staticLRU:         list.New(),
-		staticPath:        path,
-		staticSectionSize: sectionSize,
+		dataSources:        make(map[crypto.Hash]*cachedDataSource),
+		lruElements:        make(map[crypto.Hash]map[uint64]*list.Element),
+		staticMaxCacheSize: int64(maxSize),
+		staticLRU:          list.New(),
+		staticPath:         path,
+		staticSectionSize:  sectionSize,
 	}, nil
 }
 
@@ -163,16 +236,17 @@ func (lru *persistedLRU) staticRemoveCacheFile(dsid crypto.Hash) error {
 }
 
 func (lru *persistedLRU) Get(dsid crypto.Hash, sectionIndex uint64) ([]byte, bool, error) {
-	lru.mu.Lock()
-	ds, exists := lru.dataSources[dsid]
-	lru.mu.Unlock()
+	ds, exists := lru.managedAcquireDataSource(dsid)
 	if !exists {
 		return nil, false, nil
 	}
-	data, found, err := ds.managedGet(dsid, sectionIndex)
+	data, found, err := ds.get(dsid, sectionIndex)
 	if err != nil {
+		lru.managedReturnDataSource(ds)
 		return nil, false, err
 	}
+	lru.managedReturnDataSource(ds)
+
 	// Refresh the cache if we got the data cached.
 	if found {
 		lru.managedRefreshCachedEntry(dsid, sectionIndex)
@@ -187,20 +261,16 @@ type lruElement struct {
 
 func (lru *persistedLRU) Put(dsid crypto.Hash, sectionIndex uint64, data []byte) error {
 	// Get the cached datasource or create if possible.
-	lru.mu.Lock()
-	ds, exists := lru.dataSources[dsid]
-	if !exists {
-		// If not, create a new one.
-		ds = lru.staticNewCachedDataSource(int(lru.staticSectionSize))
-		lru.dataSources[dsid] = ds
-	}
-	lru.mu.Unlock()
+	ds := lru.managedAcquireCreateDataSource(dsid)
 
 	// Add the section to the source.
-	added, err := ds.managedPut(dsid, sectionIndex, data)
+	added, err := ds.put(dsid, sectionIndex, data)
 	if err != nil {
 		return err
 	}
+
+	// Unlock ds.
+	lru.managedReturnDataSource(ds)
 
 	// If it was added, we add the length of the added data to the sum.
 	if added {
@@ -223,6 +293,7 @@ func (lru *persistedLRU) managedAddCachedData(size int64) error {
 		return nil
 	}
 	lru.cachedSize -= toPrune
+	fmt.Println("toPrune", toPrune, lru.cachedSize)
 	lru.mu.Unlock()
 
 	// Prune at least toPrune data. If we encounter an error we abort but we
@@ -240,14 +311,12 @@ func (lru *persistedLRU) managedAddCachedData(size int64) error {
 		}
 		toPrune -= pruned
 	}
+	fmt.Println("toprune after", toPrune)
 
 	// Adjust the cachedSize now that we know how much data we pruned
 	// exactly.
 	lru.mu.Lock()
 	defer lru.mu.Unlock()
-	if toPrune > 0 && err == nil {
-		build.Critical("managedAddCachedData: ran out of entries to prune")
-	}
 	if toPrune != 0 {
 		lru.cachedSize += toPrune
 		if lru.cachedSize < 0 {
@@ -270,8 +339,10 @@ func (lru *persistedLRU) managedRefreshCachedEntry(dsid crypto.Hash, sectionInde
 		// Remove element and add it at the front.
 		lru.staticLRU.Remove(ele)
 		lru.staticLRU.PushFront(ele.Value)
+		println("push1")
 	} else {
 		// Push a new element.
+		println("push2")
 		ele = lru.staticLRU.PushFront(lruElement{
 			staticDSID:         dsid,
 			staticSectionIndex: sectionIndex,
@@ -281,20 +352,11 @@ func (lru *persistedLRU) managedRefreshCachedEntry(dsid crypto.Hash, sectionInde
 	lru.mu.Unlock()
 }
 
-func (ds *cachedDataSource) managedPut(dsid crypto.Hash, sectionIndex uint64, data []byte) (_ bool, err error) {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-
+func (ds *cachedDataSource) put(dsid crypto.Hash, sectionIndex uint64, data []byte) (_ bool, err error) {
 	if len(data) > ds.staticSectionSize {
 		err := fmt.Errorf("data length out-of-bounds %v > %v", len(data), ds.staticSectionSize)
 		build.Critical(err)
 		return false, err
-	}
-
-	// Check if the data source was deleted already. In that case we don't
-	// use it anymore.
-	if ds.deleted {
-		return false, errors.New("data source has been deleted")
 	}
 
 	// Check if the section is already cached.
@@ -324,15 +386,7 @@ func (ds *cachedDataSource) managedPut(dsid crypto.Hash, sectionIndex uint64, da
 	return true, nil
 }
 
-func (ds *cachedDataSource) managedGet(dsid crypto.Hash, sectionIndex uint64) (_ []byte, _ bool, err error) {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-
-	// Check if the data source was deleted already.
-	if ds.deleted {
-		return nil, false, nil
-	}
-
+func (ds *cachedDataSource) get(dsid crypto.Hash, sectionIndex uint64) (_ []byte, _ bool, err error) {
 	section, exists := ds.sections[sectionIndex]
 	if !exists {
 		return nil, false, nil
