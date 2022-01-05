@@ -546,7 +546,7 @@ func testAddCacheSize(t *testing.T) {
 
 	// Call managedAddCachedData with 0 bytes added. This shouldn't do
 	// anything.
-	err = lru.managedAddCachedData(0)
+	err = lru.managedTryPruneData()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -559,7 +559,8 @@ func testAddCacheSize(t *testing.T) {
 
 	// Call it again with 51 bytes. This pushes it above the max and will
 	// cause it to prune both sections and leave the size at 51.
-	err = lru.managedAddCachedData(51)
+	lru.cachedSize += 51
+	err = lru.managedTryPruneData()
 	if err != nil {
 		t.Fatal(err)
 	}

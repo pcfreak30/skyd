@@ -175,13 +175,16 @@ func (lru *persistedLRU) managedPruneLRU() (int64, bool, error) {
 	ds, exists := lru.managedAcquireDataSource(toPrune.staticDSID)
 	if !exists {
 		// no ds
+		fmt.Println("no ds", toPrune.staticDSID)
 		return 0, true, nil
 	}
 	length, deleted, err := ds.freeSection(toPrune.staticSectionIndex)
 
 	// Delete the datasource if it was marked as deleted.
 	if deleted {
-		lru.managedDeleteDataSource(ds)
+		fmt.Println("delete", ds.staticID)
+		lru.managedDeleteDataSource(ds) // TODO enable
+		//lru.managedReturnDataSource(ds)
 	} else {
 		lru.managedReturnDataSource(ds)
 	}
@@ -249,7 +252,7 @@ func (lru *persistedLRU) Get(dsid crypto.Hash, sectionIndex uint64) ([]byte, boo
 
 	// Refresh the cache if we got the data cached.
 	if found {
-		lru.managedRefreshCachedEntry(dsid, sectionIndex)
+		lru.managedRefreshCachedEntry(dsid, sectionIndex) // TODO enable
 	}
 	return data, found, nil
 }
@@ -274,19 +277,40 @@ func (lru *persistedLRU) Put(dsid crypto.Hash, sectionIndex uint64, data []byte)
 
 	// If it was added, we add the length of the added data to the sum.
 	if added {
-		lru.managedAddCachedData(int64(len(data)))
+		lru.managedAddCachedEntry(dsid, sectionIndex, int64(len(data)))
 	}
 
 	// Update the lru.
-	lru.managedRefreshCachedEntry(dsid, sectionIndex)
+	lru.managedTryPruneData()
 	return nil
 }
 
-func (lru *persistedLRU) managedAddCachedData(size int64) error {
+func (lru *persistedLRU) managedAddCachedEntry(dsid crypto.Hash, sectionIndex uint64, size int64) {
+	lru.mu.Lock()
+	defer lru.mu.Unlock()
+
+	elements, exists := lru.lruElements[dsid]
+	if !exists {
+		elements = make(map[uint64]*list.Element)
+		lru.lruElements[dsid] = elements
+	}
+	ele, exists := elements[sectionIndex]
+	if !exists {
+		// Push a new element.
+		ele = lru.staticLRU.PushFront(lruElement{
+			staticDSID:         dsid,
+			staticSectionIndex: sectionIndex,
+		})
+		elements[sectionIndex] = ele
+		// Increment the cachedSize.
+		lru.cachedSize += size
+	}
+}
+
+func (lru *persistedLRU) managedTryPruneData() error {
 	// Figure out how much data we need to prune and assume that it is
 	// pruned.
 	lru.mu.Lock()
-	lru.cachedSize += size
 	toPrune := lru.cachedSize - lru.staticMaxCacheSize
 	if toPrune <= 0 {
 		lru.mu.Unlock()
@@ -329,27 +353,17 @@ func (lru *persistedLRU) managedAddCachedData(size int64) error {
 
 func (lru *persistedLRU) managedRefreshCachedEntry(dsid crypto.Hash, sectionIndex uint64) {
 	lru.mu.Lock()
+	defer lru.mu.Unlock()
+
 	elements, exists := lru.lruElements[dsid]
 	if !exists {
-		elements = make(map[uint64]*list.Element)
-		lru.lruElements[dsid] = elements
+		return
 	}
 	ele, exists := elements[sectionIndex]
 	if exists {
-		// Remove element and add it at the front.
-		lru.staticLRU.Remove(ele)
-		lru.staticLRU.PushFront(ele.Value)
-		println("push1")
-	} else {
-		// Push a new element.
-		println("push2")
-		ele = lru.staticLRU.PushFront(lruElement{
-			staticDSID:         dsid,
-			staticSectionIndex: sectionIndex,
-		})
-		elements[sectionIndex] = ele
+		// Move element to the front.
+		lru.staticLRU.MoveToFront(ele)
 	}
-	lru.mu.Unlock()
 }
 
 func (ds *cachedDataSource) put(dsid crypto.Hash, sectionIndex uint64, data []byte) (_ bool, err error) {
