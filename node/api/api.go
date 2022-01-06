@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -146,7 +147,8 @@ type (
 
 		staticStartTime time.Time
 
-		staticDeps modules.Dependencies
+		staticLogger *log.Logger
+		staticDeps   modules.Dependencies
 	}
 
 	// configModules contains booleans that indicate if a module was part of the
@@ -208,8 +210,8 @@ func (api *API) StartTime() time.Time {
 // New creates a new Sia API from the provided skymodules. The API will require
 // authentication using HTTP basic auth for certain endpoints of the supplied
 // password is not the empty string.  Usernames are ignored for authentication.
-func New(cfg *skymodules.SiadConfig, requiredUserAgent string, requiredPassword string, acc skymodules.Accounting, cs modules.ConsensusSet, e modules.Explorer, g modules.Gateway, h modules.Host, m modules.Miner, r skymodules.Renter, tp modules.TransactionPool, w modules.Wallet) *API {
-	return NewCustom(cfg, requiredUserAgent, requiredPassword, acc, cs, e, g, h, m, r, tp, w, modules.ProdDependencies)
+func New(cfg *skymodules.SiadConfig, logger *log.Logger, requiredUserAgent string, requiredPassword string, acc skymodules.Accounting, cs modules.ConsensusSet, e modules.Explorer, g modules.Gateway, h modules.Host, m modules.Miner, r skymodules.Renter, tp modules.TransactionPool, w modules.Wallet) *API {
+	return NewCustom(cfg, logger, requiredUserAgent, requiredPassword, acc, cs, e, g, h, m, r, tp, w, modules.ProdDependencies)
 }
 
 // NewCustom creates a new Sia API from the provided skymodules. The API will
@@ -217,7 +219,7 @@ func New(cfg *skymodules.SiadConfig, requiredUserAgent string, requiredPassword 
 // supplied password is not the empty string. Usernames are ignored for
 // authentication. It is custom because it allows to inject custom dependencies
 // into the API.
-func NewCustom(cfg *skymodules.SiadConfig, requiredUserAgent string, requiredPassword string, acc skymodules.Accounting, cs modules.ConsensusSet, e modules.Explorer, g modules.Gateway, h modules.Host, m modules.Miner, r skymodules.Renter, tp modules.TransactionPool, w modules.Wallet, deps modules.Dependencies) *API {
+func NewCustom(cfg *skymodules.SiadConfig, logger *log.Logger, requiredUserAgent string, requiredPassword string, acc skymodules.Accounting, cs modules.ConsensusSet, e modules.Explorer, g modules.Gateway, h modules.Host, m modules.Miner, r skymodules.Renter, tp modules.TransactionPool, w modules.Wallet, deps modules.Dependencies) *API {
 	api := &API{
 		accounting:        acc,
 		cs:                cs,
@@ -234,6 +236,7 @@ func NewCustom(cfg *skymodules.SiadConfig, requiredUserAgent string, requiredPas
 		siadConfig:        cfg,
 
 		staticDeps:      deps,
+		staticLogger:    logger,
 		staticStartTime: time.Now(),
 	}
 

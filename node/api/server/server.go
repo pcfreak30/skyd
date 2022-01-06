@@ -5,6 +5,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -26,12 +27,16 @@ import (
 	"go.sia.tech/siad/types"
 )
 
+// logFileName is the name of the API's log file.
+const logFileName = "api.log"
+
 // A Server is a collection of siad modules that can be communicated with over
 // an http api.
 type Server struct {
 	api               *api.API
 	apiServer         *http.Server
 	listener          net.Listener
+	logFile           *os.File
 	node              *node.Node
 	requiredUserAgent string
 	Dir               string
@@ -72,6 +77,7 @@ func (srv *Server) Close() error {
 	if srv.node != nil {
 		err = errors.Compose(err, srv.node.Close())
 	}
+	err = errors.Compose(err, srv.logFile.Close())
 	return errors.AddContext(err, "error while closing server")
 }
 
@@ -175,8 +181,21 @@ func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string,
 			return nil, errors.AddContext(err, "failed to load siad config")
 		}
 
+		// Create dir.
+		err = os.MkdirAll(nodeParams.Dir, skymodules.DefaultDirPerm)
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to create server root dir")
+		}
+
+		// Create logger.
+		logFile, err := os.OpenFile(filepath.Join(nodeParams.Dir, logFileName), os.O_WRONLY|os.O_APPEND|os.O_CREATE, skymodules.DefaultFilePerm)
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to open api log file")
+		}
+		logger := log.New(logFile, "", log.Ldate|log.Ltime|log.Lmicroseconds|log.Lshortfile|log.LUTC)
+
 		// Create the api for the server.
-		api := api.New(cfg, requiredUserAgent, requiredPassword, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		api := api.New(cfg, logger, requiredUserAgent, requiredPassword, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		srv := &Server{
 			api: api,
 			apiServer: &http.Server{
@@ -202,6 +221,7 @@ func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string,
 			closeChan:         make(chan struct{}),
 			serveChan:         make(chan struct{}),
 			listener:          listener,
+			logFile:           logFile,
 			requiredUserAgent: requiredUserAgent,
 			Dir:               nodeParams.Dir,
 		}

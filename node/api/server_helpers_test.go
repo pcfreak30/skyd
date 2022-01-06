@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -130,7 +132,8 @@ func NewCustomServer(dir string, APIaddr string, requiredUserAgent string, requi
 		return nil, errors.AddContext(err, "failed to load siad config")
 	}
 
-	api := NewCustom(cfg, requiredUserAgent, requiredPassword, acc, cs, e, g, h, m, r, tp, w, apiDeps)
+	logger := log.New(ioutil.Discard, "", 0)
+	api := NewCustom(cfg, logger, requiredUserAgent, requiredPassword, acc, cs, e, g, h, m, r, tp, w, apiDeps)
 	srv := &Server{
 		api: api,
 		apiServer: &http.Server{
