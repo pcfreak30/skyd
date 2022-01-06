@@ -29,7 +29,7 @@ func TestStreamLRU(t *testing.T) {
 	data := fastrand.Bytes(15999) // 1 byte short of 1000 data sections.
 	dataSource := newMockDataSource(data, 16)
 	dt := skymodules.NewDistributionTrackerStandard()
-	sbs := newStreamBufferSet(dt, &tg)
+	sbs := newStreamBufferSet(dt, &tg, &mockLRU{})
 	stream := sbs.callNewStream(ctx, dataSource, 0, 0, types.ZeroCurrency)
 
 	// Extract the LRU from the stream to test it directly.

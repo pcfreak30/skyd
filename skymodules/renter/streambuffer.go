@@ -20,7 +20,6 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
-	"go.sia.tech/siad/modules"
 	"go.sia.tech/siad/types"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -211,6 +210,7 @@ type streamBuffer struct {
 	externRefCount uint64
 
 	mu                    sync.Mutex
+	staticCache           PersistedLRU
 	staticTG              threadgroup.ThreadGroup
 	staticDataSize        uint64
 	staticDataSource      streamBufferDataSource
@@ -218,7 +218,6 @@ type streamBuffer struct {
 	staticStreamBufferSet *streamBufferSet
 	staticStreamID        skymodules.DataSourceID
 	staticPricePerMS      types.Currency
-	staticWallet          modules.SiacoinSenderMulti
 	staticSpan            opentracing.Span
 }
 
@@ -228,16 +227,18 @@ type streamBuffer struct {
 type streamBufferSet struct {
 	streams map[skymodules.DataSourceID]*streamBuffer
 
+	staticCache          PersistedLRU
 	staticStatsCollector *skymodules.DistributionTracker
 	staticTG             *threadgroup.ThreadGroup
 	mu                   sync.Mutex
 }
 
 // newStreamBufferSet initializes and returns a stream buffer set.
-func newStreamBufferSet(statsCollector *skymodules.DistributionTracker, tg *threadgroup.ThreadGroup) *streamBufferSet {
+func newStreamBufferSet(statsCollector *skymodules.DistributionTracker, tg *threadgroup.ThreadGroup, cache PersistedLRU) *streamBufferSet {
 	return &streamBufferSet{
 		streams: make(map[skymodules.DataSourceID]*streamBuffer),
 
+		staticCache:          cache,
 		staticStatsCollector: statsCollector,
 		staticTG:             tg,
 	}
@@ -267,6 +268,7 @@ func (sbs *streamBufferSet) callNewStream(ctx context.Context, dataSource stream
 		streamBuf = &streamBuffer{
 			dataSections: make(map[uint64]*dataSection),
 
+			staticCache:           sbs.staticCache,
 			staticDataSize:        dataSource.DataSize(),
 			staticDataSource:      dataSource,
 			staticDataSectionSize: dataSource.RequestSize(),
@@ -621,8 +623,20 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 	}
 	sb.dataSections[index] = ds
 
-	// Perform the data fetch in a goroutine. The dataAvailable channel will be
-	// closed when the data is available.
+	// See if we can fill the data section from the cache.
+	lru := sb.staticCache
+	data, cached, err := lru.Get(sb.staticDataSource.ID(), index)
+	if err != nil {
+		build.Critical("failed to read from cache", err)
+	}
+	if err == nil && cached {
+		ds.externData = data
+		close(ds.dataAvailable)
+		return ds
+	}
+
+	// If not, perform the data fetch in a goroutine. The dataAvailable
+	// channel will be closed when the data is available.
 	go func() {
 		defer close(ds.dataAvailable)
 
@@ -659,6 +673,11 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 			ds.externErr = errors.AddContext(response.staticErr, "data section ReadStream failed")
 			ds.externDuration = time.Since(start)
 			ds.externData = response.staticData
+
+			if err := lru.Put(sb.staticDataSource.ID(), index, ds.externData); err != nil {
+				build.Critical("failed to store response data in cache", err)
+			}
+
 			if ds.externErr == nil {
 				sb.staticStreamBufferSet.staticStatsCollector.AddDataPoint(ds.externDuration)
 			}

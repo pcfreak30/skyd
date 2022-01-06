@@ -56,7 +56,18 @@ import (
 	"go.sia.tech/siad/types"
 )
 
+// onDiskCacheFolderName is the name of the folder that skyd uses for caching.
+const onDiskCacheFolderName = "cache"
+
 var (
+	// defaultCacheSize is the default cache size used for the on-disk cache
+	// unless overwritten.
+	defaultCacheSize = build.Select(build.Var{
+		Dev:      uint64(1 << 27),      // 128MiB
+		Standard: uint64(1 << 30),      // 1GiB
+		Testing:  uint64(10 * 1 << 20), // 10MiB
+	}).(uint64)
+
 	// skynetFeePayoutMultiplier is a factor that we multiply the fee estimation
 	// with to determine the skynet fee payout threshold.
 	skynetFeePayoutMultiplier = build.Select(build.Var{
@@ -1201,8 +1212,14 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		return nil, err
 	}
 
+	// Init the download cache.
+	lru, err := newPersistedLRU(filepath.Join(r.persistDir, onDiskCacheFolderName), defaultCacheSize)
+	if err != nil {
+		return nil, err
+	}
+
 	// Init stream buffer now that the stats are initialised.
-	r.staticStreamBufferSet = newStreamBufferSet(r.staticStreamBufferStats, &r.tg)
+	r.staticStreamBufferSet = newStreamBufferSet(r.staticStreamBufferStats, &r.tg, lru)
 
 	// Create the subscription manager and launch the thread that updates
 	// the workers. This needs to be done before the creation of the

@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/build"
+	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/persist"
 )
@@ -34,6 +35,7 @@ func lruTestDir(testName string) string {
 	return path
 }
 
+// newTestLRU creates a new LRU for testing.
 func newTestLRU(path string) *persistedLRU {
 	lru, err := newPersistedLRU(path, testLRUMaxCacheSize)
 	if err != nil {
@@ -107,7 +109,7 @@ func testDataSourceIDToPath(t *testing.T) {
 	}
 
 	expectedPath := dir + "/5d/b3/df3ddf0622ab7bbee847a23db4122b0279d7a3cb4601606faed83bbf1f24/1.dat"
-	if path := lru.staticDataSourceIDToPath(dsid, 1); path != expectedPath {
+	if path := lru.staticDataSourceIDToPath(skymodules.DataSourceID(dsid), 1); path != expectedPath {
 		t.Log(path)
 		t.Log(expectedPath)
 		t.Fatal("wrong path")
@@ -119,7 +121,7 @@ func testPersistence(t *testing.T) {
 	dir := lruTestDir(t.Name())
 	lru := newTestLRU(dir)
 
-	var dsid crypto.Hash
+	var dsid skymodules.DataSourceID
 	fastrand.Read(dsid[:])
 
 	f, err := lru.staticOpenCacheFile(dsid, 1)
@@ -156,7 +158,7 @@ func testPersistence(t *testing.T) {
 // testSection is a unit test for newSection and freeSection.
 func testSection(t *testing.T) {
 	lru := newTestLRU(t.Name())
-	var dsid crypto.Hash
+	var dsid skymodules.DataSourceID
 	fastrand.Read(dsid[:])
 	ds := lru.staticNewCachedDataSource(dsid)
 
@@ -186,7 +188,7 @@ func testPutGet(t *testing.T) {
 		t.Fatal("wrong path", lru.staticPath)
 	}
 
-	var dsid crypto.Hash
+	var dsid skymodules.DataSourceID
 	fastrand.Read(dsid[:])
 
 	sectionSize := 100
@@ -195,7 +197,7 @@ func testPutGet(t *testing.T) {
 	section3 := fastrand.Bytes(1) // small section
 	section4 := fastrand.Bytes(1) // small section
 
-	testPutGet := func(dsid crypto.Hash, sectorIndex uint64, data []byte) error {
+	testPutGet := func(dsid skymodules.DataSourceID, sectorIndex uint64, data []byte) error {
 		if err := lru.Put(dsid, sectorIndex, data); err != nil {
 			return err
 		}
@@ -239,12 +241,12 @@ func testPutGet(t *testing.T) {
 	}
 
 	// Run the above again but in a loop with more randomness.
-	var dsid2 crypto.Hash
+	var dsid2 skymodules.DataSourceID
 	fastrand.Read(dsid2[:])
-	var dsid3 crypto.Hash
+	var dsid3 skymodules.DataSourceID
 	fastrand.Read(dsid3[:])
 
-	dsids := []crypto.Hash{dsid, dsid2, dsid3}
+	dsids := []skymodules.DataSourceID{dsid, dsid2, dsid3}
 	sections := [][]byte{section1, section2, section3}
 
 	for i := 0; i < 100; i++ {
@@ -269,9 +271,9 @@ func testLRURefresh(t *testing.T) {
 	dir := lruTestDir(t.Name())
 	lru := newTestLRU(dir)
 
-	var dsid1 crypto.Hash
+	var dsid1 skymodules.DataSourceID
 	fastrand.Read(dsid1[:])
-	var dsid2 crypto.Hash
+	var dsid2 skymodules.DataSourceID
 	fastrand.Read(dsid2[:])
 
 	// Put some data in the cache for dsid1 section1.
@@ -388,7 +390,7 @@ func testLRUPrune(t *testing.T) {
 	lru := newTestLRU(dir)
 
 	// Put some data in the cache for dsid1.
-	var dsid1 crypto.Hash
+	var dsid1 skymodules.DataSourceID
 	fastrand.Read(dsid1[:])
 	section1 := fastrand.Bytes(1)
 	section2 := fastrand.Bytes(int(4096))
@@ -500,7 +502,7 @@ func testTryPruneData(t *testing.T) {
 	}
 
 	// Put some data in the cache for dsid.
-	var dsid crypto.Hash
+	var dsid skymodules.DataSourceID
 	fastrand.Read(dsid[:])
 	section := fastrand.Bytes(int(sectionSize))
 	if err := lru.Put(dsid, 1, section); err != nil {
@@ -573,12 +575,12 @@ func testLRUParallel(t *testing.T) {
 	}
 
 	// Prepare 2 data sources with 3 sections each.
-	var dsid1 crypto.Hash
+	var dsid1 skymodules.DataSourceID
 	fastrand.Read(dsid1[:])
-	var dsid2 crypto.Hash
+	var dsid2 skymodules.DataSourceID
 	fastrand.Read(dsid2[:])
 
-	dsids := []crypto.Hash{dsid1, dsid2}
+	dsids := []skymodules.DataSourceID{dsid1, dsid2}
 	sections1 := [][]byte{s(), s(), s()}
 	sections2 := [][]byte{s(), s(), s()}
 	sectionss := [][][]byte{sections1, sections2}

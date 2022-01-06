@@ -19,6 +19,19 @@ import (
 	"gitlab.com/NebulousLabs/threadgroup"
 )
 
+// mockLRU implements the PersistedLRU interface with only no-ops.
+type mockLRU struct{}
+
+// Get is a no-op.
+func (lru *mockLRU) Get(dsid skymodules.DataSourceID, sectionIndex uint64) ([]byte, bool, error) {
+	return nil, false, nil
+}
+
+// Put is a no-op.
+func (lru *mockLRU) Put(dsid skymodules.DataSourceID, sectionIndex uint64, data []byte) error {
+	return nil
+}
+
 // mockDataSource implements a stream buffer data source that can be used to
 // test the stream buffer. It's a simple in-memory buffer.
 //
@@ -134,7 +147,7 @@ func TestStreamSmoke(t *testing.T) {
 	dataSectionSize := uint64(16)
 	dataSource := newMockDataSource(data, dataSectionSize)
 	dt := skymodules.NewDistributionTrackerStandard()
-	sbs := newStreamBufferSet(dt, &tg)
+	sbs := newStreamBufferSet(dt, &tg, &mockLRU{})
 	stream := sbs.callNewStream(ctx, dataSource, 0, 0, types.ZeroCurrency)
 
 	// Check that there is one reference in the stream buffer.

@@ -4,7 +4,7 @@ import (
 	"container/list"
 	"encoding/hex"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sync"
@@ -12,14 +12,23 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
-	"go.sia.tech/siad/crypto"
 )
+
+// PersistedLRU is the interface for a persistedLRU. This is useful for mocking
+// the lru during testing.
+type PersistedLRU interface {
+	// Get tries to fetch data from the cache. If the data is not cached, false is
+	// returned.
+	Get(dsid skymodules.DataSourceID, sectionIndex uint64) ([]byte, bool, error)
+	// Put adds a new section to the cache.
+	Put(dsid skymodules.DataSourceID, sectionIndex uint64, data []byte) error
+}
 
 type (
 	// cachedDataSource describes a cached datasource which can contain multiple
 	// sections.
 	cachedDataSource struct {
-		staticID  crypto.Hash
+		staticID  skymodules.DataSourceID
 		staticLRU *persistedLRU
 
 		sections map[uint64]struct{}
@@ -28,7 +37,7 @@ type (
 
 	// lruElement describes an element within the LRU.
 	lruElement struct {
-		staticDSID         crypto.Hash
+		staticDSID         skymodules.DataSourceID
 		staticSectionIndex uint64
 	}
 
@@ -38,12 +47,12 @@ type (
 		staticPath string
 
 		staticLRU   *list.List
-		lruElements map[crypto.Hash]map[uint64]*list.Element
+		lruElements map[skymodules.DataSourceID]map[uint64]*list.Element
 
 		cachedSize         int64
 		staticMaxCacheSize int64
 
-		dataSources map[crypto.Hash]*cachedDataSource
+		dataSources map[skymodules.DataSourceID]*cachedDataSource
 		mu          sync.Mutex
 	}
 )
@@ -65,7 +74,7 @@ func (ds *cachedDataSource) freeSection(index uint64) (int64, bool, error) {
 
 // get returns some cached data from a datasource. If the data isn't available,
 // it returns false.
-func (ds *cachedDataSource) get(dsid crypto.Hash, sectionIndex uint64) (_ []byte, _ bool, err error) {
+func (ds *cachedDataSource) get(dsid skymodules.DataSourceID, sectionIndex uint64) (_ []byte, _ bool, err error) {
 	_, exists := ds.sections[sectionIndex]
 	if !exists {
 		return nil, false, nil
@@ -81,7 +90,7 @@ func (ds *cachedDataSource) get(dsid crypto.Hash, sectionIndex uint64) (_ []byte
 	}()
 
 	// Read the section.
-	data, err := io.ReadAll(cacheFile)
+	data, err := ioutil.ReadAll(cacheFile)
 	if err != nil {
 		return nil, false, err
 	}
@@ -99,7 +108,7 @@ func (ds *cachedDataSource) newSection(index uint64) {
 
 // put places some data to be cached into a data source at the given section
 // index.
-func (ds *cachedDataSource) put(dsid crypto.Hash, sectionIndex uint64, data []byte) (_ bool, err error) {
+func (ds *cachedDataSource) put(dsid skymodules.DataSourceID, sectionIndex uint64, data []byte) (_ bool, err error) {
 	// Check if the section is already cached.
 	_, exists := ds.sections[sectionIndex]
 	if exists {
@@ -139,8 +148,8 @@ func newPersistedLRU(path string, maxSize uint64) (*persistedLRU, error) {
 		return nil, err
 	}
 	return &persistedLRU{
-		dataSources:        make(map[crypto.Hash]*cachedDataSource),
-		lruElements:        make(map[crypto.Hash]map[uint64]*list.Element),
+		dataSources:        make(map[skymodules.DataSourceID]*cachedDataSource),
+		lruElements:        make(map[skymodules.DataSourceID]map[uint64]*list.Element),
 		staticMaxCacheSize: int64(maxSize),
 		staticLRU:          list.New(),
 		staticPath:         path,
@@ -149,7 +158,7 @@ func newPersistedLRU(path string, maxSize uint64) (*persistedLRU, error) {
 
 // managedAcquireCreateDataSource is a helper method to correctly acquire or
 // create and acquire a datasource.
-func (lru *persistedLRU) managedAcquireCreateDataSource(dsid crypto.Hash) *cachedDataSource {
+func (lru *persistedLRU) managedAcquireCreateDataSource(dsid skymodules.DataSourceID) *cachedDataSource {
 	for {
 		lru.mu.Lock()
 		ds, exists := lru.dataSources[dsid]
@@ -172,7 +181,7 @@ func (lru *persistedLRU) managedAcquireCreateDataSource(dsid crypto.Hash) *cache
 }
 
 // managedAcquireDataSource is a helper method to correctly lock a datasource.
-func (lru *persistedLRU) managedAcquireDataSource(dsid crypto.Hash) (*cachedDataSource, bool) {
+func (lru *persistedLRU) managedAcquireDataSource(dsid skymodules.DataSourceID) (*cachedDataSource, bool) {
 	lru.mu.Lock()
 	ds, exists := lru.dataSources[dsid]
 	lru.mu.Unlock()
@@ -258,7 +267,7 @@ func (lru *persistedLRU) managedPruneLRU() (int64, bool, error) {
 }
 
 // staticNewCachedDataSource creates a new cachedDataSource object.
-func (lru *persistedLRU) staticNewCachedDataSource(id crypto.Hash) *cachedDataSource {
+func (lru *persistedLRU) staticNewCachedDataSource(id skymodules.DataSourceID) *cachedDataSource {
 	return &cachedDataSource{
 		staticID:  id,
 		staticLRU: lru,
@@ -266,7 +275,9 @@ func (lru *persistedLRU) staticNewCachedDataSource(id crypto.Hash) *cachedDataSo
 	}
 }
 
-func (lru *persistedLRU) staticDataSourceIDToPath(dsid crypto.Hash, sectionIndex uint64) string {
+// staticDataSourceIDToPath is a helper method to get the path for a given
+// datasource and section.
+func (lru *persistedLRU) staticDataSourceIDToPath(dsid skymodules.DataSourceID, sectionIndex uint64) string {
 	s := hex.EncodeToString(dsid[:])
 	// Using a depth of 2 - approach will result in 65536 folders on the
 	// bottom layer of the tree and twice that in total. Assuming a 4kib
@@ -277,7 +288,9 @@ func (lru *persistedLRU) staticDataSourceIDToPath(dsid crypto.Hash, sectionIndex
 	return filepath.Join(lru.staticPath, s[0:2], s[2:4], s[4:], fmt.Sprint(sectionIndex)+".dat")
 }
 
-func (lru *persistedLRU) staticOpenCacheFile(dsid crypto.Hash, sectionIndex uint64) (*os.File, error) {
+// staticOpenCacheFile is a helper method to open a cache file for a given
+// datasource and section.
+func (lru *persistedLRU) staticOpenCacheFile(dsid skymodules.DataSourceID, sectionIndex uint64) (*os.File, error) {
 	path := lru.staticDataSourceIDToPath(dsid, sectionIndex)
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, skymodules.DefaultDirPerm); err != nil {
@@ -286,7 +299,8 @@ func (lru *persistedLRU) staticOpenCacheFile(dsid crypto.Hash, sectionIndex uint
 	return os.OpenFile(path, os.O_RDWR|os.O_CREATE, skymodules.DefaultFilePerm)
 }
 
-func (lru *persistedLRU) staticRemoveCacheFile(dsid crypto.Hash, sectionIndex uint64) (int64, error) {
+// staticRemoveCacheFile removes a cache file from disk and returns its size.
+func (lru *persistedLRU) staticRemoveCacheFile(dsid skymodules.DataSourceID, sectionIndex uint64) (int64, error) {
 	path := lru.staticDataSourceIDToPath(dsid, sectionIndex)
 	fi, err := os.Stat(path)
 	if err != nil {
@@ -295,7 +309,9 @@ func (lru *persistedLRU) staticRemoveCacheFile(dsid crypto.Hash, sectionIndex ui
 	return fi.Size(), os.Remove(path)
 }
 
-func (lru *persistedLRU) Get(dsid crypto.Hash, sectionIndex uint64) ([]byte, bool, error) {
+// Get tries to fetch data from the cache. If the data is not cached, false is
+// returned.
+func (lru *persistedLRU) Get(dsid skymodules.DataSourceID, sectionIndex uint64) ([]byte, bool, error) {
 	ds, exists := lru.managedAcquireDataSource(dsid)
 	if !exists {
 		return nil, false, nil
@@ -315,7 +331,7 @@ func (lru *persistedLRU) Get(dsid crypto.Hash, sectionIndex uint64) ([]byte, boo
 }
 
 // Put adds a new section to the cache.
-func (lru *persistedLRU) Put(dsid crypto.Hash, sectionIndex uint64, data []byte) error {
+func (lru *persistedLRU) Put(dsid skymodules.DataSourceID, sectionIndex uint64, data []byte) error {
 	// Get the cached datasource or create if possible.
 	ds := lru.managedAcquireCreateDataSource(dsid)
 
@@ -339,7 +355,7 @@ func (lru *persistedLRU) Put(dsid crypto.Hash, sectionIndex uint64, data []byte)
 }
 
 // managedAddCachedEntry adds a new entry to cache to the LRU.
-func (lru *persistedLRU) managedAddCachedEntry(dsid crypto.Hash, sectionIndex uint64, size int64) {
+func (lru *persistedLRU) managedAddCachedEntry(dsid skymodules.DataSourceID, sectionIndex uint64, size int64) {
 	lru.mu.Lock()
 	defer lru.mu.Unlock()
 
@@ -361,7 +377,7 @@ func (lru *persistedLRU) managedAddCachedEntry(dsid crypto.Hash, sectionIndex ui
 }
 
 // managedRefreshCachedEntry moves a cached element to the front of the LRU.
-func (lru *persistedLRU) managedRefreshCachedEntry(dsid crypto.Hash, sectionIndex uint64) {
+func (lru *persistedLRU) managedRefreshCachedEntry(dsid skymodules.DataSourceID, sectionIndex uint64) {
 	lru.mu.Lock()
 	defer lru.mu.Unlock()
 
