@@ -108,7 +108,7 @@ func testExpectedFanoutBytes(t *testing.T) {
 			name:               "asdf",
 			fileSize:           1090519040,
 			fanoutDataPieces:   10,
-			fanoutParityPieces: 20,
+			fanoutParityPieces: 30,
 			ct:                 crypto.TypePlain,
 			result:             0,
 		},

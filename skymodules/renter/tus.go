@@ -400,7 +400,7 @@ func (u *ongoingTUSUpload) GetReader(ctx context.Context) (io.Reader, error) {
 func (u *ongoingTUSUpload) finishUploadLarge(ctx context.Context, fanout []byte, sup skymodules.SkyfileUploadParameters, fi handler.FileInfo, masterKey crypto.CipherKey, ec skymodules.ErasureCoder, smBytes []byte) (skylink skymodules.Skylink, err error) {
 	r := u.staticUploader.staticRenter
 	// Sanity check fanout length
-	expectedLength := skymodules.ExpectedFanoutBytesLen(uint64(fi.Size), ec.MinPieces(), ec.NumPieces(), masterKey.Type())
+	expectedLength := skymodules.ExpectedFanoutBytesLen(uint64(fi.Size), ec.MinPieces(), ec.NumPieces()-ec.MinPieces(), masterKey.Type())
 	if len(fanout) != int(expectedLength) {
 		return skymodules.Skylink{}, fmt.Errorf("can't finish large upload - invalid fanout length: got %v expected %v (%v %v %v %v)", len(fanout), expectedLength, fi.Size, ec.MinPieces(), ec.NumPieces(), masterKey.Type())
 	}
