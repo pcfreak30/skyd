@@ -16,9 +16,6 @@ import (
 )
 
 const (
-	// testLRUSectionSize is the section size for testing.
-	testLRUSectionSize = 4096
-
 	// testLRUMaxCacheSize is the max cache size for most tests.
 	testLRUMaxCacheSize = 1 << 20
 )
@@ -38,7 +35,7 @@ func lruTestDir(testName string) string {
 }
 
 func newTestLRU(path string) *persistedLRU {
-	lru, err := newPersistedLRU(path, testLRUMaxCacheSize, testLRUSectionSize)
+	lru, err := newPersistedLRU(path, testLRUMaxCacheSize)
 	if err != nil {
 		panic(err)
 	}
@@ -81,8 +78,8 @@ func TestPersistedLRU(t *testing.T) {
 			f:    testLRUPrune,
 		},
 		{
-			name: "AddCachedData",
-			f:    testAddCacheSize,
+			name: "TryPruneData",
+			f:    testTryPruneData,
 		},
 		{
 			name: "Parallel",
@@ -109,8 +106,8 @@ func testDataSourceIDToPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expectedPath := dir + "/5d/b3/df3ddf0622ab7bbee847a23db4122b0279d7a3cb4601606faed83bbf1f24.dat"
-	if path := lru.staticDataSourceIDToPath(dsid); path != expectedPath {
+	expectedPath := dir + "/5d/b3/df3ddf0622ab7bbee847a23db4122b0279d7a3cb4601606faed83bbf1f24/1.dat"
+	if path := lru.staticDataSourceIDToPath(dsid, 1); path != expectedPath {
 		t.Log(path)
 		t.Log(expectedPath)
 		t.Fatal("wrong path")
@@ -125,7 +122,7 @@ func testPersistence(t *testing.T) {
 	var dsid crypto.Hash
 	fastrand.Read(dsid[:])
 
-	f, err := lru.staticOpenCacheFile(dsid)
+	f, err := lru.staticOpenCacheFile(dsid, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,79 +134,45 @@ func testPersistence(t *testing.T) {
 	if err := f.Close(); err != nil {
 		t.Fatal(err)
 	}
-	data, err := ioutil.ReadFile(lru.staticDataSourceIDToPath(dsid))
+	data, err := ioutil.ReadFile(lru.staticDataSourceIDToPath(dsid, 1))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(data, writtenBytes) {
 		t.Fatal("wrong data", data, writtenBytes)
 	}
-	err = lru.staticRemoveCacheFile(dsid)
+	l, err := lru.staticRemoveCacheFile(dsid, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(lru.staticDataSourceIDToPath(dsid)); !os.IsNotExist(err) {
+	if int(l) != len(writtenBytes) {
+		t.Fatal("wrong length", l, len(writtenBytes))
+	}
+	if _, err := os.Stat(lru.staticDataSourceIDToPath(dsid, 1)); !os.IsNotExist(err) {
 		t.Fatal(err)
 	}
 }
 
 // testSection is a unit test for newSection and freeSection.
 func testSection(t *testing.T) {
-	sectionSize := int64(100)
 	lru := newTestLRU(t.Name())
 	var dsid crypto.Hash
 	fastrand.Read(dsid[:])
-	ds := lru.staticNewCachedDataSource(dsid, int(sectionSize))
+	ds := lru.staticNewCachedDataSource(dsid)
 
 	// Check if id was set.
 	if ds.staticID != dsid {
 		t.Fatal("wrong id", ds.staticID, dsid)
 	}
 
-	// Define test helper.
-	addTestSection := func(index uint64, expectedOffset int64, length int) error {
-		offset := ds.newSection(index, length)
-		if offset != expectedOffset {
-			return fmt.Errorf("wrong offset returned %v %v", offset, expectedOffset)
-		}
-		section, ok := ds.sections[index]
-		if !ok {
-			return errors.New("added section not found")
-		}
-		if section.staticOffset != expectedOffset {
-			return fmt.Errorf("wrong section offset %v %v", section.staticOffset, expectedOffset)
-		}
-		return nil
-	}
-
 	// Create sections
-	if err := addTestSection(1, 0, 100); err != nil {
-		t.Fatal(err)
-	}
-	if err := addTestSection(5, sectionSize, 200); err != nil {
-		t.Fatal(err)
-	}
-	if err := addTestSection(10, 2*sectionSize, 300); err != nil {
-		t.Fatal(err)
-	}
+	ds.newSection(1)
+	ds.newSection(5)
+	ds.newSection(10)
 
 	// Free one of them.
 	ds.freeSection(5)
-	if len(ds.unusedSections) != 1 {
-		t.Fatal("wrong number of unused sections")
-	}
 	if len(ds.sections) != 2 {
-		t.Fatal("wrong number of used sections", len(ds.sections))
-	}
-
-	// Add another one. Should reuse the section.
-	if err := addTestSection(100, sectionSize, 400); err != nil {
-		t.Fatal(err)
-	}
-	if len(ds.unusedSections) != 0 {
-		t.Fatal("wrong number of unused sections")
-	}
-	if len(ds.sections) != 3 {
 		t.Fatal("wrong number of used sections", len(ds.sections))
 	}
 }
@@ -226,8 +189,9 @@ func testPutGet(t *testing.T) {
 	var dsid crypto.Hash
 	fastrand.Read(dsid[:])
 
-	section1 := fastrand.Bytes(testLRUSectionSize)
-	section2 := fastrand.Bytes(testLRUSectionSize)
+	sectionSize := 100
+	section1 := fastrand.Bytes(sectionSize)
+	section2 := fastrand.Bytes(sectionSize)
 	section3 := fastrand.Bytes(1) // small section
 	section4 := fastrand.Bytes(1) // small section
 
@@ -474,14 +438,15 @@ func testLRUPrune(t *testing.T) {
 	}
 	// Check datasource.
 	ds := lru.dataSources[dsid1]
-	if len(ds.sections) != 1 && len(ds.unusedSections) != 1 {
-		t.Fatal("wrong number of sections")
-	}
 	if ds.staticID != dsid1 {
 		t.Fatal("wrong id")
 	}
-	// Try to open the cache file on disk. Should work.
-	_, err = os.Stat(lru.staticDataSourceIDToPath(dsid1))
+	// Try to open the cache files on disk. Should work.
+	_, err = os.Stat(lru.staticDataSourceIDToPath(dsid1, 1))
+	if !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	_, err = os.Stat(lru.staticDataSourceIDToPath(dsid1, 2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -514,17 +479,22 @@ func testLRUPrune(t *testing.T) {
 		t.Fatal("should be deleted")
 	}
 	// Try to open the cache file on disk. Should fail since it was deleted.
-	_, err = os.Stat(lru.staticDataSourceIDToPath(dsid1))
+	_, err = os.Stat(lru.staticDataSourceIDToPath(dsid1, 1))
+	if !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	_, err = os.Stat(lru.staticDataSourceIDToPath(dsid1, 2))
 	if !os.IsNotExist(err) {
 		t.Fatal(err)
 	}
 }
 
-func testAddCacheSize(t *testing.T) {
+// testTryPruneData is a unit test for managedTryPruneData.
+func testTryPruneData(t *testing.T) {
 	dir := lruTestDir(t.Name())
 	maxSize := uint64(100)
 	sectionSize := uint64(50)
-	lru, err := newPersistedLRU(dir, maxSize, sectionSize)
+	lru, err := newPersistedLRU(dir, maxSize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -587,11 +557,13 @@ func testAddCacheSize(t *testing.T) {
 	}
 }
 
+// testLRUParallel tests adding entries, fetching them and pruning them from
+// multiple threads.
 func testLRUParallel(t *testing.T) {
 	dir := lruTestDir(t.Name())
 	maxSize := uint64(100)
 	sectionSize := int(25)
-	lru, err := newPersistedLRU(dir, maxSize, uint64(sectionSize))
+	lru, err := newPersistedLRU(dir, maxSize)
 	if err != nil {
 		t.Fatal(err)
 	}

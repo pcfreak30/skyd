@@ -15,80 +15,146 @@ import (
 	"go.sia.tech/siad/crypto"
 )
 
-type cachedDataSection struct {
-	length       int
-	staticOffset int64 // offset within file
-}
+type (
+	// cachedDataSource describes a cached datasource which can contain multiple
+	// sections.
+	cachedDataSource struct {
+		staticID  crypto.Hash
+		staticLRU *persistedLRU
 
-type cachedDataSource struct {
-	staticID          crypto.Hash
-	staticLRU         *persistedLRU
-	staticSectionSize int
-
-	sections       map[uint64]cachedDataSection
-	unusedSections []cachedDataSection
-	mu             sync.Mutex
-}
-
-func (ds *cachedDataSource) newSection(index uint64, length int) int64 {
-	// Try to use unused section first.
-	var section cachedDataSection
-	if len(ds.unusedSections) > 0 {
-		section = ds.unusedSections[len(ds.unusedSections)-1]
-		ds.unusedSections = ds.unusedSections[:len(ds.unusedSections)-1]
-	} else {
-		// Otherwise create a new one.
-		section = cachedDataSection{
-			staticOffset: int64(len(ds.sections) * ds.staticSectionSize),
-		}
+		sections map[uint64]struct{}
+		mu       sync.Mutex
 	}
-	section.length = length
-	_, exists := ds.sections[index]
-	if exists {
-		build.Critical("adding duplicate section to data source")
-	}
-	ds.sections[index] = section
-	return section.staticOffset
-}
 
+	// lruElement describes an element within the LRU.
+	lruElement struct {
+		staticDSID         crypto.Hash
+		staticSectionIndex uint64
+	}
+
+	// persistedLRU is the LRU itself. It stores cached elements in a tree
+	// structure on disk.
+	persistedLRU struct {
+		staticPath string
+
+		staticLRU   *list.List
+		lruElements map[crypto.Hash]map[uint64]*list.Element
+
+		cachedSize         int64
+		staticMaxCacheSize int64
+
+		dataSources map[crypto.Hash]*cachedDataSource
+		mu          sync.Mutex
+	}
+)
+
+// freeSection removes a section from the datasource and deletes it from disk.
+// It also returns the deleted files length and whether it was the last section.
 func (ds *cachedDataSource) freeSection(index uint64) (int64, bool, error) {
-	section, exists := ds.sections[index]
+	_, exists := ds.sections[index]
 	if !exists {
 		// already freed.
 		return 0, true, nil
 	}
-	ds.unusedSections = append(ds.unusedSections, section)
 	delete(ds.sections, index)
 
-	var err error
-	var deleted bool
-	if len(ds.sections) == 0 {
-		err = ds.staticLRU.staticRemoveCacheFile(ds.staticID)
-		deleted = true
+	// Remove the section from disk.
+	length, err := ds.staticLRU.staticRemoveCacheFile(ds.staticID, index)
+	return length, len(ds.sections) == 0, err
+}
+
+// get returns some cached data from a datasource. If the data isn't available,
+// it returns false.
+func (ds *cachedDataSource) get(dsid crypto.Hash, sectionIndex uint64) (_ []byte, _ bool, err error) {
+	_, exists := ds.sections[sectionIndex]
+	if !exists {
+		return nil, false, nil
 	}
-	return int64(section.length), deleted, err
+
+	// Open the cache file.
+	cacheFile, err := ds.staticLRU.staticOpenCacheFile(dsid, sectionIndex)
+	if err != nil {
+		return nil, false, err
+	}
+	defer func() {
+		err = errors.Compose(err, cacheFile.Close())
+	}()
+
+	// Read the section.
+	data, err := io.ReadAll(cacheFile)
+	if err != nil {
+		return nil, false, err
+	}
+	return data, true, nil
 }
 
-type persistedLRU struct {
-	staticPath        string
-	staticSectionSize uint64
-
-	staticLRU   *list.List
-	lruElements map[crypto.Hash]map[uint64]*list.Element
-
-	cachedSize         int64
-	staticMaxCacheSize int64
-
-	dataSources map[crypto.Hash]*cachedDataSource
-	mu          sync.Mutex
+// newSection creates a new section within the datasource.
+func (ds *cachedDataSource) newSection(index uint64) {
+	_, exists := ds.sections[index]
+	if exists {
+		build.Critical("adding duplicate section to data source")
+	}
+	ds.sections[index] = struct{}{}
 }
 
+// put places some data to be cached into a data source at the given section
+// index.
+func (ds *cachedDataSource) put(dsid crypto.Hash, sectionIndex uint64, data []byte) (_ bool, err error) {
+	// Check if the section is already cached.
+	_, exists := ds.sections[sectionIndex]
+	if exists {
+		return false, nil
+	}
+
+	// Open the cache file.
+	cacheFile, err := ds.staticLRU.staticOpenCacheFile(dsid, sectionIndex)
+	if err != nil {
+		return false, err
+	}
+	// Cleanup.
+	defer func() {
+		err = errors.Compose(err, cacheFile.Close())
+		if err != nil {
+			ds.freeSection(sectionIndex)
+		}
+	}()
+	// Create the section and write it to the file.
+	ds.newSection(sectionIndex)
+	_, err = cacheFile.Write(data)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// newPersistedLRU creates a new LRU at the given root path with the given max
+// size.
+func newPersistedLRU(path string, maxSize uint64) (*persistedLRU, error) {
+	// Remove root dir to prune any existing cached elements.
+	if err := os.RemoveAll(path); err != nil {
+		return nil, err
+	}
+	// Create root dir.
+	if err := os.MkdirAll(path, skymodules.DefaultDirPerm); err != nil {
+		return nil, err
+	}
+	return &persistedLRU{
+		dataSources:        make(map[crypto.Hash]*cachedDataSource),
+		lruElements:        make(map[crypto.Hash]map[uint64]*list.Element),
+		staticMaxCacheSize: int64(maxSize),
+		staticLRU:          list.New(),
+		staticPath:         path,
+	}, nil
+}
+
+// managedAcquireCreateDataSource is a helper method to correctly acquire or
+// create and acquire a datasource.
 func (lru *persistedLRU) managedAcquireCreateDataSource(dsid crypto.Hash) *cachedDataSource {
 	for {
 		lru.mu.Lock()
 		ds, exists := lru.dataSources[dsid]
 		if !exists {
-			ds = lru.staticNewCachedDataSource(dsid, int(lru.staticSectionSize))
+			ds = lru.staticNewCachedDataSource(dsid)
 			lru.dataSources[dsid] = ds
 		}
 		lru.mu.Unlock()
@@ -105,6 +171,7 @@ func (lru *persistedLRU) managedAcquireCreateDataSource(dsid crypto.Hash) *cache
 	}
 }
 
+// managedAcquireDataSource is a helper method to correctly lock a datasource.
 func (lru *persistedLRU) managedAcquireDataSource(dsid crypto.Hash) (*cachedDataSource, bool) {
 	lru.mu.Lock()
 	ds, exists := lru.dataSources[dsid]
@@ -124,6 +191,8 @@ func (lru *persistedLRU) managedAcquireDataSource(dsid crypto.Hash) (*cachedData
 	return ds, true
 }
 
+// managedDeleteDataSource is a helper method to correctly unlock and delete a
+// datasoure from the LRU.
 func (lru *persistedLRU) managedDeleteDataSource(ds *cachedDataSource) {
 	lru.mu.Lock()
 	ds, exists := lru.dataSources[ds.staticID]
@@ -137,6 +206,7 @@ func (lru *persistedLRU) managedDeleteDataSource(ds *cachedDataSource) {
 	ds.mu.Unlock()
 }
 
+// managedReturnDataSource is a helper method to correctly unlock a datasource.
 func (lru *persistedLRU) managedReturnDataSource(ds *cachedDataSource) {
 	lru.mu.Lock()
 	ds, exists := lru.dataSources[ds.staticID]
@@ -147,6 +217,7 @@ func (lru *persistedLRU) managedReturnDataSource(ds *cachedDataSource) {
 	ds.mu.Unlock()
 }
 
+// managedPruneLRU prunes the least recently used element from the persistedLRU.
 func (lru *persistedLRU) managedPruneLRU() (int64, bool, error) {
 	lru.mu.Lock()
 	ele := lru.staticLRU.Back()
@@ -179,43 +250,23 @@ func (lru *persistedLRU) managedPruneLRU() (int64, bool, error) {
 
 	// Delete the datasource if it was marked as deleted.
 	if deleted {
-		lru.managedDeleteDataSource(ds) // TODO enable
-		//lru.managedReturnDataSource(ds)
+		lru.managedDeleteDataSource(ds)
 	} else {
 		lru.managedReturnDataSource(ds)
 	}
 	return length, true, err
 }
 
-func (lru *persistedLRU) staticNewCachedDataSource(id crypto.Hash, sectionSize int) *cachedDataSource {
+// staticNewCachedDataSource creates a new cachedDataSource object.
+func (lru *persistedLRU) staticNewCachedDataSource(id crypto.Hash) *cachedDataSource {
 	return &cachedDataSource{
-		staticID:          id,
-		staticLRU:         lru,
-		sections:          make(map[uint64]cachedDataSection),
-		staticSectionSize: sectionSize,
+		staticID:  id,
+		staticLRU: lru,
+		sections:  make(map[uint64]struct{}),
 	}
 }
 
-func newPersistedLRU(path string, maxSize, sectionSize uint64) (*persistedLRU, error) {
-	// Remove root dir to prune any existing cached elements.
-	if err := os.RemoveAll(path); err != nil {
-		return nil, err
-	}
-	// Create root dir.
-	if err := os.MkdirAll(path, skymodules.DefaultDirPerm); err != nil {
-		return nil, err
-	}
-	return &persistedLRU{
-		dataSources:        make(map[crypto.Hash]*cachedDataSource),
-		lruElements:        make(map[crypto.Hash]map[uint64]*list.Element),
-		staticMaxCacheSize: int64(maxSize),
-		staticLRU:          list.New(),
-		staticPath:         path,
-		staticSectionSize:  sectionSize,
-	}, nil
-}
-
-func (lru *persistedLRU) staticDataSourceIDToPath(dsid crypto.Hash) string {
+func (lru *persistedLRU) staticDataSourceIDToPath(dsid crypto.Hash, sectionIndex uint64) string {
 	s := hex.EncodeToString(dsid[:])
 	// Using a depth of 2 - approach will result in 65536 folders on the
 	// bottom layer of the tree and twice that in total. Assuming a 4kib
@@ -223,11 +274,11 @@ func (lru *persistedLRU) staticDataSourceIDToPath(dsid crypto.Hash) string {
 	// overhead if all the folders exist. If we decide to increase the depth
 	// we might want to add support for deleting empty folders again but
 	// that would add some locking complexity.
-	return filepath.Join(lru.staticPath, s[0:2], s[2:4], s[4:]+".dat")
+	return filepath.Join(lru.staticPath, s[0:2], s[2:4], s[4:], fmt.Sprint(sectionIndex)+".dat")
 }
 
-func (lru *persistedLRU) staticOpenCacheFile(dsid crypto.Hash) (*os.File, error) {
-	path := lru.staticDataSourceIDToPath(dsid)
+func (lru *persistedLRU) staticOpenCacheFile(dsid crypto.Hash, sectionIndex uint64) (*os.File, error) {
+	path := lru.staticDataSourceIDToPath(dsid, sectionIndex)
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, skymodules.DefaultDirPerm); err != nil {
 		return nil, err
@@ -235,8 +286,13 @@ func (lru *persistedLRU) staticOpenCacheFile(dsid crypto.Hash) (*os.File, error)
 	return os.OpenFile(path, os.O_RDWR|os.O_CREATE, skymodules.DefaultFilePerm)
 }
 
-func (lru *persistedLRU) staticRemoveCacheFile(dsid crypto.Hash) error {
-	return os.Remove(lru.staticDataSourceIDToPath(dsid))
+func (lru *persistedLRU) staticRemoveCacheFile(dsid crypto.Hash, sectionIndex uint64) (int64, error) {
+	path := lru.staticDataSourceIDToPath(dsid, sectionIndex)
+	fi, err := os.Stat(path)
+	if err != nil {
+		return 0, err
+	}
+	return fi.Size(), os.Remove(path)
 }
 
 func (lru *persistedLRU) Get(dsid crypto.Hash, sectionIndex uint64) ([]byte, bool, error) {
@@ -258,11 +314,7 @@ func (lru *persistedLRU) Get(dsid crypto.Hash, sectionIndex uint64) ([]byte, boo
 	return data, found, nil
 }
 
-type lruElement struct {
-	staticDSID         crypto.Hash
-	staticSectionIndex uint64
-}
-
+// Put adds a new section to the cache.
 func (lru *persistedLRU) Put(dsid crypto.Hash, sectionIndex uint64, data []byte) error {
 	// Get the cached datasource or create if possible.
 	ds := lru.managedAcquireCreateDataSource(dsid)
@@ -286,6 +338,7 @@ func (lru *persistedLRU) Put(dsid crypto.Hash, sectionIndex uint64, data []byte)
 	return nil
 }
 
+// managedAddCachedEntry adds a new entry to cache to the LRU.
 func (lru *persistedLRU) managedAddCachedEntry(dsid crypto.Hash, sectionIndex uint64, size int64) {
 	lru.mu.Lock()
 	defer lru.mu.Unlock()
@@ -295,19 +348,39 @@ func (lru *persistedLRU) managedAddCachedEntry(dsid crypto.Hash, sectionIndex ui
 		elements = make(map[uint64]*list.Element)
 		lru.lruElements[dsid] = elements
 	}
-	ele, exists := elements[sectionIndex]
+	_, exists = elements[sectionIndex]
 	if !exists {
 		// Push a new element.
-		ele = lru.staticLRU.PushFront(lruElement{
+		elements[sectionIndex] = lru.staticLRU.PushFront(lruElement{
 			staticDSID:         dsid,
 			staticSectionIndex: sectionIndex,
 		})
-		elements[sectionIndex] = ele
 		// Increment the cachedSize.
 		lru.cachedSize += size
 	}
 }
 
+// managedRefreshCachedEntry moves a cached element to the front of the LRU.
+func (lru *persistedLRU) managedRefreshCachedEntry(dsid crypto.Hash, sectionIndex uint64) {
+	lru.mu.Lock()
+	defer lru.mu.Unlock()
+
+	elements, exists := lru.lruElements[dsid]
+	if !exists {
+		return
+	}
+	ele, exists := elements[sectionIndex]
+	if exists {
+		// Move element to the front.
+		lru.staticLRU.MoveToFront(ele)
+	}
+}
+
+// managedTryPruneData checks the current cache size and if necessary, prunes
+// it. To avoid holding a lock while doing disk i/o, it will assume that the
+// pruning is successful by subtracting the amount of data to prune from the
+// cache size right away. After the pruning it will adjust the cache size again
+// using the actual amount of pruned data.
 func (lru *persistedLRU) managedTryPruneData() error {
 	// Figure out how much data we need to prune and assume that it is
 	// pruned.
@@ -348,77 +421,4 @@ func (lru *persistedLRU) managedTryPruneData() error {
 		}
 	}
 	return err
-}
-
-func (lru *persistedLRU) managedRefreshCachedEntry(dsid crypto.Hash, sectionIndex uint64) {
-	lru.mu.Lock()
-	defer lru.mu.Unlock()
-
-	elements, exists := lru.lruElements[dsid]
-	if !exists {
-		return
-	}
-	ele, exists := elements[sectionIndex]
-	if exists {
-		// Move element to the front.
-		lru.staticLRU.MoveToFront(ele)
-	}
-}
-
-func (ds *cachedDataSource) put(dsid crypto.Hash, sectionIndex uint64, data []byte) (_ bool, err error) {
-	if len(data) > ds.staticSectionSize {
-		err := fmt.Errorf("data length out-of-bounds %v > %v", len(data), ds.staticSectionSize)
-		build.Critical(err)
-		return false, err
-	}
-
-	// Check if the section is already cached.
-	_, exists := ds.sections[sectionIndex]
-	if exists {
-		return false, nil
-	}
-
-	// Open the cache file.
-	cacheFile, err := ds.staticLRU.staticOpenCacheFile(dsid)
-	if err != nil {
-		return false, err
-	}
-	// Cleanup.
-	defer func() {
-		err = errors.Compose(err, cacheFile.Close())
-		if err != nil {
-			ds.freeSection(sectionIndex)
-		}
-	}()
-	// Create the section and write it to the file.
-	offset := ds.newSection(sectionIndex, len(data))
-	_, err = cacheFile.WriteAt(data, offset)
-	if err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-func (ds *cachedDataSource) get(dsid crypto.Hash, sectionIndex uint64) (_ []byte, _ bool, err error) {
-	section, exists := ds.sections[sectionIndex]
-	if !exists {
-		return nil, false, nil
-	}
-
-	// Open the cache file.
-	cacheFile, err := ds.staticLRU.staticOpenCacheFile(dsid)
-	if err != nil {
-		return nil, false, err
-	}
-	defer func() {
-		err = errors.Compose(err, cacheFile.Close())
-	}()
-
-	// Read the section.
-	data := make([]byte, section.length)
-	_, err = cacheFile.ReadAt(data, section.staticOffset)
-	if err != nil && err != io.EOF {
-		return nil, false, err
-	}
-	return data, true, nil
 }
