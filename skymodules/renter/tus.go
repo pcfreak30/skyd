@@ -402,7 +402,7 @@ func (u *ongoingTUSUpload) finishUploadLarge(ctx context.Context, fanout []byte,
 	// Sanity check fanout length
 	expectedLength := skymodules.ExpectedFanoutBytesLen(uint64(fi.Size), ec.MinPieces(), ec.NumPieces(), masterKey.Type())
 	if len(fanout) != int(expectedLength) {
-		return skymodules.Skylink{}, fmt.Errorf("can't finish large upload - invalid fanout length: got %v expected %v", len(fanout), expectedLength)
+		return skymodules.Skylink{}, fmt.Errorf("can't finish large upload - invalid fanout length: got %v expected %v (%v %v %v %v)", len(fanout), expectedLength, fi.Size, ec.MinPieces(), ec.NumPieces(), masterKey.Type())
 	}
 	return r.managedCreateSkylinkRawMD(ctx, sup, smBytes, fanout, uint64(fi.Size), masterKey, ec)
 }

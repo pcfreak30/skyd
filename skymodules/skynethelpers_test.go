@@ -104,6 +104,14 @@ func testExpectedFanoutBytes(t *testing.T) {
 			ct:                 crypto.TypeThreefish,
 			result:             2 * 30 * crypto.HashSize,
 		},
+		{
+			name:               "asdf",
+			fileSize:           1090519040,
+			fanoutDataPieces:   10,
+			fanoutParityPieces: 20,
+			ct:                 crypto.TypePlain,
+			result:             0,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
