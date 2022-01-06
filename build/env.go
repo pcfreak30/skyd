@@ -1,6 +1,10 @@
 package build
 
 var (
+	// maxDownloadDiskCache is the environment variable for the on-disk
+	// download cache size.
+	maxDownloadDiskCache = "MAX_DOWNLOAD_DISK_CACHE"
+
 	// mongoDBURI is the environment variable for the mongodb URI.
 	mongoDBURI = "MONGODB_URI"
 

@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -39,6 +40,21 @@ func APIPassword() (string, error) {
 		return "", err
 	}
 	return pw, nil
+}
+
+// MaxDownloadDiskCache returns the max disk cache used for downloading if
+// specified by the environment variable.
+func MaxDownloadDiskCache() (uint64, bool, error) {
+	cacheSizeStr, set := os.LookupEnv(maxDownloadDiskCache)
+	if !set {
+		return 0, false, nil
+	}
+	var cacheSize uint64
+	_, err := fmt.Sscan(cacheSizeStr, &cacheSize)
+	if err != nil {
+		return 0, false, errors.AddContext(err, "failed to parse custom cache size")
+	}
+	return cacheSize, true, nil
 }
 
 // MongoDBURI returns the URI that the mongodb client in skyd should connect to.

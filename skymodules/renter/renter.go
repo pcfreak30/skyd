@@ -1213,7 +1213,16 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	}
 
 	// Init the download cache.
-	lru, err := newPersistedLRU(filepath.Join(r.persistDir, onDiskCacheFolderName), defaultCacheSize)
+	cacheSize, set, err := build.MaxDownloadDiskCache()
+	if err != nil {
+		return nil, err
+	}
+	if set {
+		fmt.Printf("MAX_DOWNLOAD_DISK_CAHE set: setting download cache size to %v\n", cacheSize)
+	} else {
+		cacheSize = defaultCacheSize
+	}
+	lru, err := newPersistedLRU(filepath.Join(r.persistDir, onDiskCacheFolderName), cacheSize)
 	if err != nil {
 		return nil, err
 	}
