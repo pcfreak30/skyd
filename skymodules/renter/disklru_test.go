@@ -109,7 +109,7 @@ func testDataSourceIDToPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expectedPath := dir + "/5d/b3/df/3d/df0622ab7bbee847a23db4122b0279d7a3cb4601606faed83bbf1f24.dat"
+	expectedPath := dir + "/5d/b3/df3ddf0622ab7bbee847a23db4122b0279d7a3cb4601606faed83bbf1f24.dat"
 	if path := lru.staticDataSourceIDToPath(dsid); path != expectedPath {
 		t.Log(path)
 		t.Log(expectedPath)
@@ -341,9 +341,13 @@ func testLRURefresh(t *testing.T) {
 		t.Fatal("wrong element in list")
 	}
 
-	// Put some data for dsid1 section1 again. Should be back in the front.
-	if err := lru.Put(dsid1, 1, fastrand.Bytes(1)); err != nil {
+	// Get data for dsid1 section1. Should be back in the front.
+	_, cached, err := lru.Get(dsid1, 1)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !cached {
+		t.Fatal("should be cached")
 	}
 	if lru.staticLRU.Len() != 2 {
 		t.Fatal("wrong lru len", lru.staticLRU.Len())
@@ -505,12 +509,9 @@ func testLRUPrune(t *testing.T) {
 		t.Fatal("wrong lru element exists", exists1, exists2)
 	}
 	// Check datasource.
-	ds = lru.dataSources[dsid1]
-	if len(ds.sections) != 0 && len(ds.unusedSections) != 2 {
-		t.Fatal("wrong number of sections")
-	}
-	if ds.staticID != dsid1 {
-		t.Fatal("wrong id")
+	_, exists := lru.managedAcquireDataSource(dsid1)
+	if exists {
+		t.Fatal("should be deleted")
 	}
 	// Try to open the cache file on disk. Should fail since it was deleted.
 	_, err = os.Stat(lru.staticDataSourceIDToPath(dsid1))
@@ -613,9 +614,9 @@ func testLRUParallel(t *testing.T) {
 	// Define a reader. The reader tries to read a random section from a
 	// random datasource. If the cache is empty, Put is called to fill it
 	// instead. 6 sections exist in total but only 4 can be in the cache at
-	// any given time. This gurantees some pruning.
+	// any given time. This guarantees some pruning.
 	reader := func() {
-		for i := 0; i < 20; i++ {
+		for i := 0; i < 100; i++ {
 			dsidI := fastrand.Intn(len(dsids))
 			sections := sectionss[dsidI]
 
@@ -644,7 +645,7 @@ func testLRUParallel(t *testing.T) {
 		}
 	}
 
-	numThreads := 2
+	numThreads := 3
 	var wg sync.WaitGroup
 	for i := 0; i < numThreads; i++ {
 		wg.Add(1)

@@ -150,9 +150,7 @@ func (lru *persistedLRU) managedReturnDataSource(ds *cachedDataSource) {
 func (lru *persistedLRU) managedPruneLRU() (int64, bool, error) {
 	lru.mu.Lock()
 	ele := lru.staticLRU.Back()
-	println("lrulen", lru.staticLRU.Len())
 	if ele == nil {
-		println("nothing to prune")
 		lru.mu.Unlock()
 		return 0, false, nil
 	}
@@ -175,14 +173,12 @@ func (lru *persistedLRU) managedPruneLRU() (int64, bool, error) {
 	ds, exists := lru.managedAcquireDataSource(toPrune.staticDSID)
 	if !exists {
 		// no ds
-		fmt.Println("no ds", toPrune.staticDSID)
 		return 0, true, nil
 	}
 	length, deleted, err := ds.freeSection(toPrune.staticSectionIndex)
 
 	// Delete the datasource if it was marked as deleted.
 	if deleted {
-		fmt.Println("delete", ds.staticID)
 		lru.managedDeleteDataSource(ds) // TODO enable
 		//lru.managedReturnDataSource(ds)
 	} else {
@@ -221,7 +217,13 @@ func newPersistedLRU(path string, maxSize, sectionSize uint64) (*persistedLRU, e
 
 func (lru *persistedLRU) staticDataSourceIDToPath(dsid crypto.Hash) string {
 	s := hex.EncodeToString(dsid[:])
-	return filepath.Join(lru.staticPath, s[0:2], s[2:4], s[4:6], s[6:8], s[8:]+".dat")
+	// Using a depth of 2 - approach will result in 65536 folders on the
+	// bottom layer of the tree and twice that in total. Assuming a 4kib
+	// block size of the filesystem, that's and approximately 500 mib folder
+	// overhead if all the folders exist. If we decide to increase the depth
+	// we might want to add support for deleting empty folders again but
+	// that would add some locking complexity.
+	return filepath.Join(lru.staticPath, s[0:2], s[2:4], s[4:]+".dat")
 }
 
 func (lru *persistedLRU) staticOpenCacheFile(dsid crypto.Hash) (*os.File, error) {
@@ -234,7 +236,6 @@ func (lru *persistedLRU) staticOpenCacheFile(dsid crypto.Hash) (*os.File, error)
 }
 
 func (lru *persistedLRU) staticRemoveCacheFile(dsid crypto.Hash) error {
-	// TODO: maybe also remove potentially empy folders.
 	return os.Remove(lru.staticDataSourceIDToPath(dsid))
 }
 
@@ -317,7 +318,6 @@ func (lru *persistedLRU) managedTryPruneData() error {
 		return nil
 	}
 	lru.cachedSize -= toPrune
-	fmt.Println("toPrune", toPrune, lru.cachedSize)
 	lru.mu.Unlock()
 
 	// Prune at least toPrune data. If we encounter an error we abort but we
@@ -335,7 +335,6 @@ func (lru *persistedLRU) managedTryPruneData() error {
 		}
 		toPrune -= pruned
 	}
-	fmt.Println("toprune after", toPrune)
 
 	// Adjust the cachedSize now that we know how much data we pruned
 	// exactly.
