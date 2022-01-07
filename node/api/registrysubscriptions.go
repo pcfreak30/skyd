@@ -10,6 +10,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/julienschmidt/httprouter"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
 	"go.sia.tech/siad/crypto"
 	"go.sia.tech/siad/modules"
@@ -119,6 +120,12 @@ func (queue *notificationQueue) Pop() *queuedNotification {
 
 // skynetRegistrySubscriptionHandler handles websocket subscriptions to the registry.
 func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	connid := hex.EncodeToString(fastrand.Bytes(2))
+	wslog := func(msg ...interface{}) {
+		fmt.Printf("WS[%v]: %v\n", connid, fmt.Sprint(msg))
+	}
+	wslog("new connection")
+
 	// Make sure the limit and delay are set.
 	bandwidthLimitStr := req.FormValue("bandwidthlimit")
 	if bandwidthLimitStr == "" {
@@ -201,6 +208,7 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 
 	// specific handler for queueing notification.
 	queueNotification := func(srv skymodules.RegistryEntry) error {
+		wslog("queue notification response", srv.PubKey.ShortString(), srv.Tweak.String())
 		var sig string
 		if srv.Signature != (crypto.Signature{}) {
 			sig = hex.EncodeToString(srv.Signature[:])
@@ -221,6 +229,7 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 
 	// specific handler for queueing subscriptions response.
 	queueSubscriptions := func(eids []modules.RegistryEntryID) {
+		wslog("queue subscription response")
 		subs := make([]string, 0, len(eids))
 		for _, eid := range eids {
 			subs = append(subs, crypto.Hash(eid).String())
@@ -248,10 +257,12 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 			queueMu.Unlock()
 			if next == nil {
 				// No work. Wait for wake signal.
+				wslog("no work - going to sleep")
 				select {
 				case <-req.Context().Done():
 					return
 				case <-wakeChan:
+					wslog("woke up")
 				}
 				continue
 			}
@@ -263,6 +274,7 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 			case <-time.After(time.Until(next.staticNotifyTime)):
 			}
 
+			wslog("write response")
 			err := c.WriteJSON(next.staticResponse)
 			if err != nil {
 				msg := fmt.Sprintf("failed to notify client: %v", err)
@@ -299,6 +311,7 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 		}
 		switch r.Action {
 		case RegistrySubscriptionActionSubscribe:
+			wslog("Received RegistrySubscriptionActionSubscribe")
 			var spk types.SiaPublicKey
 			if err := spk.LoadString(r.PubKey); err != nil {
 				msg := fmt.Sprintf("failed to parse pubkey: %v", err)
@@ -320,6 +333,7 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 				}
 			}
 		case RegistrySubscriptionActionUnsubscribe:
+			wslog("Received RegistrySubscriptionActionUnsubscribe")
 			var spk types.SiaPublicKey
 			if err := spk.LoadString(r.PubKey); err != nil {
 				msg := fmt.Sprintf("failed to parse pubkey: %v", err)
@@ -334,8 +348,10 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 			}
 			subscriber.Unsubscribe(modules.DeriveRegistryEntryID(spk, dataKey))
 		case RegistrySubscriptionActionSubscriptions:
+			wslog("Received RegistrySubscriptionActionSubscriptions")
 			queueSubscriptions(subscriber.Subscriptions())
 		default:
+			wslog("Received unknown action")
 			c.WriteJSON(RegistrySubscriptionResponseError{Error: "unknown action"})
 		}
 	}
