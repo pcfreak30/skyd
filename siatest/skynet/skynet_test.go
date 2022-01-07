@@ -210,6 +210,13 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("skylink mismatch")
 	}
 
+	// Make sure the file is in the cache now.
+	dsid := realSkylink.DataSourceID()
+	dsDir := renter.DataSourceIDToPath(filepath.Join(r.Dir, "renter", renter.OnDiskCacheFolderName), dsid)
+	if _, err := os.Stat(dsDir); err != nil {
+		t.Fatal(err)
+	}
+
 	// Fetch the links metadata and compare it. Should match.
 	h2, metadata2, err := r.SkynetMetadataGet(skylink)
 	if err != nil {

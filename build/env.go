@@ -5,6 +5,14 @@ var (
 	// download cache size.
 	maxDownloadDiskCache = "MAX_DOWNLOAD_DISK_CACHE"
 
+	// minDownloadDiskCacheHits is the number of times a section of a
+	// datasource needs to be downloaded before being cached.
+	minDownloadDiskCacheHits = "MIN_DOWNLOAD_DISK_CACHE_HITS"
+
+	// downloadDiskCacheHitDuration is the period of time within which the
+	// minDownloadDiskCacheHits need to occur for a section to be cached.
+	downloadDiskCacheHitDuration = "DOWNLOAD_DISK_CACHE_HIT_DURATION"
+
 	// mongoDBURI is the environment variable for the mongodb URI.
 	mongoDBURI = "MONGODB_URI"
 

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -55,6 +56,39 @@ func MaxDownloadDiskCache() (uint64, bool, error) {
 		return 0, false, errors.AddContext(err, "failed to parse custom cache size")
 	}
 	return cacheSize, true, nil
+}
+
+// MinDownloadDiskCacheHits returns the min disk cache hits used for the
+// download cache if specified by the environment variable.
+func MinDownloadDiskCacheHits() (uint, bool, error) {
+	minCacheHitsStr, set := os.LookupEnv(minDownloadDiskCacheHits)
+	if !set {
+		return 0, false, nil
+	}
+	var minCacheHits uint
+	_, err := fmt.Sscan(minCacheHitsStr, &minCacheHits)
+	if err != nil {
+		return 0, false, errors.AddContext(err, "failed to parse custom min cache hits")
+	}
+	return minCacheHits, true, nil
+}
+
+// DownloadDiskCacheHitDuration returns the disk cache hit duration used for the
+// download cache if specified by the environment variable.
+func DownloadDiskCacheHitDuration() (time.Duration, bool, error) {
+	cacheHitDurationStr, set := os.LookupEnv(downloadDiskCacheHitDuration)
+	if !set {
+		return 0, false, nil
+	}
+	var cacheHitDuration uint64
+	_, err := fmt.Sscan(cacheHitDurationStr, &cacheHitDuration)
+	if err != nil {
+		return 0, false, errors.AddContext(err, "failed to parse custom cache hit duration")
+	}
+	if cacheHitDuration == 0 {
+		return 0, false, errors.New("0 is an invalid value for the cache hit duration")
+	}
+	return time.Duration(cacheHitDuration) * time.Second, true, nil
 }
 
 // MongoDBURI returns the URI that the mongodb client in skyd should connect to.

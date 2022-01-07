@@ -73,6 +73,10 @@ func TestPersistedLRU(t *testing.T) {
 			f:    testPutGet,
 		},
 		{
+			name: "PutGetMultiHit",
+			f:    testPutGetMultipleHits,
+		},
+		{
 			name: "LRURefresh",
 			f:    testLRURefresh,
 		},
@@ -177,6 +181,46 @@ func testSection(t *testing.T) {
 	ds.freeSection(5)
 	if len(ds.sections) != 2 {
 		t.Fatal("wrong number of used sections", len(ds.sections))
+	}
+}
+
+// testPutGetMultipleHits is a test to make sure the LRU is using the hittracker
+// correctly.
+func testPutGetMultipleHits(t *testing.T) {
+	dir := lruTestDir(t.Name())
+	lru, err := newPersistedLRU(dir, 100, 2, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var dsid skymodules.DataSourceID
+	fastrand.Read(dsid[:])
+
+	// Put data in the cache.
+	data := fastrand.Bytes(10)
+	if err := lru.Put(dsid, 0, data); err != nil {
+		t.Fatal(err)
+	}
+	// Try to get a few times. Shouldn't work.
+	for i := 0; i < 10; i++ {
+		_, cached, err := lru.Get(dsid, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cached {
+			t.Fatal("shouldn't be cached")
+		}
+	}
+	// Put data in the cache again. Cache should be filled now.
+	if err := lru.Put(dsid, 0, data); err != nil {
+		t.Fatal(err)
+	}
+	_, cached, err := lru.Get(dsid, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cached {
+		t.Fatal("should be cached")
 	}
 }
 

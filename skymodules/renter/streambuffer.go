@@ -674,11 +674,13 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 			ds.externDuration = time.Since(start)
 			ds.externData = response.staticData
 
-			if err := lru.Put(sb.staticDataSource.ID(), index, ds.externData); err != nil {
-				build.Critical("failed to store response data in cache", err)
-			}
-
 			if ds.externErr == nil {
+				// Put the section in the cache. We always do that
+				// unless there is an error.
+				if err := lru.Put(sb.staticDataSource.ID(), index, ds.externData); err != nil {
+					build.Critical("failed to store response data in cache", err)
+				}
+				// Add datapoint to stats.
 				sb.staticStreamBufferSet.staticStatsCollector.AddDataPoint(ds.externDuration)
 			}
 		case <-sb.staticTG.StopChan():

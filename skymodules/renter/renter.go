@@ -56,8 +56,8 @@ import (
 	"go.sia.tech/siad/types"
 )
 
-// onDiskCacheFolderName is the name of the folder that skyd uses for caching.
-const onDiskCacheFolderName = "cache"
+// OnDiskCacheFolderName is the name of the folder that skyd uses for caching.
+const OnDiskCacheFolderName = "cache"
 
 var (
 	// defaultCacheSize is the default cache size used for the on-disk cache
@@ -71,10 +71,10 @@ var (
 	// defaultMinCacheHits is the number of times a section of a datasource
 	// needs to be accessed before being cached.
 	defaultMinCacheHits = build.Select(build.Var{
-		Dev:      1,
-		Standard: 3,
-		Testing:  1,
-	}).(int)
+		Dev:      uint(1),
+		Standard: uint(3),
+		Testing:  uint(1),
+	}).(uint)
 
 	// defaultCachePeriod is the timeframe in which minCacheHits need to
 	// occur for a section within a datasource to get cached.
@@ -1449,9 +1449,27 @@ func (r *Renter) managedInitDownloadCache() (PersistedLRU, error) {
 		return nil, err
 	}
 	if set {
-		fmt.Printf("MAX_DOWNLOAD_DISK_CAHE set: setting download cache size to %v\n", cacheSize)
+		fmt.Printf("Setting download cache size to %v\n", cacheSize)
 	} else {
 		cacheSize = defaultCacheSize
 	}
-	return newPersistedLRU(filepath.Join(r.persistDir, onDiskCacheFolderName), cacheSize, defaultMinCacheHits, defaultCachePeriod)
+	minHits, set, err := build.MinDownloadDiskCacheHits()
+	if err != nil {
+		return nil, err
+	}
+	if set {
+		fmt.Printf("Setting min download cache hits to %v\n", minHits)
+	} else {
+		minHits = defaultMinCacheHits
+	}
+	cachePeriod, set, err := build.DownloadDiskCacheHitDuration()
+	if err != nil {
+		return nil, err
+	}
+	if set {
+		fmt.Printf("Setting download cache hit period to %v\n", cachePeriod)
+	} else {
+		cachePeriod = defaultCachePeriod
+	}
+	return newPersistedLRU(filepath.Join(r.persistDir, OnDiskCacheFolderName), cacheSize, minHits, cachePeriod)
 }

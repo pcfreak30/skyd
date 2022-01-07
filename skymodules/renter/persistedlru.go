@@ -50,7 +50,7 @@ type (
 	// cacheHitTracker tracks how many times a cached section gets accessed
 	// within a certain period of time.
 	cacheHitTracker struct {
-		staticMinHits  int
+		staticMinHits  uint
 		staticDuration time.Duration
 
 		pruning bool
@@ -76,7 +76,7 @@ type (
 )
 
 // newCacheHitTracker creates a new cacheHitTracker.
-func newCacheHitTracker(minHits int, duration time.Duration) *cacheHitTracker {
+func newCacheHitTracker(minHits uint, duration time.Duration) *cacheHitTracker {
 	return &cacheHitTracker{
 		staticMinHits:  minHits,
 		staticDuration: duration,
@@ -160,8 +160,8 @@ func (ht *cacheHitTracker) ReportHit(dsid skymodules.DataSourceID, sectionID uin
 
 	// We only need to keep staticMinHits so we remove any additional old
 	// hits we have first.
-	if len(hits) > ht.staticMinHits {
-		hits = hits[len(hits)-ht.staticMinHits:]
+	if uint(len(hits)) > ht.staticMinHits {
+		hits = hits[uint(len(hits))-ht.staticMinHits:]
 	}
 
 	// Remove all hits that happened more than the specified duration ago.
@@ -189,7 +189,7 @@ func (ht *cacheHitTracker) ReportHit(dsid skymodules.DataSourceID, sectionID uin
 	ht.hits[dsid][sectionID] = hits
 
 	// If enough remain, return true.
-	return len(hits) >= ht.staticMinHits
+	return uint(len(hits)) >= ht.staticMinHits
 }
 
 // freeSection removes a section from the datasource and deletes it from disk.
@@ -273,7 +273,7 @@ func (ds *cachedDataSource) put(dsid skymodules.DataSourceID, sectionIndex uint6
 
 // newPersistedLRU creates a new LRU at the given root path with the given max
 // size.
-func newPersistedLRU(path string, maxSize uint64, hitsBeforeCache int, duration time.Duration) (*persistedLRU, error) {
+func newPersistedLRU(path string, maxSize uint64, hitsBeforeCache uint, duration time.Duration) (*persistedLRU, error) {
 	// Remove root dir to prune any existing cached elements.
 	if err := os.RemoveAll(path); err != nil {
 		return nil, err
@@ -411,9 +411,9 @@ func (lru *persistedLRU) staticNewCachedDataSource(id skymodules.DataSourceID) *
 	}
 }
 
-// staticDataSourceIDToPath is a helper method to get the path for a given
-// datasource and section.
-func (lru *persistedLRU) staticDataSourceIDToPath(dsid skymodules.DataSourceID, sectionIndex uint64) string {
+// DataSourceIDToPath returns the datasource's cache folder for a given cache
+// root.
+func DataSourceIDToPath(root string, dsid skymodules.DataSourceID) string {
 	s := hex.EncodeToString(dsid[:])
 	// Using a depth of 2 - approach will result in 65536 folders on the
 	// bottom layer of the tree and twice that in total. Assuming a 4kib
@@ -421,7 +421,14 @@ func (lru *persistedLRU) staticDataSourceIDToPath(dsid skymodules.DataSourceID, 
 	// overhead if all the folders exist. If we decide to increase the depth
 	// we might want to add support for deleting empty folders again but
 	// that would add some locking complexity.
-	return filepath.Join(lru.staticPath, s[0:2], s[2:4], s[4:], fmt.Sprint(sectionIndex)+".dat")
+	return filepath.Join(root, s[0:2], s[2:4], s[4:])
+}
+
+// staticDataSourceIDToPath is a helper method to get the path for a given
+// datasource and section.
+func (lru *persistedLRU) staticDataSourceIDToPath(dsid skymodules.DataSourceID, sectionIndex uint64) string {
+	path := DataSourceIDToPath(lru.staticPath, dsid)
+	return filepath.Join(path, fmt.Sprint(sectionIndex)+".dat")
 }
 
 // staticOpenCacheFile is a helper method to open a cache file for a given
