@@ -4,7 +4,9 @@ import (
 	"container/list"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -121,8 +123,9 @@ func (queue *notificationQueue) Pop() *queuedNotification {
 // skynetRegistrySubscriptionHandler handles websocket subscriptions to the registry.
 func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	connid := hex.EncodeToString(fastrand.Bytes(2))
+	logger := log.New(os.Stdout, fmt.Sprintf("WS[%v] - ", connid), log.Ltime|log.LUTC)
 	wslog := func(msg ...interface{}) {
-		fmt.Printf("WS[%v]: %v\n", connid, fmt.Sprint(msg))
+		logger.Println(msg)
 	}
 	wslog("new connection")
 
@@ -306,7 +309,7 @@ func (api *API) skynetRegistrySubscriptionHandler(w http.ResponseWriter, req *ht
 		if err != nil {
 			msg := fmt.Sprintf("failed to read JSON request: %v", err)
 			c.WriteJSON(newRegistrySubscriptionError(msg))
-			fmt.Println("msg", msg)
+			wslog("Reading request failed", err)
 			return
 		}
 		switch r.Action {
