@@ -3,16 +3,16 @@ package build
 var (
 	// maxDownloadDiskCache is the environment variable for the on-disk
 	// download cache size.
-	maxDownloadDiskCache = "DISK_CACHE_SIZE"
+	maxDownloadDiskCache = "SKYD_DISK_CACHE_SIZE"
 
 	// minDownloadDiskCacheHits is the number of times a section of a
 	// datasource needs to be downloaded before being cached.
-	minDownloadDiskCacheHits = "DISK_CACHE_MIN_HITS"
+	minDownloadDiskCacheHits = "SKYD_DISK_CACHE_MIN_HITS"
 
 	// downloadDiskCacheHitDuration is the period of time in seconds within
 	// which the minDownloadDiskCacheHits need to occur for a section to be
 	// cached.
-	downloadDiskCacheHitDuration = "DISK_CACHE_HIT_PERIOD"
+	downloadDiskCacheHitDuration = "SKYD_DISK_CACHE_HIT_PERIOD"
 
 	// mongoDBURI is the environment variable for the mongodb URI.
 	mongoDBURI = "MONGODB_URI"
