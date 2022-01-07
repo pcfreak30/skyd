@@ -13,9 +13,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
+	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/SkynetLabs/skyd/build"
 	"gitlab.com/SkynetLabs/skyd/skykey"
 	"gitlab.com/SkynetLabs/skyd/skymodules"
@@ -632,6 +634,75 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		w.Header().Set("Content-Type", metadata.ContentType())
 	}
 	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
+}
+
+type activeRatelimit struct {
+	refcount int
+	staticRL *ratelimit.RateLimit
+}
+
+type rateLimits struct {
+	activeDownloads map[string]*activeRatelimit
+	mu              sync.Mutex
+}
+
+func (r *rateLimits) LimitDownload(w http.ResponseWriter, uid string, limit int64) (http.ResponseWriter, func()) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	activeLimit, exists := r.activeDownloads[uid]
+	if !exists {
+		activeLimit = &activeRatelimit{
+			staticRL: ratelimit.NewRateLimit(limit, 0, 4096),
+		}
+		r.activeDownloads[uid] = activeLimit
+	}
+	activeLimit.refcount++
+
+	decrease := func() {
+		r.managedReturnDownload(uid)
+	}
+	return newRatelimitedResponseWriter(w), decrease
+}
+
+func (r *rateLimits) managedReturnDownload(uid string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	activeLimit, exists := r.activeDownloads[uid]
+	if !exists {
+		build.Critical("managedReturnDownload: unknown uid")
+		return
+	}
+	activeLimit.refcount--
+	if activeLimit.refcount < 0 {
+		build.Critical("managedReturnDownload: negative refcount", activeLimit.refcount)
+	}
+	if activeLimit.refcount <= 0 {
+		delete(r.activeDownloads, uid)
+	}
+}
+
+type ratelimitedResponseWriter struct {
+	staticW  http.ResponseWriter
+	staticRL *ratelimit.RateLimit
+}
+
+func newRatelimitedResponseWriter(w http.ResponseWriter) http.ResponseWriter {
+	return &ratelimitedResponseWriter{
+		staticW: w,
+	}
+}
+
+func (rrw *ratelimitedResponseWriter) Header() http.Header {
+	return rrw.staticW.Header()
+}
+
+func (rrw *ratelimitedResponseWriter) Write(b []byte) (int, error) {
+	rw := ratelimit.NewRLReadWriter(&writeReader{rrw.staticW}, rrw.staticRL, make(<-chan struct{}))
+	return rw.Write(b)
+}
+
+func (rrw *ratelimitedResponseWriter) WriteHeader(statusCode int) {
+	rrw.staticW.WriteHeader(statusCode)
 }
 
 // skynetSkylinkPinHandlerPOST will pin a skylink to this Sia node, ensuring
