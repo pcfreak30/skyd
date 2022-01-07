@@ -7,6 +7,7 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -37,7 +38,7 @@ func lruTestDir(testName string) string {
 
 // newTestLRU creates a new LRU for testing.
 func newTestLRU(path string) *persistedLRU {
-	lru, err := newPersistedLRU(path, testLRUMaxCacheSize)
+	lru, err := newPersistedLRU(path, testLRUMaxCacheSize, 1, time.Hour)
 	if err != nil {
 		panic(err)
 	}
@@ -496,7 +497,7 @@ func testTryPruneData(t *testing.T) {
 	dir := lruTestDir(t.Name())
 	maxSize := uint64(100)
 	sectionSize := uint64(50)
-	lru, err := newPersistedLRU(dir, maxSize)
+	lru, err := newPersistedLRU(dir, maxSize, 1, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -565,7 +566,7 @@ func testLRUParallel(t *testing.T) {
 	dir := lruTestDir(t.Name())
 	maxSize := uint64(100)
 	sectionSize := int(25)
-	lru, err := newPersistedLRU(dir, maxSize)
+	lru, err := newPersistedLRU(dir, maxSize, 1, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -638,5 +639,72 @@ func testLRUParallel(t *testing.T) {
 	}
 	if lru.staticLRU.Len() != int(maxSize)/sectionSize {
 		t.Error("wrong lru length", lru.staticLRU.Len())
+	}
+}
+
+func TestHitTracker(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Specify a hit tracker that requires 3 hits within a second to return
+	// true.
+	ht := newCacheHitTracker(3, time.Second)
+
+	var dsid1 skymodules.DataSourceID
+	fastrand.Read(dsid1[:])
+
+	// Report 2 hits. Both should return false.
+	cache := ht.ReportHit(dsid1, 0)
+	if cache {
+		t.Fatal("should be false")
+	}
+	cache = ht.ReportHit(dsid1, 0)
+	if cache {
+		t.Fatal("should be false")
+	}
+	// The third and fourth ones return true.
+	cache = ht.ReportHit(dsid1, 0)
+	if !cache {
+		t.Fatal("should be true")
+	}
+	cache = ht.ReportHit(dsid1, 0)
+	if !cache {
+		t.Fatal("should be true")
+	}
+	// A hit for a different datasource returns false.
+	var dsid2 skymodules.DataSourceID
+	fastrand.Read(dsid2[:])
+	cache = ht.ReportHit(dsid2, 0)
+	if cache {
+		t.Fatal("should be false")
+	}
+	// A hit for a different section returns false.
+	cache = ht.ReportHit(dsid1, 1)
+	if cache {
+		t.Fatal("should be false")
+	}
+	// A hit for the initial source and section returns still true.
+	cache = ht.ReportHit(dsid1, 0)
+	if !cache {
+		t.Fatal("should be true")
+	}
+	// Wait for a second. The next hit returns false.
+	time.Sleep(ht.staticDuration)
+	cache = ht.ReportHit(dsid1, 0)
+	if cache {
+		t.Fatal("should be false")
+	}
+	// Prune the tracker. It should now have 1 dsid.
+	ht.Prune()
+	if len(ht.hits) != 1 {
+		t.Fatal("wrong length", len(ht.hits))
+	}
+	if len(ht.hits[dsid1]) != 1 {
+		t.Fatal("wrong length", len(ht.hits[dsid1]))
+	}
+	if _, exists := ht.hits[dsid1][0]; !exists {
+		t.Fatal("wrong hit found")
 	}
 }

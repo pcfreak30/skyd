@@ -68,6 +68,22 @@ var (
 		Testing:  uint64(10 * 1 << 20), // 10MiB
 	}).(uint64)
 
+	// defaultMinCacheHits is the number of times a section of a datasource
+	// needs to be accessed before being cached.
+	defaultMinCacheHits = build.Select(build.Var{
+		Dev:      1,
+		Standard: 3,
+		Testing:  1,
+	}).(int)
+
+	// defaultCachePeriod is the timeframe in which minCacheHits need to
+	// occur for a section within a datasource to get cached.
+	defaultCachePeriod = build.Select(build.Var{
+		Dev:      time.Hour,
+		Standard: 24 * time.Hour,
+		Testing:  time.Minute,
+	}).(time.Duration)
+
 	// skynetFeePayoutMultiplier is a factor that we multiply the fee estimation
 	// with to determine the skynet fee payout threshold.
 	skynetFeePayoutMultiplier = build.Select(build.Var{
@@ -1213,16 +1229,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	}
 
 	// Init the download cache.
-	cacheSize, set, err := build.MaxDownloadDiskCache()
-	if err != nil {
-		return nil, err
-	}
-	if set {
-		fmt.Printf("MAX_DOWNLOAD_DISK_CAHE set: setting download cache size to %v\n", cacheSize)
-	} else {
-		cacheSize = defaultCacheSize
-	}
-	lru, err := newPersistedLRU(filepath.Join(r.persistDir, onDiskCacheFolderName), cacheSize)
+	lru, err := r.managedInitDownloadCache()
 	if err != nil {
 		return nil, err
 	}
@@ -1432,4 +1439,19 @@ func (r *Renter) HostsForRegistryUpdate() ([]skymodules.HostForRegistryUpdate, e
 		})
 	}
 	return hosts, nil
+}
+
+// managedInitDownloadCache initialises the download cache using either defaults
+// or the values provided by environment variables.
+func (r *Renter) managedInitDownloadCache() (PersistedLRU, error) {
+	cacheSize, set, err := build.MaxDownloadDiskCache()
+	if err != nil {
+		return nil, err
+	}
+	if set {
+		fmt.Printf("MAX_DOWNLOAD_DISK_CAHE set: setting download cache size to %v\n", cacheSize)
+	} else {
+		cacheSize = defaultCacheSize
+	}
+	return newPersistedLRU(filepath.Join(r.persistDir, onDiskCacheFolderName), cacheSize, defaultMinCacheHits, defaultCachePeriod)
 }

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/SkynetLabs/skyd/build"
@@ -41,13 +42,30 @@ type (
 		staticSectionIndex uint64
 	}
 
+	// cacheHit is a single hit to the cache at a certain time.
+	cacheHit struct {
+		staticTime time.Time
+	}
+
+	// cacheHitTracker tracks how many times a cached section gets accessed
+	// within a certain period of time.
+	cacheHitTracker struct {
+		staticMinHits  int
+		staticDuration time.Duration
+
+		pruning bool
+		hits    map[skymodules.DataSourceID]map[uint64][]cacheHit
+		mu      sync.Mutex
+	}
+
 	// persistedLRU is the LRU itself. It stores cached elements in a tree
 	// structure on disk.
 	persistedLRU struct {
 		staticPath string
 
-		staticLRU   *list.List
-		lruElements map[skymodules.DataSourceID]map[uint64]*list.Element
+		staticHitTracker *cacheHitTracker
+		staticLRU        *list.List
+		lruElements      map[skymodules.DataSourceID]map[uint64]*list.Element
 
 		cachedSize         int64
 		staticMaxCacheSize int64
@@ -56,6 +74,123 @@ type (
 		mu          sync.Mutex
 	}
 )
+
+// newCacheHitTracker creates a new cacheHitTracker.
+func newCacheHitTracker(minHits int, duration time.Duration) *cacheHitTracker {
+	return &cacheHitTracker{
+		staticMinHits:  minHits,
+		staticDuration: duration,
+		hits:           make(map[skymodules.DataSourceID]map[uint64][]cacheHit),
+	}
+}
+
+// Prune prunes the whole hit tracker of hits which are already too far in the
+// past. Specific Hits are usually pruned when they are added but this makes
+// sure we also prune those hits for datasources which are hit infrequently.  To
+// make sure this doesn't block downloads, we set a flag to indicate that a
+// pruning process is going on. In that case, ReportHit won't return true and
+// the cache will therefore not cache any new entries while the pruning is
+// happening. Assuming that we serve 100,000 unique sectors per hour and we look
+// back 24 hours to decide whether to cache an entry, we end up with 2.4 million
+// entries in the tracker which take around 5 seconds to prune.
+func (ht *cacheHitTracker) Prune() {
+	// Set the flag to indicate that we are currently pruning.
+	ht.mu.Lock()
+	if ht.pruning {
+		ht.mu.Unlock()
+		return // Already pruning
+	}
+	ht.pruning = true
+	ht.mu.Unlock()
+
+	cutoff := time.Now().Add(-ht.staticDuration)
+	for dsid, hitsPerSection := range ht.hits {
+		for section, hits := range hitsPerSection {
+			toRemove := 0
+			for i := 0; i < len(hits); i++ {
+				if hits[i].staticTime.Before(cutoff) {
+					toRemove++
+				} else {
+					break
+				}
+			}
+			hits = hits[toRemove:]
+			if len(hits) == 0 {
+				delete(hitsPerSection, section)
+			}
+		}
+		if len(hitsPerSection) == 0 {
+			delete(ht.hits, dsid)
+		}
+	}
+
+	// Unset the flag again.
+	ht.mu.Lock()
+	ht.pruning = false
+	ht.mu.Unlock()
+}
+
+// ReportHit adds a cache hit to the tracker.
+func (ht *cacheHitTracker) ReportHit(dsid skymodules.DataSourceID, sectionID uint64) bool {
+	ht.mu.Lock()
+	defer ht.mu.Unlock()
+
+	// Always return 'false' while we prune the hit tracker. This should
+	// only take a few seconds for multiple million datasources.
+	if ht.pruning {
+		return false
+	}
+
+	// Get past hits.
+	hitsPerSection, exists := ht.hits[dsid]
+	if !exists {
+		// Init
+		hitsPerSection = make(map[uint64][]cacheHit)
+		ht.hits[dsid] = hitsPerSection
+	}
+
+	// Get hits for this section.
+	hits := hitsPerSection[sectionID]
+
+	// Append new one.
+	now := time.Now()
+	hits = append(hits, cacheHit{
+		staticTime: now,
+	})
+
+	// We only need to keep staticMinHits so we remove any additional old
+	// hits we have first.
+	if len(hits) > ht.staticMinHits {
+		hits = hits[len(hits)-ht.staticMinHits:]
+	}
+
+	// Remove all hits that happened more than the specified duration ago.
+	cutoff := now.Add(-ht.staticDuration)
+	toRemove := 0
+	for i := 0; i < len(hits); i++ {
+		if hits[i].staticTime.Before(cutoff) {
+			toRemove++
+		} else {
+			break // no more older hits
+		}
+	}
+	hits = hits[toRemove:]
+
+	// If non remain, clear the map.
+	if len(hits) == 0 {
+		delete(ht.hits[dsid], sectionID)
+		if len(ht.hits[dsid]) == 0 {
+			delete(ht.hits, dsid)
+		}
+		return false
+	}
+
+	// Otherwise update the map.
+	ht.hits[dsid][sectionID] = hits
+
+	// If enough remain, return true.
+	return len(hits) >= ht.staticMinHits
+}
 
 // freeSection removes a section from the datasource and deletes it from disk.
 // It also returns the deleted files length and whether it was the last section.
@@ -138,7 +273,7 @@ func (ds *cachedDataSource) put(dsid skymodules.DataSourceID, sectionIndex uint6
 
 // newPersistedLRU creates a new LRU at the given root path with the given max
 // size.
-func newPersistedLRU(path string, maxSize uint64) (*persistedLRU, error) {
+func newPersistedLRU(path string, maxSize uint64, hitsBeforeCache int, duration time.Duration) (*persistedLRU, error) {
 	// Remove root dir to prune any existing cached elements.
 	if err := os.RemoveAll(path); err != nil {
 		return nil, err
@@ -150,6 +285,7 @@ func newPersistedLRU(path string, maxSize uint64) (*persistedLRU, error) {
 	return &persistedLRU{
 		dataSources:        make(map[skymodules.DataSourceID]*cachedDataSource),
 		lruElements:        make(map[skymodules.DataSourceID]map[uint64]*list.Element),
+		staticHitTracker:   newCacheHitTracker(hitsBeforeCache, duration),
 		staticMaxCacheSize: int64(maxSize),
 		staticLRU:          list.New(),
 		staticPath:         path,
@@ -332,6 +468,11 @@ func (lru *persistedLRU) Get(dsid skymodules.DataSourceID, sectionIndex uint64) 
 
 // Put adds a new section to the cache.
 func (lru *persistedLRU) Put(dsid skymodules.DataSourceID, sectionIndex uint64, data []byte) error {
+	// Check the hit tracker to see if we should actually cache the section.
+	if cache := lru.staticHitTracker.ReportHit(dsid, sectionIndex); !cache {
+		return nil // don't cache yet
+	}
+
 	// Get the cached datasource or create if possible.
 	ds := lru.managedAcquireCreateDataSource(dsid)
 
