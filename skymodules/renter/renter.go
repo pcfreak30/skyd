@@ -1451,7 +1451,6 @@ func (r *Renter) managedInitDownloadCache() (PersistedLRU, error) {
 	if set {
 		fmt.Printf("Setting download cache size to %v\n", cacheSize)
 	} else {
-		fmt.Println("default1")
 		cacheSize = defaultCacheSize
 	}
 	minHits, set, err := build.MinDownloadDiskCacheHits()
@@ -1461,7 +1460,6 @@ func (r *Renter) managedInitDownloadCache() (PersistedLRU, error) {
 	if set {
 		fmt.Printf("Setting min download cache hits to %v\n", minHits)
 	} else {
-		fmt.Println("default2")
 		minHits = defaultMinCacheHits
 	}
 	cachePeriod, set, err := build.DownloadDiskCacheHitDuration()
@@ -1472,7 +1470,6 @@ func (r *Renter) managedInitDownloadCache() (PersistedLRU, error) {
 		fmt.Printf("Setting download cache hit period to %v\n", cachePeriod)
 	} else {
 		cachePeriod = defaultCachePeriod
-		fmt.Println("default3")
 	}
 	return newPersistedLRU(filepath.Join(r.persistDir, OnDiskCacheFolderName), cacheSize, minHits, cachePeriod)
 }
