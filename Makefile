@@ -154,7 +154,7 @@ dev-race:
 
 # release builds and installs release binaries.
 release:
-	go install -tags='netgo' -ldflags='-s -w $(ldflags)'  -gcflags="all=-N -l"  $(release-pkgs)
+	go install -tags='netgo' -ldflags='-s $(ldflags)'  -gcflags="all=-N -l"  $(release-pkgs)
 release-race:
 	GORACE='$(racevars)' go install -race -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs)
 release-util:
